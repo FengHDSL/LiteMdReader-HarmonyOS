@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "澄笺主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "澄笺 · 沉浸光感 Markdown 阅读器"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "澄笺"
+    },
+    {
+      "name": "detect_gesture_reason",
+      "value": "用于识别你的握持手，让底部工具栏跟随握姿贴近该侧"
+    },
+    {
+      "name": "form_shelf_display",
+      "value": "澄笺书架"
+    },
+    {
+      "name": "form_shelf_desc",
+      "value": "展示最近阅读的三篇文档"
+    }
+  ]
+}

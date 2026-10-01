@@ -1,0 +1,27 @@
+{
+  // 签名配置示例 —— **不要把你的真实证书 / 密码提交到仓库**。
+  // 用法：把 "app" 下这块 signingConfigs 复制回根目录 build-profile.json5，
+  // 并把 products[0] 里的 "signingConfig": "default" 取消注释。
+  // 更省事的做法：DevEco Studio → File → Project Structure → Signing Configs
+  // 勾选「Automatically generate signature」，它会自动生成证书并写回该文件
+  // （此时记得别把生成结果提交上去）。
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          // 三项都是**绝对路径**，指向你自己机器上的证书文件
+          "certpath": "C:/Users/<you>/.ohos/config/default_<AppName>_<hash>.cer",
+          "storeFile": "C:/Users/<you>/.ohos/config/default_<AppName>_<hash>.p12",
+          "profile": "C:/Users/<you>/.ohos/config/default_<AppName>_<hash>.p7b",
+          "keyAlias": "debugKey",
+          // 由 DevEco 生成并加密的密码串；**不要外传**
+          "keyPassword": "<encrypted-key-password>",
+          "storePassword": "<encrypted-store-password>",
+          "signAlg": "SHA256withECDSA"
+        }
+      }
+    ]
+  }
+}

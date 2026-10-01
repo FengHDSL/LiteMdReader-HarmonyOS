@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>「澄笺」隐私政策</title>
+  <style>
+    :root {
+      --bg-body: #f8f9fa;
+      --bg-container: #ffffff;
+      --text-primary: #333333;
+      --text-secondary: #4a5568;
+      --text-tertiary: #718096;
+      --text-heading: #2d3748;
+      --border-heading: #e2e8f0;
+      --note-bg: #f5fafe;
+      --note-border: #4299e1;
+      --chip-bg: #f2f4f6;
+      --table-border: #e2e8f0;
+      --table-head: #f5f7fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-body: #121212;
+        --bg-container: #1e1e1e;
+        --text-primary: #e6e6e6;
+        --text-secondary: #b0b0b0;
+        --text-tertiary: #8a8a8a;
+        --text-heading: #f0f0f0;
+        --border-heading: #2c2c2c;
+        --note-bg: #16222b;
+        --note-border: #2b6cb0;
+        --chip-bg: #262626;
+        --table-border: #2c2c2c;
+        --table-head: #232323;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      background: var(--bg-body);
+      color: var(--text-primary);
+      font-size: 14px; line-height: 1.75;
+      font-family: -apple-system, "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .container {
+      background: var(--bg-container);
+      border-radius: 12px; padding: 18px 16px;
+    }
+    h1 { font-size: 19px; margin: 0 0 6px; color: var(--text-heading); text-align: center; }
+    .meta { text-align: center; font-size: 12px; color: var(--text-tertiary); margin-bottom: 16px; }
+    h2 { font-size: 15px; margin: 22px 0 8px; color: var(--text-heading);
+         padding-bottom: 6px; border-bottom: 1px solid var(--border-heading); }
+    h3 { font-size: 14px; margin: 14px 0 6px; color: var(--text-heading); }
+    p { margin: 8px 0; color: var(--text-secondary); }
+    ul, ol { margin: 8px 0; padding-left: 20px; color: var(--text-secondary); }
+    li { margin: 4px 0; }
+    strong { color: var(--text-primary); }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+    th, td { border: 1px solid var(--table-border); padding: 7px 9px; text-align: left;
+             color: var(--text-secondary); vertical-align: top; }
+    th { background: var(--table-head); color: var(--text-primary); font-weight: 600; }
+    .note {
+      background: var(--note-bg); border-left: 3px solid var(--note-border);
+      padding: 10px 12px; border-radius: 6px; margin: 12px 0;
+      font-size: 13px; color: var(--text-secondary);
+    }
+    .chip { display: inline-block; background: var(--chip-bg); border-radius: 6px;
+            padding: 2px 8px; font-size: 12px; color: var(--text-secondary); margin: 2px; }
+    .footer { margin-top: 18px; font-size: 12px; color: var(--text-tertiary); text-align: center; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>「澄笺」隐私政策</h1>
+  <div class="meta">
+    <span>更新日期：2026 年 10 月 1 日</span> · <span>生效日期：2026 年 10 月 1 日</span>
+  </div>
+
+  <p><strong>澄笺是一款纯本地优先的 Markdown 阅读与写作应用。</strong>
+  我们的设计原则只有一句话：你的内容只属于你。这份政策说明应用会接触哪些数据、用到哪些权限，
+  以及这些数据去了哪里。请在使用前仔细阅读。</p>
+
+  <div class="note">
+    一句话版本：<strong>我们不收集、不上传、不分析任何个人数据；应用内没有账号体系，
+    也没有统计、广告、推送 SDK。</strong>唯一的联网行为是加载你自己文档里写的网络图片，
+    以及你主动发起的 WebDAV 备份 / 恢复。
+  </div>
+
+  <h2>一、我们收集什么</h2>
+  <p><strong>我们不收集、不上传、不分析任何个人数据。</strong>具体来说：</p>
+  <ul>
+    <li>你创建、导入的 Markdown 文档，以及书架索引（名称、顺序、封面设置、阅读进度），
+        全部保存在<strong>本机应用沙箱</strong>内；</li>
+    <li>你的荧光笔高亮与文字批注、阅读位置与最近打开时间，同样只存在本机；</li>
+    <li>外观与阅读设置（主题、主题色、字号行高版心、壁纸、导入的字体、备份配置）
+        也只存在本机；</li>
+    <li>应用<strong>没有</strong>账号、登录、云端同步默认项，也<strong>没有</strong>嵌入任何统计、
+        广告、推送或用户行为分析 SDK；</li>
+    <li>应用不会读取你的通讯录、短信、通话记录、精确位置、相册列表或其它应用的数据。
+        粘贴图片与导入图片时，只使用系统选择器交回的那一个文件。</li>
+  </ul>
+
+  <h2>二、数据保存在哪里</h2>
+  <table>
+    <tr><th>数据</th><th>保存位置</th></tr>
+    <tr><td>文档正文（.md）</td><td>应用沙箱 <span class="chip">docs/</span> 目录</td></tr>
+    <tr><td>书架索引 / 进度 / 封面设置 / 读写只读标记</td><td>应用沙箱 <span class="chip">shelf.json</span></td></tr>
+    <tr><td>荧光笔与文字批注</td><td>应用沙箱内（annotations 数据）</td></tr>
+    <tr><td>图表 / 公式的渲染缓存</td><td>应用缓存目录（可随时清除）</td></tr>
+    <tr><td>主题、字号、壁纸、字体等偏好</td><td>本机系统首选项 + 沙箱内镜像文件</td></tr>
+  </table>
+  <p>以上数据都不会离开你的设备，除非你自己把它们导出或备份出去。
+  <strong>卸载应用即彻底删除全部本地数据</strong>（系统备份例外，见第五节）。</p>
+
+  <h2>三、权限使用说明</h2>
+  <p>应用只申请以下权限，且<strong>均不用于任何数据采集</strong>：</p>
+  <table>
+    <tr><th>权限</th><th>用途</th></tr>
+    <tr>
+      <td>ohos.permission.INTERNET<br>（网络）</td>
+      <td>① 加载你文档中显式引用的 http/https 网络图片；
+          ② 使用 WebDAV 备份 / 恢复时，与你<strong>自己填写的服务器</strong>通信；
+          ③ 「检查更新」时访问应用发布页读取最新版本号。<br>
+          除此之外不产生任何网络请求。</td>
+    </tr>
+    <tr>
+      <td>ohos.permission.DETECT_GESTURE<br>（动作感知）</td>
+      <td>识别当前握持手，让底部工具栏贴近你持机的一侧（智感握姿）。
+          设备或授权不支持时自动降级为居中，不影响其它功能。</td>
+    </tr>
+  </table>
+  <div class="note">
+    应用还使用系统剪贴板（复制文本 / 链接、粘贴图片）与系统手写能力（PenKit，笔迹数据不出设备），
+    这些都属于系统公开能力，<strong>不是危险权限</strong>，也不需要额外授权。
+    应用不申请存储、相机、麦克风、定位、通讯录等任何敏感权限。
+  </div>
+
+  <h2>四、联网行为的边界</h2>
+  <ul>
+    <li><strong>网络图片</strong>：仅当你保存的文档中显式引用了 http/https 图片时，由系统网络组件
+        直接向该地址请求图片。我们不记录访问行为、不缓存到云端、不经过任何中转；</li>
+    <li><strong>检查更新</strong>：仅在你在「探索中心」主动点击「检查更新」时，访问应用发布页
+        读取页面上的版本号用于比对，不上传任何设备或使用信息；</li>
+    <li><strong>WebDAV 备份 / 恢复</strong>：仅在你主动发起时，备份文件才会发送到
+        <strong>你自己填写的 WebDAV 服务器</strong>。服务器地址、账号与应用密码只保存在本机沙箱，
+        我们没有任何中转服务器，也不掌握你的账号；</li>
+    <li>应用内没有埋点、没有心跳、没有后台联网任务。</li>
+  </ul>
+
+  <h2>五、备份、迁移与第三方</h2>
+  <h3>本地备份</h3>
+  <p>你可以随时导出本地备份包（zip）自行保存；恢复时由系统文件选择器交回该文件。
+  备份包的内容、存放位置与保管方式完全由你决定。</p>
+  <h3>系统备份</h3>
+  <p>应用支持系统的备份 / 恢复能力（EntryBackupAbility）。若你在系统设置里开启了应用备份，
+  系统可能把应用沙箱打包进你的个人备份中——该过程由系统执行，数据去向遵循系统设置与你的账号，
+  应用本身不参与、也无法读取。</p>
+  <h3>第三方开源组件</h3>
+  <p>应用内图表（mermaid、echarts、graphviz、flowchart、markmap）与数学公式（KaTeX）
+  的渲染库已<strong>离线内联</strong>在应用包内，渲染过程完全在本地完成，不产生网络请求，
+  也不采集任何数据。这些组件归其各自作者所有，按相应开源协议使用。</p>
+
+  <h2>六、你的权利</h2>
+  <ul>
+    <li><strong>查看与修改</strong>：所有文档与设置都能在应用内直接查看、修改、删除；</li>
+    <li><strong>删除</strong>：可删除单篇文档、清空批注、清除缓存，或在系统里清除应用数据；</li>
+    <li><strong>带走</strong>：可随时导出单篇文档（MD / HTML）或整份本地备份包；</li>
+    <li><strong>彻底退出</strong>：卸载应用即删除全部本地数据，无需向我们申请。</li>
+  </ul>
+  <p>由于我们不收集任何个人数据，也就不存在「查询、更正、删除我们持有的你的个人信息」这类流程
+  ——你的数据自始至终都在你自己手里。</p>
+
+  <h2>七、未成年人</h2>
+  <p>本应用是通用工具，不面向特定年龄群体，也不收集任何年龄信息。未成年人可在监护人指导下使用。</p>
+
+  <h2>八、政策更新</h2>
+  <p>若本政策发生重大变更（例如新增联网功能或权限），我们会在应用内公告，
+  并更新本页顶部的<strong>更新日期</strong>。继续使用即表示接受更新后的政策。</p>
+
+  <h2>九、联系我们</h2>
+  <p>如对本政策有任何疑问，可通过应用内「探索中心 → 项目主页」与我们联系。</p>
+
+  <div class="footer">澄笺 · 光 · 美 · 舒 · 开源</div>
+</div>
+</body>
+</html>

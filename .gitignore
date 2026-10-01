@@ -1,0 +1,48 @@
+# ===== 构建产物与工具缓存 =====
+/node_modules
+/oh_modules
+**/oh_modules
+**/build
+/build
+/.hvigor
+/.cxx
+.cxx
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+/.idea
+/local.properties
+*.iml
+.DS_Store
+Thumbs.db
+
+# ===== 签名材料（**绝不入库**）=====
+# 证书 / 私钥 / 签名描述文件可能落在仓库任意位置，这里按扩展名兜底；
+# 发布用的 build-profile.json5 已移除 signingConfigs（含 storePassword）。
+*.p12
+*.cer
+*.p7b
+*.keystore
+*.jks
+*.pem
+*.key
+*.csr
+*.mobileprovision
+signing/
+
+# ===== 开发过程产物（不属于产品源码）=====
+# .workbuddy：工作记忆 / 备份 / 本地测试台；.codegenie：AI 工具记忆
+/.workbuddy
+/.codegenie
+*.log
+
+# ===== 大体积产物（走 GitHub Release 分发，不入库）=====
+*.hap
+
+# ===== 一次性 / 个人调试脚本（不属于产品源码）=====
+/fix_nav.bat
+/fix_nav.ps1
+/tools/check_signing_block.js
+/tools/strip_signing.js

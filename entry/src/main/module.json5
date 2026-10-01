@@ -1,0 +1,96 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "phone",
+      "tablet",
+      "2in1"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    // 网络图片：Markdown 正文里的 http/https 图片由 Image 组件直接加载。
+    // INTERNET 是 system_grant 权限，声明即可，无需用户授权弹窗。
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      // 智感握姿（底部胶囊跟随握持手左右移动）。
+      // 设备或授权不支持时静默降级为居中，不影响其它功能——见 service/GripAware.ets。
+      {
+        "name": "ohos.permission.DETECT_GESTURE",
+        "reason": "$string:detect_gesture_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      }
+    ],
+    // 沉浸光感的应用级前置条件。uiMaterial.getMaterialInfo().state 读的就是这一项：
+    //   default：普通组件可主动设置材质
+    //   enable ：更多系统组件自动使用材质，普通组件仍可主动设置
+    //   disable：关闭整个应用的沉浸材质，**主动设置的材质也一并失效**（代码绕不过）
+    // 该值打进安装包，改动后必须重新构建安装才生效。
+    "metadata": [
+      {
+        "name": "ohos.arkui.UIMaterial.state",
+        "value": "enable"
+      }
+    ],
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:starticon_blank",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "ohos.want.action.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "EntryBackupAbility",
+        "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",
+        "type": "backup",
+        "exported": false,
+        "metadata": [
+          {
+            "name": "ohos.extension.backup",
+            "resource": "$profile:backup_config"
+          }
+        ],
+      },
+      // ── 桌面卡片（2×4 书架卡片）：**暂时停用**（用户要求，卡片存在 bug，以后再修）──
+      // 停用方式 = 不再注册 form 扩展（卡片因此不出现在「服务卡片」列表里，
+      // 已添加的卡片也不会再被更新）。相关代码都原位保留，日后要恢复：
+      //   ① 取消下面这段注释；② 恢复 EntryAbility / Reader 里的 FormSync.pushRecents 调用。
+      // {
+      //   "name": "EntryFormAbility",
+      //   "srcEntry": "./ets/entryformability/EntryFormAbility.ets",
+      //   "type": "form",
+      //   "exported": true,
+      //   "metadata": [
+      //     {
+      //       "name": "ohos.extension.form",
+      //       "resource": "$profile:form_config"
+      //     }
+      //   ]
+      // }
+    ]
+  }
+}
