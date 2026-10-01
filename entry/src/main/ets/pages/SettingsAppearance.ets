@@ -103,11 +103,19 @@ export struct SettingsAppearance {
   /** 页面背景跟随主题色 / 自定义主题色也染背景 */
   @StorageLink('pageBgTint') @Watch('onAppearanceChanged') pageBgTint: boolean = true;
   @StorageLink('customAccentFull') @Watch('onAppearanceChanged') customAccentFull: boolean = false;
-  /** 灰体文本显示增强：auto / gray / black / white / custom + 自定义色 */
-  @StorageLink('grayTextMode') @Watch('onAppearanceChanged') grayMode: string = 'black';
+  /** 灰体文本显示增强：**深浅两套独立配置**（各自默认 auto）。
+   *  取值 auto / gray / black / white / custom + 对应模式的自定义色。 */
+  @StorageLink('grayTextModeLight') @Watch('onAppearanceChanged') grayModeLight: string = 'auto';
+  @StorageLink('grayTextModeDark') @Watch('onAppearanceChanged') grayModeDark: string = 'auto';
+  @StorageLink('grayTextColorLight') @Watch('onAppearanceChanged') grayColorLight: string = '';
+  @StorageLink('grayTextColorDark') @Watch('onAppearanceChanged') grayColorDark: string = '';
+  /** 旧单套键：兼容解析（新键未设过时才生效），也一起改一次，避免旧值把新值顶掉 */
+  @StorageLink('grayTextMode') @Watch('onAppearanceChanged') grayMode: string = 'auto';
   @StorageLink('grayTextColor') @Watch('onAppearanceChanged') grayColor: string = '';
-  /** 自定义灰字输入框的草稿（点「应用」才写进设置） */
+  /** 自定义灰字输入框的草稿（点「应用」才写进设置）；深浅两套各一份 */
   @State grayDraft: string = '';
+  @State grayDraftLight: string = '';
+  @State grayDraftDark: string = '';
   @State sliderW: number = 0;
   @State sliderH: number = 0;
 
@@ -204,8 +212,24 @@ export struct SettingsAppearance {
    * 任一外观键变化（@Watch）：**立刻落一次镜像盘**并广播刷新计数。
    * 不等"退到后台"，避免用户设置完直接杀掉应用时丢设置；
    * 顺带让别的页面（书架 / 阅读页）当场重算派生色。
+   *
+   * 灰字是**纯函数读 AppStorage**（paletteFor → grayTextOverride），不登记依赖，
+   * 所以这里必须递增 appearanceTick：各页面的 palette() 都读了它，
+   * 计数一变，全应用当帧重算灰字颜色——改完不用重进页面。
    */
   onAppearanceChanged(): void {
+    this.broadcastAppearance();
+  }
+
+  /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
+  private broadcastAppearance(): void {
+    try {
+      const cur: number | undefined = AppStorage.get<number>(SettingsMirror.KEY_TICK);
+      const next: number = (cur === undefined || cur === null ? 0 : cur) + 1;
+      AppStorage.setOrCreate(SettingsMirror.KEY_TICK, next);
+    } catch (err) {
+      // 广播失败不影响设置本身
+    }
     SettingsMirror.save(this.hostCtx());
   }
 
@@ -246,8 +270,12 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('cardGlowTouch', true);
     AppStorage.setOrCreate('customAccentFull', false);
     AppStorage.setOrCreate('pageBgTint', true);
-    AppStorage.setOrCreate('grayTextMode', 'black');
+    AppStorage.setOrCreate('grayTextMode', 'auto');
     AppStorage.setOrCreate('grayTextColor', '');
+    AppStorage.setOrCreate('grayTextModeLight', 'auto');
+    AppStorage.setOrCreate('grayTextModeDark', 'auto');
+    AppStorage.setOrCreate('grayTextColorLight', '');
+    AppStorage.setOrCreate('grayTextColorDark', '');
     AppStorage.setOrCreate('glassStrength', 70);
     AppStorage.setOrCreate('cardFallback', 'mica');
     AppStorage.setOrCreate('particleDissolve', false);
@@ -273,6 +301,80 @@ export struct SettingsAppearance {
     this.customFuncDraft = this.customFunc;
     this.customADraft = this.customA;
     this.customBDraft = this.customB;
+    // 灰字自定义草稿带入各自当前值
+    this.grayDraftLight = this.grayColorLight;
+    this.grayDraftDark = this.grayColorDark;
+  }
+
+  /**
+   * 一套灰体文本配置块（深色 / 浅色各用一次）：
+   * 标题 + 五个模式芯片（自动 / 灰 / 黑 / 白 / 自定义）+ 自定义色输入。
+   * 三个回调分别把结果写回对应模式的键，并广播一次刷新。
+   */
+  @Builder
+  grayBlock(title: string, mode: string, color: string, draft: string,
+    onDraft: (v: string) => void, onMode: (m: string) => void, onColor: (c: string) => void) {
+    Row() {
+      Text(title)
+        .fontSize(HwType.label)
+        .fontColor(this.palette().textPrimary)
+        .layoutWeight(1)
+      Text(mode === 'auto' ? '自动' : (color.length > 0 ? color : ''))
+        .fontSize(HwType.caption)
+        .fontColor(this.palette().textTertiary)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+
+    Flex({ wrap: FlexWrap.Wrap }) {
+      ForEach(GRAY_MODES, (item: NamedColor) => {
+        Row() {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: item.name,
+            chipActive: mode === item.value,
+            chipOnTap: () => {
+              onMode(item.value);
+              if (item.value !== 'custom') {
+                this.toast(title + '灰体文本：' + item.name);
+              }
+            }
+          })
+        }
+        .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+      }, (item: NamedColor) => 'gm_' + title + '_' + item.value)
+    }
+    .width('100%')
+
+    if (mode === 'custom') {
+      Row({ space: HwSpace.xs }) {
+        ImmersiveInput({
+          palette: this.palette(),
+          text: draft.length > 0 ? draft : color,
+          placeholder: '自定义 #RRGGBB',
+          onInput: (value: string) => {
+            onDraft(value);
+          }
+        })
+        .layoutWeight(1)
+        ImmersiveChip({
+          palette: this.palette(),
+          chipActive: true,
+          chipLabel: '应用',
+          chipOnTap: () => {
+            const norm: string = normalizeHex8(draft);
+            if (norm.length === 0) {
+              this.toast('格式：#RRGGBB，例如 #9AA0A6');
+              return;
+            }
+            onColor('#' + norm.substring(3));
+            this.toast(title + '灰体色已生效');
+          }
+        })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+    }
   }
 
   build() {
@@ -826,62 +928,47 @@ export struct SettingsAppearance {
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
-          Flex({ wrap: FlexWrap.Wrap }) {
-            ForEach(GRAY_MODES, (item: NamedColor) => {
-              Row() {
-                ImmersiveChip({
-                  palette: this.palette(),
-                  chipLabel: item.name,
-                  chipActive: this.grayMode === item.value,
-                  chipOnTap: () => {
-                    this.grayMode = item.value;
-                    if (item.value !== 'custom') {
-                      this.toast('灰体文本：' + item.name);
-                    }
-                  }
-                })
-              }
-              .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
-            }, (item: NamedColor) => 'gm' + item.value)
-          }
-          .width('100%')
+          // ── 深色模式用什么颜色 ──
+          this.grayBlock('深色模式', this.grayModeDark, this.grayColorDark,
+            this.grayDraftDark,
+            (v: string): void => {
+              this.grayDraftDark = v;
+            },
+            (m: string): void => {
+              // 两套新键一起写：旧键（grayTextMode）留着做兼容解析，
+              // 若不同步，老安装升级后旧值会盖住新值。
+              this.grayModeDark = m;
+              this.grayMode = 'auto';
+              this.broadcastAppearance();
+            },
+            (c: string): void => {
+              this.grayColorDark = c;
+              this.broadcastAppearance();
+            })
 
-          if (this.grayMode === 'custom') {
-            Row({ space: HwSpace.xs }) {
-              ImmersiveInput({
-                palette: this.palette(),
-                text: this.grayDraft.length > 0 ? this.grayDraft : this.grayColor,
-                placeholder: '自定义 #RRGGBB',
-                onInput: (value: string) => {
-                  this.grayDraft = value;
-                }
-              })
-              .layoutWeight(1)
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: true,
-                chipLabel: '应用',
-                chipOnTap: () => {
-                  const norm: string = normalizeHex8(this.grayDraft);
-                  if (norm.length === 0) {
-                    this.toast('格式：#RRGGBB，例如 #9AA0A6');
-                    return;
-                  }
-                  this.grayColor = '#' + norm.substring(3);
-                  this.toast('自定义灰体色已生效');
-                }
-              })
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-          }
+          // ── 浅色模式用什么颜色 ──
+          this.grayBlock('浅色模式', this.grayModeLight, this.grayColorLight,
+            this.grayDraftLight,
+            (v: string): void => {
+              this.grayDraftLight = v;
+            },
+            (m: string): void => {
+              this.grayModeLight = m;
+              this.grayMode = 'auto';
+              this.broadcastAppearance();
+            },
+            (c: string): void => {
+              this.grayColorLight = c;
+              this.broadcastAppearance();
+            })
 
-          Text('「黑」「白」会按当前主题自适应（深色主题下选「黑」自动用浅字），避免看不清')
+          Text('默认「自动」＝跟随主题原本的灰字；深浅两套各设各的，互不影响。' +
+            '「黑 / 白」是字面色（选白就是白），已在深色主题下想用深色字请选「黑」配合浅色主题。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
-          Text('灰字颜色在重新进入页面后刷新（系统状态管理的既定取舍）')
+          Text('改完立即生效（走 appearanceTick 全应用重算，无需重进页面）')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')

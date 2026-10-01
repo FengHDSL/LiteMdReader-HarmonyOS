@@ -364,34 +364,49 @@ export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
 
 /**
  * 灰体文本覆盖色（空串 = 不覆盖，跟随主题）。
- * 模式：auto / gray / black / white / custom（用 grayTextColor 里的 #RRGGBB）。
  *
- * **「黑 / 白」按字面值**（用户要求：选白就是白、选黑就是黑——
- * 之前按主题自适应翻转，结果浅色主题选白出来的是深色）：
+ * **深浅两套独立配置**（用户要求）：深色模式用什么颜色、浅色模式用什么颜色分别设，
+ * 各自默认「自动」。取值：
+ *   · 现代键（按当前主题取其中一套）
+ *       grayTextModeLight / grayTextModeDark：auto | gray | black | white | custom
+ *       grayTextColorLight / grayTextColorDark：custom 时的自定义 #RRGGBB
+ *   · 旧键（兼容老安装）：grayTextMode / grayTextColor —— 两个现代键都还是 auto 时生效
+ *
+ * **「黑 / 白」按字面值**（用户要求：选白就是白、选黑就是黑——之前按主题自适应翻转，
+ * 结果浅色主题选白出来的是深色）。现在由用户分别给深浅两套指定，语义不再含糊：
  *   · 黑 = 近黑 #1A1D21（浅色主题下对比增强）
  *   · 白 = 纯白 #FFFFFF（深色壁纸 + 浅色主题的组合用）
- * 主题不匹配时用户自行换挡，「灰」在两种主题下都够用。
+ *   · 灰 = #9AA0A6（两种主题下都够用）
  *
- * 注意：纯函数内读 AppStorage **不登记依赖**，所以拨开关后需要重进页面才会刷新
- * （xjau 的同类实现也有同样说明，属于既定取舍）。
+ * 注意：纯函数内读 AppStorage **不登记依赖**，所以改设置后由 SettingsAppearance 里的
+ * appearanceTick 触发整树重算（见各页面 palette()）。
  */
 export function grayTextOverride(themeDark: boolean): string {
-  const mode: string | undefined = AppStorage.get<string>('grayTextMode');
-  const m: string = mode === undefined || mode === null ? '' : mode;
-  if (m.length === 0 || m === 'auto') {
+  const modernKey: string = themeDark ? 'grayTextModeDark' : 'grayTextModeLight';
+  const modernColorKey: string = themeDark ? 'grayTextColorDark' : 'grayTextColorLight';
+  const modernRaw: string | undefined = AppStorage.get<string>(modernKey);
+  let mode: string = modernRaw === undefined || modernRaw === null ? '' : modernRaw;
+  let colorKey: string = modernColorKey;
+  // 现代键没设过（老安装）→ 回落旧键；旧键默认 'auto'，等价于"跟随主题"
+  if (mode.length === 0) {
+    const legacyRaw: string | undefined = AppStorage.get<string>('grayTextMode');
+    mode = legacyRaw === undefined || legacyRaw === null ? 'auto' : legacyRaw;
+    colorKey = 'grayTextColor';
+  }
+  if (mode.length === 0 || mode === 'auto') {
     return '';
   }
-  if (m === 'gray') {
+  if (mode === 'gray') {
     return '#9AA0A6';
   }
-  if (m === 'black') {
+  if (mode === 'black') {
     return '#1A1D21';
   }
-  if (m === 'white') {
+  if (mode === 'white') {
     return '#FFFFFF';
   }
-  if (m === 'custom') {
-    const c: string | undefined = AppStorage.get<string>('grayTextColor');
+  if (mode === 'custom') {
+    const c: string | undefined = AppStorage.get<string>(colorKey);
     const hex: string = c === undefined || c === null ? '' : c.trim();
     const norm: string = normalizeHex8(hex);
     return norm.length > 0 ? '#' + norm.substring(3) : '';

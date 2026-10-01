@@ -16,7 +16,8 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveBar, ImmersiveIconButton, ImmersiveCard } from '../material/ImmersiveCard';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
-import { applySystemBarTheme, applyAppColorMode } from '../service/AppWindow';
+import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
+  markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { HwBar, HwRadius, HwSpace, HwType, ReaderPalette, ReaderThemeMode, paletteFor } from '../theme/DesignTokens';
 
 /**
@@ -43,7 +44,9 @@ export struct SettingsShell {
   @BuilderParam shellContent: () => void = this.placeholderContent;
 
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
-  @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
+  @StorageProp('systemDark') systemDark: boolean = false;
+  /** 主题纪元：拼进根容器 key，明暗变了整树重建（一次刷新到位） */
+  @State themeEpoch: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   @StorageProp('wallpaperPath') wallpaperPath: string = '';
@@ -68,14 +71,43 @@ export struct SettingsShell {
     applySystemBarTheme(this.isDark());
   }
 
+  /** 系统深浅变化：整页刷新一次（材质 / 壁纸 / 派生色一次到位）。 */
+  /**
+   * 明暗真的变了才整树重建（themeEpoch 拼在根容器 key 上）。
+   * 实机证明 @StorageProp 的 @Watch 不触发，所以由这里主动比对。
+   */
+  private applyThemeChange(): void {
+    const dark: boolean = this.isDark();
+    if (!themeChangedSince(dark)) {
+      markThemeApplied(dark);
+      return;
+    }
+    markThemeApplied(dark);
+    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.themeEpoch = this.themeEpoch + 1;
+    });
+  }
+
   aboutToAppear(): void {
+    // 进来先问一次系统深浅；不一致就整页刷新一次
+    syncSystemDarkFromContext();
+    this.applyThemeChange();
     applySystemBarTheme(this.isDark());
     // 延后一帧挂内容：转场动画跑在"空内容"的页面上，避免掉帧（用户反馈切二级页卡顿）
     setTimeout(() => {
       this.contentReady = true;
     }, 32);
     this.life.onShow = () => {
+      syncSystemDarkFromContext();
+      this.applyThemeChange();
+      startThemeWatchdog(() => {
+        this.applyThemeChange();
+        applySystemBarTheme(this.isDark());
+      });
       applySystemBarTheme(this.isDark());
+    };
+    this.life.onHide = () => {
+      stopThemeWatchdog();
     };
   }
 
@@ -264,6 +296,8 @@ export struct SettingsShell {
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)
+    // **主题纪元拼进根容器 key**：系统深浅一变整树重建，设置页也一次刷新到位
+    .key('settings_theme_' + this.themeEpoch)
   }
 
   /** 默认内容：调用方没传闭包时的占位，避免出现空白页 */

@@ -19,6 +19,7 @@
 
 import { window } from '@kit.ArkUI';
 import { ConfigurationConstant } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ReaderThemeMode } from '../theme/DesignTokens';
 import GlobalUIAbilityContext from '../util/ContextConfig';
 
@@ -146,6 +147,127 @@ export function applyAppColorMode(themeMode: number): void {
   } catch (err) {
     // 同步失败下次主题变更再试，不阻断主流程
   }
+}
+
+/**
+ * 各页面最近一次"已生效"的明暗状态（模块级，跨组件重建保留）。
+ *
+ * **为什么需要它**：实机日志证明 `@StorageProp('systemDark')` 上的 `@Watch`
+ * 在 AppStorage 被 Ability 侧改写时**不会触发**（值确实变了、回调一次都不来），
+ * 于是当前页面只更新一部分，用户得进别的页面才完全刷新。
+ * 各页面在 onPageShow / onShown 时用这份记录跟自己的实际明暗比一比，
+ * 不一致就强制重建整棵树（见各页的 themeEpoch / renderEpoch）。
+ */
+class ThemeState {
+  /** 上次已应用到界面的"有效明暗"（含应用内主题覆盖） */
+  static appliedDark: boolean = false;
+  /** 是否已初始化过（首帧不算变化） */
+  static inited: boolean = false;
+}
+
+/** 记录"界面已经用上了这个明暗"（各页刷新完调用）。 */
+export function markThemeApplied(dark: boolean): void {
+  ThemeState.appliedDark = dark;
+  ThemeState.inited = true;
+}
+
+/** 供页面判断：当前明暗跟"界面已用上的"是否不同。 */
+export function themeChangedSince(dark: boolean): boolean {
+  return ThemeState.inited && ThemeState.appliedDark !== dark;
+}
+
+/**
+ * 页面可见时的**环境变化探测器**。
+ *
+ * 为什么需要：实机日志证明切系统深浅时，
+ *   · `onConfigurationUpdate` 会来、AppStorage 里的 systemDark 也写对了；
+ *   · 但 `@StorageProp` 的 `@Watch` **不触发**，`@StorageProp` 的值变化也不一定
+ *     让当前页面重绘 —— 于是用户必须先离开再回来（各页 onPageShow 里的比对）才刷新。
+ * 所以可见期间用一个很轻的定时器（默认 700ms）主动问一次系统浓淡：
+ * 一旦真的变了，就调用页面传进来的回调强制重建整页 —— 肉眼就是"切换后立刻刷新"。
+ *
+ * 只在页面可见时跑（onPageShow 启动 / onPageHide 停止），不做常驻轮询。
+ */
+class ThemeWatchdog {
+  private static timer: number = -1;
+
+  static start(onChanged: () => void, intervalMs: number = 700): void {
+    ThemeWatchdog.stop();
+    try {
+      ThemeWatchdog.timer = setInterval(() => {
+        const before: boolean = ThemeState.appliedDark;
+        const dark: boolean = syncSystemDarkFromContext();
+        if (!ThemeState.inited) {
+          // 首帧：只登记，不触发刷新
+          markThemeApplied(dark);
+          return;
+        }
+        if (before !== dark) {
+          markThemeApplied(dark);
+          hilog.info(0x0000, 'LiteMdReader', 'ThemeWatchdog: 系统明暗变化 → 刷新页面（%{public}s）',
+            dark ? 'dark' : 'light');
+          onChanged();
+        }
+      }, intervalMs);
+    } catch (err) {
+      // 定时器不可用不影响其它功能
+    }
+  }
+
+  static stop(): void {
+    if (ThemeWatchdog.timer >= 0) {
+      try {
+        clearInterval(ThemeWatchdog.timer);
+      } catch (err) {
+        // 忽略
+      }
+      ThemeWatchdog.timer = -1;
+    }
+  }
+}
+
+/** 启动可见期轮询（页面 onPageShow / onShown 调）。 */
+export function startThemeWatchdog(onChanged: () => void): void {
+  ThemeWatchdog.start(onChanged);
+}
+
+/** 停止可见期轮询（页面 onPageHide / onHidden 调）。 */
+export function stopThemeWatchdog(): void {
+  ThemeWatchdog.stop();
+}
+
+/**
+ * **把系统当前深浅色同步进 AppStorage `systemDark`**（跟随系统的唯一事实来源）。
+ *
+ * 实机验证过的链路：
+ *   · `onConfigurationUpdate` 会来（日志里能看到 colorMode 值）；
+ *   · 这里也会把 `systemDark` 写对（日志：系统=dark 变化=true）；
+ *   · **但 @Watch 不会触发**——所以页面刷新不能依赖它，必须由页面自己比对
+ *     （themeChangedSince + 各页 onPageShow 里的刷新）。
+ *
+ * 返回值：当前系统是否深色。读不到配置时沿用 AppStorage 里的旧值。
+ */
+export function syncSystemDarkFromContext(): boolean {
+  const c = GlobalUIAbilityContext.getContext();
+  let dark: boolean | undefined = undefined;
+  if (c !== null) {
+    try {
+      const mode: ConfigurationConstant.ColorMode | undefined = c.config.colorMode;
+      if (mode !== undefined && mode !== null) {
+        dark = mode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      }
+    } catch (err) {
+      dark = undefined;
+    }
+  }
+  if (dark === undefined) {
+    const old: boolean | undefined = AppStorage.get<boolean>('systemDark');
+    return old === true;
+  }
+  if (AppStorage.get<boolean>('systemDark') !== dark) {
+    AppStorage.setOrCreate('systemDark', dark);
+  }
+  return dark;
 }
 
 // ══════════════════════ 阅读显示设置 ══════════════════════

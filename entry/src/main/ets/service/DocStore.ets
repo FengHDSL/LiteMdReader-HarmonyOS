@@ -1265,6 +1265,9 @@ export class DocStore {
     if (def.coverColor !== undefined) {
       builtin.coverColor = def.coverColor;
     }
+    // 预置文档默认只读（用户可切「可写」）。显式落一次标记，
+    // 免得 isReadOnly() 一直走「未设过」的兜底分支——兜底只是兼容老索引的保险。
+    builtin.readOnly = true;
     DocStore.docs.push(builtin);
     return builtin;
   }

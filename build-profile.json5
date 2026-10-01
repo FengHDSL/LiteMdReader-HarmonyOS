@@ -1,15 +1,14 @@
 {
   "app": {
-    // 签名配置：**故意不入库**（避免证书路径与 storePassword 外泄）。
-    // 在 DevEco Studio 里 File → Project Structure → Signing Configs 勾选
-    // 「Automatically generate signature」重新生成一份即可编译运行。
-    // 需要手写时参照 build-profile.signing.example.json5。
+    // ⚠️ 本文件底部的 signingConfigs 是**本机签名材料**（证书路径 + 加密后的密码）。
+    //    上传仓库时不要把这一段提交上去（仓库里的版本已移除，另附
+    //    build-profile.signing.example.json5 作示例）；.gitignore 已按扩展名兜底忽略证书文件。
     "products": [
       {
         "name": "default",
-        // 指向上面那份签名配置。你自己的证书配好后把下面这行取消注释即可；
-        // 用 DevEco 的「Automatically generate signature」时它会自动补回这一行。
-        // "signingConfig": "default",
+        // 指向底部那份签名配置；**缺这一行产物就是未签名的 HAP**，
+        // 安装时会报 "no signature file"。
+        "signingConfig": "default",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.1(24)",
         "runtimeOS": "HarmonyOS",
@@ -23,10 +22,25 @@
     ],
     "buildModeSet": [
       {
-        "name": "debug",
+        "name": "debug"
       },
       {
         "name": "release"
+      }
+    ],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\panda\\.ohos\\config\\default_LiteMdReader_qSYxeKlXYF_d8m07YIU0VFFU1ftYff4aHztm8dNIv3Y=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001AEF0ACAB4249D888FD9EFE0D5C587E2C73012173E56BE21849E0C9563728BF92BB98DA989BFD7",
+          "profile": "C:\\Users\\panda\\.ohos\\config\\default_LiteMdReader_qSYxeKlXYF_d8m07YIU0VFFU1ftYff4aHztm8dNIv3Y=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\panda\\.ohos\\config\\default_LiteMdReader_qSYxeKlXYF_d8m07YIU0VFFU1ftYff4aHztm8dNIv3Y=.p12",
+          "storePassword": "0000001A715EB3FD082BDAC65F1DA063D70AF160CCEE1C1C7BBD62F8C2A1E1493AA3F6D8D161591F11E1"
+        }
       }
     ]
   },

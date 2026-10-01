@@ -37,7 +37,8 @@ import {
 import { getImmersiveMaterial } from '../material/SystemMaterial';
 import { modalSheetOptions } from '../material/ModalSheet';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
-import { applySystemBarTheme, applyAppColorMode } from '../service/AppWindow';
+import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
+  markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { DocMeta, DocSearchHit, DocStore, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { FontStore } from '../service/FontStore';
@@ -56,6 +57,9 @@ import { LegalDoc, LegalDocRoute } from './LegalDoc';
 
 /** 搜索结果下拉面板最多显示的条数（更多提示用底部说明） */
 const SEARCH_PANEL_MAX: number = 20;
+
+/** 书架底栏胶囊内「新建 / 导入」按钮的直径（vp），不能超过胶囊内高（52 - 8 = 44） */
+const NEW_BTN_SIZE: number = 36;
 
 /**
  * 封面可选底色（只存这一个基色，明暗渐变与文字墨色由 coverStyleFromColor 自动推）。
@@ -90,8 +94,16 @@ interface ShelfItem {
 @Entry
 @Component
 struct Index {
-  @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
-  @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
+  @StorageLink('readerThemeMode') @Watch('onThemeModeChanged') themeMode: number = ReaderThemeMode.System;
+  @StorageProp('systemDark') systemDark: boolean = false;
+  /**
+   * 主题纪元：系统深浅 / 应用主题一变就自增，并**拼进根节点的 key**（见 build 末尾）。
+   * 用户反馈：切系统深浅后当前页只更新一部分（要进别的页面才完全刷新）——
+   * 只改 AppStorage 值不足以让材质、壁纸、派生色整棵树重算；
+   * 换 key 会强制重建整棵组件树，一次刷新到位（key 必须是随主题变化的量，不能是常量）。
+   * 拼在根节点上还能正常逐帧过渡（新老节点各渲染一帧，不会闪空白）。
+   */
+  @State themeEpoch: number = 0;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
@@ -202,7 +214,9 @@ struct Index {
   @State barsVisible: boolean = true;
   @State rootWidth: number = 360;
 
-  /** 当前方向上累计的滚动位移（vp），超过阈值才收起顶栏 */
+  /**
+   * 当前方向上累计的滚动位移（vp），超过阈值才收起顶栏
+   */
   private scrollAccum: number = 0;
 
   aboutToAppear(): void {
@@ -292,6 +306,8 @@ struct Index {
     this.cellMenuKind = kind;
     this.cellMenuFor = name;
     this.cellMenuBuiltin = builtin;
+    // 打开时同步一次只读状态（后面由按钮自己维护，不再每次渲染现问数据层）
+    this.cellMenuReadOnly = kind === 'doc' ? this.isDocReadOnly(name) : false;
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.shelfSheet = 'cellMenu';
       this.shelfVisible = true;
@@ -308,8 +324,14 @@ struct Index {
   //
   // 只读 = 锁住「改写正文」这条路（编辑入口 + 阅读页任务勾选）；
   // 阅读 / 批注 / 封面 / 导出 / 重命名 / 删除都不受影响。
-  // 标记存在 shelf.json，这里只做读写转发；取当前值**不缓存在 @State**，
-  // 因为面板切完就 refresh()，缓存反而会跟数据层不同步。
+  // 标记存在 shelf.json。
+  //
+  // 面板里的开关状态**显式存成 @State**（之前是每次渲染现问数据层）：
+  // 现问的做法在面板这种"打开后内容不重建"的场景下不可靠——用户点了按钮、
+  // 数据层已经改对，但按钮没重绘，看上去就是"有提示、按钮没变化"。
+
+  /** 当前菜单指向的文档是否只读（打开菜单时同步一次，切换时立即更新）。 */
+  @State cellMenuReadOnly: boolean = false;
 
   /** 该文档当前是否只读（未设过标记时按「内置只读」兜底）。 */
   private isDocReadOnly(name: string): boolean {
@@ -325,7 +347,7 @@ struct Index {
     }
   }
 
-  /** 切换读写 / 只读并刷新书架（面板内容按新状态重绘）。 */
+  /** 切换读写 / 只读：先写数据层，成功后再同步界面状态并刷新。 */
   private toggleDocReadOnly(readOnly: boolean): void {
     const ctx = this.ctx();
     if (ctx === null) {
@@ -333,10 +355,15 @@ struct Index {
     }
     const name: string = this.cellMenuFor;
     if (this.isDocReadOnly(name) === readOnly) {
+      // 已经是目标状态：只把界面同步过去（避免"点了没反应"的错觉）
+      this.cellMenuReadOnly = readOnly;
       return;
     }
     try {
       if (DocStore.setReadOnly(ctx, name, readOnly)) {
+        // **先落界面状态**，再 refresh()：即使 refresh 因为别的原因没触发重绘，
+        // 按钮也已经在正确的选中态上。
+        this.cellMenuReadOnly = readOnly;
         this.refresh();
         this.toast(readOnly ? '已切为只读：编辑入口已锁' : '已切为可写：可以编辑了');
       } else {
@@ -591,6 +618,12 @@ struct Index {
             // 忽略：滚动失败不影响展开
           }
         }
+        // 第一跳之后按实测位置补一次：AUTO 只保证面板顶边可见，
+        // 面板底部仍可能压在悬浮胶囊后面 → 这里精确补齐差额。
+        // 等 220ms 让展开动画跑完、onAreaChange 报出最终矩形。
+        setTimeout(() => {
+          this.correctPanelScroll();
+        }, 220);
       }, 220);
     }, 40);
   }
@@ -639,7 +672,48 @@ struct Index {
     });
   }
 
+  /** 展开面板的窗口矩形（窗口坐标 vp）。用来校正"滚到刚好看得见面板"。 */
+  private panelWinTop: number = 0;
+  private panelWinBottom: number = 0;
+
+  /**
+   * 面板位置校正（打开文件夹时的第二步滚动）。
+   *
+   * 为什么需要：`scrollToIndex(..., ScrollAlign.AUTO)` 只保证**面板顶边**进入视口，
+   * 面板往往还有一两百 vp 压在底部悬浮胶囊后面 —— 用户反馈"自动滑的幅度太小、
+   * 还得手动补一段"。这里按**实测**的面板窗口矩形算还差多少，
+   * 再用 scrollBy 精确补上（只往上推，不会来回抖）。
+   */
+  private correctPanelScroll(): void {
+    if (this.panelWinBottom <= 0 || this.panelWinTop <= 0) {
+      return;
+    }
+    // 底部悬浮胶囊的上沿 = 可用高 - 胶囊高 - 底部避让 - 一点呼吸位
+    const barTop: number = this.rootHeight - this.padBottom() - HwBar.pill - HwSpace.md;
+    const overflow: number = this.panelWinBottom - barTop;
+    if (overflow <= 1) {
+      return;
+    }
+    try {
+      // 正数 = 内容上移，把面板底部推到胶囊上方。
+      // Grid/List 的 Scroller.scrollBy 在本 SDK 只吃两个参数（dx, dy），不要传动画开关。
+      this.gridScroller.scrollBy(0, overflow);
+    } catch (err) {
+      // 校正失败不影响面板本身（它已经展开了）
+    }
+  }
+
   onPageShow(): void {
+    // **系统深浅同步 + 必要的整页刷新**：
+    // 实机日志证明 AppStorage 里 systemDark 会更新，但 @Watch 不触发，
+    // 所以这里手动比对——不一致就整树重建（材质 / 壁纸 / 卡片一次到位）。
+    syncSystemDarkFromContext();
+    this.applyThemeChange();
+    // 可见期间的深浅探测器：系统深浅一变立刻整页重建（@Watch 实机不触发，见 AppWindow）
+    startThemeWatchdog(() => {
+      this.applyThemeChange();
+      applySystemBarTheme(this.isDark());
+    });
     applySystemBarTheme(this.isDark());
     // 返程转场期间**不刷新列表**：refresh 会让 Grid 重排，共享元素（封面）动画
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
@@ -648,10 +722,35 @@ struct Index {
     }, 420);
   }
 
-  /** 主题变化时同步系统栏图标颜色与应用级颜色模式。 */
-  onThemeChanged(): void {
+  /** 页面隐藏：停掉深浅探测器（不在本页时没必要问系统）。 */
+  onPageHide(): void {
+    stopThemeWatchdog();
+  }
+
+  /** 应用主题模式变化（设置里切五档）：同步系统栏 / 颜色模式，并整页刷新。 */
+  onThemeModeChanged(): void {
     applyAppColorMode(this.themeMode);
+    this.applyThemeChange();
     applySystemBarTheme(this.isDark());
+  }
+
+  // 说明：@StorageProp('systemDark') 上的 @Watch **实机不触发**（见 AppWindow 注释），
+  // 所以刷新不依赖它，而是靠 onPageShow / onThemeModeChanged 里的 applyThemeChange()。
+
+  /**
+   * 明暗真的变了才整树重建：themeEpoch 同时拼在根部 Navigation 的 key
+   * 和每个网格卡片的 itemKey 上，所以一次刷新覆盖整页（含卡片）。
+   */
+  private applyThemeChange(): void {
+    const dark: boolean = this.isDark();
+    if (!themeChangedSince(dark)) {
+      markThemeApplied(dark);
+      return;
+    }
+    markThemeApplied(dark);
+    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.themeEpoch = this.themeEpoch + 1;
+    });
   }
 
   // ══════════════════════ 数据 ══════════════════════
@@ -1208,9 +1307,16 @@ struct Index {
    * **用户要求（2026-09-30）：仅竖屏与手机端界面一致**——
    * 竖屏（含平板竖屏）恒 false；横屏且 >760vp 才启用宽屏形态。
    */
+  /** 平板放屏幕右下角、手机整行 */
   private isWideShelf(): boolean {
     return this.rootWidth > 760 && this.rootWidth > this.rootHeight;
   }
+
+  // ══════════════════════ 底栏（统计 + 快捷新建 / 导入） ══════════════════════
+  //
+  // 用户要求：快捷「新建 / 导入」按钮**放在底部那颗悬浮胶囊里面**（不是旁边另挂一颗），
+  // 走沉浸光感材质（材质由 ImmersiveBar 统一承载），点击新建文档、长按导入文档。
+  // 按钮本体与统计文字同在胶囊内的那一行里，见 bottomBar()。
 
   @Builder
   topBar() {
@@ -1849,12 +1955,14 @@ struct Index {
    */
   private itemKey(item: ShelfItem): string {
     const tag: string = this.itemCoverTag(item);
+    // **主题纪元也要进 key**：深浅切换时卡片整树重建，
+    // 封面渐变 / 进度徽标 / 文字颜色一次刷新到位（不用等下次 refresh）。
     if (item.kind === 'folder') {
       const n: number = item.folder !== null ? item.folder.docs.length : 0;
-      return 'F_' + item.name + '_' + n + '_' + tag;
+      return 'F_' + item.name + '_' + n + '_' + tag + '_t' + this.themeEpoch;
     }
     const mtime: number = item.meta !== null ? item.meta.mtime : 0;
-    return 'D_' + item.name + '_' + mtime + '_' + tag;
+    return 'D_' + item.name + '_' + mtime + '_' + tag + '_t' + this.themeEpoch;
   }
 
   /** 封面外观指纹（色 / 图 / 名称开关），参与 key。 */
@@ -1957,14 +2065,23 @@ struct Index {
 
   /**
    * 展开面板在**网格里的绝对下标**（GridItem 序号，含通栏项）。
-   * 顺序：继续阅读(1) + 新建(1) + 内置文档(n) + 统一排序项。
+   *
+   * 真实渲染顺序（见 build 里的 Grid）：
+   *   0 继续阅读横幅 · 1 新建卡 · 2..n **looseBuiltinDocs()**（不在文件夹里的内置文档）
+   *   · 之后是 items（每个 item 后面可能跟一个面板）、空书架提示、文末提示。
+   *
+   * ⚠️ 必须用 **looseBuiltinDocs().length**，不能用 builtinDocs().length：
+   * 内置教程首次启动就被收进「澄笺」文件夹，网格里**一个都不渲染**（报数 2），
+   * 于是算出的下标偏大 2 → scrollToIndex 冲过面板，用户看到「打开文件夹后屏幕不滑动」。
    */
   private folderPanelGridIndex(): number {
     const after: number = this.panelAfterIndex();
     if (after < 0) {
       return -1;
     }
-    return 2 + this.builtinDocs().length + after + 1;
+    // 空书架提示（userDocCount === 0）通栏插在 items 之前，也要算进去
+    const emptyHint: number = this.userDocCount === 0 ? 1 : 0;
+    return 2 + this.looseBuiltinDocs().length + emptyHint + after + 1;
   }
 
   /** 面板展开缩放的横向原点：对准该文件夹所在列的列心（顶缘小箭头已删除，仅作动画原点）。 */
@@ -2294,7 +2411,8 @@ struct Index {
   /**
    * 读写 / 只读切换（书架「选择操作」面板顶部）。
    * 与阅读页「更多」面板同一套语义：只读 = 锁住改写正文这条路（编辑入口 + 任务勾选），
-   * 阅读 / 批注 / 封面 / 导出照常。标记存在 shelf.json 上，按文档名取。
+   * 阅读 / 批注 / 封面 / 导出照常。选中态走 @State cellMenuReadOnly（打开菜单时同步、
+   * 切换时立即更新），不再每次渲染去问数据层——那样按钮不会跟着重绘。
    */
   @Builder
   docModeRow() {
@@ -2306,7 +2424,7 @@ struct Index {
       ImmersiveChip({
         palette: this.palette(),
         chipLabel: '可写',
-        chipActive: !this.isDocReadOnly(this.cellMenuFor),
+        chipActive: !this.cellMenuReadOnly,
         chipOnTap: () => {
           this.toggleDocReadOnly(false);
         }
@@ -2314,7 +2432,7 @@ struct Index {
       ImmersiveChip({
         palette: this.palette(),
         chipLabel: '只读',
-        chipActive: this.isDocReadOnly(this.cellMenuFor),
+        chipActive: this.cellMenuReadOnly,
         chipOnTap: () => {
           this.toggleDocReadOnly(true);
         }
@@ -2363,7 +2481,7 @@ struct Index {
         })
         // **预置文档支持修改**（用户要求）：编辑不再限制非内置；
         // 但**只读的文档不给编辑入口**（可在本面板切成「可写」再编辑）
-        if (!this.isDocReadOnly(this.cellMenuFor)) {
+        if (!this.cellMenuReadOnly) {
           this.menuRow('编辑', () => {
             this.closeCellMenu();
             this.editDoc(this.cellMenuFor);
@@ -2383,13 +2501,13 @@ struct Index {
           this.askDeleteDoc(this.cellMenuFor);
         })
         if (this.cellMenuBuiltin) {
-          Text(this.isDocReadOnly(this.cellMenuFor)
+          Text(this.cellMenuReadOnly
             ? '内置教程默认只读，可在上面切到「可写」后编辑；移除后可在「设置 → 数据管理」恢复'
             : '内置教程已解锁为可写；「重命名 / 删除」对内置文档仍然受限')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
-        } else if (this.isDocReadOnly(this.cellMenuFor)) {
+        } else if (this.cellMenuReadOnly) {
           Text('只读文档不提供编辑入口；「重命名 / 删除 / 封面 / 导出」不受影响')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -2720,25 +2838,77 @@ ImmersiveChip({
     })
   }
 
-  // ══════════════════════ 底部统计 ══════════════════════
+  // ══════════════════════ 底部统计栏（含快捷新建 / 导入按钮） ══════════════════════
 
   @Builder
   bottomBar() {
     ImmersiveBar({
-      palette: this.palette(), barPaddingH: HwSpace.md, barPaddingV: HwSpace.xs,
+      palette: this.palette(), barPaddingH: HwSpace.sm, barPaddingV: HwSpace.xs,
       barHeight: HwBar.pill,
       // **平板放屏幕右下角**：宽屏收窄靠右，手机仍整行
-      barWidth: this.isWideShelf() ? 340 : '100%'
+      // 宽屏时留出按钮位置（原 340 → 400），否则「篇数 + 字数 + 按钮」会挤在一起
+      barWidth: this.isWideShelf() ? 400 : '100%'
     }) {
       Text(this.docs.length + ' 篇 · ' + this.folders.length + ' 个文件夹')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textSecondary)
+        // 窄屏优先让按钮可见：统计文字压缩到最多 88vp，超出省略
+        .constraintSize({ maxWidth: 88 })
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
       Column()
         .layoutWeight(1)
       Text(this.totalWords + ' 字')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
+        .constraintSize({ maxWidth: 64 })
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      // **快捷「新建 / 导入」按钮，就在这颗悬浮胶囊里面**（用户要求）：
+      // 它是胶囊的第三个子节点、与统计文字同一行，材质由 ImmersiveBar 统一承载
+      // （沉浸光感）；点击新建文档、长按导入文档。
+      this.newDocButton()
     }
+  }
+
+  /**
+   * 胶囊内的快捷按钮：圆形小钮 + 主题色薄底 + 加号图标。
+   * 点击 = 新建文档；长按 = 导入 .md（与「新建卡」同款，600ms 起效）。
+   */
+  @Builder
+  newDocButton() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width(LayoutPolicy.matchParent)
+        .height(LayoutPolicy.matchParent)
+        .borderRadius(HwRadius.pill)
+        .backgroundColor(this.palette().accentSoft)
+        .hitTestBehavior(HitTestMode.None)
+
+      SymbolGlyph($r('sys.symbol.plus'))
+        .fontSize(18)
+        .fontColor([this.palette().accent])
+    }
+    .width(NEW_BTN_SIZE)
+    .height(NEW_BTN_SIZE)
+    .borderRadius(HwRadius.pill)
+    .margin({ left: HwSpace.xs })
+    .onClick(() => {
+      // 文件夹面板展开期间忽略（与「新建卡」同一套保护）
+      if (this.openFolderName.length > 0) {
+        return;
+      }
+      this.createDoc();
+    })
+    .gesture(
+      LongPressGesture({ duration: 600 })
+        .onAction(() => {
+          if (this.openFolderName.length > 0) {
+            return;
+          }
+          this.importDoc();
+        })
+    )
   }
 
   // ══════════════════════ 组装 ══════════════════════
@@ -2838,6 +3008,17 @@ ImmersiveChip({
                 }
                 .columnStart(0)
                 .columnEnd(this.shelfColumns() - 1)
+                // 量出面板在窗口里的真实位置：展开动画跑完后用它校正滚动幅度
+                // （AUTO 只保证"面板顶边可见"，底部常被悬浮胶囊压住——用户反馈滚得不够）。
+                .onAreaChange((oldValue: Area, newValue: Area) => {
+                  const gp: Position = newValue.globalPosition;
+                  const gy: Length | undefined = gp.y;
+                  const gh: Length | undefined = newValue.height;
+                  if (typeof gy === 'number' && typeof gh === 'number') {
+                    this.panelWinTop = gy;
+                    this.panelWinBottom = gy + gh;
+                  }
+                })
               }
             }, (item: ShelfItem) => this.itemKey(item))
 
@@ -2905,6 +3086,9 @@ ImmersiveChip({
           .onDidScroll((offset: number, state: ScrollState) => {
             this.onScrollFrame(offset);
           })
+          // **主题纪元拼在 Grid 容器上**：只换条目 key 时，已挂载的卡片（含其中的
+          // 按钮）会被列表复用、颜色不跟着变；换容器 key 才会整段重建。
+          .key('shelfGrid_' + this.themeEpoch)
           }
 
           // ── 悬浮顶栏 / 底栏（材质胶囊）─────────────────────────
@@ -2934,6 +3118,7 @@ ImmersiveChip({
           .opacity(1)
           .translate({ y: 0 })
 
+          // （快捷「新建 / 导入」按钮已经在 bottomBar 的胶囊**内部**，见 bottomBar()）
           Row() {
             this.bottomBar()
           }
@@ -3046,6 +3231,10 @@ ImmersiveChip({
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
     .navDestination(this.navPageBuilder)
+    // **主题纪元拼进 key**：系统深浅 / 应用主题一变，整棵组件树重建一次，
+    // 材质、壁纸、所有派生色一次刷新到位（不用再"进别的页面"才完全刷新）。
+    // key 里必须带真正变化的量（themeEpoch），否则每个节点 key 相同 = 没换 key。
+    .key('index_theme_' + this.themeEpoch)
   }
 
   /**

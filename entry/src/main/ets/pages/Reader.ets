@@ -42,7 +42,9 @@ import { modalSheetOptions } from '../material/ModalSheet';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
-import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrightnessLevel } from '../service/AppWindow';
+import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrightnessLevel,
+  syncSystemDarkFromContext, markThemeApplied, themeChangedSince,
+  startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { DocMeta, DocStore, ReaderRoute, DocFileInfo } from '../service/DocStore';
 // 桌面卡片暂时停用（见 flushProgress 里的注释）：FormSync 调用一并注释
@@ -95,7 +97,13 @@ export struct Reader {
   @StorageLink('readerLineHeight') @Watch('onVisualChanged') lineMul: number = HwType.lineDefault;
   @StorageLink('readerMeasure') measure: number = HwType.measureDefault;
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
-  @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
+  @StorageProp('systemDark') systemDark: boolean = false;
+  /**
+   * 主题纪元：明暗一变自增（见 applyThemeChange）。
+   * 它拼在**正文 List 容器的 key** 上——只换条目 key 不够，
+   * 已挂载的 ListItem 与其中的按钮是被列表复用的，必须换容器 key 才会真正重建。
+   */
+  @State themeEpoch: number = 0;
   /** 显示设置变化即刻下发窗口（阅读页持有常亮 / 亮度行为，离开时交还）。
    *  亮度不能叫 brightness——与组件基类的 .brightness() 属性方法重名（同 outline 的坑）。 */
   @StorageLink('readerKeepScreenOn') @Watch('onDisplaySettingChanged') keepOn: boolean = false;
@@ -257,6 +265,12 @@ export struct Reader {
   /** 顶栏与底栏**独立**收放：收起底栏不该把顶栏也带下去 */
   @State topBarVisible: boolean = true;
   @State bottomBarVisible: boolean = true;
+  /**
+   * 标签栏位置（用户要求）：false = 顶栏下方（默认）/ true = **底部悬浮栏上方**。
+   * 置底时：宽度与底部悬浮胶囊**完全一致**、固定贴在它上面（不随滚动收放），
+   * 入口在「更多」面板里。持久化键 readerTabBarAtBottom。
+   */
+  @StorageLink('readerTabBarAtBottom') tabBarAtBottom: boolean = false;
   /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手（见 service/GripAware.ets） */
   @State gripSide: number = 0;
   /** 函数绘制壁纸的 id（空 = 不用） */
@@ -355,6 +369,15 @@ export struct Reader {
       this.loadDoc();
     }
     this.firstLoad = false;
+    // 系统深浅同步 + 必要刷新：实机证明 @Watch 不来，这里手动比对，
+    // 不一致就重建正文整树（材质 / 壁纸 / 正文色一次到位）。
+    syncSystemDarkFromContext();
+    this.applyThemeChange();
+    // 可见期间探测器：系统深浅一变立刻重建正文（@Watch 实机不触发）
+    startThemeWatchdog(() => {
+      this.applyThemeChange();
+      applySystemBarTheme(this.isDark());
+    });
     applySystemBarTheme(this.isDark());
     this.applyDisplaySettings();
     // 一镜到底进场：从书架封面矩形展开（无来源几何时自动跳过，退化为普通淡入）
@@ -374,6 +397,8 @@ export struct Reader {
     setKeepScreenOn(false);
     // 停掉握姿监听：不在阅读页时没必要一直占着传感器
     GripAware.stop();
+    // 停掉深浅探测器：不在本页时不必问系统
+    stopThemeWatchdog();
   }
 
   /** 阅读显示设置（常亮 / 亮度）变化时立即作用于主窗口。 */
@@ -450,6 +475,28 @@ export struct Reader {
     applyAppColorMode(this.themeMode);
     applySystemBarTheme(this.isDark());
     this.renderEpoch++;
+  }
+
+  // 说明：@StorageProp('systemDark') 上的 @Watch **实机不触发**（见 AppWindow 注释），
+  // 所以刷新靠 onShownNow / onThemeChanged 里的 applyThemeChange()，不依赖它。
+
+  /**
+   * 明暗真的变了才整树重建正文（renderEpoch 拼在所有正文条目的 key 上）。
+   * 深浅切换后正文颜色 / 代码块底色 / 图表缓存深浅一次刷新到位。
+   */
+  private applyThemeChange(): void {
+    const dark: boolean = this.isDark();
+    if (!themeChangedSince(dark)) {
+      markThemeApplied(dark);
+      return;
+    }
+    markThemeApplied(dark);
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      // 两个都要加：renderEpoch 换条目 key，themeEpoch 换 **List 容器** key
+      //（容器不换 key，已挂载的条目 / 按钮会被复用、颜色不更新——用户反馈的现象）
+      this.renderEpoch++;
+      this.themeEpoch++;
+    });
   }
 
   /** 字号 / 行高等影响正文排版的设置变化 → 强制正文条目重建。 */
@@ -1528,10 +1575,29 @@ export struct Reader {
    * 底部悬浮胶囊的**自适应宽度**：按已有选项实算
    * （进度 38 + 分隔线 1 + 按钮 5×36 + 元素间 6×md 间距 + 胶囊左右内边距 2×xs），
    * 不再整条拉满（用户要求：展开宽度根据已有选项自适应）。
+   * 标签条在**胶囊上方**（见 build 的底部层），所以这里不含标签宽度。
    */
   private bottomBarAdaptiveWidth(): number {
     const w: number = 38 + 1 + 36 * 5 + HwSpace.md * 6 + HwSpace.xs * 2;
     return Math.min(w, this.barAreaWidth());
+  }
+
+  /**
+   * 收起态胶囊宽度：进度 + 阅读设置 + （置底且多标签时）那一排数字。
+   * 数字排不进去的话，收起态就看不到标签了——所以宽度必须跟着内容算。
+   */
+  private bottomBarMiniWidth(): number {
+    let w: number = HwBar.miniBottom;
+    if (this.tabBarAtBottom && this.tabs.length > 1) {
+      w += this.bottomTabsWidth() + HwSpace.xs;
+    }
+    return Math.min(w, this.barAreaWidth());
+  }
+
+  /** 悬浮胶囊里那段标签条的宽度（最多摆 5 个数字芯片，超出可横向滑动）。 */
+  private bottomTabsWidth(): number {
+    const n: number = this.tabs.length > 5 ? 5 : this.tabs.length;
+    return n * 26 + (n - 1) * 5;
   }
 
   /** 顶/底栏浮层可用宽度：整幅减去两侧停靠列。 */
@@ -1549,7 +1615,8 @@ export struct Reader {
    */
   private topSpacerHeight(): number {
     let h: number = this.padTop() + HwBar.pill + HwSpace.md;
-    if (this.tabs.length > 1) {
+    // 标签栏置底时不占首屏高度（它挂在底部悬浮栏上方）
+    if (this.tabs.length > 1 && !this.tabBarAtBottom) {
       h += HwBar.tabs - 4; // 标签栏实高（与 tabBar() 的 .height() 同源）
     }
     if (this.searchOpen) {
@@ -1648,12 +1715,16 @@ export struct Reader {
   }
 
   private collapsedTopWidth(): number {
-    // 6(内边距) + 36(返回) + 10 + 36(搜索) + 10 + [序号区] + 6，base 再留 8 余量
-    const base: number = HwBar.miniTop;
-    if (this.tabs.length <= 1) {
-      return base;
+    // 收起态内容就是两颗 36 的圆钮（返回 + 搜索），中间隔 HwSpace.sm；
+    // 胶囊左右各留 HwSpace.sm —— 这样**左边离返回按钮的距离 = 右边离搜索按钮的距离**，
+    // 右边不会再空一截（之前用固定的 miniTop=116，两钮只占 82，右侧空出 22）。
+    const pad: number = HwSpace.sm;
+    let w: number = pad + 36 + HwSpace.sm + 36 + pad;
+    // 标签栏在顶部时，胶囊里还要放那一排 1/2/3 序号
+    if (this.tabs.length > 1 && !this.tabBarAtBottom) {
+      w += HwSpace.sm + this.collapsedTabsWidth();
     }
-    return base + this.collapsedTabsWidth();
+    return w;
   }
 
   private toast(message: string): void {
@@ -1820,7 +1891,9 @@ export struct Reader {
   topBar() {
     ImmersiveBar({
       palette: this.palette(),
-      barPaddingH: HwSpace.xs,
+      // 收起态左右内边距都用 sm：与展开态的紧凑观感一致，
+      // 也让「左边离返回键」与「右边离搜索键」的距离相等（用户要求：间距一致、右边不空）
+      barPaddingH: HwSpace.sm,
       barPaddingV: HwSpace.xs,
       barHeight: HwBar.pill,
       // 悬浮胶囊：展开时与正文列对齐（大屏避开停靠侧栏），收起时原地向左收缩
@@ -2010,8 +2083,9 @@ export struct Reader {
   // ══════════════════════ 标签栏 ══════════════════════
 
   /**
-   * 顶栏下方的水平标签栏。只有一个标签时不显示（手机上不值得占一行），
-   * 点击切换、× 关闭、长按弹菜单。
+   * 顶部标签栏（多标签 + 标签栏在顶部时显示）：只有一个标签时不显示（手机上不值得占一行），
+   * 序号 + 文件名 + 关闭叉，点击切换、× 关闭、长按弹菜单。
+   * **标签栏置底时这一层不渲染**——那种情况下标签条是悬浮胶囊内部的一段（见 bottomTabs）。
    */
   @Builder
   tabBar() {
@@ -2436,8 +2510,8 @@ export struct Reader {
       barPaddingH: HwSpace.xs,
       barPaddingV: HwSpace.xs,
       barHeight: HwBar.pill,
-      barWidth: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : HwBar.miniBottom,
-      barWidthPx: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : HwBar.miniBottom
+      barWidth: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : this.bottomBarMiniWidth(),
+      barWidthPx: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : this.bottomBarMiniWidth()
     }) {
       if (this.bottomBarVisible) {
         Row({ space: HwSpace.md }) {
@@ -2526,6 +2600,9 @@ export struct Reader {
               .fontSize(17)
               .fontColor([this.palette().textPrimary])
           }
+
+          // （标签条不在展开态的胶囊里：它在**胶囊上方**完整显示，见 build 的底部层；
+          //   只有胶囊收起时才缩进胶囊内部，见下面的收起态分支。）
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -2558,6 +2635,13 @@ export struct Reader {
               .fontSize(17)
               .fontColor([this.palette().textPrimary])
           }
+
+          // ── 收起态的标签选择：**缩进胶囊里**，紧挨「阅读设置」按钮 ──
+          // 用户要求：展开时标签栏在胶囊上方完整显示（序号+名称）；只有胶囊收起时
+          // 才收成这一排数字，跟着胶囊一起缩进来，依旧可横向滑动切换。
+          if (this.tabBarAtBottom && this.tabs.length > 1) {
+            this.bottomTabs()
+          }
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -2565,8 +2649,45 @@ export struct Reader {
     }
   }
 
-  /** 收起态顶栏内容：返回 + 搜索 + 标签序号。外壳由 topBar 的 ImmersiveBar 统一提供。 */
+  /**
+   * 悬浮胶囊内部的标签条（**只在标签栏置底时用**）：
+   * 一排 1/2/3 数字芯片，与顶栏收起态那排序号同款（当前这篇高亮），
+   * 最多摆 5 个、超出可横向滑动；宽度由 bottomTabsWidth() 与胶囊宽度同步计算。
+   * 点按切标签、长按弹标签菜单（与顶栏标签栏行为一致）。
+   */
   @Builder
+  bottomTabs() {
+    Scroll() {
+      Row({ space: 5 }) {
+        ForEach(this.tabs, (tab: ReaderTab, index: number) => {
+          Text('' + (index + 1))
+            .fontSize(HwType.caption - 1)
+            .fontWeight(this.docName === tab.name ? FontWeight.Bold : FontWeight.Normal)
+            .fontColor(this.docName === tab.name ? this.palette().accent : this.palette().textPrimary)
+            .textAlign(TextAlign.Center)
+            .width(26)
+            .height(26)
+            .borderRadius(13)
+            .backgroundColor(this.tabBaseColor(tab.name))
+            .onClick(() => {
+              this.activateTab(tab.name);
+            })
+            .gesture(
+              LongPressGesture()
+                .onAction(() => {
+                  this.openTabMenu(tab.name);
+                })
+            )
+        }, (tab: ReaderTab, index: number) => 'bt' + index + '_' + tab.name + '_' + this.docName)
+      }
+    }
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+    .width(this.bottomTabsWidth())
+    .height(30)
+  }
+
+  /** 收起态顶栏内容：返回 + 搜索 + 标签序号。外壳由 topBar 的 ImmersiveBar 统一提供。 */  @Builder
   miniTopContent() {
     Row({ space: HwSpace.sm }) {
       ImmersiveIconButton({
@@ -2603,7 +2724,8 @@ export struct Reader {
       // 收起后标签不再显示文件名，而是收成 1/2/3 序号——既不丢「开了几篇」的信息，
       // 又能把胶囊压在很窄的宽度里。当前这篇高亮。
       // 胶囊里最多摆 5 个；**超过 5 个可以横向滑动**（Scroll 定宽 = 5 个位）。
-      if (this.tabs.length > 1) {
+      // **标签栏置底时这里不再显示**（用户要求：数字选择跟标签栏一起搬到下方悬浮栏）。
+      if (this.tabs.length > 1 && !this.tabBarAtBottom) {
         Scroll() {
           Row({ space: 5 }) {
             ForEach(this.tabs, (tab: ReaderTab, index: number) => {
@@ -2789,6 +2911,38 @@ export struct Reader {
         })
       }
       .width('100%')
+
+      // ── 标签栏位置（用户要求：可把顶部标签栏移到底部悬浮栏上方）──
+      Row({ space: HwSpace.xs }) {
+        Text('标签栏位置')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .layoutWeight(1)
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '顶部',
+          chipActive: !this.tabBarAtBottom,
+          chipOnTap: () => {
+            if (this.tabBarAtBottom) {
+              this.tabBarAtBottom = false;
+              this.toast('标签栏已移回顶部');
+            }
+          }
+        })
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '底部悬浮栏上方',
+          chipActive: this.tabBarAtBottom,
+          chipOnTap: () => {
+            if (!this.tabBarAtBottom) {
+              this.tabBarAtBottom = true;
+              this.toast('标签栏已移到底部悬浮栏上方');
+            }
+          }
+        })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -2949,23 +3103,15 @@ export struct Reader {
                 .fontColor([this.palette().textSecondary])
             }
 
-            // 编辑入口：内置教程与只读文档一律不给（原来只挡内置）。
-            // 想让按钮出现，先在「更多」面板里把它切成「可写」。
-            if (!this.docBuiltin && !this.docReadOnly) {
+            // 编辑入口：**只读才不给**（用户要求：可写＝能编辑，内置教程切成可写后同样能编辑）。
+            // 想让它出现，先在「更多」面板里把这篇切成「可写」。
+            if (!this.docReadOnly) {
               ImmersiveIconButton({
                 buttonSize: 32,
                 buttonMaterialShadow: false,
                 palette: this.palette(),
                 buttonOnTap: () => {
-                  this.closeDrawers();
-                  const route: ReaderRoute = { name: this.docName };
-                  try {
-                    if (this.stack !== null) {
-                      this.stack.pushPath({ name: 'pages/Editor', param: route });
-                    }
-                  } catch (err) {
-                    this.toast('打不开编辑页');
-                  }
+                  this.openEditorFromBar();
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.highlighter_line'))
@@ -3287,10 +3433,14 @@ export struct Reader {
     });
   }
 
-  /** 工具栏「编辑」：直接进编辑页快速改这篇 md（内置教程不可编辑）。 */
+  /**
+   * 工具栏「编辑」：直接进编辑页快速改这篇 md。
+   * **判据只看「只读」标记**（用户要求：可写就是能编辑、只读才不给编辑）——
+   * 之前这里按 docBuiltin 挡掉内置教程，即使把它切成「可写」也进不去编辑页。
+   */
   private openEditorFromBar(): void {
-    if (this.docBuiltin) {
-      this.toast('内置教程不可编辑');
+    if (this.docReadOnly) {
+      this.toast('该文档是只读的，先在「更多」里切成「可写」');
       return;
     }
     if (this.stack === null || this.docName.length === 0) {
@@ -3488,6 +3638,11 @@ export struct Reader {
           .onScrollStop(() => {
             this.flushProgress();
           })
+          // **主题纪元也拼在 List 容器上**（关键修复）：
+          // 只改条目的 key 不够——已挂载的 ListItem / 其中的按钮是由列表**复用**的，
+          // 换容器的 key 才会把整段正文真正重建一遍（用户反馈：正文前段、部分按钮
+          // 切换深浅后不变色，就是因为它们是被复用的那一批）。
+          .key('readerBody_' + this.themeEpoch)
 
           // 大屏/横屏：注释停靠右侧（正文列与目录列之间），宽度同样可调
           if (this.isWide() && this.notesPinned) {
@@ -3522,9 +3677,10 @@ export struct Reader {
           }
           .width('100%')
 
-          if (this.topBarVisible && this.tabs.length > 1) {
+          if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom) {
             // 占位：标签栏在下方独立的「标签栏层」里（没有左右 padding，
-            // 视口横跨整屏，出血才对称）；这里只占住高度，让查找条位置不变
+            // 视口横跨整屏，出血才对称）；这里只占住高度，让查找条位置不变。
+            // 标签栏置底时不需要占位（下方也没有标签栏）。
             Column().width('100%').height(HwBar.tabs - 4)
           }
 
@@ -3553,11 +3709,15 @@ export struct Reader {
         top: this.padTop()
       })
       .hitTestBehavior(HitTestMode.Transparent)
+      // **主题纪元拼在顶栏层上**：明暗切换时整个顶栏（胶囊 + 里面的按钮）重建。
+      // 只改条目 key 不够——按钮是由这一层复用的，会保留旧颜色。
+      .key('readerTopLayer_' + this.themeEpoch)
 
       // ── 标签栏层：与顶栏 Stack **平级**、没有左右 padding ——
       // Scroll 的 '100%' 就是整屏宽，标签的出现 / 消失点天然落在屏幕边缘。
+      // **标签栏置底时这一层不渲染**（改挂在下面「悬浮底栏」那一层里）。
       Stack({ alignContent: Alignment.TopStart }) {
-        if (this.topBarVisible && this.tabs.length > 1) {
+        if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom) {
           this.tabBar()
         }
       }
@@ -3568,7 +3728,17 @@ export struct Reader {
 
       // ── 悬浮底栏：同样一个胶囊、宽度插值，内容用 if 切换 ──
       Stack({ alignContent: Alignment.BottomEnd }) {
-        Column() {
+        Column({ space: HwSpace.xs }) {
+          // **标签栏置底（展开态）**：正常显示在悬浮胶囊**上方**，
+          // 与胶囊同宽（同一个 bottomBarAdaptiveWidth()），序号 + 文件名的完整形态；
+          // 胶囊收起时它消失，标签选择改由胶囊内部那一排数字承担（见 floatingToolBar 收起态）。
+          if (this.tabBarAtBottom && this.tabs.length > 1 && this.bottomBarVisible) {
+            Column() {
+              this.tabBar()
+            }
+            .width(this.bottomBarAdaptiveWidth())
+            .alignItems(HorizontalAlign.Start)
+          }
           this.floatingToolBar()
         }
         // 与顶栏同宽：都避开停靠列、与正文列对齐
@@ -3587,6 +3757,8 @@ export struct Reader {
       .translate({ x: this.gripOffset() })
       .animation({ duration: 260, curve: Curve.FastOutSlowIn })
       .hitTestBehavior(HitTestMode.Transparent)
+      // **主题纪元拼在底栏层上**：明暗切换时整颗胶囊（含里面的按钮与标签数字）重建
+      .key('readerBottomLayer_' + this.themeEpoch)
 
       // 图表 / 公式放大查看浮层：毛玻璃暗化背景（相册式），图表卡片 1600px 大画布
       // 横向/纵向滚动平移；行内正文被盖住且根级捏合被抑制，不会误改字号
@@ -4143,3 +4315,4 @@ export struct Reader {
     }
   }
 }
+

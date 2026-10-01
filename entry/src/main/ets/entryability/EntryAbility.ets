@@ -1,8 +1,8 @@
-import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { setupImmersiveWindow, applyAppColorMode } from '../service/AppWindow';
+import { setupImmersiveWindow, applyAppColorMode, syncSystemDarkFromContext } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 // 桌面卡片暂时停用（见 onForeground / onBackground 里的注释）：FormSync 调用一并注释
@@ -50,6 +50,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerIndent', false);
     PersistentStorage.persistProp('readerShowMeta', true);
     PersistentStorage.persistProp('readerKeepScreenOn', false);
+    // 阅读页标签栏位置：false = 顶栏下方（默认）/ true = 底部悬浮栏上方（「更多」里可切换）
+    PersistentStorage.persistProp('readerTabBarAtBottom', false);
     // 窗口亮度，0 表示跟随系统；[0.05, 1] 为固定亮度
     PersistentStorage.persistProp('readerBrightness', 0);
     // 阅读背景自定义色（移植自参考项目的亮/暗分别自定义背景色）；空串 = 主题默认
@@ -63,9 +65,17 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('cardGlowTouch', true);
     PersistentStorage.persistProp('customAccentFull', false);
     PersistentStorage.persistProp('pageBgTint', true);
-    // 灰体文本显示增强：auto（跟随主题）/ gray / black / white / custom（#RRGGBB）
-    PersistentStorage.persistProp('grayTextMode', 'black');
+    // 灰体文本显示增强：**默认自动**（跟随主题）。
+    // 自动时深浅两套各自定义（对应「深色模式用什么颜色 / 浅色模式用什么颜色」）：
+    //   grayTextModeLight / grayTextModeDark：auto | gray | black | white | custom
+    //   grayTextColorLight / grayTextColorDark：custom 的自定义 #RRGGBB
+    // 旧的单套键 grayTextMode / grayTextColor 保留做兼容解析（见 DesignTokens.grayTextOverride）。
+    PersistentStorage.persistProp('grayTextMode', 'auto');
     PersistentStorage.persistProp('grayTextColor', '');
+    PersistentStorage.persistProp('grayTextModeLight', 'auto');
+    PersistentStorage.persistProp('grayTextModeDark', 'auto');
+    PersistentStorage.persistProp('grayTextColorLight', '');
+    PersistentStorage.persistProp('grayTextColorDark', '');
     // 玻璃通透程度 0~100（越高越透明），默认 70
     PersistentStorage.persistProp('glassStrength', 70);
     // **沉浸光感强制开启**：设置项已按需求移除，这里每次启动都置回 true，
@@ -150,6 +160,9 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onForeground');
+    // **回前台补一次系统深浅同步**：用户在后台（或系统设置里）改了深浅色时，
+    // 这个时机最可靠——部分设备切深浅并不下发 onConfigurationUpdate。
+    this.syncSystemColorMode();
     // 桌面卡片：**暂时停用**（用户要求，卡片有 bug 待修），推送一并关掉。
     // 恢复时取消注释即可（同时要在 module.json5 里恢复 EntryFormAbility 注册）。
     // try {
@@ -176,9 +189,10 @@ export default class EntryAbility extends UIAbility {
   }
 
   private syncSystemColorMode(): void {
-    // config.colorMode 的类型是 ColorMode | undefined，必须先收窄再比较
-    const mode: ConfigurationConstant.ColorMode | undefined = this.context.config.colorMode;
-    const dark: boolean = mode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
-    AppStorage.setOrCreate('systemDark', dark);
+    // 统一走 AppWindow.syncSystemDarkFromContext：它会读 config.colorMode、
+    // **值有变化才写 AppStorage**（避免无意义的整树刷新），读不到时沿用旧值。
+    // 页面侧 onPageShow 也会调一次，用于兜住"系统切深浅但不下发 onConfigurationUpdate"
+    // 的设备（用户反馈的「必须重启应用才生效」就是这个）。
+    syncSystemDarkFromContext();
   }
 }

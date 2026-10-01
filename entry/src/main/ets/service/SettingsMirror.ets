@@ -45,14 +45,17 @@ export class SettingsMirror {
     'readerThemeMode', 'readerFontSize', 'readerLineHeight', 'readerMeasure',
     'readerFontFamily', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
     'readerKeepScreenOn', 'readerBrightness', 'readerCustomBgLight', 'readerCustomBgDark',
+    'readerTabBarAtBottom',
     'hlOpacity', 'waveThickness',
     // 壁纸 / 阅读背景
     'wallpaperPath', 'wallpaperPathLight', 'wallpaperPathDark',
     'wallpaperBlur', 'wallpaperScrim', 'wallpaperGenId',
     'readerBgPath', 'readerBgId',
     // 外观：主题色 / 卡片 / 灰体文本
+    // （灰体文本：旧单套键 + 深浅两套新键；新键见 DesignTokens.grayTextOverride）
     'themeColor', 'cardTint', 'immersivePressGlow', 'cardGlowTouch',
     'customAccentFull', 'pageBgTint', 'grayTextMode', 'grayTextColor',
+    'grayTextModeLight', 'grayTextModeDark', 'grayTextColorLight', 'grayTextColorDark',
     'glassStrength', 'cardFallback', 'particleDissolve',
     // 版本历史（自动保存与间隔）
     'versionAutoSave', 'versionAutoSaveInterval',
