@@ -17,6 +17,7 @@
 - **桌面卡片（2×4 书架卡片）暂时停用**：卡片存在已知缺陷待修，
   `entry/src/main/module.json5` 中的 form 扩展已注销，相关代码原位保留。
 - 签名配置（`build-profile.json5` 的 `signingConfigs`）**不随源码发布**，见 README「构建与运行」。
+- 开源许可：**MIT**。
 
 ## v1.0.0 · 2026-09-30
 

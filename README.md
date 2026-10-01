@@ -6,7 +6,7 @@
 图表与公式离线渲染、荧光笔批注、多标签阅读——**数据全部留在本机，不上传、不收集、不做账号**。
 
 **完全开源**：产品用到的每一行源码、每一个渲染模板、每一份构建配置都在这个仓库里
-（唯一的例外是签名证书与密码，见文末）。采用 [Apache License 2.0](LICENSE)。
+（唯一的例外是签名证书与密码，见文末）。采用 [MIT License](LICENSE)。
 
 | | |
 | --- | --- |
@@ -16,7 +16,7 @@
 | 包名 | `com.litemdreader.lzb` |
 | 下载 | [Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases)（HAP 安装包） |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · 应用内「探索中心 → 更新日志」 |
-| 许可证 | [Apache-2.0](LICENSE) |
+| 许可证 | [MIT](LICENSE) |
 
 ---
 
@@ -320,10 +320,12 @@ build-profile.signing.example.json5  签名配置示例（照抄到自己机器�
 
 ## 版权与致谢
 
-Copyright 2026 澄笺（LiteMdReader）contributors，基于 [Apache License 2.0](LICENSE) 开源。
+Copyright 2026 FengHDSL，基于 [MIT License](LICENSE) 开源。
 
 **澄笺 · 光 · 美 · 舒 · 开源** —— 如果这个项目对你有帮助，欢迎 Star、提 Issue 或 PR。
 
 > 说明：仓库中不包含签名证书（`.p12` / `.cer` / `.p7b`）与签名密码，
 > 也不包含开发过程产物（`.workbuddy/`、`.codegenie/`）。
 > 除这些之外，产品的全部源码、资源与配置都在这里——**完全开源**。
+> 应用内联的第三方渲染库（ECharts 为 Apache-2.0，其余多为 MIT）仍遵循其各自许可，
+> 详见上方「第三方开源组件」。
