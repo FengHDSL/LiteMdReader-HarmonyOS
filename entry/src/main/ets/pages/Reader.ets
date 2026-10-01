@@ -97,8 +97,7 @@ export struct Reader {
   @StorageLink('readerLineHeight') @Watch('onVisualChanged') lineMul: number = HwType.lineDefault;
   @StorageLink('readerMeasure') measure: number = HwType.measureDefault;
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
-  @StorageProp('systemDark') systemDark: boolean = false;
-  /**
+  @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;  /**
    * 主题纪元：明暗一变自增（见 applyThemeChange）。
    * 它拼在**正文 List 容器的 key** 上——只换条目 key 不够，
    * 已挂载的 ListItem 与其中的按钮是被列表复用的，必须换容器 key 才会真正重建。
@@ -470,11 +469,11 @@ export struct Reader {
     }
   }
 
-  /** 主题变化时同步系统栏图标颜色：底色是透明的，图标色不改会在深色下看不清。 */
+  /** 主题变化时同步系统栏图标颜色 + 整树重建正文。 */
   onThemeChanged(): void {
     applyAppColorMode(this.themeMode);
     applySystemBarTheme(this.isDark());
-    this.renderEpoch++;
+    this.applyThemeChange();
   }
 
   // 说明：@StorageProp('systemDark') 上的 @Watch **实机不触发**（见 AppWindow 注释），
@@ -2121,7 +2120,7 @@ export struct Reader {
               .constraintSize({ maxWidth: 128 })
 
             SymbolGlyph($r('sys.symbol.xmark'))
-              .fontSize(10)
+              .fontSize(12)
               .fontColor([this.docName === tab.name ? this.palette().accent : this.palette().textTertiary])
               .onClick(() => {
                 this.closeTab(tab.name);
@@ -3294,7 +3293,7 @@ export struct Reader {
                       .backgroundColor(annotationColor(ann.color, this.isDark()))
                   } else {
                     SymbolGlyph($r('sys.symbol.textformat'))
-                      .fontSize(11)
+                      .fontSize(12)
                       .fontColor([this.palette().textTertiary])
                   }
                   Text('第 ' + (this.blockIndexOf(ann.blockId) + 1) + ' 段')
@@ -3475,7 +3474,11 @@ export struct Reader {
     }
     const avail: number = this.rootWidth - (HwSpace.lg + this.barInsetLeft())
       - (HwSpace.lg + this.barInsetRight());
-    return -(avail - HwBar.miniBottom);
+    // 用收起态胶囊实际宽度代替固定 HwBar.miniBottom：
+    // 底部有标签时胶囊比 miniBottom 宽，写死 96 会导致整体偏移过大，
+    // 胶囊左侧（百分比区域）跑出屏幕。
+    const capsuleW: number = this.bottomBarMiniWidth();
+    return -(avail - capsuleW);
   }
 
   /**

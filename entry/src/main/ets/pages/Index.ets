@@ -53,6 +53,7 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsExplore } from './SettingsExplore';
 import { Changelog } from './Changelog';
+import { GripAware } from '../service/GripAware';
 import { LegalDoc, LegalDocRoute } from './LegalDoc';
 
 /** 搜索结果下拉面板最多显示的条数（更多提示用底部说明） */
@@ -104,6 +105,8 @@ struct Index {
    * 拼在根节点上还能正常逐帧过渡（新老节点各渲染一帧，不会闪空白）。
    */
   @State themeEpoch: number = 0;
+  /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手 */
+  @State gripSide: number = 0;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
@@ -715,6 +718,12 @@ struct Index {
       applySystemBarTheme(this.isDark());
     });
     applySystemBarTheme(this.isDark());
+    // 智感握姿：开始监听握持手（animateTo 让底部按钮滑动到位）
+    GripAware.start((side: number) => {
+      this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+        this.gripSide = side;
+      });
+    });
     // 返程转场期间**不刷新列表**：refresh 会让 Grid 重排，共享元素（封面）动画
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
     setTimeout(() => {
@@ -724,6 +733,7 @@ struct Index {
 
   /** 页面隐藏：停掉深浅探测器（不在本页时没必要问系统）。 */
   onPageHide(): void {
+    GripAware.stop();
     stopThemeWatchdog();
   }
 
@@ -2145,7 +2155,7 @@ struct Index {
             GridItem() {
               this.docCell(meta, true)
             }
-          }, (meta: DocMeta) => 'fp_' + meta.name)
+          }, (meta: DocMeta) => 'fp_' + meta.name + '_t' + this.themeEpoch)
         }
         .columnsTemplate(this.panelColumnsStr())
         .columnsGap(HwSpace.sm)
@@ -2735,7 +2745,7 @@ ImmersiveChip({
     Row({ space: HwSpace.sm }) {
       SymbolGlyph(this.expandedFolders.indexOf(folder.name) >= 0
         ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
-        .fontSize(12)
+        .fontSize(16)
         .fontColor([this.palette().textTertiary])
       SymbolGlyph($r('sys.symbol.folder'))
         .fontSize(16)
@@ -2802,7 +2812,7 @@ ImmersiveChip({
             ListItem() {
               this.treeDocRow(meta, 26)
             }
-          }, (meta: DocMeta) => 'fd_' + folder.name + '_' + meta.name)
+          }, (meta: DocMeta) => 'fd_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch)
         }
       }, (folder: ShelfFolder) => 'f_' + folder.name + '_' + folder.docs.length)
 
@@ -2849,11 +2859,15 @@ ImmersiveChip({
       // 宽屏时留出按钮位置（原 340 → 400），否则「篇数 + 字数 + 按钮」会挤在一起
       barWidth: this.isWideShelf() ? 400 : '100%'
     }) {
+      // 智感握姿：左手时新建按钮靠左（"几篇"文本左边），右手/默认靠右（"字数"文本右边）
+      if (this.gripSide === -1) {
+        this.newDocButton()
+      }
       Text(this.docs.length + ' 篇 · ' + this.folders.length + ' 个文件夹')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textSecondary)
-        // 窄屏优先让按钮可见：统计文字压缩到最多 88vp，超出省略
-        .constraintSize({ maxWidth: 88 })
+        // 窄屏优先让按钮可见：统计文字压缩到最多 200vp，超出省略
+        .constraintSize({ maxWidth: 200 })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Column()
@@ -2861,13 +2875,12 @@ ImmersiveChip({
       Text(this.totalWords + ' 字')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
-        .constraintSize({ maxWidth: 64 })
+        .constraintSize({ maxWidth: 100 })
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
-      // **快捷「新建 / 导入」按钮，就在这颗悬浮胶囊里面**（用户要求）：
-      // 它是胶囊的第三个子节点、与统计文字同一行，材质由 ImmersiveBar 统一承载
-      // （沉浸光感）；点击新建文档、长按导入文档。
-      this.newDocButton()
+      if (this.gripSide !== -1) {
+        this.newDocButton()
+      }
     }
   }
 
@@ -2877,29 +2890,27 @@ ImmersiveChip({
    */
   @Builder
   newDocButton() {
-    Stack({ alignContent: Alignment.Center }) {
-      Column()
-        .width(LayoutPolicy.matchParent)
-        .height(LayoutPolicy.matchParent)
-        .borderRadius(HwRadius.pill)
-        .backgroundColor(this.palette().accentSoft)
-        .hitTestBehavior(HitTestMode.None)
-
-      SymbolGlyph($r('sys.symbol.plus'))
-        .fontSize(18)
-        .fontColor([this.palette().accent])
+    Stack() {
+      ImmersiveIconButton({
+        buttonSize: NEW_BTN_SIZE,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          // 文件夹面板展开期间忽略（与「新建卡」同一套保护）
+          if (this.openFolderName.length > 0) {
+            return;
+          }
+          this.createDoc();
+        }
+      }) {
+        SymbolGlyph($r('sys.symbol.plus'))
+          .fontSize(18)
+          .fontColor([this.palette().accent])
+      }
     }
     .width(NEW_BTN_SIZE)
     .height(NEW_BTN_SIZE)
-    .borderRadius(HwRadius.pill)
-    .margin({ left: HwSpace.xs })
-    .onClick(() => {
-      // 文件夹面板展开期间忽略（与「新建卡」同一套保护）
-      if (this.openFolderName.length > 0) {
-        return;
-      }
-      this.createDoc();
-    })
+    .margin(this.gripSide === -1 ? { right: HwSpace.xs } : { left: HwSpace.xs })
     .gesture(
       LongPressGesture({ duration: 600 })
         .onAction(() => {
