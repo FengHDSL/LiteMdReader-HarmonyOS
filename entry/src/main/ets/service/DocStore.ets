@@ -24,6 +24,13 @@ import { SettingsMirror } from './SettingsMirror';
 import { WritingLog } from './WritingLog';
 
 /** 书架里的一条文档记录 */
+/** Web 阅读器 / 打印路由参数：文档名 + 全文（HTML 在页内构建）；htmlPath 非空时直接打开该文件。 */
+export interface PrintRoute {
+  docName: string;
+  content: string;
+  htmlPath: string;
+}
+
 export interface DocMeta {
   /** 文档名（不含扩展名），同时作为唯一标识 */
   name: string;
@@ -1223,7 +1230,8 @@ export class DocStore {
   // 删除文档时不清理图片——无法可靠判断图片是否仍被其它文档引用，宁多勿缺。
 
   /** 文档图片目录。 */
-  private static imagesDirPath(): string {
+  /** 图片目录（docs/images）：数据管理的图片列表用。 */
+  static imagesDirPath(): string {
     return DocStore.dir + '/images';
   }
 
@@ -1416,6 +1424,17 @@ export class DocStore {
   }
 
   // ────────────────────────── 内部实现 ──────────────────────────
+
+  /** docs 目录根（打印 HTML 的图片绝对路径拼接用）。init 后才有值。 */
+  static docsRoot(): string {
+    return DocStore.dir;
+  }
+
+  /** 文档正文的沙箱绝对路径（Share Kit 跨设备分享等外部消费者用）。 */
+  static docAbsolutePath(ctx: common.UIAbilityContext, meta: DocMeta): string {
+    DocStore.init(ctx);
+    return DocStore.dir + '/' + meta.fileName;
+  }
 
   private static pathOf(fileName: string): string {
     return DocStore.dir + '/' + fileName;

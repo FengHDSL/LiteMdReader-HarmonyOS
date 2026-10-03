@@ -403,7 +403,8 @@ export struct SettingsExplore {
             // 进行中芯片变成高亮态 + 文案「检查中…」，重复点击在方法内部直接忽略。
             ImmersiveChip({
               palette: this.palette(),
-              chipActive: this.checkingUpdate,
+              chipTint: '#FF2E7D32',
+              chipActive: true,
               chipLabel: this.checkingUpdate ? '检查中…' : '检查更新',
               chipOnTap: () => {
                 this.checkUpdate();
@@ -439,7 +440,8 @@ export struct SettingsExplore {
             Row({ space: HwSpace.sm }) {
               Text(item.name)
                 .fontSize(HwType.label)
-                .fontColor(this.palette().textPrimary)
+                // 用户要求：参考链接文字用**蓝色**（可点击的观感）
+                .fontColor('#FF2F63E8')
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .layoutWeight(1)
@@ -451,7 +453,7 @@ export struct SettingsExplore {
             .alignItems(VerticalAlign.Center)
           }, (item: CreditItem) => item.url)
 
-          Text('澄笺 · 光 · 美 · 舒 · 开源')
+          Text('澄心执笔，笺上生光')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -487,25 +489,24 @@ export struct SettingsExplore {
           // ── 使用模式（用户要求：放在隐私政策 / 用户协议**下方**，可重新选择）──
           // **@StorageLink**：弹窗里写完 appMode 立刻回刷按钮文案与配色
           //（@StorageProp 在本工程真机上存在不回刷的情况——见 memory）
-          Row({ space: HwSpace.xs }) {
-            Row({ space: 6 }) {
+          // **使用模式：沉浸光感胶囊**（颜色不变 —— 通过 chipTint 保持原色）
+          Row() {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53',
+              chipActive: true,
+              chipLabel: '使用模式：' + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'),
+              chipOnTap: () => {
+                this.modeTitle = '重新选择使用模式';
+                this.modeCurrent = this.appMode;
+                this.modeDialog.open();
+              }
+            }) {
               SymbolGlyph(this.appMode === APP_MODE_OFFLINE
                 ? $r('sys.symbol.wifi_slash') : $r('sys.symbol.checkmark_circle'))
                 .fontSize(14)
-                .fontColor(['#FFFFFFFF'])
-              Text('使用模式：' + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'))
-                .fontSize(HwType.label)
-                .fontColor('#FFFFFFFF')
+                .fontColor([this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53'])
             }
-            .padding({ left: 12, right: 12, top: 7, bottom: 7 })
-            .borderRadius(HwRadius.pill)
-            // 全量 = 绿色，基础 = 蓝色（用户要求）
-            .backgroundColor(this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53')
-            .onClick(() => {
-              this.modeTitle = '重新选择使用模式';
-              this.modeCurrent = this.appMode;
-              this.modeDialog.open();
-            })
           }
           .width('100%')
           .justifyContent(FlexAlign.Center)

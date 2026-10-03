@@ -14,7 +14,7 @@
  * 搬迁期间各功能在新页与旧页都可用；旧页代码已随本轮重写移除。
  */
 import { NavLifecycle } from '../service/NavLifecycle';
-import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
+import { ImmersiveCard, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { SettingsShell } from './SettingsShell';
 import { SettingsAppearance } from './SettingsAppearance';
 import { SettingsData } from './SettingsData';
@@ -423,17 +423,20 @@ export struct Settings {
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
 
-            ImmersiveChip({
+            // **圆形按钮**（用户要求：不要胶囊形状）
+            ImmersiveIconButton({
+              buttonSize: 34,
+              buttonRadius: HwRadius.pill,
+              buttonMaterialShadow: false,
               palette: this.palette(),
-              chipActive: true,
-              chipLabel: '进入',
-              chipOnTap: () => {
+              buttonOnTap: () => {
                 this.openSection(item.route);
               }
             }) {
-              SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(12)
-                .fontColor([this.palette().accent])
+              Image($r('app.media.chevron_right_circle'))
+                .width(20)
+                .height(20)
+                .fillColor(this.palette().accent)
             }
           }
           .width('100%')

@@ -56,6 +56,7 @@ import { ReaderTab, TabStore } from '../service/TabStore';
 import { FontStore } from '../service/FontStore';
 import { NavLifecycle } from '../service/NavLifecycle';
 import { GripAware } from '../service/GripAware';
+import { ShareKitService } from '../service/ShareKitService';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { DocCover, coverColorsOf } from '../components/DocCover';
@@ -66,7 +67,7 @@ import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
 import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
 import { MdBlockView } from '../markdown/MdView';
-import { MdToHtml } from '../markdown/MdToHtml';
+import { ExportService } from '../service/ExportService';
 
 /** 列表里正文块之前固定占用的条目数：文档信息卡占 1 条。 */
 const LIST_HEADER_COUNT: number = 1;/**
@@ -195,6 +196,13 @@ export struct Reader {
    * ForEach 键不变时子组件的 @Prop 不会重新同步，设置变化根本到不了正文。
    */
   @State renderEpoch: number = 0;
+  /**
+   * **本页自己的深浅记忆**（不再依赖全局"已应用"标记）：
+   * 全局标记会被别的页面先置位（切深浅时设置页先收到），阅读页据此**跳过重建**
+   * → 出现"背景跟着变深、正文文字却还是浅色主题的深色字"（用户实测看不清）。
+   */
+  private lastAppliedDark: boolean = false;
+  private lastAppliedValid: boolean = false;
   /** 图表后台预渲染任务（打开文件时生成，池子逐个渲染成 PNG 写缓存） */
   @State chartTasks: ChartTask[] = [];
   /**
@@ -216,12 +224,41 @@ export struct Reader {
   @State enlargePayload: string = '';
   /** 放大浮层的一镜到底共享 id（与正文里那张卡片同 id） */
   @State enlargeGeo: string = '';
+  /** 放大浮层的 Web 组件 id（导出图片快照按 id 抓） */
+  @State enlargeWebId: string = '';
+  /**
+   * **图表就绪信号**：后台预渲染池每完成一个图表递增。图表 / 公式条目只用它
+   * （不再用全局 renderEpoch）作 key —— 否则任何一次 renderEpoch 变化或"图表逐一
+   * 渲染完成"都会整树重建 → 图表反复重新加载、闪来闪去（用户反馈）。
+   */
+  @State chartReadyTick: number = 0;
+  /** 浮层的 Web 是否挂载（退后台卸载、回前台重挂 —— 修"关屏再开自动退出页面"） */
+  @State enlargeWebMounted: boolean = true;
+  /** 回前台信号（EntryAbility 递增） */
+  @StorageProp('appForegroundTick') @Watch('onAppForegroundTick') appFgTick: number = 0;
+  /** 旋转后重新自适应请求计数（传给 DiagramWeb） */
+  @State enlargeRefitTick: number = 0;
+  /** 手写批注图（手写页以批注模式返回时写入）：此处落成红双下划线批注 */
+  @StorageProp('sketchAnnotationImage') @Watch('onSketchAnnotation') sketchAnnotation: string = '';
+  /** 系统返回手势关闭浮层的信号（Index 的 onBackPressed 发出） */
+  @StorageProp('readerOverlayCloseTick') @Watch('onOverlayCloseTick') overlayCloseTick: number = 0;
+  /** 应用退后台计数（EntryAbility 递增）：回前台前复位浮层，避免 Web 状态异常 */
+  @StorageProp('appBackgroundTick') @Watch('onAppBackgroundTick') appBgTick: number = 0;
   /** 放大内容的原标题（脑图主题等；空串 = 不显示标题） */
   @State enlargeTitle: string = '';
   /** 放大浮层旋转（横屏）展示 */
   @State rotated: boolean = false;
-  /** 放大浮层的 Web 内容缩放（0.5~3，body.style.zoom） */
+  /** 放大浮层的 Web 内容缩放（body.style.zoom） */
   @State webZoom: number = 1;
+  /** 放大浮层的**图片**缩放倍率（图片模式用原生 Image + 手势，不走 Web） */
+  @State imgScale: number = 1;
+  /** 图片捏合手势的起始倍率（手势增量基准） */
+  private imgPinchBase: number = 1;
+  /** 图片拖动平移（图片模式）与拖动基准 */
+  @State imgDx: number = 0;
+  @State imgDy: number = 0;
+  private imgDxBase: number = 0;
+  private imgDyBase: number = 0;
   /** 画布区实测尺寸：旋转画布时按"高×宽"互换 */
   @State canvasW: number = 0;
   @State canvasH: number = 0;
@@ -233,9 +270,150 @@ export struct Reader {
     });
   }
 
-  /** 缩放倍率步进（±25%，0.5~3）。通过 DiagramWeb 的 webZoom 应用到页面。 */
+  /**
+   * 缩放倍率步进（±25%）。范围 **0.25~4**（用户反馈：原 0.5~3 默认有时太大
+   * 又不能再缩小）——放大时需要更小的下限才能把大图整体收进视野。
+   */
   private zoomBy(factor: number): void {
-    this.webZoom = Math.max(0.5, Math.min(3, this.webZoom * factor));
+    // **图片模式**：缩放作用在原生 Image 上（不走 Web）
+    if (this.enlargeMode === 'image') {
+      const next: number = this.imgScale * factor;
+      if (!(next > 0)) {
+        return;
+      }
+      this.imgScale = Math.min(8, Math.max(0.05, next));
+      return;
+    }
+    // **手动无限缩小**（用户要求）：不设实际下限 —— 只挡 0 / 异常值（1% 以下
+    // 图形已不可辨，再小没有意义且容易触发除零类问题）；放大上限仍为 4 倍。
+    const next: number = this.webZoom * factor;
+    if (!(next > 0)) {
+      return;
+    }
+    this.webZoom = Math.min(4, Math.max(0.01, next));
+  }
+
+  /**
+   * 退后台 / 关屏时**保留浮层、只卸载 Web**（用户要求：关屏再开不要自动退出
+   * 图表界面）—— 后台被系统回收后 Web 表面状态不可靠，回前台重挂即可。
+   */
+  onAppBackgroundTick(): void {
+    if (this.enlargeMode.length === 0 || !this.enlargeWebMounted) {
+      return;
+    }
+    this.enlargeWebMounted = false;
+  }
+
+  /** 回前台：把卸载掉的 Web 重新挂载（图表重新渲染），浮层保持打开。 */
+  onAppForegroundTick(): void {
+    if (this.enlargeMode.length === 0 || this.enlargeWebMounted) {
+      return;
+    }
+    this.enlargeWebId = 'enlarge_' + Date.now();
+    this.enlargeWebMounted = true;
+  }
+
+  /** 系统返回手势：关闭图表 / 图片放大浮层（而非退出阅读页）。 */
+  onOverlayCloseTick(): void {
+    if (this.enlargeMode.length === 0 && this.zoomImgKey.length === 0) {
+      return;
+    }
+    this.closeOverlays();
+  }
+
+  /**
+   * 把沙箱路径 / 相对路径转成 Web 可直接加载的 file:// URI。
+   * **必须做 URL 编码**：文档名多为中文，图片文件名同样含中文 —— 未编码时
+   * Web 加载会直接失败（用户实测"点击放大按钮提示图片加载失败"）。
+   */
+  toFileUri(path: string): string {
+    if (path.startsWith('file://') || path.startsWith('http://') || path.startsWith('https://')) {
+      return path;
+    }
+    let abs: string = path;
+    if (!path.startsWith('/')) {
+      const root: string = DocStore.docsRoot();
+      abs = root.length > 0 ? root + '/' + path : path;
+    }
+    try {
+      // encodeURI 会保留 '/' 与 ':'，只编码中文 / 空格等
+      return 'file://' + encodeURI(abs);
+    } catch (err) {
+      return 'file://' + abs;
+    }
+  }
+
+  /** 从批注里取出手写图（note 前缀 `hw:`）并在放大浮层中查看。 */
+  openHandwriteAnno(ann: MdAnnotation): void {
+    if (ann.note.length <= 3 || !ann.note.startsWith('hw:')) {
+      return;
+    }
+    const rel: string = ann.note.substring(3);
+    // **用 resolveImagePath 找真实文件**（相对 / ./ 前缀 / images 目录候选都能命中；
+    // 直接拿相对路径给 Image 组件会是一片空白 —— 用户实测）
+    const resolved: string = DocStore.resolveImagePath(rel);
+    if (resolved.length === 0) {
+      this.toast('找不到手写批注图片');
+      return;
+    }
+    const uri: string = resolved;
+    this.imgScale = 1;
+    this.imgDx = 0;
+    this.imgDy = 0;
+    this.rotated = false;
+    this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+      this.enlargeMode = 'image';
+      this.enlargePayload = uri;
+      this.enlargeGeo = '';
+      this.enlargeTitle = ann.text.length > 0 ? ann.text : '手写批注';
+      this.enlargeWebId = 'enlarge_' + Date.now();
+      this.enlargeWebMounted = true;
+      this.enlargeRefitTick = 0;
+      AppStorage.setOrCreate('readerOverlayOpen', true);
+    });
+  }
+
+  /**
+   * 手写页以「批注模式」返回：把手写图存成批注（**红色双下划线** + 图路径）。
+   * 图片路径放在 note 字段（前缀 `hw:`），查看/删除都走既有批注链路。
+   */
+  onSketchAnnotation(): void {
+    const rel: string = this.sketchAnnotation;
+    if (rel.length === 0 || this.pendingBlockId.length === 0) {
+      return;
+    }
+    const blockId: string = this.pendingBlockId;
+    const start: number = this.pendingStart;
+    const end: number = this.pendingEnd;
+    const text: string = this.noteQuote;
+    AppStorage.setOrCreate('sketchAnnotationImage', '');
+    AppStorage.setOrCreate('sketchMode', '');
+    if (end <= start) {
+      this.toast('没有可标注的选区');
+      return;
+    }
+    const list: MdAnnotation[] = this.withoutOverlap(this.annotations, blockId, start, end);
+    list.push(this.buildAnnotation(blockId, start, end, text, -1, 'hw:' + rel, 'dbl'));
+    this.commitAnnotations(list);
+    this.toast('已添加手写批注');
+  }
+
+  /** 关闭所有放大浮层（图表 / 图片）并复位缩放、旋转等临时状态。 */
+  closeOverlays(): void {
+    this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+      this.enlargeMode = '';
+      this.enlargeGeo = '';
+      this.enlargeTitle = '';
+      this.zoomImgKey = '';
+      this.zoomImgSrc = '';
+    });
+    this.rotated = false;
+    this.webZoom = 1;
+    this.imgScale = 1;
+    this.imgDx = 0;
+    this.imgDy = 0;
+    this.enlargeWebMounted = true;
+    AppStorage.setOrCreate('readerOverlayOpen', false);
   }
   /** 图片一镜到底：正在放大的那张图（key 与正文里的图片共享 geometry id） */
   @State zoomImgKey: string = '';
@@ -398,6 +576,10 @@ export struct Reader {
 
   /** 原 onPageShow 的内容：Navigation 下由 NavDestination.onShown 转发进来。 */
   private onShownNow(): void {
+    // **校准叠加层标志**（返回键拦截判据）：只以真实状态为准 —— 标志残留会让
+    // 侧滑返回一直被吞掉（用户实测"不能侧滑返回"）。
+    AppStorage.setOrCreate('readerOverlayOpen',
+      this.enlargeMode.length > 0 || this.zoomImgOpen);
     // 首次已在 aboutToAppear 加载（为了 List 构造时定位）；从别处返回本页时才重新加载
     if (!this.firstLoad) {
       this.loadDoc();
@@ -416,15 +598,37 @@ export struct Reader {
     this.applyDisplaySettings();
     // 一镜到底进场：从书架封面矩形展开（无来源几何时自动跳过，退化为普通淡入）
     this.heroEnter();
-    // 智感握姿：设备不支持或未授权时静默降级（gripSide 保持 0，胶囊居中）
-    GripAware.start((side: number) => {
-      this.gripSide = side;
+    // 智感握姿：**先申请权限再监听**（DETECT_GESTURE 是运行时授权权限，
+    // 只声明不申请会让 motion.on 抛错被吞掉 → gripSide 恒 0 → 底部栏与选择
+    // 胶囊都不跟手）。设备不支持或用户拒绝时静默降级。
+    const gripCb = (side: number): void => {
+      if (side !== this.gripSide) {
+        this.gripSide = side;
+        // 换手后清掉手动拖动位置：胶囊立即回到该手一侧（"智感握姿"要跟着手走）
+        this.sysTabX = -1;
+        this.sysTabY = -1;
+      }
+    };
+    const gripCtx = this.ctx();
+    if (gripCtx !== null) {
+      GripAware.startWithPermission(gripCtx, gripCb).catch(() => {
+        // 权限/能力不可用：保持居中
+      });
+    } else {
+      GripAware.start(gripCb);
+    }
+    // **跨设备分享监听**（碰一碰 + 隔空传送）：阅读页内有效，离开时注销。
+    // 设备不支持 HarmonyShare 时内部静默跳过。
+    ShareKitService.startListening((): string | null => {
+      return this.currentDocSharePath();
     });
   }
 
   /** 原 aboutToDisappear 的内容：由 NavDestination.onHidden 转发进来（被盖住时）。 */
   private onHiddenNow(): void {
     this.flushProgress();
+    // 离开阅读页：叠加层标志一并复位（防残留导致侧滑返回失灵）
+    AppStorage.setOrCreate('readerOverlayOpen', false);
     // 离开阅读页：亮度交还系统（-1.0 的语义见 AppWindow 注释），常亮一并关闭。
     // 回到本页时 onShown 会按设置重新下发。
     setWindowBrightnessLevel(0);
@@ -436,10 +640,36 @@ export struct Reader {
       this.sysTabX = -1;
       this.sysTabY = -1;
     }
+    // 停掉跨设备分享监听（碰一碰 / 隔空传送只在阅读页有效）
+    ShareKitService.stopListening();
     // 停掉握姿监听：不在阅读页时没必要一直占着传感器
     GripAware.stop();
     // 停掉深浅探测器：不在本页时不必问系统
     stopThemeWatchdog();
+  }
+
+  /**
+   * 当前文档的沙箱绝对路径（碰一碰 / 隔空传送分享用）。
+   * 内置文档在 rawfile 不在磁盘 → 返回 null（不可分享）。
+   */
+  private currentDocSharePath(): string | null {
+    if (this.docName.length === 0 || this.docBuiltin) {
+      return null;
+    }
+    const c = this.ctx();
+    if (c === null) {
+      return null;
+    }
+    try {
+      const meta = DocStore.find(c, this.docName);
+      if (meta === undefined || meta.builtin) {
+        return null;
+      }
+      const path: string = DocStore.docAbsolutePath(c, meta);
+      return fs.accessSync(path) ? path : null;
+    } catch (err) {
+      return null;
+    }
   }
 
   /** 阅读显示设置（常亮 / 亮度）变化时立即作用于主窗口。 */
@@ -535,10 +765,14 @@ export struct Reader {
    */
   private applyThemeChange(): void {
     const dark: boolean = this.isDark();
-    if (!themeChangedSince(dark)) {
+    // **只按本页自己的上次值判断**：全局标记会因其它页面先切过而返回"没变"，
+    // 导致正文条目不重建、文字停在旧主题（深色下深字看不清 —— 用户实测）。
+    if (this.lastAppliedValid && this.lastAppliedDark === dark) {
       markThemeApplied(dark);
       return;
     }
+    this.lastAppliedDark = dark;
+    this.lastAppliedValid = true;
     markThemeApplied(dark);
     this.getUIContext().animateTo(this.animateParam(), () => {
       // 两个都要加：renderEpoch 换条目 key，themeEpoch 换 **List 容器** key
@@ -762,10 +996,12 @@ export struct Reader {
   /** 详情头那行状态文案（内置 / 自建 + 当前读写状态）。 */
   private docStatusLine(): string {
     const kind: string = this.docBuiltin ? '内置语法教程' : '自建文档';
+    // 用户要求：徽标后带上文档**格式**（md / txt）
+    const fmt: string = this.docName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
     if (this.docReadOnly) {
-      return kind + ' · 只读 · 可在「更多」里切换';
+      return kind + ' · ' + fmt + ' · 只读 · 可在「更多」里切换';
     }
-    return kind + ' · 可写' + (this.docBuiltin ? ' · 常驻第一格' : '');
+    return kind + ' · ' + fmt + ' · 可写' + (this.docBuiltin ? ' · 常驻第一格' : '');
   }
 
   /** 切换读写 / 只读（写 shelf.json，切当前这篇）。 */
@@ -1095,6 +1331,23 @@ export struct Reader {
       });
       return;
     }
+    // **handwrite：手写批注**（用户要求）—— 记下选区，去手写页画；
+    // 画完回来把手写图存成 'dbl'（红色双下划线）批注。
+    if (action === 'handwrite') {
+      this.pendingBlockId = blockId;
+      this.pendingStart = start;
+      this.pendingEnd = end;
+      this.pendingColor = -1;
+      this.noteQuote = text;
+      AppStorage.setOrCreate('sketchMode', 'annotate');
+      AppStorage.setOrCreate('sketchAnnotationImage', '');
+      if (this.stack !== null) {
+        this.stack.pushPath({ name: 'pages/Sketch' });
+      } else {
+        this.toast('当前环境无法打开手写页');
+      }
+      return;
+    }
     // wavy：波浪线标注（画在字下方），与荧光笔同属「同区间先清再写」
     if (action === 'wavy') {
       const list: MdAnnotation[] = this.withoutOverlap(this.annotations, blockId, start, end);
@@ -1254,13 +1507,13 @@ export struct Reader {
     if (ctx === null) {
       return;
     }
-    this.exportWithNative(ctx);
-  }
-
-  private exportWithNative(ctx: common.UIAbilityContext): void {
+    // **智能导出**（用户要求）：渲染库提前缓存到应用内、导出时内嵌（自包含、
+    // 离线可渲染）；首次自动下载；下载失败回退在线模式。
     try {
-      const html: string = MdToHtml.export(this.docName, this.docMeta, this.blocks);
-      this.saveHtml(ctx, html);
+      const content: string = DocStore.readText(ctx, DocStore.find(ctx, this.docName)!);
+      ExportService.exportHtmlSmart(ctx, this.docName, content, (m: string) => {
+        this.toast(m);
+      });
     } catch (err) {
       this.toast('导出失败');
     }
@@ -2348,6 +2601,7 @@ export struct Reader {
     } else if (this.activeSheet === 'export') {
       Column() {
         ExportOptionsPanel({
+          stack: this.stack,
           docName: this.docName,
           builtin: this.docBuiltin,
           palette: this.palette(),
@@ -3516,6 +3770,16 @@ export struct Reader {
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                     .layoutWeight(1)
+          // **手写批注：查看手写图**（用户要求，点开进放大浮层，可缩放 / 旋转）
+          if (ann.note.startsWith('hw:')) {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: '查看',
+              chipOnTap: () => {
+                this.openHandwriteAnno(ann);
+              }
+            })
+          }
           ImmersiveChip({
             palette: this.palette(),
             chipLabel: '删除',
@@ -3538,7 +3802,7 @@ export struct Reader {
                   .width('100%')
 
                 if (ann.note.length > 0) {
-                  Text(ann.note)
+                  Text(ann.note.startsWith('hw:') ? '手写批注（点「查看」看手写图）' : ann.note)
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textSecondary)
                     .lineHeight(HwType.caption * 1.6)
@@ -3637,15 +3901,24 @@ export struct Reader {
     }
     this.zoomImgKey = key;
     this.zoomImgSrc = src;
+    AppStorage.setOrCreate('readerOverlayOpen', true);
     this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
       this.zoomImgOpen = true;
     });
   }
 
   private closeZoomImage(): void {
+    AppStorage.setOrCreate('readerOverlayOpen', false);
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.zoomImgOpen = false;
     });
+    // 关闭过渡结束后清掉内容（避免下一次打开先闪上一张）
+    setTimeout(() => {
+      if (!this.zoomImgOpen) {
+        this.zoomImgKey = '';
+        this.zoomImgSrc = '';
+      }
+    }, 300);
   }
 
   /**
@@ -3745,7 +4018,9 @@ export struct Reader {
         tasks: this.chartTasks,
         dark: this.isDark(),
         onOneDone: () => {
-          this.renderEpoch++;
+          // 只递增**图表就绪信号**：仅图表 / 公式条目重建（换成缓存图），
+          // 正文其它条目不受影响 —— 避免整树重建造成的闪烁
+          this.chartReadyTick++;
         }
       })
 
@@ -3821,13 +4096,35 @@ export struct Reader {
                       this.onTaskToggle(blockId);
                     },
                     enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
+                      // 图片放大用**原生 Image 组件**；payload 统一转
+                      // `file://` + URL 编码（中文路径不编码时首次加载会失败，
+                      // 用户实测"第一次打开没画面，重开才正常"）
+                      let pl: string = payload;
+                      if (mode === 'image') {
+                        if (!pl.startsWith('file://') && !pl.startsWith('http')) {
+                          pl = pl.startsWith('/') ? 'file://' + encodeURI(pl)
+                            : 'file://' + encodeURI(DocStore.docsRoot() + '/' + pl);
+                        } else if (pl.startsWith('file://')) {
+                          pl = 'file://' + encodeURI(pl.substring('file://'.length));
+                        }
+                        this.imgScale = 1;
+                        this.imgDx = 0;
+                        this.imgDy = 0;
+                        this.rotated = false;
+                      }
                       // **一镜到底**：挂载浮层必须包在 animateTo 里，geometryTransition
                       // 才会把正文里的小卡片形变成全屏大画布
                       this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
                         this.enlargeMode = mode;
-                        this.enlargePayload = payload;
+                        this.enlargePayload = pl;
                         this.enlargeGeo = geoKey;
                         this.enlargeTitle = title;
+                        // 每次打开生成唯一 Web id：导出图片快照按它定位；
+                        // 唯一化也避免与正文/池子的 Web 组件 id 撞车
+                        this.enlargeWebId = 'enlarge_' + Date.now();
+                        this.enlargeWebMounted = true;
+                        this.enlargeRefitTick = 0;
+                        AppStorage.setOrCreate('readerOverlayOpen', true);
                       });
                     },
                     webTouchHandler: (down: boolean) => {
@@ -3838,7 +4135,26 @@ export struct Reader {
                     }
                 })
               }
-              }, (block: MdBlock) => block.id + '_' + this.docName + '_' + this.renderEpoch)
+              }, (block: MdBlock) => {
+                // **图表 / 公式条目**：key 用「内容哈希 + **该块自身缓存是否就绪**」。
+                // 就绪的条目切到缓存图、未就绪的保持占位——只有真正变化的那一个
+                // 会重建，其余 Web 实例被复用，不再反复重新加载（用户反馈：闪来闪去）。
+                // 注意 key 里**不能**放 chartReadyTick：那会让所有图表条目一起变。
+                if (block.kind === MdBlockKind.Chart || block.kind === MdBlockKind.Math) {
+                  // 读取图表就绪信号以**建立依赖**（它变化 → key 重算 → 就绪的条目
+                  // 才切换成缓存图），但信号本身不进 key（否则所有图表条目一起变）
+                  const tick: number = this.chartReadyTick;
+                  const mode: string = block.kind === MdBlockKind.Math
+                    ? 'katex' : block.lang.trim().toLowerCase();
+                  const ck: string = ChartCache.keyFor(mode, block.code, this.isDark());
+                  const c: common.UIAbilityContext | null = this.ctx();
+                  const ready: boolean =
+                    c !== null && ChartCache.path(c, ck).length > 0;
+                  return block.id + '_' + this.docName + '_' + ck
+                    + (tick >= 0 ? (ready ? '_r' : '_p') : '_p');
+                }
+                return block.id + '_' + this.docName + '_' + this.renderEpoch;
+              })
 
             ListItem() {
               Text('—— 文档结束 ——')
@@ -4151,6 +4467,9 @@ export struct Reader {
                   });
                   this.rotated = false;
                   this.webZoom = 1;
+                  // **必须清掉叠加层标志**：否则返回键拦截会一直生效，
+                  // 侧滑返回就"失灵"了（用户实测）
+                  AppStorage.setOrCreate('readerOverlayOpen', false);
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.xmark'))
@@ -4171,18 +4490,63 @@ export struct Reader {
             // **保留原卡片的颜色和边框**（codeBlockBg + 描边），放大页仍是"那张卡片"。
             Stack({ alignContent: Alignment.Center }) {
               Column() {
-                DiagramWeb({
-                  mode: this.enlargeMode,
-                  payload: this.enlargePayload,
-                  dark: this.isDark(),
-                  zoom: true,
-                  fit: true,
-                  fillHeight: true,
-                  webZoom: this.webZoom,
-                  onWebTouch: (down: boolean) => {
-                    this.webTouchDepth = Math.max(0, this.webTouchDepth + (down ? 1 : -1));
-                  }
-                })
+                if (this.enlargeMode === 'image') {
+                  // **图片模式：原生 Image + 捏合手势**（沙箱图片走 Web 加载不可靠，
+                  // 用户实测"图片加载失败"）；缩放 / 旋转与图表模式完全一致。
+                  Image(this.enlargePayload)
+                    .objectFit(ImageFit.Contain)
+                    .width('100%')
+                    .height('100%')
+                    .scale({ x: this.imgScale, y: this.imgScale })
+                    .offset({ x: this.imgDx, y: this.imgDy })
+                    // **手指落在图片上时抑制阅读页根级捏合**（否则双指缩放会被
+                    // "改字号"抢走 —— 用户实测图片页不能双指缩放）
+                    .onTouch((event: TouchEvent) => {
+                      if (event.type === TouchType.Down) {
+                        this.webTouchDepth = this.webTouchDepth + 1;
+                      } else if (event.type === TouchType.Up
+                        || event.type === TouchType.Cancel) {
+                        this.webTouchDepth = Math.max(0, this.webTouchDepth - 1);
+                      }
+                    })
+                    // **用 priorityGesture**：外层根 Stack 上有横向滑动的 priorityGesture，
+                    // 普通 gesture 会被它拦掉（用户实测"不能滑动、不能双指缩放"）
+                    .priorityGesture(
+                      // **拖动 + 双指缩放并行**（用户要求：能滑动、能双指缩放）
+                      GestureGroup(GestureMode.Parallel,
+                        PanGesture({ fingers: 2, distance: 1 })
+                          .onActionStart(() => {
+                            this.imgDxBase = this.imgDx;
+                            this.imgDyBase = this.imgDy;
+                          })
+                          .onActionUpdate((event: GestureEvent) => {
+                            this.imgDx = this.imgDxBase + event.offsetX;
+                            this.imgDy = this.imgDyBase + event.offsetY;
+                          }),
+                        PinchGesture({ fingers: 2 })
+                          .onActionStart(() => {
+                            this.imgPinchBase = this.imgScale;
+                          })
+                          .onActionUpdate((event: GestureEvent) => {
+                            const sc: number = event.scale !== undefined ? event.scale : 1;
+                            this.imgScale = Math.min(8, Math.max(0.05, this.imgPinchBase * sc));
+                          })
+                      )
+                    )
+                } else {
+                  DiagramWeb({
+                    mode: this.enlargeMode,
+                    payload: this.enlargePayload,
+                    dark: this.isDark(),
+                    zoom: true,
+                    fit: true,
+                    fillHeight: true,
+                    webZoom: this.webZoom,
+                    onWebTouch: (down: boolean) => {
+                      this.webTouchDepth = Math.max(0, this.webTouchDepth + (down ? 1 : -1));
+                    }
+                  })
+                }
               }
               .width(this.rotated ? this.canvasH : '100%')
               .height(this.rotated ? this.canvasW : '100%')

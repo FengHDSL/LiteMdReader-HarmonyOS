@@ -247,6 +247,14 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onForeground');
+    // **回前台信号**：阅读页据此把后台被系统回收的 Web 浮层重新挂载
+    //（用户要求：关屏再开不要退出图表界面，但 Web 状态要重建才不异常）
+    try {
+      const ft: number = AppStorage.get<number>('appForegroundTick') ?? 0;
+      AppStorage.setOrCreate('appForegroundTick', ft + 1);
+    } catch (err) {
+      // 信号失败不影响主流程
+    }
     // **回前台补一次系统深浅同步**：用户在后台（或系统设置里）改了深浅色时，
     // 这个时机最可靠——部分设备切深浅并不下发 onConfigurationUpdate。
     this.syncSystemColorMode();
@@ -262,6 +270,14 @@ export default class EntryAbility extends UIAbility {
   /** 退到后台 / 被系统回收前落盘一次设置镜像（用户"退出应用"最常见的路径）。 */
   onBackground(): void {
     SettingsMirror.save(this.context);
+    // **后台信号**：阅读页据此复位易失的浮层状态（如图表放大浮层）——
+    // 关屏 / 切后台再回来时，Web 浮层容易残留异常（触摸错乱、错误控制阅读页）。
+    try {
+      const tick: number = AppStorage.get<number>('appBackgroundTick') ?? 0;
+      AppStorage.setOrCreate('appBackgroundTick', tick + 1);
+    } catch (err) {
+      // 信号失败不影响主流程
+    }
     // 桌面卡片兜底推送：随卡片一起停用（恢复时取消注释）
     // try {
     //   FormSync.pushRecents(this.context, true);

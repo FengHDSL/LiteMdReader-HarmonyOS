@@ -195,6 +195,10 @@ export struct Editor {
   /** Index 的返回拦截发来的信号：系统返回手势触发 → 弹"保存/不保存"窗（与顶栏返回同逻辑） */
   @StorageProp('editorGoBackTick') @Watch('onGoBackTick') goBackTick: number = 0;
   @State preview: boolean = false;
+  /** 预览图片放大浮层：非空 = 显示（点击预览里的图片触发） */
+  @State previewImage: string = '';
+  @State previewImgScale: number = 1;
+  private previewImgPinchBase: number = 1;
   @State showSyntax: boolean = false;
   /** 画板浮层 */
   @State previewBlocks: MdBlock[] = [];
@@ -836,7 +840,14 @@ export struct Editor {
     if (ctx === null) {
       return false;
     }
-    const wanted: string = this.docName.trim();
+    let wanted: string = this.docName.trim();
+    if (wanted.length === 0 && this.isNew) {
+      // **未命名时自动以年月日时分秒命名**（用户要求），如 20261003180032
+      const d: Date = new Date();
+      const pad = (n: number): string => n < 10 ? '0' + n : '' + n;
+      wanted = '' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate())
+        + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    }
     if (wanted.length === 0) {
       this.toast('请先填写文档名');
       return false;
@@ -2059,6 +2070,46 @@ export struct Editor {
           // 查找胶囊原来用 sm，平板上查找条比胶囊长出一截（用户反馈）
           left: HwSpace.lg,
           right: HwSpace.lg
+        })
+      }
+
+      // ── **预览图片放大浮层**（用户要求：实时预览支持放大查看图片）──
+      // 原生 Image（沙箱 file:// URI）+ 双指捏合缩放 + 点空白关闭
+      if (this.previewImage.length > 0) {
+        Stack({ alignContent: Alignment.Center }) {
+          Image(this.previewImage)
+            .objectFit(ImageFit.Contain)
+            .width('100%')
+            .height('100%')
+            .scale({ x: this.previewImgScale, y: this.previewImgScale })
+            .gesture(
+              PinchGesture({ fingers: 2 })
+                .onActionStart(() => {
+                  this.previewImgPinchBase = this.previewImgScale;
+                })
+                .onActionUpdate((event: GestureEvent) => {
+                  const sc: number = event.scale !== undefined ? event.scale : 1;
+                  this.previewImgScale = Math.min(8, Math.max(0.5, this.previewImgPinchBase * sc));
+                })
+            )
+
+          Text('点此关闭')
+            .fontSize(HwType.caption)
+            .fontColor('#FFFFFFFF')
+            .padding({ left: HwSpace.md, right: HwSpace.md, top: 6, bottom: 6 })
+            .borderRadius(HwRadius.pill)
+            .backgroundColor('#66000000')
+            .position({ x: '50%', y: '92%' })
+            .markAnchor({ x: '50%', y: '50%' })
+            .onClick(() => {
+              this.previewImage = '';
+            })
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#F2000000')
+        .onClick(() => {
+          this.previewImage = '';
         })
       }
     }

@@ -141,6 +141,7 @@ export class MdViewUtil {
         code: item.code,
         highlight: '',
         wavy: false,
+        dblLine: false,
         annotated: false,
         searchHit: false
       };
@@ -151,7 +152,8 @@ export class MdViewUtil {
 
   static pieceKey(piece: MdPiece, index: number): string {
     return piece.kind + '_' + index + '_' + piece.text.length + '_' + piece.num
-      + '_' + piece.highlight.length + (piece.wavy ? '_w' : '') + (piece.searchHit ? '_s' : '');
+      + '_' + piece.highlight.length + (piece.wavy ? '_w' : '')
+      + (piece.dblLine ? '_d' : '') + (piece.searchHit ? '_s' : '');
   }
 
   /** 片段字号：脚注引用与行内代码略小。 */
@@ -188,6 +190,15 @@ export class MdViewUtil {
   /** 片段装饰线。 */
   static pieceDecoration(piece: MdPiece, palette: ReaderPalette,
                          waveThickness: number = 1): DecorationStyleInterface {
+    if (piece.dblLine) {
+      // **红色双下划线**（手写批注）：ArkUI 原生支持 DOUBLE 样式，无需自绘
+      return {
+        type: TextDecorationType.Underline,
+        style: TextDecorationStyle.DOUBLE,
+        color: '#FFD93B3B',
+        thicknessScale: 2
+      };
+    }
     if (piece.wavy) {
       // 波浪线标注：画在文字下方的波线。它与底纹互斥，且优先于删除线/下划线。
       //
@@ -389,12 +400,16 @@ export class MdViewUtil {
         let highlight: string = '';
         let annotated: boolean = false;
         let wavy: boolean = false;
+        let dblLine: boolean = false;
         for (let a = 0; a < mine.length; a++) {
           if (mine[a].start <= s && mine[a].end >= e) {
             annotated = true;
             if (mine[a].style === 'wavy') {
               // 波浪线：不铺底纹，改为在字下画波线
               wavy = true;
+            } else if (mine[a].style === 'dbl') {
+              // **手写批注的红双下划线**：同样不铺底纹，改为在字下画双线
+              dblLine = true;
             } else if (mine[a].color >= 0) {
               highlight = annotationColor(mine[a].color, dark);
             }
@@ -419,6 +434,7 @@ export class MdViewUtil {
           code: item.code,
           highlight: highlight,
           wavy: wavy,
+          dblLine: dblLine,
           annotated: annotated,
           searchHit: searchHit
         };
@@ -736,22 +752,46 @@ export struct MdBlockView {
               ? '基础模式（纯离线）下不加载网络图片'
               : (this.isImgFailed(this.blockHref()) ? '图片加载失败' : '找不到本地图片文件'))
           } else {
-            Image(this.resolvedImageSrc(this.blockHref()))
-              .width('100%')
-              .constraintSize({ maxHeight: 460 })
-              .objectFit(ImageFit.Contain)
-              .borderRadius(HwRadius.inline)
-              .draggable(false)
-              // 一镜到底（图片）：与大图浮层上的同一张图片共享 geometry id，
-              // 系统据此把「这一张小图」无缝放大成「全屏大图」。
-              .geometryTransition('mdimg_' + this.block.id, { follow: true })
-              .onClick(() => {
-                this.imageTapHandler(this.block.id, this.resolvedImageSrc(this.blockHref()));
-              })
-              .onError(() => {
-                this.imgFailedHref = this.blockHref();
-                this.imgFailed = true;
-              })
+            // **右上角放大按钮**（用户要求：手写笔记等图片与图表一样有放大入口），
+            // 复用图表放大浮层（支持缩放 / 旋转 / 双指）
+            Stack({ alignContent: Alignment.TopEnd }) {
+              Image(this.resolvedImageSrc(this.blockHref()))
+                .width('100%')
+                .constraintSize({ maxHeight: 460 })
+                .objectFit(ImageFit.Contain)
+                .borderRadius(HwRadius.inline)
+                .draggable(false)
+                // 一镜到底（图片）：与大图浮层上的同一张图片共享 geometry id，
+                // 系统据此把「这一张小图」无缝放大成「全屏大图」。
+                .geometryTransition('mdimg_' + this.block.id, { follow: true })
+                // 点击回调：Editor 实时预览用它打开图片放大浮层；
+                // 阅读页不传（放大统一走右上角按钮 —— 用户要求）
+                .onError(() => {
+                  this.imgFailedHref = this.blockHref();
+                  this.imgFailed = true;
+                })
+
+              // 注：自定义组件带尾随闭包后不能再链属性（ArkTS 限制）→
+              // 用外层容器承载外边距
+              Column() {
+                ImmersiveIconButton({
+                  buttonSize: 30,
+                  buttonMaterialShadow: false,
+                  palette: this.palette,
+                  buttonOnTap: () => {
+                    this.enlargeHandler('image', this.resolvedImageSrc(this.blockHref()),
+                      'mdimg_' + this.block.id,
+                      this.blockAlt().length > 0 ? this.blockAlt() : '图片');
+                  }
+                }) {
+                  SymbolGlyph($r('sys.symbol.arrow_up_left_and_arrow_down_right'))
+                    .fontSize(14)
+                    .fontColor([this.palette.textPrimary])
+                }
+              }
+              .margin({ top: 6, right: 6 })
+            }
+            .width('100%')
 
             if (this.blockAlt().length > 0) {
               Text(this.blockAlt())
@@ -974,6 +1014,11 @@ export struct MdBlockView {
             // 波浪线：与荧光笔、文字批注并列的第三种标注形态（画在字下方）
             this.menuAction('波浪线', () => {
               this.emitAnnotation('wavy', 0);
+            })
+
+            // **手写批注**（用户要求）：进手写页画一笔，回来落成"红双下划线"批注
+            this.menuAction('手写批注', () => {
+              this.emitAnnotation('handwrite', -1);
             })
 
             // 系统选择（用户要求）：恢复系统原生长按菜单，方便复制 / 翻译 / 唤起小艺

@@ -181,7 +181,8 @@ export interface MdAnnotation {
   /** 文字批注内容，可为空 */
   note: string;
   /**
-   * 标注形态：空串 = 荧光笔底纹；'wavy' = 波浪线（画在文字下方）
+   * 标注形态：空串 = 荧光笔底纹；'wavy' = 波浪线（画在文字下方）；
+   * 'dbl' = **红色双下划线**（手写批注；手写图路径存在 note 里，前缀 `hw:`）
    */
   style: string;
   created: number;
@@ -207,6 +208,8 @@ export interface MdPiece {
   highlight: string;
   /** 该片段是否带波浪线标注（与底纹互斥） */
   wavy: boolean;
+  /** **红色双下划线**（手写批注的标记形态，`TextDecorationStyle.DOUBLE`） */
+  dblLine: boolean;
   /** 该片段是否被批注覆盖（用于注释抽屉里的定位校验） */
   annotated: boolean;
   /** 是否命中当前搜索关键词 */

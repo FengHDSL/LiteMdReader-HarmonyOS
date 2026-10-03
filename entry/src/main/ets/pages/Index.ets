@@ -45,7 +45,7 @@ import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
-import { DocMeta, DocSearchHit, DocStore, ReaderRoute, ShelfFolder } from '../service/DocStore';
+import { DocMeta, DocSearchHit, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { FontStore } from '../service/FontStore';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -60,6 +60,7 @@ import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
 import { Changelog } from './Changelog';
 import { Sketch } from './Sketch';
+import { HtmlViewer } from './HtmlViewer';
 import { GripAware } from '../service/GripAware';
 import { LegalDoc, LegalDocRoute } from './LegalDoc';
 import { UpdateService, APP_MODE_FULL, APP_MODE_OFFLINE } from '../service/UpdateService';
@@ -1910,9 +1911,10 @@ struct Index {
               this.openCellMenu('doc', meta.name, meta.builtin);
             }
           }) {
-            SymbolGlyph($r('sys.symbol.ellipsis_circle'))
-              .fontSize(13)
-              .fontColor([this.palette().textSecondary])
+            Image($r('app.media.dot_grid_2x2'))
+              .width(14)
+              .height(14)
+              .fillColor(this.palette().textSecondary)
           }
         }
         .margin({ top: 4, right: 4 })
@@ -2112,9 +2114,10 @@ struct Index {
               this.openCellMenu('folder', folder.name, false);
             }
           }) {
-            SymbolGlyph($r('sys.symbol.ellipsis_circle'))
-              .fontSize(13)
-              .fontColor([this.palette().textSecondary])
+            Image($r('app.media.dot_grid_2x2'))
+              .width(14)
+              .height(14)
+              .fillColor(this.palette().textSecondary)
           }
         }
         .margin({ top: 4, right: 4 })
@@ -2466,9 +2469,10 @@ struct Index {
           Text(this.folderDocs(this.openFolderName).length + ' 篇')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
-          SymbolGlyph($r('sys.symbol.chevron_up'))
-            .fontSize(15)
-            .fontColor([this.palette().textSecondary])
+          Image($r('app.media.chevron_up_circle'))
+            .width(16)
+            .height(16)
+            .fillColor(this.palette().textSecondary)
             .onClick(() => {
               this.closeFolderPanel();
             })
@@ -2554,6 +2558,8 @@ struct Index {
    * 避免侧滑误触退出丢内容（顶栏返回按钮早有此弹窗，手势此前没有）。
    */
   @StorageProp('editorDirty') editorDirty: boolean = false;
+  /** 阅读页叠加层（图表 / 图片放大）是否打开：返回手势据此先关浮层而非退出页面 */
+  @StorageProp('readerOverlayOpen') readerOverlayOpen: boolean = false;
   /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）：新建卡外壳据此决定底色 */
   private materialOn(): boolean {
     return this.immersiveOn && getImmersiveMaterial() !== null;
@@ -2670,9 +2676,12 @@ struct Index {
           .layoutWeight(1)
           .alignItems(HorizontalAlign.Start)
 
-          SymbolGlyph($r('sys.symbol.chevron_right'))
-            .fontSize(13)
-            .fontColor([this.palette().textTertiary])
+          // 右箭头：改用圆形箭头图标（用户指定），尺寸不能太小
+          Image($r('app.media.chevron_right_circle'))
+            .width(20)
+            .height(20)
+            .fillColor(this.palette().textTertiary)
+            .opacity(0.75)
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
@@ -2722,6 +2731,7 @@ struct Index {
     } else if (this.shelfSheet === 'export') {
       Column() {
         ExportOptionsPanel({
+          stack: this.pathStack,
           docName: this.cellMenuFor,
           builtin: this.cellMenuBuiltin,
           palette: this.palette(),
@@ -2808,9 +2818,10 @@ struct Index {
         .fontSize(HwType.label + 1)
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
-      SymbolGlyph($r('sys.symbol.chevron_right'))
-        .fontSize(14)
-        .fontColor([this.palette().textTertiary])
+      Image($r('app.media.chevron_right_circle'))
+        .width(20)
+        .height(20)
+        .fillColor(this.palette().textTertiary)
     }
     .width('100%')
     .height(44)
@@ -3098,9 +3109,10 @@ ImmersiveChip({
             this.openCellMenu('doc', meta.name, meta.builtin);
           }
         }) {
-          SymbolGlyph($r('sys.symbol.ellipsis_circle'))
-            .fontSize(13)
-            .fontColor([this.palette().textSecondary])
+          Image($r('app.media.dot_grid_2x2'))
+            .width(14)
+            .height(14)
+            .fillColor(this.palette().textSecondary)
         }
       }
     }
@@ -3117,10 +3129,16 @@ ImmersiveChip({
   @Builder
   treeFolderRow(folder: ShelfFolder) {
     Row({ space: HwSpace.sm }) {
-      SymbolGlyph(this.expandedFolders.indexOf(folder.name) >= 0
-        ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
-        .fontSize(16)
-        .fontColor([this.palette().textTertiary])
+      // 展开箭头：同一个圆形箭头图标，**展开时顺时针旋转 90°**（用户要求）
+      Image($r('app.media.chevron_right_circle'))
+        .width(20)
+        .height(20)
+        .fillColor(this.palette().textTertiary)
+        .rotate({
+          z: 1,
+          angle: this.expandedFolders.indexOf(folder.name) >= 0 ? 90 : 0
+        })
+        .animation({ duration: 200, curve: Curve.FastOutSlowIn })
       SymbolGlyph($r('sys.symbol.folder'))
         .fontSize(16)
         // 文件夹图标颜色**跟随文件夹封面色**（用户要求；自定义色优先，
@@ -3146,9 +3164,10 @@ ImmersiveChip({
             this.openCellMenu('folder', folder.name, false);
           }
         }) {
-          SymbolGlyph($r('sys.symbol.ellipsis_circle'))
-            .fontSize(13)
-            .fontColor([this.palette().textSecondary])
+          Image($r('app.media.dot_grid_2x2'))
+            .width(14)
+            .height(14)
+            .fillColor(this.palette().textSecondary)
         }
       }
     }
@@ -3847,6 +3866,14 @@ ImmersiveChip({
         Changelog({ stack: this.pathStack })
       } else if (name === 'pages/Sketch') {
         Sketch({ stack: this.pathStack })
+      } else if (name === 'pages/HtmlViewer') {
+        // 参数安全解析：push 时未带 param 也不能整页空白
+        HtmlViewer({
+          stack: this.pathStack,
+          docName: param !== undefined ? (param as PrintRoute).docName : '',
+          content: param !== undefined ? (param as PrintRoute).content : '',
+          htmlPath: param !== undefined ? (param as PrintRoute).htmlPath : ''
+        })
       } else if (name === 'pages/LegalDoc') {
         LegalDoc({
           stack: this.pathStack,
@@ -3886,6 +3913,12 @@ ImmersiveChip({
     .onBackPressed(() => {
       if (name === 'pages/Editor' && this.editorDirty) {
         AppStorage.setOrCreate('editorGoBackTick', Date.now());
+        return true;
+      }
+      // **阅读页叠加层**：图表 / 图片放大浮层打开时，侧滑 / 返回键先关闭浮层
+      //（此前会直接退回书架，用户反馈"回到阅读页面"应为"关闭浮层"）
+      if (name === 'pages/Reader' && this.readerOverlayOpen) {
+        AppStorage.setOrCreate('readerOverlayCloseTick', Date.now());
         return true;
       }
       return false;

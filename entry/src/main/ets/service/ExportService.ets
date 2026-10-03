@@ -9,13 +9,16 @@
  *
  */
 import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker, fileUri } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DocStore } from './DocStore';
 import { MdParser } from '../markdown/MdParser';
-import { MdToHtml } from '../markdown/MdToHtml';
+import { MdBlockKind } from '../markdown/MdTypes';
+import { MdToHtml, InlineRuntime } from '../markdown/MdToHtml';
+import { ChartRuntimeService } from './ChartRuntimeService';
 
 const TAG: string = 'ExportService';
 
@@ -38,10 +41,181 @@ export class ExportService {
     }
   }
 
-  /** 渲染自包含 HTML（与阅读页导出 HTML 同一渲染器）。 */
-  static buildHtml(docName: string, content: string): string {
+  /** 渲染自包含 HTML（与阅读页导出 HTML 同一渲染器）。rich = 预装图表渲染工具。 */
+  static buildHtml(docName: string, content: string, rich: boolean = false): string {
     const parsed = MdParser.parse(content);
-    return MdToHtml.export(docName, parsed.meta, parsed.blocks);
+    return MdToHtml.export(docName, parsed.meta, parsed.blocks, rich);
+  }
+
+  /**
+   * **把 HTML 里的本地图片内联成 data URI**（用户要求：手写笔记、插入的图片都要
+   * 跟着导出文件走，不留在外面）。仅处理相对路径（images/xxx.png 等）——
+   * 网络图 / 已是 data URI 的原样保留。
+   */
+  static inlineLocalImages(ctx: common.UIAbilityContext, html: string): string {
+    const root: string = DocStore.docsRoot();
+    if (root.length === 0) {
+      return html;
+    }
+    let out: string = '';
+    let i: number = 0;
+    while (i < html.length) {
+      const k: number = html.indexOf('src="', i);
+      if (k < 0) {
+        out += html.substring(i);
+        break;
+      }
+      const e: number = html.indexOf('"', k + 5);
+      if (e < 0) {
+        out += html.substring(i);
+        break;
+      }
+      const srcRaw: string = html.substring(k + 5, e);
+      out += html.substring(i, k + 5);
+      let rep: string = srcRaw;
+      const isRemote: boolean = srcRaw.startsWith('http://') || srcRaw.startsWith('https://')
+        || srcRaw.startsWith('data:');
+      if (!isRemote && srcRaw.length > 0) {
+        // **file: 开头的也算本地文件**（可能是上一轮处理写入的），剥掉前缀后读文件
+        let relPath: string = srcRaw;
+        if (relPath.startsWith('file://')) {
+          relPath = relPath.substring('file://'.length);
+          if (relPath.startsWith(root + '/')) {
+            relPath = relPath.substring(root.length + 1);
+          }
+        }
+        if (relPath.startsWith('./')) {
+          relPath = relPath.substring(2);
+        }
+        let uri: string | null = null;
+        if (relPath.startsWith('/')) {
+          uri = ExportService.fileToDataUri(relPath);
+        } else {
+          // **候选路径**：docs 根下 / images 目录下（basename）——手写图两种位置都可能
+          uri = ExportService.fileToDataUri(root + '/' + relPath);
+          if (uri === null) {
+            const slash: number = relPath.lastIndexOf('/');
+            const base: string = slash >= 0 ? relPath.substring(slash + 1) : relPath;
+            uri = ExportService.fileToDataUri(root + '/images/' + base);
+          }
+        }
+        if (uri !== null) {
+          rep = uri;
+        }
+      }
+      out += rep;
+      i = e;
+    }
+    return out;
+  }
+
+  /** 读本地文件 → data URI（按扩展名给 MIME）；失败返回 null。 */
+  private static fileToDataUri(path: string): string | null {
+    try {
+      if (!fs.accessSync(path)) {
+        return null;
+      }
+      const size: number = fs.statSync(path).size;
+      if (size <= 0 || size > 12 * 1024 * 1024) {
+        // 过大不内联（避免导出文件失控）
+        return null;
+      }
+      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const buf: ArrayBuffer = new ArrayBuffer(size);
+      try {
+        fs.readSync(file.fd, buf);
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+          // 忽略
+        }
+      }
+      const bytes: Uint8Array = new Uint8Array(buf);
+      const b64: string = new util.Base64Helper().encodeToStringSync(bytes);
+      const lower: string = path.toLowerCase();
+      let mime: string = 'image/png';
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+        mime = 'image/jpeg';
+      } else if (lower.endsWith('.gif')) {
+        mime = 'image/gif';
+      } else if (lower.endsWith('.webp')) {
+        mime = 'image/webp';
+      } else if (lower.endsWith('.bmp')) {
+        mime = 'image/bmp';
+      } else if (lower.endsWith('.svg')) {
+        mime = 'image/svg+xml';
+      }
+      return 'data:' + mime + ';base64,' + b64;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * **智能 HTML 导出**（用户要求「提前下载到应用内，导出时预转进去」）：
+   * · 无图表 → 普通导出；
+   * · 有图表 → 渲染库已缓存的直接**内联进 HTML**（自包含、离线可渲染）；
+   *   缺失的自动从 CDN 下载一次并缓存（首次需联网，之后离线可用）；
+   * · 下载失败 → 回退 CDN 引用模式并提示。
+   * 完成后自行走 saveText（用户选保存位置），notify 全程汇报。
+   */
+  static async exportHtmlSmart(ctx: common.UIAbilityContext, docName: string,
+                               content: string, notify: Notify): Promise<void> {
+    const parsed = MdParser.parse(content);
+    const chartCount: number = MdToHtml.countCharts(parsed.blocks);
+    if (chartCount === 0) {
+      const plain: string =
+        ExportService.inlineLocalImages(ctx,
+          MdToHtml.export(docName, parsed.meta, parsed.blocks, false, null));
+      ExportService.saveText(ctx, docName + '.html', plain, notify);
+      return;
+    }
+    // 收集所需库文件（Chart 块按语言；Math 公式块需要 katex）
+    const needed: string[] = [];
+    for (let k = 0; k < parsed.blocks.length; k++) {
+      const b = parsed.blocks[k];
+      let files: string[] = [];
+      if (b.kind === MdBlockKind.Chart) {
+        files = ChartRuntimeService.filesForLang(b.lang.trim().toLowerCase());
+      } else if (b.kind === MdBlockKind.Math) {
+        files = ChartRuntimeService.filesForLang('katex');
+      }
+      for (let f = 0; f < files.length; f++) {
+        if (needed.indexOf(files[f]) < 0) {
+          needed.push(files[f]);
+        }
+      }
+    }
+    notify('正在导入图表组件…');
+    const inline: InlineRuntime[] | null =
+      await ChartRuntimeService.loadRuntimes(ctx, needed, notify);
+    if (inline !== null) {
+      // katex 字体：把内联 CSS 里的 url(fonts/xx) 替换成 data URI（公式字形不退化）
+      for (let k = 0; k < inline.length; k++) {
+        if (inline[k].name === 'katex.min.css') {
+          let css: string = inline[k].code;
+          for (const font of ChartRuntimeService.katexFontFiles()) {
+            const b64: string | null =
+              await ChartRuntimeService.readFontDataUri(ctx, font);
+            if (b64 !== null) {
+              css = css.split('fonts/' + font + ')').join(b64 + ')');
+            }
+          }
+          const fixed: InlineRuntime = {
+            name: inline[k].name, code: css, isCss: inline[k].isCss
+          };
+          inline[k] = fixed;
+        }
+      }
+    }
+    if (inline === null) {
+      notify('图表组件导入失败，改用在线渲染（打开时需联网）');
+    }
+    const html: string =
+      ExportService.inlineLocalImages(ctx,
+        MdToHtml.export(docName, parsed.meta, parsed.blocks, true, inline));
+    ExportService.saveText(ctx, docName + '.html', html, notify);
   }
 
   /** 系统另存为：文本内容（md / html）。 */
@@ -124,6 +298,12 @@ export class ExportService {
     }).catch((err: BusinessError) => {
       notify('保存失败：' + err.message);
     });
+  }
+
+  /** bytesToCache 的异步薄封装（打印链路用）。 */
+  static async bytesToCacheAsync(ctx: common.UIAbilityContext, fileName: string,
+                                 bytes: ArrayBuffer): Promise<string> {
+    return ExportService.bytesToCache(ctx, fileName, bytes);
   }
 
   /** 把字节落进应用缓存（打印用：系统打印组件从文件 URI 读）。返回文件路径。 */

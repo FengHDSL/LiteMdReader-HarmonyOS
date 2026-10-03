@@ -63,6 +63,12 @@ export struct DiagramWeb {
   /** 整页快照产物（imagePixelMap）回传给池子入库 */
   onCaptured: (pixel: image.PixelMap) => void = () => {
   };
+  /**
+   * 重新自适应请求计数（放大浮层**旋转**后调用）：旋转只改外层角度、不会让
+   * 页面重新布局 → 内容仍按旧宽高排布，看起来"变小了"（用户反馈）。
+   * 递增即让页面 refit（mermaid/markmap/svg 按新容器重新适配）。
+   */
+  @Prop @Watch('doRefit') refitRequest: number = 0;
   private ctrl: webview.WebviewController = new webview.WebviewController();
 
   build() {
@@ -92,7 +98,7 @@ export struct DiagramWeb {
         try {
           this.ctrl.runJavaScript('window.renderPayload(' + json + ');');
           // 渲染注入后立刻应用一次缩放（之后由 @Watch 跟随 ± 按钮变化）
-          this.ctrl.runJavaScript('document.body.style.zoom=' + this.webZoom + ';');
+          this.applyZoomJs();
         } catch (err) {
           // 注入失败时页面保持空白高度，不影响正文
         }
@@ -109,11 +115,23 @@ export struct DiagramWeb {
       .backgroundColor(Color.Transparent)
   }
 
-  /** webZoom 变化时把缩放应用到页面（body.style.zoom，对所有图表类型生效）。 */
+  /** webZoom 变化时把缩放应用到页面（body.style.zoom），并让页面重新自适应。 */
   private applyWebZoom(): void {
     if (!this.fillHeight) {
       return;
     }
+    this.applyZoomJs();
+  }
+
+  /**
+   * 把缩放应用到页面（`body.style.zoom`）。
+   *
+   * **这里刻意不调用 refit()**：refit 走的是"让图表铺满可用宽度"的自适应，
+   * 缩放后可用空间相对变大 → fit 会把内容重新拉满 → 缩放效果被抵消，用户看到
+   * 的正好相反（点减号反而变大、点加号反而变小 —— 用户实测反馈）。
+   * 需要 refit 的场合（旋转、打开、恢复）另走 refitRequest。
+   */
+  private applyZoomJs(): void {
     try {
       this.ctrl.runJavaScript('document.body.style.zoom=' + this.webZoom + ';');
     } catch (err) {
@@ -121,6 +139,29 @@ export struct DiagramWeb {
     }
   }
 
+  /**
+   * 「导出图片」：**先让页面把背景置为透明**（PNG 要透明底，用户要求），
+   * 稍等重绘后整页快照，回传后再恢复页面背景。
+   */
+  /**
+   * 切到 / 退出"完整内容模式"时，**主动让页面重新回传高度** ——
+   * 页面早已加载完成，不会自动再 report()，不主动触发的话组件高度停在旧值，
+   * 快照就会严重裁切（用户实测：导出图只剩顶部一小条）。
+   */
+  /** 重新自适应（旋转 / 尺寸互换后调用）。 */
+  private doRefit(): void {
+    if (this.refitRequest <= 0) {
+      return;
+    }
+    const js: string =
+      'setTimeout(function(){ try{ if(window.refit){ window.refit(); } }catch(e){} }, 40);'
+        + 'setTimeout(function(){ try{ if(window.refit){ window.refit(); } }catch(e){} }, 260);';
+    try {
+      this.ctrl.runJavaScript(js);
+    } catch (err) {
+      // 页面未就绪：忽略
+    }
+  }
   /**
    * **整页快照**（webPageSnapshot 抓 Web 的完整绘制结果，不受可视区限制——
    * 比 componentSnapshot 对 Web 表面可靠得多）。captureRequest 递增时触发；

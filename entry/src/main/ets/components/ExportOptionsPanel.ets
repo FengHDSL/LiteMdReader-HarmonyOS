@@ -13,6 +13,7 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { ExportService } from '../service/ExportService';
 import { MdToPlain } from '../markdown/MdToPlain';
+import { PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 
 @Component
@@ -26,6 +27,8 @@ export struct ExportOptionsPanel {
   /** 动作完成（含取消）后收起面板的回调 */
   onClosed: () => void = () => {
   };
+  /** 导航栈（打印入口 push 打印准备页用；未传则不显示打印项） */
+  stack: NavPathStack | null = null;
 
   @State busy: boolean = false;
 
@@ -77,7 +80,11 @@ export struct ExportOptionsPanel {
     });
   }
 
-  private doExportHtml(): void {
+  /**
+   * HTML 导出入口（用户要求**默认预装**图表渲染工具）：图表块转渲染容器 +
+   * 按需 CDN，浏览器打开自动渲染。
+   */
+  private doExportHtml(rich: boolean): void {
     const ctx = this.ctx();
     if (ctx === null) {
       return;
@@ -89,7 +96,7 @@ export struct ExportOptionsPanel {
     }
     this.withBusy(() => {
       try {
-        const html: string = ExportService.buildHtml(this.docName, content);
+        const html: string = ExportService.buildHtml(this.docName, content, rich);
         ExportService.saveText(ctx, this.docName + '.html', html, (m: string) => {
           this.notify(m);
         });
@@ -97,6 +104,50 @@ export struct ExportOptionsPanel {
         this.notify('渲染 HTML 失败');
       }
     });
+  }
+
+  /**
+   * HTML 导出入口（用户要求）：渲染库提前缓存到应用内、导出时内嵌进 HTML
+   * （自包含、离线可渲染）；首次导出自动下载一次；下载失败回退在线模式。
+   */
+  private askExportHtml(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
+    if (content === null) {
+      this.notify('读取正文失败');
+      return;
+    }
+    ExportService.exportHtmlSmart(ctx, this.docName, content, (m: string) => {
+      this.notify(m);
+    });
+  }
+
+  /** 打印：进入打印准备页（HTML 构建在页内完成，完成后调起系统打印预览）。 */
+  private printDoc(): void {
+    if (this.stack === null) {
+      this.notify('当前环境不支持打印');
+      return;
+    }
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
+    if (content === null) {
+      this.notify('读取正文失败');
+      return;
+    }
+    try {
+      this.stack.pushPath({
+        name: 'pages/HtmlViewer',
+        param: { docName: this.docName, content: content, htmlPath: '' } as PrintRoute
+      });
+    } catch (err) {
+      this.notify('无法打开打印');
+    }
   }
 
   /** 导出纯文本 TXT：把 Markdown 语法自动剥掉（用户要求）。 */
@@ -182,7 +233,10 @@ export struct ExportOptionsPanel {
     Stack() {
       Column({ space: HwSpace.xs }) {
         this.exportRow('导出 HTML', '自包含网页，浏览器直接打开', () => {
-          this.doExportHtml();
+          this.askExportHtml();
+        })
+        this.exportRow('打印', '调起系统打印，图表自动渲染', () => {
+          this.printDoc();
         })
         this.exportRow('导出 MD', 'Markdown 原文', () => {
           this.doExportMd();

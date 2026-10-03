@@ -18,6 +18,10 @@
       {
         "name": "ohos.permission.INTERNET"
       },
+      // 系统打印（print.print 调起打印预览页）
+      {
+        "name": "ohos.permission.PRINT"
+      },
       // 智感握姿（底部胶囊跟随握持手左右移动）。
       // 设备或授权不支持时静默降级为居中，不影响其它功能——见 service/GripAware.ets。
       {

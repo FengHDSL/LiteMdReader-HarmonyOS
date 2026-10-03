@@ -454,7 +454,7 @@ export struct SettingsWriting {
                   .fontColor(this.palette().textTertiary)
                   .maxLines(1)
                   .margin({ left: m.col * this.colStep() })
-              }, (m: MonthMark) => 'mm_' + this.viewYear + '_' + m.label)
+              }, (m: MonthMark) => 'mm_' + m.label)
             }
             .width(HEAT_WEEKS * this.colStep())
             .height(15)
@@ -485,7 +485,7 @@ export struct SettingsWriting {
                   .width(this.cellSize())
                   .height(this.cellSize())
               }
-            }, (col: number) => 'hc_' + this.viewYear + '_' + row + '_' + col)
+            }, (col: number) => 'hc_' + row + '_' + col)
                 }
               }, (row: number) => 'hr_' + row)
             }
@@ -705,6 +705,8 @@ export struct SettingsWriting {
                   .width(24)
                   .aspectRatio(0.72)
                   .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 6, bottomRight: 6 })
+                  // **描边**（用户要求）：细一圈深色描边，浅色壁纸上轮廓更清晰
+                  .border({ width: 1, color: this.palette().divider })
                   .linearGradient({
                     angle: 200,
                     colors: [[this.latestDotColors(item).top, 0.0],

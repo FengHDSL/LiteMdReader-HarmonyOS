@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes">
 <style>
   html,body{margin:0;padding:0;background:transparent;}
   body.dark{color:#ECEFF4;}
@@ -31,7 +31,10 @@
   function report(){
     try{
       var app=document.getElementById('app');
-      var h=Math.max(app.scrollHeight, document.body.scrollHeight);
+      // 整页内容高度：撑满模式（导出抓图用）下 body 高度只是视口高，
+      // 溢出内容的高度要靠 documentElement/滚动高度反映
+      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                     document.documentElement.scrollHeight, document.documentElement.offsetHeight);
       if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
     }catch(e){}
   }
@@ -47,6 +50,46 @@
       document.getElementById('app').innerHTML='<div class="err">'+e.message+'</div>';
       report();
     }
+  };
+  // 缩放变化后的重新自适应（静态 SVG 重设宽度）
+  // **导出图片用**：临时把所有背景置为透明（PNG 要透明底），导出完再还原
+  window.__exportBg=function(on){
+    try{
+      var els=[document.documentElement,document.body];
+      var app=document.getElementById('app');
+      if(app){ els.push(app); }
+      for(var i=0;i<els.length;i++){
+        var e=els[i];
+        if(!e){ continue; }
+        if(on){
+          if(e.__prevBg===undefined){ e.__prevBg=e.style.background||''; e.__prevBgc=e.style.backgroundColor||''; }
+          // **品红键控**：快照不含 alpha 通道，"透明"会被合成成黑色；
+          // 改用不可能出现在图表里的品红，导出后把品红像素转成透明
+          e.style.background='#ff00ff'; e.style.backgroundColor='#ff00ff';
+        } else if(e.__prevBg!==undefined){
+          e.style.background=e.__prevBg; e.style.backgroundColor=e.__prevBgc;
+        }
+      }
+      // SVG 根节点也透明（部分库会给 svg 底色）
+      var svgs=document.querySelectorAll('svg');
+      for(var k=0;k<svgs.length;k++){
+        var sv=svgs[k];
+        if(on){
+          if(sv.__prevBg===undefined){ sv.__prevBg=sv.style.background||''; }
+          sv.style.background='#ff00ff';
+        } else if(sv.__prevBg!==undefined){ sv.style.background=sv.__prevBg; }
+      }
+    }catch(e){}
+  };
+  window.refit=function(){
+    try{
+      var sv=document.querySelector('#app svg');
+      if(sv){
+        if(window.__fit){ sv.style.width='100%'; sv.style.maxWidth='none'; } else { sv.style.maxWidth='100%'; }
+        sv.style.height='auto';
+      }
+    }catch(e){}
+    report();
   };
   if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){report();}).observe(document.getElementById('app'));}
   window.addEventListener('load',report);

@@ -164,23 +164,9 @@ export struct DocCover {
               ? { radius: 6, color: '#66000000', offsetX: 0, offsetY: 1 }
               : { radius: 0, color: '#00000000', offsetX: 0, offsetY: 0 })
 
-          if (this.builtin) {
-            Text('内置 · 只读')
-              .fontSize(9.5)
-              .fontColor(this.inkColor())
-              .opacity(0.75)
-          }
 
           Blank()
 
-          Text(this.formatLabel.length > 0
-            ? (this.coverBadge + ' · ' + this.formatLabel)
-            : this.coverBadge)
-            .fontSize(9)
-            .fontColor(this.inkColor())
-            // 格式字要"淡淡的"：整体透明度再压一档
-            .opacity(this.formatLabel.length > 0 ? 0.38 : 0.5)
-            .maxLines(1)
         }
         .width('100%')
         .height('100%')

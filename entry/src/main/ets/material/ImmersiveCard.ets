@@ -406,7 +406,13 @@ export struct ImmersiveChip {
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
-  chipLabel: string = '';
+  /**
+   * **自定义色调**（8 位 hex，如 '#FF2E7D32' 绿 / '#FFD32F2F' 红）：
+   * 非空时覆盖 accent（前景 + 材质薄染同色）；空串 = 跟随主题 accent。
+   */
+  @Prop chipTint: string = '';
+  /** **必须 @Prop**：文案随状态变化（如使用模式切换后）要能回刷 */
+  @Prop chipLabel: string = '';
   chipOnTap: () => void = () => {
   };
 
@@ -420,12 +426,27 @@ export struct ImmersiveChip {
     return this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
+  private tintSoft(): string {
+    // 8 位 hex → 把 alpha 段换成 33 的薄染版本
+    return this.chipTint.length >= 9 ? ('#33' + this.chipTint.substring(3)) : this.chipTint;
+  }
+
   private chipColor(): string {
+    if (this.chipTint.length > 0) {
+      return this.chipActive ? this.tintSoft() : this.palette.surface;
+    }
     if (this.materialOn()) {
       // 材质生效时只留一层主题色薄染，颜色优先级低于材质，不会被完全遮住
       return this.chipActive ? this.palette.accentSoft : '#00000000';
     }
     return this.chipActive ? this.palette.accentSoft : this.palette.surface;
+  }
+
+  private chipTextColor(): string {
+    if (this.chipTint.length > 0) {
+      return this.chipActive ? this.chipTint : this.palette.textSecondary;
+    }
+    return this.chipActive ? this.palette.accent : this.palette.textSecondary;
   }
 
   build() {
@@ -444,7 +465,7 @@ export struct ImmersiveChip {
         this.chipPrefix()
         Text(this.chipLabel)
           .fontSize(13)
-          .fontColor(this.chipActive ? this.palette.accent : this.palette.textSecondary)
+          .fontColor(this.chipTextColor())
           .fontWeight(this.chipActive ? FontWeight.Medium : FontWeight.Normal)
       }
       .padding({ left: this.chipPaddingH, right: this.chipPaddingH, top: this.chipPaddingV, bottom: this.chipPaddingV })
