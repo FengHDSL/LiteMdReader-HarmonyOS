@@ -15,6 +15,7 @@ import { ImmersiveInput } from '../material/ImmersiveInput';
 import { SettingsShell } from './SettingsShell';
 import { BackupStore } from '../service/BackupStore';
 import { WebDavConfig, WebDavResult, WebDavStore } from '../service/WebDavStore';
+import { UpdateService } from '../service/UpdateService';
 import { DocMeta, DocStore } from '../service/DocStore';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
@@ -55,9 +56,12 @@ export struct SettingsData {
   @State confirmClearAll: boolean = false;
 
   private palette(): ReaderPalette {
-    // 读一下外观刷新计数，主题色 / 灰字 / 沾色改完**当帧**就能重算
+    // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色改完**当帧**就能重算；
+    // 不登记 themeMode / systemDark 的话主题切换会被 ArkUI 跳过重算（文字变黑）
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private toast(message: string): void {
@@ -110,6 +114,11 @@ export struct SettingsData {
   /** 一键备份：全部文档 + 书架索引 + 批注 + 阅读设置。 */
   private runBackup(): void {
     if (this.backing) {
+      return;
+    }
+    // 基础模式（纯离线）：网络备份不可用（用户要求）
+    if (UpdateService.isOffline()) {
+      this.toast('当前是基础模式（纯离线），网络备份不可用');
       return;
     }
     const c = this.ctx();

@@ -20,6 +20,8 @@ import { util } from '@kit.ArkTS';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { MdParseResult } from '../markdown/MdTypes';
 import { MdParser } from '../markdown/MdParser';
+import { SettingsMirror } from './SettingsMirror';
+import { WritingLog } from './WritingLog';
 
 /** 书架里的一条文档记录 */
 export interface DocMeta {
@@ -56,12 +58,18 @@ export interface DocMeta {
    * 未设置时按「内置教程只读、自建文档可写」兜底（见 isReadOnly）。
    */
   readOnly?: boolean;
+  /** 收藏标记（阅读页信息卡的爱心 / 书架悬浮栏爱心快速查看） */
+  starred?: boolean;
+  /** 收藏时间（毫秒；列表按它倒序，还能显示「收藏日期」） */
+  starredAt?: number;
 }
 
 /** 文件实况信息（信息卡展示用）：磁盘字节数 + 正文 MD5。 */
 export interface DocFileInfo {
   sizeBytes: number;
   md5: string;
+  /** SHA-256（信息卡的「文件哈希」行；算不出时为空串） */
+  sha256: string;
 }
 
 /** 书架文件夹（参考华为笔记的拖拽归组）：只做归组，不移动磁盘文件 */
@@ -125,6 +133,12 @@ export interface DocSearchHit {
   builtin: boolean;
   /** 修改时间，用于结果排序 */
   mtime: number;
+}
+
+/** 文件时间（毫秒；0 = 取不到） */
+export interface DocTimes {
+  created: number;
+  modified: number;
 }
 
 export class DocStore {
@@ -602,8 +616,126 @@ export class DocStore {
     return true;
   }
 
-  private static findFolder(name: string): ShelfFolder | null {
-    for (let k = 0; k < DocStore.folders.length; k++) {
+  /**
+   * 收藏 / 取消收藏（阅读页信息卡右上角爱心、书架爱心列表共用）。
+   * 标记落 shelf.json，正文保存与重命名都会一并搬运（见 update / rename）。
+   */
+  static setStarred(ctx: common.UIAbilityContext, name: string, starred: boolean): boolean {
+    DocStore.init(ctx);
+    const meta: DocMeta | undefined = DocStore.find(ctx, name);
+    if (meta === undefined) {
+      return false;
+    }
+    meta.starred = starred;
+    // 收藏时间：收藏时记下，取消收藏清掉
+    meta.starredAt = starred ? Date.now() : 0;
+    DocStore.persist();
+    // **第二腿持久化**：shelf.json 之外再镜像一份到 settings.json
+    //（真机上出现过重启后收藏丢失——多一条腿更稳）
+    DocStore.syncStarredMirror(ctx);
+    return true;
+  }
+
+  /** 把「收藏名单 + 收藏时间」写进 AppStorage 镜像键（SettingsMirror 会落 settings.json）。 */
+  private static syncStarredMirror(ctx: common.UIAbilityContext): void {
+    const names: string[] = [];
+    const times: number[] = [];
+    for (let k = 0; k < DocStore.docs.length; k++) {
+      const m: DocMeta = DocStore.docs[k];
+      if (m.starred === true) {
+        names.push(m.name);
+        times.push(m.starredAt === undefined ? 0 : m.starredAt);
+      }
+    }
+    AppStorage.setOrCreate('starredDocsJson', JSON.stringify(names));
+    AppStorage.setOrCreate('starredTimesJson', JSON.stringify(times));
+    SettingsMirror.save(ctx);
+  }
+
+  /**
+   * 启动时按镜像恢复收藏标记（shelf.json 丢失 / 被覆盖时的兜底）。
+   * 在 EntryAbility.onCreate 里 SettingsMirror.restore 之后调用。
+   */
+  static applyStarredMirror(ctx: common.UIAbilityContext): void {
+    DocStore.init(ctx);
+    const raw: string | undefined = AppStorage.get<string>('starredDocsJson');
+    if (raw === undefined || raw === null || raw.length === 0) {
+      return;
+    }
+    try {
+      const names: string[] = JSON.parse(raw) as string[];
+      const timesRaw: string | undefined = AppStorage.get<string>('starredTimesJson');
+      const times: number[] = (timesRaw === undefined || timesRaw === null || timesRaw.length === 0)
+        ? [] : JSON.parse(timesRaw) as number[];
+      let changed: boolean = false;
+      for (let k = 0; k < names.length; k++) {
+        const meta: DocMeta | undefined = DocStore.find(ctx, names[k]);
+        if (meta !== undefined && meta.starred !== true) {
+          meta.starred = true;
+          meta.starredAt = k < times.length ? times[k] : 0;
+          changed = true;
+        }
+      }
+      if (changed) {
+        DocStore.persist();
+      }
+    } catch (err) {
+      // 镜像损坏不影响启动
+    }
+  }
+
+  /** 是否已收藏。 */
+  static isStarred(ctx: common.UIAbilityContext, name: string): boolean {
+    DocStore.init(ctx);
+    const meta: DocMeta | undefined = DocStore.find(ctx, name);
+    return meta !== undefined && meta.starred === true;
+  }
+
+  /**
+   * 全部收藏文档。排序（用户要求可调）：
+   *   'starred' = 最近收藏在前（默认）/ 'name' = 按名称 / 'recent' = 按最近打开。
+   */
+  static starredList(ctx: common.UIAbilityContext, sort: string = 'starred'): DocMeta[] {
+    DocStore.init(ctx);
+    const out: DocMeta[] = [];
+    for (let k = 0; k < DocStore.docs.length; k++) {
+      if (DocStore.docs[k].starred === true) {
+        out.push(DocStore.docs[k]);
+      }
+    }
+    const at = (m: DocMeta): number => m.starredAt === undefined ? 0 : m.starredAt;
+    if (sort === 'name') {
+      out.sort((a: DocMeta, b: DocMeta): number => a.name.localeCompare(b.name));
+    } else if (sort === 'recent') {
+      out.sort((a: DocMeta, b: DocMeta): number => b.lastOpen - a.lastOpen);
+    } else {
+      out.sort((a: DocMeta, b: DocMeta): number => at(b) - at(a));
+    }
+    return out;
+  }
+
+  /**
+   * 文件创建 / 修改时间（毫秒）。内置文档没有独立的创建时间，created 返回 0；
+   * 取不到一律返回 0，调用方显示「—」。
+   */
+  static fileTimes(ctx: common.UIAbilityContext, name: string): DocTimes {
+    DocStore.init(ctx);
+    const meta: DocMeta | undefined = DocStore.find(ctx, name);
+    if (meta === undefined) {
+      return { created: 0, modified: 0 } as DocTimes;
+    }
+    if (meta.builtin) {
+      return { created: 0, modified: meta.mtime } as DocTimes;
+    }
+    try {
+      const st: fs.Stat = fs.statSync(DocStore.pathOf(meta.fileName));
+      return { created: st.ctime * 1000, modified: st.mtime * 1000 } as DocTimes;
+    } catch (err) {
+      return { created: 0, modified: meta.mtime } as DocTimes;
+    }
+  }
+
+  private static findFolder(name: string): ShelfFolder | null {    for (let k = 0; k < DocStore.folders.length; k++) {
       if (DocStore.folders[k].name === name) {
         return DocStore.folders[k];
       }
@@ -649,6 +781,11 @@ export class DocStore {
     for (let k = 0; k < DocStore.docs.length; k++) {
       const d: DocMeta = DocStore.docs[k];
       if (d.builtin) {
+        // ⚠️ **builtin 必须保留在 docs 里**：这段过滤的本意是清掉"md 文件已删"的
+        // 用户文档，但之前 builtin 被 continue 排除后，alive.length 永远 ≠ docs.length
+        // → 每次 list() 都把 builtin 从索引剔除并落盘 → **预置文档的封面色 / 只读标记 /
+        // 阅读进度在下次 list 时全部丢失重置**（用户反馈：改封面色退出就重置）。
+        alive.push(d);
         continue;
       }
       if (DocStore.fileExists(DocStore.pathOf(d.fileName))) {
@@ -729,7 +866,21 @@ export class DocStore {
         const v: number = digest.data[k];
         hex += (v < 16 ? '0' : '') + v.toString(16);
       }
-      const info: DocFileInfo = { sizeBytes: bytes.length, md5: hex };
+      // **SHA-256**（信息卡的「文件哈希」行）：与 MD5 一并算出，
+      // 避免同一份文件读两遍
+      let sha: string = '';
+      try {
+        const md256: cryptoFramework.Md = cryptoFramework.createMd('SHA256');
+        md256.updateSync({ data: bytes });
+        const d256: cryptoFramework.DataBlob = md256.digestSync();
+        for (let k = 0; k < d256.data.length; k++) {
+          const v: number = d256.data[k];
+          sha += (v < 16 ? '0' : '') + v.toString(16);
+        }
+      } catch (shaErr) {
+        sha = '';
+      }
+      const info: DocFileInfo = { sizeBytes: bytes.length, md5: hex, sha256: sha };
       return info;
     } catch (err) {
       return null;
@@ -850,9 +1001,12 @@ export class DocStore {
     DocStore.writeFile(DocStore.pathOf(fileName), body);
     const meta: DocMeta = DocStore.buildMeta(name, fileName, body, Date.now());
     DocStore.docs.push(meta);
-    // 新文档插到书架最前（排序由人手排列，追加到末尾会被顶出屏幕外）
-    DocStore.promoteEntry(DocStore.ORDER_DOC + name);
+    // **新文档放到书架最后**（用户要求）：排序改成人手排之后，插到最前会把
+    // 用户排好的顺序整体推后一位（"打乱排序"）。这里不 promote，
+    // normalizeOrder 会把这个新条目追加到顺序表末尾。
     DocStore.persist();
+    // 写作日志：新建也算今天有产出
+    DocStore.noteWriting(ctx);
     return meta;
   }
 
@@ -879,11 +1033,44 @@ export class DocStore {
     rebuilt.coverColor = meta.coverColor;
     rebuilt.coverImage = meta.coverImage;
     rebuilt.hideCoverName = meta.hideCoverName;
+    // 收藏标记同样要跟着走（buildMeta 不认它）；收藏时间一起搬，否则排序会退化
+    rebuilt.starred = meta.starred;
+    rebuilt.starredAt = meta.starredAt;
     // 读写 / 只读标记同样要跟着走，否则保存一次正文就把只读锁丢了
     rebuilt.readOnly = meta.readOnly;
     DocStore.replace(rebuilt);
     DocStore.persist();
+    // **写作日志**：写盘是"今天动过字"的唯一收口，在这里落一条当日快照。
+    // 改内置教程不计入（那是预置内容，不是用户产出）。
+    if (!rebuilt.builtin) {
+      DocStore.noteWriting(ctx);
+    }
     return true;
+  }
+
+  /**
+   * 记一条当日写作快照（供 WritingLog 热力图 / 写作日志页统计）。
+   *
+   * 记的是**自建文档的累计字数**与**自建文档数**：
+   *  - 累计值语义 → 同一天保存多次只覆盖当天那一格，跨天/被杀都不会算错；
+   *  - 区间字数由 WritingLog 用"每日累计值求差"还原成当天实际写了多少。
+   */
+  static noteWriting(ctx: common.UIAbilityContext): void {
+    try {
+      let words: number = 0;
+      let docs: number = 0;
+      for (let k = 0; k < DocStore.docs.length; k++) {
+        const m: DocMeta = DocStore.docs[k];
+        if (m.builtin) {
+          continue;
+        }
+        words += m.wordCount;
+        docs++;
+      }
+      WritingLog.record(ctx, words, docs);
+    } catch (err) {
+      // 统计失败绝不能影响保存正文
+    }
   }
 
   /** 删除文档。内置文档返回 false。 */
@@ -932,6 +1119,9 @@ export class DocStore {
     rebuilt.coverColor = meta.coverColor;
     rebuilt.coverImage = meta.coverImage;
     rebuilt.hideCoverName = meta.hideCoverName;
+    // 收藏标记同样要跟着走（buildMeta 不认它）；收藏时间一起搬，否则排序会退化
+    rebuilt.starred = meta.starred;
+    rebuilt.starredAt = meta.starredAt;
     rebuilt.readOnly = meta.readOnly;
     DocStore.replace(rebuilt);
     // 同步文件夹成员里的旧名字（顺带同步统一排序里的 D| 条目）

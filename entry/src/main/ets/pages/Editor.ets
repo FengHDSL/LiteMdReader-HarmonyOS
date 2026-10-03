@@ -32,7 +32,10 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteFor
+  isDarkTheme,
+  paletteFor,
+  READER_BG_DEFAULT_DARK,
+  READER_BG_DEFAULT_LIGHT
 } from '../theme/DesignTokens';
 import { applySystemBarTheme, applyAppColorMode } from '../service/AppWindow';
 import {
@@ -91,25 +94,37 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1' }
 ];
 
+/**
+ * 语法速查的行定义。
+ *
+ * 每一行的 `syntax` 会被**应用自己的解析器 + 渲染器真实渲染**成效果预览，
+ * 所以这里只放"能正确渲染"的写法（旧版把「无序 + 有序」「表格缺分隔行」
+ * 「```lang 代码块 ```」「![](路径)」这类无效示例塞进一行，预览自然不正常）。
+ *
+ * 语法口径与说明参考来源：younghz/Markdown（https://github.com/younghz/Markdown）
+ * —— 那是流传最广的中文 Markdown 入门教程，本表按它的分类逐项对照，
+ * 并按澄笺支持的范围（含 callout / 脚注 / 公式 / 图表等扩展）做了补充。
+ */
 const SYNTAX_ROWS: SyntaxRow[] = [
-  { syntax: '# 标题', desc: '一到六个 # 表示一到六级标题；也可以用下一行 = / - 的 Setext 写法' },
-  { syntax: '**粗体**   *斜体*   ***粗斜体***', desc: '强调；下划线写法 __粗体__ / _斜体_ 同样支持' },
-  { syntax: '~~删除线~~   ==高亮==', desc: '删除线与高亮标记' },
-  { syntax: '`行内代码`', desc: '反引号包裹，底纹带圆角' },
-  { syntax: '```lang 代码块 ```', desc: '三个反引号围栏，可标语言，右上角有复制按钮' },
-  { syntax: '> 引用', desc: '引用块，左侧主题色竖线；连续 > 表示层级' },
-  { syntax: '> [!NOTE]', desc: '提示块，支持 NOTE / TIP / IMPORTANT / WARNING / CAUTION 五种' },
-  { syntax: '- 无序  1. 有序', desc: '列表；行首缩进两个空格表示嵌套一层' },
-  { syntax: '- [ ] 待办   - [x] 已完成', desc: '任务列表，会渲染成勾选框' },
-  { syntax: '| A | B |', desc: '表格，第二行用 | --- | 分隔；用 :-: 控制列对齐' },
-  { syntax: '---', desc: '分割线，三个及以上的 - * _ 均可' },
-  { syntax: '[文字](链接)', desc: '链接；点击链接会复制地址' },
-  { syntax: '![替代文字](路径)', desc: '图片；网络图（http/https）与本地图片（工具条「插图片」导入）都会真实加载，独立成段的图片显示为图片卡' },
-  { syntax: '[^标签] + [^标签]: 内容', desc: '脚注；引用呈上标，定义在文末成注释卡，阅读页左滑可查看' },
-  { syntax: '\\*转义\\*', desc: '反斜杠转义，让特殊符号按普通文字显示' },
-  { syntax: '行内 HTML', desc: 'v1 不渲染，按纯文本原样显示' },
-  { syntax: '$公式$ 与 $$公式$$', desc: '数学公式常用子集真实渲染：分数 / 上下标 / 根号 / 矩阵 / 希腊字母' },
-  { syntax: '```mermaid 流程图```', desc: 'graph TD/LR 流程图子集真实布局渲染，其余图表按代码块显示' }
+  { syntax: '# 一级标题\n## 二级标题\n### 三级标题', desc: '标题：一到六个 # 表示一到六级；# 后要有空格' },
+  { syntax: '**粗体** 与 *斜体* 与 ***粗斜体***', desc: '强调：两侧各一个 * 是斜体、两个是粗体（_ 写法等价）' },
+  { syntax: '~~删除线~~  与  ==高亮==', desc: '删除线与高亮标记（扩展语法，两个波浪线 / 两个等号）' },
+  { syntax: '`行内代码`', desc: '行内代码：一个反引号包裹，底纹带圆角' },
+  { syntax: '> 区块引用\n>> 嵌套引用', desc: '引用：行首写 > ；连续 >> 表示嵌套一层' },
+  { syntax: '> [!NOTE]\n> 提示块的正文写在这里', desc: '提示块：NOTE / TIP / IMPORTANT / WARNING / CAUTION 五种' },
+  { syntax: '- 第一项\n- 第二项\n  - 缩进两格表示嵌套', desc: '无序列表：- + * 均可，标记后至少一个空格' },
+  { syntax: '1. 第一项\n2. 第二项', desc: '有序列表：数字 + . + 空格' },
+  { syntax: '- [ ] 待办事项\n- [x] 已完成事项', desc: '任务列表：渲染成勾选框，阅读页可直接点选' },
+  { syntax: '| 语法 | 说明 |\n| --- | --- |\n| 表格 | 第二行用 --- 分隔 |', desc: '表格：用 | 分隔单元格，第二行用 --- 分隔表头；用 :-: 控制列对齐' },
+  { syntax: '---', desc: '分割线：三个及以上的 - * _ 均可' },
+  { syntax: '[链接文字](https://www.harmonyos.com)', desc: '链接：行内式 [文字](地址)；点击链接会复制地址' },
+  { syntax: '`![替代文字](图片地址)`', desc: '图片：与链接同理、前面多加一个 !；网络图与本地图（工具条「插图片」）都会真实加载' },
+  { syntax: '`[^1]` 与 `[^1]: 脚注内容`', desc: '脚注：引用呈上标，定义在文末成注释卡，阅读页左滑可查看' },
+  { syntax: '\\*转义\\*', desc: '反斜杠转义：让 * / # / ` 等符号按普通文字显示' },
+  // 公式：**用行内写法做预览**——它走 MathLite 同步自绘，一定能显示；
+  // 块级 $$ 在面板里要挂 Web 渲染（体积大、首帧空白），只放在说明里讲写法
+  { syntax: '行内公式：$a^2 + b^2 = c^2$ 直接写在句子里', desc: '数学公式：行内用一对 $ 包住（开 $ 后不能紧跟空格）；块级单独起一行、用 $$ 包起来。分数 / 上下标 / 根号 / 矩阵 / 希腊字母等常用子集真实渲染' },
+  { syntax: '```mermaid\ngraph TD\n  A[打开澄笺] --> B[开始阅读]\n```', desc: '流程图：graph TD / LR 真实布局渲染，其余图表语言按代码块显示' }
 ];
 
 /** 速查行语法 → 解析后的块缓存（key = syntax 原文） */
@@ -171,7 +186,14 @@ export struct Editor {
   /** 已打开的文档是否为「只读」（标记见 DocStore.isReadOnly）：只读时不允许保存回写 */
   @State docReadOnly: boolean = false;
   @State originalName: string = '';
-  @State dirty: boolean = false;
+  /**
+   * 未保存标记。**用 @StorageLink 而非 @State**：Index 的 NavDestination 需要在
+   * 系统返回手势（onBackPressed）里读到它来拦截"误触退出丢内容"——
+   * AppStorage 是两个组件共享脏状态的通道。写入点与 @State 完全一致，无需改动。
+   */
+  @StorageLink('editorDirty') dirty: boolean = false;
+  /** Index 的返回拦截发来的信号：系统返回手势触发 → 弹"保存/不保存"窗（与顶栏返回同逻辑） */
+  @StorageProp('editorGoBackTick') @Watch('onGoBackTick') goBackTick: number = 0;
   @State preview: boolean = false;
   @State showSyntax: boolean = false;
   /** 画板浮层 */
@@ -441,20 +463,19 @@ export struct Editor {
   }
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**，
+    // 漏判会让编辑器背景 / 系统栏按 systemDark 走，与纸色文字对不上。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   private palette(): ReaderPalette {
-    // 外观刷新计数：主题色 / 灰字 / 沾色在 paletteFor 里读 AppStorage，纯函数读不登记依赖
+    // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、不登记依赖，
+    // 这里不登记的话主题切换会被 ArkUI 跳过重算（文字变黑、退出重进才恢复）
     const tick: number = this.appearanceTick;
     // 羊皮纸 / 护眼绿有独立调色板，必须按主题模式取色，不能只看明暗
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private measureWidth(): number {
@@ -467,9 +488,15 @@ export struct Editor {
     return this.rootWidth > 760 ? HwType.bodyDefault : HwSpace.lg;
   }
 
-  /** 当前主题下的自定义背景色；空串表示用主题默认渐变。 */
+  /**
+   * 自定义阅读背景色；**没选时用固定默认色（与阅读页同一套，不再回退主题渐变）**。
+   * 「阅读背景」完全独立于主题（用户要求），切主题编辑页背景也不变。
+   */
   private pageBackground(): string {
-    return this.isDark() ? this.customBgDark : this.customBgLight;
+    if (this.isDark()) {
+      return this.customBgDark.length > 0 ? this.customBgDark : READER_BG_DEFAULT_DARK;
+    }
+    return this.customBgLight.length > 0 ? this.customBgLight : READER_BG_DEFAULT_LIGHT;
   }
 
   private toast(message: string): void {
@@ -565,6 +592,47 @@ export struct Editor {
     } catch (err) {
       this.toast('无法打开图片选择器');
     }
+  }
+
+  // ══════════════════════ 手写插入 ══════════════════════
+  //
+  // 「手写」进独立页（Pen Kit 官方 HandwriteComponent 画布）；
+  // 完成后 PNG 落 docs/images/，Markdown 片段经 AppStorage 回传，光标处插入。
+  // 双通道触发：@Watch（同 UI 上下文 setOrCreate 会触发）+ 编辑页 onShown tick 兜底。
+
+  /** 进入手写页。push 前清掉上一次的待插入片段（防旧值重复插入）。 */
+  private openSketch(): void {
+    AppStorage.setOrCreate('sketchInsertMd', '');
+    try {
+      if (this.stack !== null) {
+        this.stack.pushPath({ name: 'pages/Sketch' });
+      }
+    } catch (err) {
+      this.toast('无法打开手写页');
+    }
+  }
+
+  /** 待插入的手写片段（Sketch 页写回），非空即在光标处插入并清掉。 */
+  @StorageProp('sketchInsertMd') @Watch('onSketchInsert') sketchInsertMd: string = '';
+  /** 编辑页 onShown tick（Index 转发），兜底检查待插入片段 */
+  @StorageProp('editorShownTick') @Watch('onEditorShownTick') editorShownTick: number = 0;
+
+  /** 吸收待插入的手写片段（两个通道共用，幂等：插入即清键）。 */
+  private absorbSketch(): void {
+    const md: string = AppStorage.get<string>('sketchInsertMd') ?? '';
+    if (md.length > 0) {
+      AppStorage.setOrCreate('sketchInsertMd', '');
+      this.insertRaw(md);
+      this.toast('手写笔记已插入，预览即可查看');
+    }
+  }
+
+  private onSketchInsert(): void {
+    this.absorbSketch();
+  }
+
+  private onEditorShownTick(): void {
+    this.absorbSketch();
   }
 
   // ══════════════════════ 查找 / 替换 / 跳转行 ══════════════════════
@@ -856,6 +924,13 @@ export struct Editor {
     });
   }
 
+  /** Index 的系统返回拦截发来信号（editorGoBackTick 变化）→ 走与顶栏返回相同的弹窗逻辑。 */
+  private onGoBackTick(): void {
+    if (this.goBackTick > 0) {
+      this.goBack();
+    }
+  }
+
   private togglePreview(): void {
     if (!this.preview) {
       try {
@@ -1007,9 +1082,9 @@ export struct Editor {
     this.updateChipFade();
   }
 
-  /** 芯片总数（插图片 + SNIPPETS；画一画已删除）。 */
+  /** 芯片总数（手写 + 插图片 + SNIPPETS）。 */
   private chipCount(): number {
-    return 1 + SNIPPETS.length;
+    return 2 + SNIPPETS.length;
   }
 
   /**
@@ -1053,7 +1128,27 @@ export struct Editor {
     ImmersiveBar({ palette: this.palette(), barPaddingH: 0, barPaddingV: 4, barHeight: HwBar.pill }) {
       Scroll(this.barScroller) {
         Row({ space: HwSpace.xs }) {
-        // （画一画入口已删除：手写/画板功能以后重做）
+        // **手写**（用户要求）：进入独立手写页（Pen Kit 官方 HandwriteComponent 画布），
+        // 完成后 PNG 落进 docs/images/、Markdown 片段经 AppStorage 传回，光标处插入
+        Column() {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '手写',
+            chipOnTap: () => {
+              this.openSketch();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.paintbrush'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+          }
+        }
+        .opacity(this.chipAlphaAt(0))
+        .blur(this.chipBlurAt(0))
+        .onAreaChange((oldValue: Area, newValue: Area) => {
+          this.rememberChipGeo(0, newValue);
+        })
+
         // 插入图片：从系统选择器选图，复制进文档图片目录后插入相对引用
         // 注意：ImmersiveChip 带**尾随闭包**，闭包之后不能再链式属性（编译错误），
         // 淡出用的 opacity/blur/onAreaChange 挂在外层包装容器上
@@ -1070,10 +1165,10 @@ export struct Editor {
               .fontColor([this.palette().accent])
           }
         }
-        .opacity(this.chipAlphaAt(0))
-        .blur(this.chipBlurAt(0))
+        .opacity(this.chipAlphaAt(1))
+        .blur(this.chipBlurAt(1))
         .onAreaChange((oldValue: Area, newValue: Area) => {
-          this.rememberChipGeo(0, newValue);
+          this.rememberChipGeo(1, newValue);
         })
 
         ForEach(SNIPPETS, (item: MdSnippet, index: number) => {
@@ -1084,10 +1179,10 @@ export struct Editor {
               this.insertSnippet(item);
             }
           })
-          .opacity(this.chipAlphaAt(index + 1))
-          .blur(this.chipBlurAt(index + 1))
+          .opacity(this.chipAlphaAt(index + 2))
+          .blur(this.chipBlurAt(index + 2))
           .onAreaChange((oldValue: Area, newValue: Area) => {
-            this.rememberChipGeo(index + 1, newValue);
+            this.rememberChipGeo(index + 2, newValue);
           })
         }, (item: MdSnippet) => item.key)
       }
@@ -1170,155 +1265,221 @@ export struct Editor {
     return out;
   }
 
-  /** 版本历史面板：自动保存设置 + 快照列表 / 对比视图（挂在内层 Row 的 bindSheet 上）。 */
+  /** 版本历史面板：自动保存设置 + 快照列表 / **分屏对比视图**（挂在内层 Row 的 bindSheet 上）。 */
   @Builder
   versionsSheet() {
-    Scroll() {
+    if (this.diffFor < 0) {
+      // ── 快照列表（竖向滚动）──
+      Scroll() {
       Column({ space: HwSpace.md }) {
-        if (this.diffFor < 0) {
-          // ── 自动保存设置 ──
+        // ── 自动保存设置 ──
+        Row({ space: HwSpace.sm }) {
+          Column({ space: 2 }) {
+            Text('自动保存版本')
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+            Text('按下面的间隔记录快照，内容没变化不重复记')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start)
+
+          Toggle({ type: ToggleType.Switch, isOn: this.versionAutoSave })
+            .onChange((isOn: boolean) => {
+              this.versionAutoSave = isOn;
+            })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        if (this.versionAutoSave) {
+          Row({ space: HwSpace.xs }) {
+            Text('间隔')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: this.versionInterval === 1,
+              chipLabel: '1 分钟',
+              chipOnTap: () => {
+                this.versionInterval = 1;
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: this.versionInterval === 5,
+              chipLabel: '5 分钟',
+              chipOnTap: () => {
+                this.versionInterval = 5;
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: this.versionInterval === 10,
+              chipLabel: '10 分钟',
+              chipOnTap: () => {
+                this.versionInterval = 10;
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: this.versionInterval === 30,
+              chipLabel: '30 分钟',
+              chipOnTap: () => {
+                this.versionInterval = 30;
+              }
+            })
+          }
+          .width('100%')
+        }
+
+        Divider().strokeWidth(1).color(this.palette().divider)
+
+        if (this.versionList.length === 0) {
+          Text('还没有快照。手动保存或自动保存后会出现在这里')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+        }
+        ForEach(this.versionList, (v: VersionSnapshot) => {
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
-              Text('自动保存版本')
+              Text(this.versionTime(v.ts))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('按下面的间隔记录快照，内容没变化不重复记')
+              Text(this.versionMeta(v.ts))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
 
-            Toggle({ type: ToggleType.Switch, isOn: this.versionAutoSave })
-              .onChange((isOn: boolean) => {
-                this.versionAutoSave = isOn;
-              })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          if (this.versionAutoSave) {
-            Row({ space: HwSpace.xs }) {
-              Text('间隔')
-                .fontSize(HwType.caption)
-                .fontColor(this.palette().textTertiary)
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.versionInterval === 1,
-                chipLabel: '1 分钟',
-                chipOnTap: () => {
-                  this.versionInterval = 1;
-                }
-              })
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.versionInterval === 5,
-                chipLabel: '5 分钟',
-                chipOnTap: () => {
-                  this.versionInterval = 5;
-                }
-              })
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.versionInterval === 10,
-                chipLabel: '10 分钟',
-                chipOnTap: () => {
-                  this.versionInterval = 10;
-                }
-              })
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.versionInterval === 30,
-                chipLabel: '30 分钟',
-                chipOnTap: () => {
-                  this.versionInterval = 30;
-                }
-              })
-            }
-            .width('100%')
-          }
-
-          Divider().strokeWidth(1).color(this.palette().divider)
-
-          if (this.versionList.length === 0) {
-            Text('还没有快照。手动保存或自动保存后会出现在这里')
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-          }
-          ForEach(this.versionList, (v: VersionSnapshot) => {
-            Row({ space: HwSpace.sm }) {
-              Column({ space: 2 }) {
-                Text(this.versionTime(v.ts))
-                  .fontSize(HwType.label + 1)
-                  .fontColor(this.palette().textPrimary)
-                Text(v.chars + ' 字')
-                  .fontSize(HwType.caption)
-                  .fontColor(this.palette().textTertiary)
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
-
-              ImmersiveChip({
-                palette: this.palette(),
-                chipLabel: '对比',
-                chipOnTap: () => {
-                  this.startDiff(v.ts);
-                }
-              })
-              ImmersiveChip({
-                palette: this.palette(),
-                chipLabel: '恢复',
-                chipOnTap: () => {
-                  this.restoreVersion(v.ts);
-                }
-              })
-            }
-            .width('100%')
-            .padding({ top: HwSpace.xs, bottom: HwSpace.xs })
-          }, (v: VersionSnapshot) => 'v' + v.ts)
-        } else {
-          // ── 对比视图：旧快照 vs 当前内容 ──
-          Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '返回列表',
+              chipLabel: '对比',
               chipOnTap: () => {
-                this.diffFor = -1;
+                this.startDiff(v.ts);
               }
             })
-            Text('红色 = 旧版独有 · 绿色 = 当前独有')
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textTertiary)
-              .layoutWeight(1)
-              .textAlign(TextAlign.End)
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: '恢复',
+              chipOnTap: () => {
+                this.restoreVersion(v.ts);
+              }
+            })
           }
           .width('100%')
-
-          ForEach(this.diffRows, (r: DiffRow, index: number) => {
-            Row({ space: HwSpace.xs }) {
-              Text(r.tag === 'del' ? '−' : (r.tag === 'add' ? '+' : ' '))
-                .fontSize(HwType.caption)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(r.tag === 'del' ? '#FFD93B3B' : (r.tag === 'add' ? '#FF2E7D4F' : this.palette().textTertiary))
-                .width(14)
-                .textAlign(TextAlign.Center)
-              Text(r.text.length > 0 ? r.text : ' ')
-                .fontSize(HwType.caption)
-                .fontColor(r.tag === 'same' ? this.palette().textSecondary : this.palette().textPrimary)
-                .layoutWeight(1)
-            }
-            .width('100%')
-            .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 3, bottom: 3 })
-            .borderRadius(HwRadius.inner)
-            .backgroundColor(r.tag === 'del' ? '#1AD93B3B' : (r.tag === 'add' ? '#1A2E7D4F' : '#00000000'))
-            .alignItems(VerticalAlign.Top)
-          }, (r: DiffRow, index: number) => 'd' + index + '_' + r.tag)
-        }
+          .padding({ top: HwSpace.xs, bottom: HwSpace.xs })
+        }, (v: VersionSnapshot) => 'v' + v.ts)
       }
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.lg })
       .alignItems(HorizontalAlign.Start)
+      }
+      .scrollBar(BarState.Off)
+      .width('100%')
+      .height('100%')
+      .align(Alignment.Top)
+    } else {
+      // ── 对比视图（**恢复单栏**，用户要求）：旧快照 vs 当前内容，一行一行带红绿标记 ──
+      // ⚠️ 必须有外层 Scroll + Column 包裹：@Builder 多根并列在 bindSheet 里渲染为空白（踩过）
+      Scroll() {
+      Column({ space: HwSpace.xs }) {
+      Row({ space: HwSpace.xs }) {
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '返回列表',
+          chipOnTap: () => {
+            this.diffFor = -1;
+          }
+        })
+        Text('红色 = 旧版独有 · 绿色 = 当前独有')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .layoutWeight(1)
+          .textAlign(TextAlign.End)
+      }
+      .width('100%')
+
+      ForEach(this.diffRows, (r: DiffRow, index: number) => {
+        Row({ space: HwSpace.xs }) {
+          Text(r.tag === 'del' ? '−' : (r.tag === 'add' ? '+' : ' '))
+            .fontSize(HwType.caption)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(r.tag === 'del' ? '#FFD93B3B' : (r.tag === 'add' ? '#FF2E7D4F' : this.palette().textTertiary))
+            .width(14)
+            .textAlign(TextAlign.Center)
+          Text(r.text.length > 0 ? r.text : ' ')
+            .fontSize(HwType.caption)
+            .fontColor(r.tag === 'same' ? this.palette().textSecondary : this.palette().textPrimary)
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 3, bottom: 3 })
+        .borderRadius(HwRadius.inner)
+        .backgroundColor(r.tag === 'del' ? '#1AD93B3B' : (r.tag === 'add' ? '#1A2E7D4F' : '#00000000'))
+        .alignItems(VerticalAlign.Top)
+      }, (r: DiffRow, index: number) => 'd' + index + '_' + r.tag)
+      }
+      .width('100%')
+      .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.lg })
+      .alignItems(HorizontalAlign.Start)
+      }
+      .scrollBar(BarState.Off)
+      .width('100%')
+      .height('100%')
+      .align(Alignment.Top)
+    }
+  }
+
+  /** 快照条目的副标题：N 字 + 相对上一条（更旧的）快照的行数增减。 */
+  private versionMeta(ts: number): string {
+    let out: string = '';
+    let cur: VersionSnapshot | null = null;
+    let older: VersionSnapshot | null = null;
+    for (let k = 0; k < this.versionList.length; k++) {
+      if (this.versionList[k].ts === ts) {
+        cur = this.versionList[k];
+        if (k + 1 < this.versionList.length) {
+          older = this.versionList[k + 1];
+        }
+        break;
+      }
+    }
+    if (cur !== null) {
+      out += cur.chars + ' 字';
+    }
+    if (cur !== null && older !== null) {
+      const curLines: number = cur.content.split('\n').length;
+      const olderLines: number = older.content.split('\n').length;
+      const delta: number = curLines - olderLines;
+      if (delta > 0) {
+        out += ' · +' + delta + ' 行';
+      } else if (delta < 0) {
+        out += ' · −' + (-delta) + ' 行';
+      }
+    }
+    return out;
+  }
+
+  /** bindSheet 的内容包装：语法速查整页滚动。
+   *  **左右内边距 + 底部留白**：之前内容铺满整宽，卡片直接贴到屏幕边缘
+   *  （用户反馈）；底部留白避免最后一张卡被手势条 / 面板圆角压住。 */
+  @Builder
+  syntaxSheet() {
+    Scroll() {
+      Column() {
+        this.syntaxPanel()
+      }
+      .width('100%')
+      .padding({
+        left: HwSpace.lg,
+        right: HwSpace.lg,
+        top: HwSpace.sm,
+        bottom: HwSpace.xl
+      })
     }
     .scrollBar(BarState.Off)
     .width('100%')
@@ -1326,21 +1487,29 @@ export struct Editor {
     .align(Alignment.Top)
   }
 
-  /** bindSheet 的内容包装：语法速查整页滚动。 */
-  @Builder
-  syntaxSheet() {
-    Scroll() {
-      this.syntaxPanel()
-    }
-    .scrollBar(BarState.Off)
-    .width('100%')
-    .height('100%')
-  }
-
   @Builder
   syntaxPanel() {
     // 标题栏由 ModalSheet 官方标题区提供，这里只输出语法行内容。
     Column({ space: HwSpace.md }) {
+        // **操作提示放在内容里**：官方标题栏的副标题在手机端只有一行、
+        // 长句会被截断（用户反馈「看不到全部内容」）——这里完整显示。
+        Text('点任意一行即可插入到光标位置；末尾的「语法教程」有完整示例。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .lineHeight(HwType.caption * 1.6)
+          .width('100%')
+
+        // 语法口径与示例说明的参考来源（用户要求注明）
+        Text('语法分类与说明参考：younghz/Markdown（github.com/younghz/Markdown），' +
+          '并按澄笺支持的范围补充了提示块 / 脚注 / 公式 / 图表等扩展语法。')
+          .fontSize(HwType.caption - 0.5)
+          .fontColor(this.palette().textTertiary)
+          .lineHeight(HwType.caption * 1.6)
+          .width('100%')
+          .padding(HwSpace.xs)
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().quoteBg)
+
         ForEach(SYNTAX_ROWS, (row: SyntaxRow, index: number) => {
           Column({ space: HwSpace.xxs }) {
             Text(row.syntax)
@@ -1899,7 +2068,7 @@ export struct Editor {
     // + 官方标题栏 / 关闭按钮 / 拖拽条，内部滚动）
     .bindSheet(this.showSyntax, this.syntaxSheet(), modalSheetOptions({
       title: 'Markdown 语法速查',
-      subtitle: '点任意一行即可插入到光标位置；右下角「语法教程」有完整示例',
+      subtitle: '点任意一行即可插入到光标位置',
       surface: this.palette().surface,
       // 竖屏（含平板竖屏）按手机形态出底部面板；平板竖屏宽度收一半
       phoneLayout: this.rootWidth <= this.rootHeight,

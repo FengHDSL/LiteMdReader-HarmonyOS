@@ -47,6 +47,7 @@ import { MathLite, MathSeg } from './MathLite';
 import { FlowChartView } from './FlowChart';
 import { DiagramWeb } from '../components/DiagramWeb';
 import { ChartCache } from '../service/ChartCache';
+import { UpdateService } from '../service/UpdateService';
 import { common } from '@kit.AbilityKit';
 import {
   CodeFamily,
@@ -512,8 +513,18 @@ export struct MdBlockView {
   @Prop dark: boolean = false;
   /** 当前文档的全部批注。按 blockId 过滤后才参与本块渲染。 */
   @Prop annotations: MdAnnotation[] = [];
+  /** 处于"系统选择模式"的块 id（该块恢复系统原生长按菜单）；空串 = 无 */
+  @Prop systemSelectId: string = '';
+  /** 最近一次点选的批注色索引（色板点击时记录） */
+  @State lastAnnoColor: number = 0;
+  /** 点正文退出系统选择模式（宿主清掉 systemSelectId） */
+  sysSelectExit: (blockId: string) => void = (_id: string) => {};
+  /** 进入某块的系统选择模式（宿主记 systemSelectId 并 toast 提示） */
+  sysSelectEnter: (blockId: string) => void = (_id: string) => {};
   /** 当前搜索关键词。非空时命中片段会加底色。 */
   @Prop searchQuery: string = '';
+  /** 加载失败的图表缓存 key（Image onError 记入 → 回落 DiagramWeb 实时渲染） */
+  @State brokenCharts: string[] = [];
   @State copied: boolean = false;
   /** 当前选区（相对本块渲染文本的偏移），由 onTextSelectionChange 给出 */
   @State selStart: number = -1;
@@ -525,7 +536,13 @@ export struct MdBlockView {
   // ── 排版设置（AppStorage 全局键，编辑页预览同样生效） ──
   @StorageProp('readerFontFamily') fontKey: string = '';
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
-  @StorageProp('readerIndent') indentOn: boolean = false;
+  /**
+   * 首行缩进（由**宿主以 @Prop 传入**）。
+   * 之前这里读的是 `@StorageProp('readerIndent')`——本工程真机上 AppStorage
+   * 被别处改写后子组件不保证回刷，缩进开关点了没反应（用户反馈）。
+   * 改为宿主（阅读页）把自己的 @StorageLink 值传下来，属性管道是可靠的。
+   */
+  @Prop indentOn: boolean = false;
   /** 荧光笔透明度 0.2~1：只缩放批注底纹的 alpha，不影响搜索命中与语法底纹 */
   @StorageProp('hlOpacity') hlOpacity: number = 1;
   /** 沉浸光感开关（已强制开启）：批注菜单那层浮窗外壳据此决定让不让出底色 */
@@ -676,10 +693,17 @@ export struct MdBlockView {
   }
 
   /** 图片地址 → Image 可用的源。按 href 缓存，避免每次渲染都查磁盘。 */
+  /**
+   * 图片地址解析 + **基础模式（纯离线）拦截**：
+   * 离线模式下网络图片（http/https）一律不加载，直接显示占位提示
+   * （用户要求：基础模式不联网，插入的网络图片会无法加载）。
+   */
   private resolvedImageSrc(href: string): string {
     if (href !== this.imgCacheHref) {
       this.imgCacheHref = href;
-      this.imgCacheSrc = DocStore.resolveImagePath(href);
+      const offline: boolean = UpdateService.isOffline();
+      const isNet: boolean = href.startsWith('http://') || href.startsWith('https://');
+      this.imgCacheSrc = (offline && isNet) ? '' : DocStore.resolveImagePath(href);
     }
     return this.imgCacheSrc;
   }
@@ -687,6 +711,14 @@ export struct MdBlockView {
   /** 当前块的图片是否处于加载失败态（仅对同一地址生效）。 */
   private isImgFailed(href: string): boolean {
     return this.imgFailed && this.imgFailedHref === href;
+  }
+
+  /** 基础模式下被拦下的网络图片（用于占位文案）。 */
+  private isOfflineNetImage(href: string): boolean {
+    if (!UpdateService.isOffline()) {
+      return false;
+    }
+    return href.startsWith('http://') || href.startsWith('https://');
   }
 
   @Builder
@@ -700,7 +732,9 @@ export struct MdBlockView {
       }) {
         Column({ space: HwSpace.xs }) {
           if (this.resolvedImageSrc(this.blockHref()).length === 0 || this.isImgFailed(this.blockHref())) {
-            this.imageFallback(this.isImgFailed(this.blockHref()) ? '图片加载失败' : '找不到本地图片文件')
+            this.imageFallback(this.isOfflineNetImage(this.blockHref())
+              ? '基础模式（纯离线）下不加载网络图片'
+              : (this.isImgFailed(this.blockHref()) ? '图片加载失败' : '找不到本地图片文件'))
           } else {
             Image(this.resolvedImageSrc(this.blockHref()))
               .width('100%')
@@ -790,6 +824,20 @@ export struct MdBlockView {
    */
   @Builder
   richTextSel(size: number, baseColor: string, lineMul: number, align: TextAlign, firstIndent: boolean) {
+    if (this.systemSelectId === this.block.id) {
+      // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
+      // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
+      Text(this.block.plain) {
+      }
+      .fontSize(size)
+      .fontColor(baseColor)
+      .lineHeight(size * lineMul)
+      .textAlign(align)
+      .fontFamily(HwFont.resolve(this.fontKey))
+      .textIndent(firstIndent ? Math.round(size * 2) : 0)
+      .width('100%')
+      .copyOption(CopyOptions.LocalDevice)
+    } else {
     Text() {
       ForEach(this.pieces(), (piece: MdPiece) => {
         Span(piece.text)
@@ -801,6 +849,11 @@ export struct MdBlockView {
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
           .onClick(() => {
+            if (this.systemSelectId === this.block.id) {
+              // 系统选择模式下点正文 = 退出该模式，恢复自定义批注菜单
+              this.sysSelectExit(this.block.id);
+              return;
+            }
             if (piece.kind !== MdInlineKind.Link) {
               return;
             }
@@ -831,6 +884,7 @@ export struct MdBlockView {
       this.selEnd = end;
     })
     .bindSelectionMenu(TextSpanType.TEXT, this.annotateMenu(), TextResponseType.LONG_PRESS)
+    }
   }
 
   /**
@@ -897,44 +951,55 @@ export struct MdBlockView {
       ImmersiveCardLayer({ layerRadius: 24, layerShadow: true })
 
       Scroll() {
-        Row({ space: HwSpace.xs }) {
-          ForEach(ANNOTATION_COLORS, (item: AnnotationColor, index: number) => {
-            Column()
-              .width(22)
-              .height(22)
-              .borderRadius(11)
-              .backgroundColor(item.light)
-              .border({ width: 1, color: '#33000000' })
-              .onClick(() => {
-                this.emitAnnotation('highlight', index);
-              })
-          }, (item: AnnotationColor, index: number) => 'sw' + index)
+        Column({ space: 4 }) {
+          Row({ space: HwSpace.xs }) {
+            ForEach(ANNOTATION_COLORS, (item: AnnotationColor, index: number) => {
+              Column()
+                .width(22)
+                .height(22)
+                .borderRadius(11)
+                .backgroundColor(item.light)
+                .border({ width: 1, color: '#33000000' })
+                .onClick(() => {
+                  // 色点 = 荧光笔；同时记下颜色，供「框选」等无色板入口复用
+                  this.lastAnnoColor = index;
+                  this.emitAnnotation('highlight', index);
+                })
+            }, (item: AnnotationColor, index: number) => 'sw' + index)
 
-          this.menuAction('批注', () => {
-            this.emitAnnotation('note', -1);
-          })
+            this.menuAction('批注', () => {
+              this.emitAnnotation('note', -1);
+            })
 
-          // 波浪线：与荧光笔、文字批注并列的第三种标注形态（画在字下方）
-          this.menuAction('波浪线', () => {
-            this.emitAnnotation('wavy', 0);
-          })
+            // 波浪线：与荧光笔、文字批注并列的第三种标注形态（画在字下方）
+            this.menuAction('波浪线', () => {
+              this.emitAnnotation('wavy', 0);
+            })
 
-          this.menuAction('复制', () => {
-            const start: number = this.selStart;
-            const end: number = this.selEnd;
-            if (start >= 0 && end > start) {
-              this.copyText(this.selectedText(start, end), '已复制所选文字');
-            } else {
-              this.copyText(this.block.plain, '已复制整段');
-            }
-          })
+            // 系统选择（用户要求）：恢复系统原生长按菜单，方便复制 / 翻译 / 唤起小艺
+            this.menuAction('系统选择', () => {
+              this.sysSelectExit('');
+              this.sysSelectEnter(this.block.id);
+            })
 
-          this.menuAction('清除', () => {
-            this.emitAnnotation('remove', -1);
-          })
+            this.menuAction('复制', () => {
+              const start: number = this.selStart;
+              const end: number = this.selEnd;
+              if (start >= 0 && end > start) {
+                this.copyText(this.selectedText(start, end), '已复制所选文字');
+              } else {
+                this.copyText(this.block.plain, '已复制整段');
+              }
+            })
+
+            this.menuAction('清除', () => {
+              this.emitAnnotation('remove', -1);
+            })
+          }
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 7, bottom: 7 })
+          .alignItems(VerticalAlign.Center)
         }
-        .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 7, bottom: 7 })
-        .alignItems(VerticalAlign.Center)
+        .alignItems(HorizontalAlign.Start)
       }
       // Scroll 只要滚动能力：**不能给它铺底色**，否则会盖住下面那层材质；
       // 圆形裁切：内容超出胶囊时按胶囊圆角裁掉（而不是直角切过"清除"字样）
@@ -943,7 +1008,8 @@ export struct MdBlockView {
       .borderRadius(24)
       .clip(true)
     }
-    .height(48)
+    // **高度自适应**（框选色板展开时两行）：minHeight 保证单行时仍是 48 的胶囊观感
+    .constraintSize({ minHeight: 48 })
     .borderRadius(24)
     // **宽度上限 = 本块宽度 + 页边距**：超出就在胶囊内横向滚动，
     // 整条菜单不会被系统摆到屏幕外（右缘裁切问题的根治）
@@ -1354,16 +1420,29 @@ export struct MdBlockView {
   }
 
   /**
-   * 图表缓存图路径（无缓存返回空串）。命中时正文与导出直接用 Image 呈现
-   * （后台预渲染池负责补齐缓存），不再挂 Web——快照也终于能捕获图表。
+   * 图表缓存图路径（无缓存或**已知加载失败**返回空串）。
+   * 失败的缓存（写坏 / 半截文件）会让 Image 静默空白且不回落 ——
+   * onError 时把 key 记进 brokenCharts，之后走 DiagramWeb 实时渲染兜底，
+   * 否则坏缓存会一直"加载不出来"且重启也无效（缓存是持久文件）。
    */
   private chartImagePath(mode: string): string {
+    const key: string = ChartCache.keyFor(mode, this.block.code, this.dark);
+    if (this.brokenCharts.indexOf(key) >= 0) {
+      return '';
+    }
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
       return '';
     }
-    const key: string = ChartCache.keyFor(mode, this.block.code, this.dark);
     return ChartCache.path(c as common.UIAbilityContext, key);
+  }
+
+  /** Image 加载失败：把该缓存 key 标记为坏，触发回落 DiagramWeb。 */
+  private markChartBroken(mode: string): void {
+    const key: string = ChartCache.keyFor(mode, this.block.code, this.dark);
+    if (this.brokenCharts.indexOf(key) < 0) {
+      this.brokenCharts = this.brokenCharts.concat([key]);
+    }
   }
 
   @Builder
@@ -1379,6 +1458,9 @@ export struct MdBlockView {
           .width('100%')
           .objectFit(ImageFit.Contain)
           .borderRadius(HwRadius.inner)
+          .onError(() => {
+            this.markChartBroken('katex');
+          })
       }
       .width('100%')
     } else {
@@ -1424,6 +1506,9 @@ export struct MdBlockView {
           .width('100%')
           .objectFit(ImageFit.Contain)
           .borderRadius(HwRadius.inner)
+          .onError(() => {
+            this.markChartBroken(this.block.lang.toLowerCase());
+          })
       }
       .width('100%')
     } else {

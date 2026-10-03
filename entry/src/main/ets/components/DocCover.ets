@@ -77,6 +77,11 @@ export struct DocCover {
   @Prop coverImage: string = '';
   /** 封面上不显示文档名（图片封面常用） */
   @Prop hideName: boolean = false;
+  /**
+   * 格式角标：'MD' / 'TXT'（应用同时支持两种文件，用户要求默认封面带一个淡淡的格式字）。
+   * 与 coverBadge 同行显示，透明度更低（"淡淡的"）。
+   */
+  @Prop formatLabel: string = '';
 
   /** 底色：自定义色优先，其次调用方给的哈希配色 */
   private topColor(): string {
@@ -117,17 +122,18 @@ export struct DocCover {
           .draggable(false)
       }
 
-      // 左侧书脊：一道竖向暗线 + 高光，造出「书」的体积感
+      // 左侧书脊：**胶装条**（用户要求更明显的装订效果）——
+      // 一条竖向深色压痕带 + 右缘一道高光线，模拟封面胶装时的书脊贴合力；
       // （用图片封面时书脊减淡，避免把照片压暗）
       Column()
-        .width(7)
+        .width(10)
         .height('100%')
         .linearGradient({
           angle: 0,
-          colors: [['#26000000', 0.0], ['#0D000000', 0.35], ['#33FFFFFF', 1.0]]
+          colors: [['#59000000', 0.0], ['#33000000', 0.4], ['#00000000', 0.82], ['#59FFFFFF', 1.0]]
         })
         .borderRadius({ topLeft: 5, bottomLeft: 5 })
-        .opacity(this.coverImage.length > 0 ? 0.35 : 1)
+        .opacity(this.coverImage.length > 0 ? 0.4 : 1)
 
       // 沉浸光感层：铺在纸面与书脊之上、文字之下——
       // 玻璃质感盖住封面画料，标题仍保持清晰（文字在玻璃之上）
@@ -167,10 +173,13 @@ export struct DocCover {
 
           Blank()
 
-          Text(this.coverBadge)
+          Text(this.formatLabel.length > 0
+            ? (this.coverBadge + ' · ' + this.formatLabel)
+            : this.coverBadge)
             .fontSize(9)
             .fontColor(this.inkColor())
-            .opacity(0.5)
+            // 格式字要"淡淡的"：整体透明度再压一档
+            .opacity(this.formatLabel.length > 0 ? 0.38 : 0.5)
             .maxLines(1)
         }
         .width('100%')

@@ -13,6 +13,9 @@ import { ImmersiveCard, ImmersiveChip, ImmersiveIconButton } from '../material/I
 import { SettingsShell } from './SettingsShell';
 import { webview } from '@kit.ArkWeb';
 import { LegalDoc } from './LegalDoc';
+import { UpdateService, APP_MODE_OFFLINE } from '../service/UpdateService';
+import { AppModeDialog } from '../components/AppModeDialog';
+import { SettingsMirror } from '../service/SettingsMirror';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
 import { promptAction } from '@kit.ArkUI';
@@ -87,18 +90,46 @@ export struct SettingsExplore {
   private legalCtrlPrivacy: webview.WebviewController = new webview.WebviewController();
   private legalCtrlTerms: webview.WebviewController = new webview.WebviewController();
 
-  /** **全屏覆盖层**（从下往上滑出，用户要求）：是否展示法务文档 */
+  /** 全屏覆盖层（从下往上滑出，用户要求）：是否展示法务文档 */
   @State coverShow: boolean = false;
   /** 覆盖层正在展示的法务文档：'privacy' / 'terms' */
   @State coverDoc: string = 'privacy';
+  /** 使用模式（'' 未选择 / 'full' 全量 / 'offline' 基础离线）
+   *  用 @StorageLink：弹窗选择后按钮文案与颜色**当帧**更新（@StorageProp 不保证回刷） */
+  @StorageLink('appMode') appMode: string = '';
+  /** 使用模式弹窗（可重新选择） */
+  @State modeTitle: string = '重新选择使用模式';
+  @State modeCurrent: string = '';
+  modeDialog: CustomDialogController = new CustomDialogController({
+    builder: AppModeDialog({
+      titleText: $modeTitle,
+      currentMode: $modeCurrent,
+      onPick: (mode: string) => {
+        AppStorage.setOrCreate('appMode', mode);
+        // 第二腿落盘（PersistentStorage 在部分设备不真正落盘）
+        SettingsMirror.save(this.hostCtx());
+        this.toast(mode === APP_MODE_OFFLINE ? '已切换为基础模式（纯离线）' : '已切换为全量模式');
+      }
+    }),
+    autoCancel: false,
+    customStyle: true
+  });
 
   /**
    * 打开法务文档：
    *  · **默认：全屏覆盖层，从下往上滑出**（bindContentCover + DEFAULT 转场，用户要求）；
    *  · 平板分栏嵌入模式（embedded）：在当前卡片内展开 Web，不全屏弹出。
    */
-  private openLegal(doc: string): void {
-    if (this.embedded) {
+  /** 取应用上下文（写设置镜像用）。 */
+  private hostCtx(): common.UIAbilityContext | null {
+    const c = this.getUIContext().getHostContext();
+    if (c === undefined || c === null) {
+      return null;
+    }
+    return c as common.UIAbilityContext;
+  }
+
+  private openLegal(doc: string): void {    if (this.embedded) {
       if (this.legalDoc !== doc) {
         this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
           this.legalDoc = doc;
@@ -143,9 +174,12 @@ export struct SettingsExplore {
   }
 
   private palette(): ReaderPalette {
-    // 读一下外观刷新计数，主题色 / 灰字 / 沾色改完**当帧**就能重算
+    // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色改完**当帧**就能重算；
+    // 不登记 themeMode / systemDark 的话主题切换会被 ArkUI 跳过重算（文字变黑）
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private toast(message: string): void {
@@ -186,6 +220,11 @@ export struct SettingsExplore {
   /** 检查更新：8 秒超时保护 + 重复点击忽略（网络不通时给明确提示，不一直转圈）。 */
   private checkUpdate(): void {
     if (this.checkingUpdate) {
+      return;
+    }
+    // 基础模式（纯离线）：一切联网能力关停
+    if (UpdateService.isOffline()) {
+      this.toast('当前是基础模式（纯离线），检查更新不可用');
       return;
     }
     this.checkingUpdate = true;
@@ -324,11 +363,11 @@ export struct SettingsExplore {
             .border({ width: 0.8, color: this.palette().divider })
 
             Column({ space: 2 }) {
-              Text('澄笺')
+              Text('澄笺·ChéngJiān')
                 .fontSize(HwType.label + 6)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
-              Text('版本 ' + this.versionName + ' · 项目代号 LiteMdReader · HarmonyOS 原生')
+              Text('版本 ' + this.versionName + ' · HarmonyOS 原生')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -440,6 +479,32 @@ export struct SettingsExplore {
               chipOnTap: () => {
                 this.openLegal('terms');
               }
+            })
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+
+          // ── 使用模式（用户要求：放在隐私政策 / 用户协议**下方**，可重新选择）──
+          // **@StorageLink**：弹窗里写完 appMode 立刻回刷按钮文案与配色
+          //（@StorageProp 在本工程真机上存在不回刷的情况——见 memory）
+          Row({ space: HwSpace.xs }) {
+            Row({ space: 6 }) {
+              SymbolGlyph(this.appMode === APP_MODE_OFFLINE
+                ? $r('sys.symbol.wifi_slash') : $r('sys.symbol.checkmark_circle'))
+                .fontSize(14)
+                .fontColor(['#FFFFFFFF'])
+              Text('使用模式：' + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'))
+                .fontSize(HwType.label)
+                .fontColor('#FFFFFFFF')
+            }
+            .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+            .borderRadius(HwRadius.pill)
+            // 全量 = 绿色，基础 = 蓝色（用户要求）
+            .backgroundColor(this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53')
+            .onClick(() => {
+              this.modeTitle = '重新选择使用模式';
+              this.modeCurrent = this.appMode;
+              this.modeDialog.open();
             })
           }
           .width('100%')

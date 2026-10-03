@@ -169,11 +169,9 @@ export struct GenWallpaper {
    * 设置页等"内容为主"的页面用（用户要求：设置页不要那两个圆）。
    */
   @Prop plain: boolean = false;
-  /** 光斑缓慢漂移：无限往复，两团时长不同 → 相位错开 */
-  @State driftAX: number = 0;
-  @State driftAY: number = 0;
-  @State driftBX: number = 0;
-  @State driftBY: number = 0;
+  /** 光斑绕屏心公转的角度（两团转速不同 → 相位错开） */
+  @State orbitA: number = 0;
+  @State orbitB: number = 0;
   /** 光斑呼吸：透明度往复（两团节奏不同 → 错相淡入淡出） */
   @State glowPulseA: number = 0;
   @State glowPulseB: number = 0;
@@ -187,19 +185,23 @@ export struct GenWallpaper {
   @StorageProp('wallpaperCustomB') @Watch('onCustomChanged') customColorB: string = '#E8EDF4';
 
   aboutToAppear(): void {
+    // **光斑绕屏心公转**（用户要求：光点随着大圆旋转）：
+    // 全屏透明容器绕屏心无限旋转，光斑偏心放在容器里 → 沿大圆轨道公转。
+    // ⚠️ **轨道半径要够大（中心距屏心约 28% 屏宽）、周期要够短（36s/52s）**——
+    // 半径 10% + 90s 的组合在 blur(70) 的大光斑下完全看不出来（用户反馈"没看出有动"）。
+    // 两团转速不同（36s / 52s）、方向相反 → 永远错开。
+    // Linear 无往复：转满 360° 从头再来，无缝循环。
     this.getUIContext().animateTo({
-      duration: 16000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 36000, curve: Curve.Linear, iterations: -1
     }, () => {
-      this.driftAX = 54;
-      this.driftAY = 38;
+      this.orbitA = 360;
     });
     this.getUIContext().animateTo({
-      duration: 21000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 52000, curve: Curve.Linear, iterations: -1
     }, () => {
-      this.driftBX = -46;
-      this.driftBY = -52;
+      this.orbitB = -360;
     });
-    // 光斑呼吸（淡入淡出）：与漂移错相，9s / 11s 两团各自往复
+    // 光斑呼吸（淡入淡出）：与公转叠加，9s / 11s 两团各自往复
     this.getUIContext().animateTo({
       duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
     }, () => {
@@ -242,41 +244,64 @@ export struct GenWallpaper {
         })
 
       // 左上暖光（plain 模式不画：设置页等内容为主的地方不要两个圆）。
-      // **径向渐变 + 呼吸透明度**（用户要求：渐变模糊淡入淡出）——
-      // 光斑从中心向边缘渐隐，透明度随 glowPulse 往复。
+      // **公转结构**：全屏透明容器绕屏心无限旋转（orbitA/orbitB），
+      // 光斑中心放在**距屏心约 12~19% 屏宽**的偏心位置 → 沿小半径大圆轨道公转，
+      // **始终在屏内**（之前 position 让光斑中心在屏外，一转就转出屏幕看不见）。
+      // **径向渐变 + 呼吸透明度**：光斑从中心向边缘渐隐，透明度随 glowPulse 往复。
       if (!this.plain) {
-      Column()
-        .width('72%')
-        .aspectRatio(1)
-        .borderRadius('50%')
-        .radialGradient({
-          center: ['50%', '50%'],
-          radius: 62,
-          colors: [['#B4' + this.def().glowA.substring(1), 0.0],
-            ['#4D' + this.def().glowA.substring(1), 0.55],
-            ['#00000000', 1.0]]
-        })
-        .opacity((this.darkMode ? 0.20 : 0.34) + this.glowPulseA * 0.14)
-        .blur(70)
-        .position({ x: '-16%', y: '-8%' })
-        .translate({ x: this.driftAX, y: this.driftAY })
+      Stack()
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.None)
+        .rotate({
+          x: 0, y: 0, z: 1,
+          angle: this.orbitA,
+          centerX: '50%', centerY: '50%'
+        }) {
+          Column()
+            .width('72%')
+            .aspectRatio(1)
+            .borderRadius('50%')
+            .radialGradient({
+              center: ['50%', '50%'],
+              radius: 62,
+              colors: [['#B4' + this.def().glowA.substring(1), 0.0],
+                ['#4D' + this.def().glowA.substring(1), 0.55],
+                ['#00000000', 1.0]]
+            })
+            .opacity((this.darkMode ? 0.20 : 0.34) + this.glowPulseA * 0.14)
+            .blur(70)
+            // 光斑 72% 宽 → 中心在 (x+36%, y+36%)；取 (30%, 30%) 距屏心约 28%，
+            // 公转半径大、移动量可见；光斑外缘偶出屏但屏心恒被光晕覆盖
+            .position({ x: '-6%', y: '-6%' })
+        }
 
-      // 右下冷光
-      Column()
-        .width('78%')
-        .aspectRatio(1)
-        .borderRadius('50%')
-        .radialGradient({
-          center: ['50%', '50%'],
-          radius: 62,
-          colors: [['#B4' + this.def().glowB.substring(1), 0.0],
-            ['#4D' + this.def().glowB.substring(1), 0.55],
-            ['#00000000', 1.0]]
-        })
-        .opacity((this.darkMode ? 0.16 : 0.30) + this.glowPulseB * 0.12)
-        .blur(80)
-        .position({ x: '46%', y: '58%' })
-        .translate({ x: this.driftBX, y: this.driftBY })
+      // 右下冷光（反向公转：130s 一圈，轨道半径约 15%）
+      Stack()
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.None)
+        .rotate({
+          x: 0, y: 0, z: 1,
+          angle: this.orbitB,
+          centerX: '50%', centerY: '50%'
+        }) {
+          Column()
+            .width('78%')
+            .aspectRatio(1)
+            .borderRadius('50%')
+            .radialGradient({
+              center: ['50%', '50%'],
+              radius: 62,
+              colors: [['#B4' + this.def().glowB.substring(1), 0.0],
+                ['#4D' + this.def().glowB.substring(1), 0.55],
+                ['#00000000', 1.0]]
+            })
+            .opacity((this.darkMode ? 0.16 : 0.30) + this.glowPulseB * 0.12)
+            .blur(80)
+            // 光斑 78% 宽 → 中心在 (x+39%, y+39%)；取 (70%, 70%) 距屏心约 28%，反向公转
+            .position({ x: '31%', y: '31%' })
+        }
       }
 
       // 细纹：等距细线（宣纸纤维 / 竹影竖纹的抽象）

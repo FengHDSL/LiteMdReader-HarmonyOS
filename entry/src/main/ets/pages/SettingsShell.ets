@@ -18,7 +18,16 @@ import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
-import { HwBar, HwRadius, HwSpace, HwType, ReaderPalette, ReaderThemeMode, paletteFor } from '../theme/DesignTokens';
+import {
+  HwBar,
+  HwRadius,
+  HwSpace,
+  HwType,
+  ReaderPalette,
+  ReaderThemeMode,
+  isDarkTheme,
+  paletteFor
+} from '../theme/DesignTokens';
 
 /**
  * 4 个设置子页共用的外壳。
@@ -93,13 +102,29 @@ export struct SettingsShell {
     syncSystemDarkFromContext();
     this.applyThemeChange();
     applySystemBarTheme(this.isDark());
-    // 延后一帧挂内容：转场动画跑在"空内容"的页面上，避免掉帧（用户反馈切二级页卡顿）
+    // 延后一帧挂内容：转场动画跑在"空内容"的页面上，避免掉帧（用户反馈切二级页卡顿）。
+    // **加重试兜底**（大屏 / 平板横屏下转场更重，32ms 的一次性置位偶发竞争失败 →
+    // 内容永远不挂载，页面空白 —— 写作日志在大屏横屏"打不开"的嫌疑根因）：
+    // 之后 500ms 内每 100ms 再置位一次，幂等无害，任何时序下都能挂上。
     setTimeout(() => {
       this.contentReady = true;
     }, 32);
+    let contentRetries: number = 0;
+    const contentRetry: number = setInterval(() => {
+      this.contentReady = true;
+      contentRetries++;
+      if (contentRetries >= 5) {
+        clearInterval(contentRetry);
+      }
+    }, 100);
     this.life.onShow = () => {
       syncSystemDarkFromContext();
       this.applyThemeChange();
+      // **contentReady 双保险**：大屏 / 平板横屏下转场与 32ms 延迟的时序竞争
+      // 偶发内容未挂载（写作日志打开空白的嫌疑之一），页面再次可见时兜底置位
+      if (!this.contentReady) {
+        this.contentReady = true;
+      }
       startThemeWatchdog(() => {
         this.applyThemeChange();
         applySystemBarTheme(this.isDark());
@@ -112,21 +137,22 @@ export struct SettingsShell {
   }
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**。
+    // 之前这里只判 Dark / Light，两档纸色会掉到 systemDark → 系统深色时本壳把背景
+    // （GenWallpaper darkMode / 遮罩 / 自定义背景色档）按深色压黑，而内容层仍取浅色系深绿字，
+    // 结果黑底浅字完全看不清（用户截图：护眼绿芯片高亮、整页纯黑）。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   /** 外观刷新计数：主题色 / 灰字 / 沾色这类派生色改完后，页面靠它重算（见 SettingsMirror） */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   private palette(): ReaderPalette {
-    // 读一下计数：纯函数 paletteFor 里读 AppStorage 不登记依赖，必须在这里登记
+    // 三个来源都要显式读一遍落成局部常量：纯函数 paletteFor 里读 AppStorage 不登记依赖，
+    // 这里不登记 themeMode / systemDark 的话主题切换会被 ArkUI 跳过重算（文字变黑）
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private padTop(): number {

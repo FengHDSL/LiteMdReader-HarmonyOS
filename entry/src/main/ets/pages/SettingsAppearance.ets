@@ -15,7 +15,7 @@
  * 键名不要再改（历史键保留兼容解析）。
  */
 import { NavLifecycle } from '../service/NavLifecycle';
-import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
+import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip } from '../material/ImmersiveCard';
 import { ImmersiveInput } from '../material/ImmersiveInput';
 import { SettingsShell } from './SettingsShell';
 import { applySystemBarTheme, applyAppColorMode } from '../service/AppWindow';
@@ -202,10 +202,12 @@ export struct SettingsAppearance {
   }
 
   private palette(): ReaderPalette {
-    // 外观刷新计数：主题色 / 灰字 / 沾色是在 paletteFor 里读 AppStorage 的
-    // （纯函数读不登记依赖），这里读一下计数，派生色改完**当帧**就能重算
+    // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色是在 paletteFor 里读
+    // AppStorage 的（纯函数读不登记依赖），这里不登记的话主题切换会被 ArkUI 跳过重算
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   /**
@@ -307,19 +309,45 @@ export struct SettingsAppearance {
   }
 
   /**
-   * 一套灰体文本配置块（深色 / 浅色各用一次）：
-   * 标题 + 五个模式芯片（自动 / 灰 / 黑 / 白 / 自定义）+ 自定义色输入。
-   * 三个回调分别把结果写回对应模式的键，并广播一次刷新。
+   * 一套灰体文本配置块（深色 / 浅色各用一次）。
+   *
+   * **注意（重要）**：这里不再把 mode / color / draft 当参数传进来——
+   * ArkTS 的 @Builder **按值传参不随参数变化刷新**，之前点模式芯片时
+   * "颜色变了但芯片高亮没变、选自定义也不出现输入框"就是这个原因。
+   * 现在两个主题各一个 builder，内部直接读对应的 @StorageLink / @State。
    */
   @Builder
-  grayBlock(title: string, mode: string, color: string, draft: string,
-    onDraft: (v: string) => void, onMode: (m: string) => void, onColor: (c: string) => void) {
+  grayBlockLight() {
+    this.grayBlockBody('浅色模式', true)
+  }
+
+  @Builder
+  grayBlockDark() {
+    this.grayBlockBody('深色模式', false)
+  }
+
+  /** 配置块主体：`light=true` 读浅色主题的键，false 读深色主题的键。 */
+  private grayModeOf(light: boolean): string {
+    return light ? this.grayModeLight : this.grayModeDark;
+  }
+
+  private grayColorOf(light: boolean): string {
+    return light ? this.grayColorLight : this.grayColorDark;
+  }
+
+  private grayDraftOf(light: boolean): string {
+    return light ? this.grayDraftLight : this.grayDraftDark;
+  }
+
+  @Builder
+  grayBlockBody(title: string, light: boolean) {
     Row() {
       Text(title)
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
-      Text(mode === 'auto' ? '自动' : (color.length > 0 ? color : ''))
+      Text(this.grayModeOf(light) === 'auto' ? '自动'
+        : (this.grayColorOf(light).length > 0 ? this.grayColorOf(light) : ''))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
     }
@@ -332,9 +360,10 @@ export struct SettingsAppearance {
           ImmersiveChip({
             palette: this.palette(),
             chipLabel: item.name,
-            chipActive: mode === item.value,
+            // 高亮读数在 builder 体内 → 点击后当帧刷新（按值传参才会滞后）
+            chipActive: this.grayModeOf(light) === item.value,
             chipOnTap: () => {
-              onMode(item.value);
+              this.applyGrayMode(light, item.value);
               if (item.value !== 'custom') {
                 this.toast(title + '灰体文本：' + item.name);
               }
@@ -346,14 +375,19 @@ export struct SettingsAppearance {
     }
     .width('100%')
 
-    if (mode === 'custom') {
+    if (this.grayModeOf(light) === 'custom') {
       Row({ space: HwSpace.xs }) {
         ImmersiveInput({
           palette: this.palette(),
-          text: draft.length > 0 ? draft : color,
+          text: this.grayDraftOf(light).length > 0
+            ? this.grayDraftOf(light) : this.grayColorOf(light),
           placeholder: '自定义 #RRGGBB',
           onInput: (value: string) => {
-            onDraft(value);
+            if (light) {
+              this.grayDraftLight = value;
+            } else {
+              this.grayDraftDark = value;
+            }
           }
         })
         .layoutWeight(1)
@@ -362,19 +396,55 @@ export struct SettingsAppearance {
           chipActive: true,
           chipLabel: '应用',
           chipOnTap: () => {
-            const norm: string = normalizeHex8(draft);
+            const norm: string = normalizeHex8(this.grayDraftOf(light));
             if (norm.length === 0) {
               this.toast('格式：#RRGGBB，例如 #9AA0A6');
               return;
             }
-            onColor('#' + norm.substring(3));
+            if (light) {
+              this.grayColorLight = '#' + norm.substring(3);
+            } else {
+              this.grayColorDark = '#' + norm.substring(3);
+            }
+            this.broadcastAppearance();
             this.toast(title + '灰体色已生效');
           }
         })
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
+      // **滑出 / 滑回**（照搬本地项目 xjau 的写法）：进场自上滑入、退场向上滑回，
+      // 曲线用 Friction（阻尼感，收放不生硬）；之前只有淡入淡出、且曲线偏硬。
+      .transition(TransitionEffect.asymmetric(
+        TransitionEffect.OPACITY
+          .combine(TransitionEffect.translate({ y: -12 }))
+          .animation({ duration: 280, curve: Curve.Friction }),
+        TransitionEffect.OPACITY
+          .combine(TransitionEffect.translate({ y: -10 }))
+          .animation({ duration: 220, curve: Curve.Friction })
+      ))
     }
+  }
+
+  /**
+   * 写入对应主题的灰体模式并广播刷新。
+   *
+   * **整体包在 animateTo 里**：切到「自定义」时输入框是条件挂载的，
+   * 只有把状态变更放进动画上下文，**外层卡片的高度**才会跟着输入框一起
+   * 平滑伸展 / 收回；否则子行在动画、卡片却"啪"地跳一下（用户反馈）。
+   */
+  private applyGrayMode(light: boolean, mode: string): void {
+    this.getUIContext().animateTo({ duration: 260, curve: Curve.Friction }, () => {
+      if (light) {
+        this.grayModeLight = mode;
+      } else {
+        this.grayModeDark = mode;
+      }
+      // 旧键（grayTextMode）同步为 auto：它只在「新键为空」时才参与解析，
+      // 但老安装里可能是手动设过的值，留着会盖住新键的效果。
+      this.grayMode = 'auto';
+    });
+    this.broadcastAppearance();
   }
 
   build() {
@@ -387,14 +457,15 @@ export struct SettingsAppearance {
       // ── ⓪ 主题模式（深色模式开关）──
       // 与「阅读调整 → 主题」的五档是同一个键（readerThemeMode），
       // 这里给一个最常用的快捷开关：深色 on/off + 跟随系统。
-      Text('主题模式')
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.palette().textSecondary)
-        .width('100%')
-
+      // **标题放进卡片内**（用户要求：卡片外的「主题模式」等文本移入各自卡片）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
+          Text('主题模式')
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
           Row() {
             Column({ space: 2 }) {
               Text('深色模式')
@@ -437,13 +508,7 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── ① 主题色 ──
-      Text('主题色')
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.palette().textSecondary)
-        .width('100%')
-
+      // ── ① 主题色（标题已在卡片内，删掉卡片外这一份——用户要求）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
           Text('主题色')
@@ -565,14 +630,15 @@ export struct SettingsAppearance {
       }
 
       // ── ② 应用壁纸（图库选图 / 澄笺程序化款 / 模糊 / 遮罩 / 取消蒙版）──
-      Text('应用壁纸')
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.palette().textSecondary)
-        .width('100%')
-
+      // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
+          Text('应用壁纸')
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
           // **深浅色分别记忆壁纸**：先选要编辑的模式，再选图
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
@@ -840,14 +906,15 @@ export struct SettingsAppearance {
       // 「沉浸光感」开关按需求**取消**：材质强制开启（EntryAbility 每次启动置回 true），
       // 「材质类型 / 等级 / 玻璃通透程度 / 卡片降级样式」也一律不再暴露。
       // 这里保留的是真正会被用户感知的三项观感开关（语义照搬 xjau 的外观设置）。
-      Text('卡片与流光')
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.palette().textSecondary)
-        .width('100%')
-
+      // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
+          Text('卡片与流光')
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
           // 卡片沾色：卡片底色混入 10% 主题色（含材质之上的薄染层）
           Row() {
             Column({ space: 2 }) {
@@ -915,55 +982,28 @@ export struct SettingsAppearance {
       // ── ⑤ 灰体文本显示增强 ──
       // 把「次级 / 三级」灰字统一换掉：壁纸很花、或深色主题下灰字发灰看不清时很管用。
       // 生效路径：DesignTokens.paletteFor 里的 grayTextOverride()（全应用统一）。
-      Text('灰体文本显示增强')
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.palette().textSecondary)
-        .width('100%')
-
+      // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
+          Text('灰体文本显示增强')
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
           Text('把说明文字、时间、占位提示这类灰字统一改成选定颜色')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
-          // ── 深色模式用什么颜色 ──
-          this.grayBlock('深色模式', this.grayModeDark, this.grayColorDark,
-            this.grayDraftDark,
-            (v: string): void => {
-              this.grayDraftDark = v;
-            },
-            (m: string): void => {
-              // 两套新键一起写：旧键（grayTextMode）留着做兼容解析，
-              // 若不同步，老安装升级后旧值会盖住新值。
-              this.grayModeDark = m;
-              this.grayMode = 'auto';
-              this.broadcastAppearance();
-            },
-            (c: string): void => {
-              this.grayColorDark = c;
-              this.broadcastAppearance();
-            })
+          // ── 深色模式用什么颜色（读数在 builder 体内，切换当帧刷新）──
+          this.grayBlockDark()
 
           // ── 浅色模式用什么颜色 ──
-          this.grayBlock('浅色模式', this.grayModeLight, this.grayColorLight,
-            this.grayDraftLight,
-            (v: string): void => {
-              this.grayDraftLight = v;
-            },
-            (m: string): void => {
-              this.grayModeLight = m;
-              this.grayMode = 'auto';
-              this.broadcastAppearance();
-            },
-            (c: string): void => {
-              this.grayColorLight = c;
-              this.broadcastAppearance();
-            })
+          this.grayBlockLight()
 
-          Text('默认「自动」＝跟随主题原本的灰字；深浅两套各设各的，互不影响。' +
-            '「黑 / 白」是字面色（选白就是白），已在深色主题下想用深色字请选「黑」配合浅色主题。')
+          Text('默认「自动」＝有背景亮度信息时按对比度选色、否则跟随主题原本的灰字；' +
+            '深浅两套各设各的，互不影响。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -977,17 +1017,28 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── 恢复默认（红色按钮，用户要求）──
-      Button('恢复默认外观')
-        .width('100%')
-        .height(40)
-        .fontSize(HwType.label + 1)
-        .fontColor('#FFFFFFFF')
-        .backgroundColor('#D93025')
-        .borderRadius(HwRadius.pill)
-        .onClick(() => {
-          this.restoreDefaults();
-        })
+      // ── 恢复默认（红色按钮，用户要求）＋ 沉浸光感 ──
+      Stack({ alignContent: Alignment.Center }) {
+        Column()
+          .width('100%')
+          .height(40)
+          .borderRadius(HwRadius.pill)
+          .backgroundColor('#D93025')
+          .hitTestBehavior(HitTestMode.None)
+
+        ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: true })
+
+        Text('恢复默认外观')
+          .fontSize(HwType.label + 1)
+          .fontColor('#FFFFFFFF')
+      }
+      .width('100%')
+      .height(40)
+      .borderRadius(HwRadius.pill)
+      .clip(true)
+      .onClick(() => {
+        this.restoreDefaults();
+      })
     }
   }
 }

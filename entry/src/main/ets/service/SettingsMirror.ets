@@ -46,6 +46,8 @@ export class SettingsMirror {
     'readerFontFamily', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
     'readerKeepScreenOn', 'readerBrightness', 'readerCustomBgLight', 'readerCustomBgDark',
     'readerTabBarAtBottom',
+    // 大屏 / 平板横屏专属：侧边栏「默认展开」偏好
+    'readerTocPinnedDefault', 'readerNotesPinnedDefault',
     'hlOpacity', 'waveThickness',
     // 壁纸 / 阅读背景
     'wallpaperPath', 'wallpaperPathLight', 'wallpaperPathDark',
@@ -60,7 +62,11 @@ export class SettingsMirror {
     // 版本历史（自动保存与间隔）
     'versionAutoSave', 'versionAutoSaveInterval',
     // 自定义函数壁纸
-    'wallpaperCustomFunc', 'wallpaperCustomA', 'wallpaperCustomB'
+    'wallpaperCustomFunc', 'wallpaperCustomA', 'wallpaperCustomB',
+    // **一次性标记与收藏名单**（第一腿 PersistentStorage 在真机强杀后不一定落盘，
+    // 这三项必须有第二腿：设置页首启弹窗 / 更新弹窗 / 48h 自动检查 / 收藏恢复）
+    'appMode', 'lastSeenVersion', 'lastAutoCheckAt',
+    'starredDocsJson', 'starredTimesJson'
   ];
 
   private static pathOf(ctx: common.UIAbilityContext): string {

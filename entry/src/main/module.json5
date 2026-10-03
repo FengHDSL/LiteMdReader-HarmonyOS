@@ -58,6 +58,27 @@
             "actions": [
               "ohos.want.action.home"
             ]
+          },
+          // ── 关联 .md 文件（用户要求）：文件管理器长按 .md →「打开方式」出现澄笺 ──
+          // linkFeature: "FileOpen" 大小写敏感；type 用 text/markdown，
+          // 若真机把 .md 识别为 text/plain，需再补一条 type: "text/plain" 的 uris。
+          {
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "type": "text/markdown",
+                "linkFeature": "FileOpen"
+              },
+              // ── 关联 .txt（用户要求）──
+              {
+                "scheme": "file",
+                "type": "text/plain",
+                "linkFeature": "FileOpen"
+              }
+            ]
           }
         ]
       }

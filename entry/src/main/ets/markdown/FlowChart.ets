@@ -193,7 +193,8 @@ export class FlowParser {
 export struct FlowChartView {
   @Prop lines: string[] = [];
   @Prop bodySize: number = 14;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
 
   private graph: FlowGraph = { direction: 'TD', nodes: [], edges: [], ok: false };
   private parsed: boolean = false;

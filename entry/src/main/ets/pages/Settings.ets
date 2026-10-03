@@ -19,6 +19,7 @@ import { SettingsShell } from './SettingsShell';
 import { SettingsAppearance } from './SettingsAppearance';
 import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
+import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
 import { DocStore } from '../service/DocStore';
 import { bundleManager, common } from '@kit.AbilityKit';
@@ -30,6 +31,7 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
+  isDarkTheme,
   paletteFor
 } from '../theme/DesignTokens';
 
@@ -42,19 +44,24 @@ interface SectionItem {
 
 const SECTIONS: SectionItem[] = [
   {
+    name: '写作日志',
+    route: 'pages/SettingsWriting',
+    note: '每天写了多少字 · 一年热力图'
+  },
+  {
     name: '外观设置',
     route: 'pages/SettingsAppearance',
     note: '主题色 · 应用壁纸 · 卡片与流光'
   },
   {
-    name: '数据管理',
-    route: 'pages/SettingsData',
-    note: 'zip / WebDAV 备份恢复 · 书架数据 · 缓存'
-  },
-  {
     name: '阅读调整',
     route: 'pages/SettingsReading',
     note: '排版 · 主题 · 批注 · 阅读背景 · 显示'
+  },
+  {
+    name: '数据管理',
+    route: 'pages/SettingsData',
+    note: 'zip / WebDAV 备份恢复 · 书架数据 · 缓存'
   },
   {
     name: '探索中心',
@@ -85,13 +92,26 @@ export struct Settings {
   @State rootW: number = 0;
   /** 本页实测高度（横竖屏判定：仅横屏启用分栏） */
   @State rootH: number = 0;
-  /** 平板分栏时右栏正在显示的板块路由；空串 = 未选择 */
-  @State inlineSection: string = '';
+  /**
+   * 平板分栏时右栏正在显示的板块路由；空串 = 未选择。
+   * **用 @StorageLink 而非 @State**：旋转收栈时 Index 需要把被弹子页的板块名
+   * 写回来（右栏接上用户正在看的板块）——AppStorage 是两边的共享通道。
+   */
+  @StorageLink('settingsInlineSection') inlineSection: string = '';
+  /** 进入设置页时的导航栈深（写进 AppStorage 供 Index 在子页侧读取收栈） */
+  @State stackDepthAtOpen: number = 0;
+  /** 应用版本号（loadVersion 从资源/包信息读取） */
   @State versionName: string = '1.0.0';
 
   aboutToAppear(): void {
     this.refresh();
     this.loadVersion();
+    // 上报进入设置页时的栈深：宽屏切换时 Index 在子页侧据此收栈
+    //（主页被 NavDestination 盖住收不到尺寸回调，必须由可见的子页侧触发）
+    if (this.stack !== null) {
+      this.stackDepthAtOpen = this.stack.size();
+      AppStorage.setOrCreate('settingsStackDepth', this.stack.size());
+    }
     this.life.onShow = () => {
       this.refresh();
     };
@@ -142,21 +162,20 @@ export struct Settings {
   }
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**，
+    // 漏判会让本页背景 / 系统栏按 systemDark 走，与纸色文字对不上。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   /** 外观刷新计数：主题色 / 灰字 / 沾色这类派生色改完后，页面靠它重算（见 SettingsMirror） */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   private palette(): ReaderPalette {
-    // 读一下计数：纯函数 paletteFor 里读 AppStorage 不登记依赖，必须在这里登记
+    // 三个来源都要显式读一遍落成局部常量：纯函数 paletteFor 里读 AppStorage 不登记依赖，
+    // 这里不登记的话主题切换会被 ArkUI 跳过重算（文字变黑、退出重进才恢复）
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private toast(message: string): void {
@@ -244,6 +263,13 @@ export struct Settings {
         if (typeof h === 'number' && h > 0) {
           this.rootH = h;
         }
+        // **宽转窄**（用户要求）：横屏分栏打开的板块，旋转到竖屏应进入该板块的独立页，
+        // 而不是回到设置主页。push 后清 inlineSection 防重复。
+        if (!this.isWide() && this.inlineSection.length > 0 && this.stack !== null) {
+          const route: string = this.inlineSection;
+          this.inlineSection = '';
+          this.stack.pushPath({ name: route });
+        }
       })
     } else {
       Column() {
@@ -259,6 +285,13 @@ export struct Settings {
         const h: Length = newValue.height;
         if (typeof h === 'number' && h > 0) {
           this.rootH = h;
+        }
+        // **宽转窄**（同上，窄屏分支）：平板横屏分栏打开板块后旋转到竖屏，
+        // 主页此时可见，由这里把分栏板块转入独立页。
+        if (!this.isWide() && this.inlineSection.length > 0 && this.stack !== null) {
+          const route2: string = this.inlineSection;
+          this.inlineSection = '';
+          this.stack.pushPath({ name: route2 });
         }
       })
     }
@@ -314,7 +347,9 @@ export struct Settings {
     // ForEach 按 route 建键：**切换板块时整页强制重建**，
     // 避免 if 链在同一槽位复用组件导致"切不过去"
     ForEach([this.inlineSection], (route: string) => {
-      if (route === 'pages/SettingsAppearance') {
+      if (route === 'pages/SettingsWriting') {
+        SettingsWriting({ stack: this.stack })
+      } else if (route === 'pages/SettingsAppearance') {
         SettingsAppearance({ stack: this.stack })
       } else if (route === 'pages/SettingsData') {
         SettingsData({ stack: this.stack })
@@ -353,7 +388,7 @@ export struct Settings {
             .border({ width: 0.8, color: this.palette().divider })
 
             Column({ space: 2 }) {
-              Text('澄笺')
+              Text('澄笺·ChéngJiān')
                 .fontSize(HwType.label + 4)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -366,13 +401,6 @@ export struct Settings {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
-
-          Text(this.docCount > 0
-            ? '书架上有 ' + this.docCount + ' 篇自建文档 · 共 ' + this.totalWords + ' 字'
-            : '书架还没有自建文档，回书架新建一篇试试')
-            .fontSize(HwType.caption)
-            .fontColor(this.palette().textSecondary)
-            .width('100%')
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

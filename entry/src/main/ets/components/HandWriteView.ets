@@ -24,7 +24,8 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteOf
+  isDarkTheme,
+  paletteFor
 } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveCard, ImmersiveIconButton } from '../material/ImmersiveCard';
 import GlobalUIAbilityContext from '../util/ContextConfig';
@@ -79,17 +80,14 @@ export struct HandWriteView {
   private pendingHasFile: boolean = false;
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme（纸色两档跟随 systemDark，各自调色板有深浅孪生款）
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   private palette(): ReaderPalette {
-    return paletteOf(this.isDark());
+    // 走 paletteFor：羊皮纸 / 护眼绿在系统深色下要用它们的**深色孪生款**，
+    // paletteOf 只给纯深/浅两套，会丢掉纸色底。
+    return paletteFor(this.themeMode, this.systemDark);
   }
 
   private ctx(): common.UIAbilityContext | null {

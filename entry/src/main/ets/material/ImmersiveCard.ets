@@ -141,8 +141,17 @@ export struct ImmersiveCard {
    * 属于"没设置却被改了外观"。与 paletteFor 里沾色分支的判定口径保持一致。
    */
   @StorageProp('themeColor') themeColorKey: string = '';
-  /** 调色板由调用方传入，避免组件内部重复读全局态 */
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /**
+   * 调色板由调用方传入，避免组件内部重复读全局态。
+   *
+   * ⚠️ **必须加 `@Prop`**：不加的话它是普通成员变量，ArkUI 只在**组件创建时**赋值一次，
+   * 之后父组件重渲染传进来的新调色板**不会更新**（`@Prop` 才是"父变子跟着变"）。
+   * 本工程 5 个沉浸组件（Card / IconButton / Chip / SheetPanel / Bar）都踩过这个坑：
+   * 切羊皮纸/护眼绿后，芯片与按钮里的文字仍是旧配色（深色下发灰、浅色下发白），
+   * 表现为"文字颜色不对、按钮看不清"——而页面其它用 palette() 直取的节点是对的，
+   * 于是形成"局部错、整体对"的怪现象。
+   */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** 点击回调 */
   cardOnTap: () => void = () => {
   };
@@ -347,7 +356,8 @@ export struct ImmersiveIconButton {
   /** 是否保留材质投影。小尺寸按钮建议 false */
   @Prop buttonMaterialShadow: boolean = true;
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   buttonOnTap: () => void = () => {
   };
 
@@ -394,7 +404,8 @@ export struct ImmersiveChip {
   @Prop chipPaddingV: number = 6;
   @Prop chipActive: boolean = false;
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   chipLabel: string = '';
   chipOnTap: () => void = () => {
   };
@@ -461,8 +472,16 @@ export struct ImmersiveSheetPanel {
   @Prop panelWidth: Length = '100%';
   @Prop panelHeight: Length = '100%';
   @Prop panelScrollable: boolean = true;
+  /**
+   * 侧边栏是否使用沉浸光感（用户可在阅读页「更多」里关闭）。
+   * 关闭后不走材质承载层，底色改用 `panelPlainColor`（阅读背景同色）。
+   */
+  @StorageProp('drawerImmersive') drawerImmersive: boolean = true;
+  /** 关闭沉浸光感时的面板底色（空串 = 回落 palette.surface）。 */
+  @Prop panelPlainColor: string = '';
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
 
   @Builder
   doNothing() {
@@ -471,7 +490,7 @@ export struct ImmersiveSheetPanel {
   @BuilderParam panelContent: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {
@@ -480,11 +499,15 @@ export struct ImmersiveSheetPanel {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(this.panelRadius)
-        .backgroundColor(this.materialOn() ? '#00000000' : this.palette.surface)
+        .backgroundColor(this.materialOn() ? '#00000000'
+          : (this.panelPlainColor.length > 0 ? this.panelPlainColor : this.palette.surface))
         .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
         .hitTestBehavior(HitTestMode.None)
 
-      ImmersiveCardLayer({ layerRadius: this.panelRadius, layerShadow: true })
+      // 关闭沉浸光感时不挂材质承载层（纯色面板）
+      if (this.materialOn()) {
+        ImmersiveCardLayer({ layerRadius: this.panelRadius, layerShadow: true })
+      }
 
       if (this.panelScrollable) {
         // **Scroll 绝对不能设 hitTestBehavior(HitTestMode.None)。**
@@ -546,7 +569,8 @@ export struct ImmersiveBar {
   /** 胶囊定高。0 = 自适应；顶栏/底栏随滚动折叠时必须给确定值（HwBar.pill），否则高度过渡没有动画。 */
   @Prop barHeight: number = 0;
   @StorageProp("immersiveLightEnabled") immersiveOn: boolean = true;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
    * 胶囊宽度。必须是 **@Prop**：普通成员不会随父组件状态变化而更新。
    * 顶/底栏「原地横向收缩」就是让这个值在整幅与胶囊宽之间插值——

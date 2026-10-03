@@ -11,6 +11,7 @@
 
 import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveBar, ImmersiveIconButton } from '../material/ImmersiveCard';
+import { PageBackdrop } from '../components/PageBackdrop';
 import { webview } from '@kit.ArkWeb';
 import {
   HwBar,
@@ -19,6 +20,7 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
+  isDarkTheme,
   paletteFor
 } from '../theme/DesignTokens';
 
@@ -48,7 +50,13 @@ export struct LegalDoc {
   private legalCtrl: webview.WebviewController = new webview.WebviewController();
 
   private palette(): ReaderPalette {
-    return paletteFor(this.themeMode, this.systemDark);
+    // 三个来源都要显式读一遍落成局部常量（哪怕不参与运算）：
+    // paletteFor 是纯函数读 AppStorage，不登记依赖；这里不登记的话，
+    // 主题切换时 ArkUI 会跳过重算，导致部分节点沿用旧调色板（文字变黑、退出重进才恢复）。
+    const tick: number = this.appearanceTick;
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private padTop(): number {
@@ -56,13 +64,9 @@ export struct LegalDoc {
   }
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**，
+    // 漏判会让本页背景 / 系统栏按 systemDark 走，与纸色文字对不上。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   private shellTitle(): string {
@@ -77,11 +81,9 @@ export struct LegalDoc {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
-      // 页面底色（HTML 自带深浅色背景，跟随系统）
-      Column()
-        .width('100%')
-        .height('100%')
-        .backgroundColor(this.palette().pageBottom)
+      // 页面背景：**与探索中心（设置页）同一套优先级**（手选壁纸 → 函数壁纸 → 主题渐变）
+      // 此前这里只铺了一层纯色 pageBottom，两个页面背景对不上（用户反馈）。
+      PageBackdrop({ palette: this.palette(), dark: this.isDark(), plain: true })
 
       Column() {
         ImmersiveBar({

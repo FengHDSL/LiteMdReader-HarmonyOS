@@ -39,6 +39,7 @@
 /** 阅读主题调色板。沉浸光感生效时，材质渲染在 surface 之上，surface 只作为降级底色。 */
 import { curves } from '@kit.ArkUI';
 import { ThemeStore } from './ThemeStore';
+import { GenWallpaperDef, genWallpaperById } from './GenWallpaper';
 
 /**
  * 弹簧动画曲线：文件夹展开、标签切换这类「要 Q 弹」的过渡统一用它。
@@ -143,17 +144,17 @@ export const SEPIA_PALETTE: ReaderPalette = {
   pageTop: '#F6EEDDFF',
   pageBottom: '#F0E5CEFF',
   glowCool: '#3DC08A5C',
-  glowWarm: '#4DE0A45CFF',
+  glowWarm: '#4DE0A45C',
   textPrimary: '#FF43342A',
   textSecondary: '#FF6E5A48',
   textTertiary: '#FF9C8A72',
   accent: '#FFA8683A',
   accentSoft: '#26A8683A',
-  surface: '#B3FFFDF4FF',
-  surfaceBorder: '#2AE0C89AFF',
+  surface: '#B3FFFDF4',
+  surfaceBorder: '#2AE0C89A',
   inlineCodeBg: '#2EA8683A',
   inlineCodeText: '#FF7A4A22',
-  codeBlockBg: '#8CFFFCEDFF',
+  codeBlockBg: '#8CFFFCED',
   quoteBg: '#40A8683A',
   quoteBar: '#FFA8683A',
   tableHeadBg: '#26A8683A',
@@ -178,18 +179,18 @@ export const SEPIA_PALETTE: ReaderPalette = {
 export const GREEN_PALETTE: ReaderPalette = {
   pageTop: '#E8F0E2FF',
   pageBottom: '#DDEBDAFF',
-  glowCool: '#3D5A8A66FF',
-  glowWarm: '#3DA8C09AFF',
+  glowCool: '#3D5A8A66',
+  glowWarm: '#3DA8C09A',
   textPrimary: '#FF24382C',
   textSecondary: '#FF4E6455',
   textTertiary: '#FF7E9284',
   accent: '#FF2E7D4F',
   accentSoft: '#1F2E7D4F',
-  surface: '#B3FBFFF5FF',
-  surfaceBorder: '#26B2D0A8FF',
+  surface: '#B3FBFFF5',
+  surfaceBorder: '#26B2D0A8',
   inlineCodeBg: '#1F2E7D4F',
   inlineCodeText: '#FF1C5F3A',
-  codeBlockBg: '#8CF2FBEFFF',
+  codeBlockBg: '#8CF2FBEF',
   quoteBg: '#402E7D4F',
   quoteBar: '#FF2E7D4F',
   tableHeadBg: '#2624382C',
@@ -205,6 +206,85 @@ export const GREEN_PALETTE: ReaderPalette = {
   codeAttr: '#FF1C5F8A',
   divider: '#1F24382C',
   shadow: '#261A3226'
+};
+
+/**
+ * 「护眼绿」**深色孪生款**：夜绿底 + 浅青绿字。
+ *
+ * 为什么需要孪生款：羊皮纸 / 护眼绿是**跟随系统深浅**的两档纸色主题。
+ * 系统深色时若仍用浅底深字那套，深底浅字之外还会撞上"深底 + 深字"看不清（用户反馈）。
+ * 所以深色下换这一套：底色是压暗的墨绿（不刺眼、保留护眼绿的色相倾向），
+ * 文字是**提亮的浅绿**，对比度与 `DARK_PALETTE` 同档。
+ * 字段与 `GREEN_PALETTE` 一一对应（透明度位照抄：底色 FF、表面/引用 B3/40、分割 1F）。
+ */
+export const GREEN_DARK_PALETTE: ReaderPalette = {
+  pageTop: '#141A14FF',
+  pageBottom: '#0E130EFF',
+  glowCool: '#3D5A8A66',
+  glowWarm: '#3DA8C09A',
+  textPrimary: '#FFDCE9DA',
+  textSecondary: '#FFB3C4B0',
+  textTertiary: '#FF8FA08C',
+  accent: '#FF5FBF8A',
+  accentSoft: '#2E5FBF8A',
+  surface: '#B31A241A',
+  surfaceBorder: '#26A8D0B8',
+  inlineCodeBg: '#2E5FBF8A',
+  inlineCodeText: '#FF9BE0C0',
+  codeBlockBg: '#8C141E18',
+  quoteBg: '#405FBF8A',
+  quoteBar: '#FF5FBF8A',
+  tableHeadBg: '#26DCE9DA',
+  tableStripeBg: '#0DDCE9DA',
+  markBg: '#FFC8F0C2',
+  searchHitBg: '#80FF9A3D',
+  codeKeyword: '#FFB03A2E',
+  codeString: '#FF5FD0A0',
+  codeComment: '#FF8FA08C',
+  codeNumber: '#FF5FD08A',
+  codeFunc: '#FFB08AD8',
+  codeTag: '#FF5FBF8A',
+  codeAttr: '#FF5FD08A',
+  divider: '#1FDCE9DA',
+  shadow: '#26000000'
+};
+
+/**
+ * 「羊皮纸」**深色孪生款**：夜棕底 + 米色字。
+ *
+ * 与 `GREEN_DARK_PALETTE` 同理：系统深色时用它，
+ * 底色是压暗的暖棕（保留羊皮纸的暖色温倾向，不刺眼），文字是米白。
+ */
+export const SEPIA_DARK_PALETTE: ReaderPalette = {
+  pageTop: '#1A1611FF',
+  pageBottom: '#14110DFF',
+  glowCool: '#3DC08A5C',
+  glowWarm: '#4DE0A45C',
+  textPrimary: '#FFF2E4D4',
+  textSecondary: '#FFD8C6AC',
+  textTertiary: '#FFB8A288',
+  accent: '#FFC08A4A',
+  accentSoft: '#26C08A4A',
+  surface: '#B3241C15',
+  surfaceBorder: '#26E0C89A',
+  inlineCodeBg: '#2EC08A4A',
+  inlineCodeText: '#FFE0B080',
+  codeBlockBg: '#8C1A1611',
+  quoteBg: '#40C08A4A',
+  quoteBar: '#FFC08A4A',
+  tableHeadBg: '#26F2E4D4',
+  tableStripeBg: '#0DF2E4D4',
+  markBg: '#FFE8D89A',
+  searchHitBg: '#80FF9A3D',
+  codeKeyword: '#FFCF8A4A',
+  codeString: '#FFD8A860',
+  codeComment: '#FFB8A288',
+  codeNumber: '#FFE0B060',
+  codeFunc: '#FFD08A80',
+  codeTag: '#FFC08A4A',
+  codeAttr: '#FFE0B060',
+  divider: '#1FF2E4D4',
+  shadow: '#26000000'
 };
 
 /** 深色主题「夜墨」 */
@@ -328,32 +408,41 @@ export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
   const themeKey: string | undefined = AppStorage.get<string>('themeColor');
   const key: string = themeKey !== undefined && themeKey !== null ? themeKey : '';
   const accent: string = ThemeStore.colorOf(key);
+  // ⚠️ **纸色主题（羊皮纸 / 护眼绿）保持纯净纸色，不吃全局主题色的染**：
+  // 用户反馈"设置羊皮纸/护眼绿后阅读背景被替换成粉色"——
+  // 页面染色（pageTop 混 10% accent）与卡片沾色（surface 混 accent）会把纸色调跑，
+  // 外壳主题色偏暖/偏粉时纸色就跟着变粉。纸色主题的 accent 仍跟随全局（按钮/图表用），
+  // 但**底色类字段一律不染**。
+  const isPaper: boolean = mode === ReaderThemeMode.Sepia || mode === ReaderThemeMode.Green;
   if (accent.length > 0) {
     p.accent = accent;
     p.accentSoft = withAlpha(accent, '2E');
     p.quoteBar = accent;
     p.inlineCodeText = blendRgb(p.textPrimary, accent, 0.55);
   }
-  // 卡片沾色：底色混入 10% 主题色（xjau CARD_TINT_RATIO）
-  if (AppStorage.get<boolean>('cardTint') === true && accent.length > 0) {
+  // 卡片沾色：底色混入 10% 主题色（xjau CARD_TINT_RATIO）；纸色主题跳过
+  if (!isPaper && AppStorage.get<boolean>('cardTint') === true && accent.length > 0) {
     p.surface = blendRgb(p.surface, accent, 0.10);
     p.quoteBg = blendRgb(p.quoteBg, accent, 0.12);
     p.codeBlockBg = blendRgb(p.codeBlockBg, accent, 0.10);
     p.tableStripeBg = blendRgb(p.tableStripeBg, accent, 0.06);
     p.accentSoft = withAlpha(accent, '2E');
   }
-  // 页面背景跟随主题色：内置主题始终允许；自定义 hex 需「高权限自定义主题色」
+  // 页面背景跟随主题色：内置主题始终允许；自定义 hex 需「高权限自定义主题色」；纸色主题跳过
   const bgTintOff: boolean = AppStorage.get<boolean>('pageBgTint') === false;
   const allowed: boolean = ThemeStore.isBuiltin(key)
     || (ThemeStore.isHex(key) && AppStorage.get<boolean>('customAccentFull') === true);
-  if (!bgTintOff && allowed && accent.length > 0) {
+  if (!isPaper && !bgTintOff && allowed && accent.length > 0) {
     p.pageTop = blendRgb(p.pageTop, accent, 0.10);
     p.pageBottom = blendRgb(p.pageBottom, accent, 0.10);
   }
   // 灰体文本显示增强（移植自 xjau 的灰字覆盖）：把「次级 / 三级」灰字统一换掉，
   // 壁纸很花时能显著提升可读性。auto = 不改（跟随主题）。
-  const themeDark: boolean = mode === ReaderThemeMode.Dark
-    || (mode === ReaderThemeMode.System && systemDark);
+  //
+  // ⚠️ 用 **isDarkTheme()** 而不是手写：纸色两档（Sepia/Green）跟随 systemDark，
+  // 这里若按老写法（只判 Dark/System）会取到浅色档的灰字配置，
+  // 覆盖掉深色孪生款里已经调好的浅色字 → 深底深字，看不清。
+  const themeDark: boolean = isDarkTheme(mode, systemDark);
   const gray: string = grayTextOverride(themeDark);
   if (gray.length > 0) {
     p.textSecondary = gray;
@@ -393,8 +482,21 @@ export function grayTextOverride(themeDark: boolean): string {
     mode = legacyRaw === undefined || legacyRaw === null ? 'auto' : legacyRaw;
     colorKey = 'grayTextColor';
   }
-  if (mode.length === 0 || mode === 'auto') {
+  if (mode.length === 0) {
     return '';
+  }
+  if (mode === 'auto') {
+    // **自动**（语义对齐本地项目 xjau：没有背景亮度信息就不覆盖）：
+    //   ① 能取到背景亮度（自定义阅读背景色 / 函数壁纸主色）→ 按对比度选灰字色；
+    //   ② 取不到 → 返回空串 = 不覆盖，跟随主题原本的灰字。
+    // 之前无论有没有信息都强行给一个近黑/近白，结果连按钮与芯片里的文字
+    // 也被刷成黑白（用户反馈"按钮里的文本也跟着变黑变白"）。
+    const lum: number = autoBackdropLuminance(themeDark);
+    if (lum < 0) {
+      return '';
+    }
+    // 亮背景 → 深字；暗背景 → 浅字（70% 不透明度，柔和一档）
+    return lum > 0.45 ? '#B31B1B1B' : '#B3FFFFFF';
   }
   if (mode === 'gray') {
     return '#9AA0A6';
@@ -414,6 +516,54 @@ export function grayTextOverride(themeDark: boolean): string {
   return '';
 }
 
+/** #RRGGBB(A) → 相对亮度 0~1（非法返回 -1）。 */
+function hexLuminance(hex: string): number {
+  const norm: string = normalizeHex8(hex);
+  if (norm.length === 0) {
+    return -1;
+  }
+  const r: number = parseInt(norm.substring(3, 5), 16);
+  const g: number = parseInt(norm.substring(5, 7), 16);
+  const b: number = parseInt(norm.substring(7, 9), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) {
+    return -1;
+  }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/** 「自动」灰字用的背景亮度（-1 = 取不到，调用方回落主题默认）。 */
+function autoBackdropLuminance(themeDark: boolean): number {
+  const custom: string | undefined =
+    AppStorage.get<string>(themeDark ? 'readerCustomBgDark' : 'readerCustomBgLight');
+  if (custom !== undefined && custom !== null && custom.length > 0) {
+    const l: number = hexLuminance(custom);
+    if (l >= 0) {
+      return l;
+    }
+  }
+  const bgId: string | undefined = AppStorage.get<string>('readerBgId');
+  if (bgId !== undefined && bgId !== null && bgId.length > 0) {
+    const def: GenWallpaperDef | null = genWallpaperById(bgId);
+    if (def !== null) {
+      // **按主题解析孪生款**：函数壁纸在深色下自动换成 darkId 那一款
+      //（竹影 → 夜笺）。不解析孪生款时拿浅色款的亮色算，深色主题会被判成
+      // "亮背景"→ 返回近黑字，于是深色下灰体文本一直是黑的（用户反馈）。
+      let use: GenWallpaperDef = def;
+      if (themeDark && def.darkId.length > 0 && def.darkId !== def.id) {
+        const twin: GenWallpaperDef | null = genWallpaperById(def.darkId);
+        if (twin !== null) {
+          use = twin;
+        }
+      }
+      const l: number = hexLuminance(use.top);
+      if (l >= 0) {
+        return l;
+      }
+    }
+  }
+  return -1;
+}
+
 /** 顶栏磨砂底色：surface 降不透明度，透明度随「玻璃通透程度」（0~100）反向变化。 */
 export function barFrostColor(surface: string): string {
   const kRaw: number | undefined = AppStorage.get<number>('glassStrength');
@@ -431,11 +581,14 @@ export function barFrostColor(surface: string): string {
 }
 
 function basePalette(mode: number, systemDark: boolean): ReaderPalette {
+  // ⚠️ **判定口径必须与 isDarkTheme() 逐字一致**：那边把 Sepia/Green 判为"跟随 systemDark"，
+  // 这边就必须同样按 systemDark 选**深浅孪生款**。
+  // 两边不一致 = 背景链与文字链分家（深底配浅字，或浅底配深字）——用户反馈"看不清"。
   if (mode === ReaderThemeMode.Sepia) {
-    return SEPIA_PALETTE;
+    return systemDark ? SEPIA_DARK_PALETTE : SEPIA_PALETTE;
   }
   if (mode === ReaderThemeMode.Green) {
-    return GREEN_PALETTE;
+    return systemDark ? GREEN_DARK_PALETTE : GREEN_PALETTE;
   }
   const dark: boolean = mode === ReaderThemeMode.Dark
     || (mode === ReaderThemeMode.System && systemDark);
@@ -504,6 +657,17 @@ export const DARK_BG_PRESETS: NamedColor[] = [
   { name: '深棕', value: '#FF181310' },
   { name: '暗紫', value: '#FF151221' }
 ];
+
+/**
+ * 阅读背景的**固定默认色**（浅 / 深档）。
+ *
+ * ⚠️ 语义（用户明确要求）：「阅读背景」**完全独立于主题** —— 没选自定义色时
+ * 用这两个固定色，**切主题（羊皮纸/护眼绿/深色…）阅读背景永远不变**。
+ * 之前"默认 = 主题渐变"，主题一切背景就跟着变（用户实测还染出粉紫），
+ * 现在默认也是固定色：阅读页背景只有系统深浅一个变量。
+ */
+export const READER_BG_DEFAULT_LIGHT: string = '#FAF7F1';
+export const READER_BG_DEFAULT_DARK: string = '#141414';
 
 /** 按值取预设名，找不到（自定义值）返回「自定义」。 */
 export function bgPresetName(presets: NamedColor[], value: string): string {
@@ -665,9 +829,32 @@ export function themeModeLabel(mode: number): string {
 }
 
 /**
+ * 该主题是否走**深色外观**（决定系统栏图标色、批注底色档、壁纸 darkMode 等）。
+ *
+ * ⚠️ **羊皮纸（Sepia）与护眼绿（Green）跟随系统深浅，各自有深浅两套调色板**：
+ * 系统深色时用 `SEPIA_DARK_PALETTE` / `GREEN_DARK_PALETTE`（深底浅字），
+ * 系统浅色时用浅色那套（纸底深字）。
+ * 之前各页自己写的 `isDark()` 只判了 Dark / Light，纸色两档掉进 `return systemDark`
+ * 而文字链走 `paletteFor(Sepia/Green)` 拿的是浅底深字 → **深底 + 深字，看不清**。
+ *
+ * 所以这里**必须与 basePalette 的分档保持一致**（都跟随 systemDark），
+ * 背景链（isDark）与文字链（paletteFor）才能对上。
+ */
+export function isDarkTheme(mode: number, systemDark: boolean): boolean {
+  if (mode === ReaderThemeMode.Dark) {
+    return true;
+  }
+  if (mode === ReaderThemeMode.Light) {
+    return false;
+  }
+  // Sepia / Green：跟随系统，各自调色板有深浅两套
+  return systemDark;
+}
+
+/**
  * 取调色板统一走文件上方的 paletteFor(mode, systemDark)——
  * 它套用了全局主题色与卡片沾色，页面不要绕过它直接用 paletteOf。
- * isDark() 仍保留：决定系统栏图标颜色与批注底色取浅/深档。
+ * isDark() 仍保留：决定系统栏图标颜色与批注底色取浅/深档，实现应转调 isDarkTheme()。
  */
 
 /**
@@ -703,10 +890,10 @@ export interface AnnotationColor {
 }
 
 export const ANNOTATION_COLORS: AnnotationColor[] = [
-  { name: '黄', light: '#66FFE066', dark: '#59C9A83C' },
+  { name: '红', light: '#66FF5A5A', dark: '#59D95B5B' },
   { name: '绿', light: '#6600E08A', dark: '#59009E5F' },
-  { name: '粉', light: '#66FF9EB5', dark: '#59C2637F' },
-  { name: '蓝', light: '#6600B4FF', dark: '#59007FB8' }
+  { name: '蓝', light: '#6600B4FF', dark: '#59007FB8' },
+  { name: '黄', light: '#66FFE066', dark: '#59C9A83C' }
 ];
 
 /** 取某个荧光笔颜色在当前主题下的色值。索引越界时退回首色。 */

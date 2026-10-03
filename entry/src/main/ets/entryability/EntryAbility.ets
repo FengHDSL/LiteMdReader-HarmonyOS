@@ -1,10 +1,14 @@
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
+import { fileIo } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 import { setupImmersiveWindow, applyAppColorMode, syncSystemDarkFromContext } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
+import { DocStore } from '../service/DocStore';
 // 桌面卡片暂时停用（见 onForeground / onBackground 里的注释）：FormSync 调用一并注释
 // import { FormSync } from '../service/FormSync';
 import GlobalUIAbilityContext from '../util/ContextConfig';
@@ -23,12 +27,22 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onCreate');
 
+    // **关联 .md 文件**：外部"打开方式"拉起时，want.uri 指向待打开的文件
+    this.handleOpenFile(want);
+
     // 全局上下文：手写组件等需要 UIAbilityContext 的能力从这里取
     GlobalUIAbilityContext.setContext(this.context);
 
     // **开启 Web 整页绘制能力**（一次性全局开关）：图表后台预渲染池的
     // webPageSnapshot 依赖它才能拿到视口之外的完整绘制结果
     webview.WebviewController.enableWholeWebPageDrawing();
+
+    // 使用模式：'' 未选择（首次启动会弹窗让用户选）/ 'full' 全量 / 'offline' 基础（纯离线）
+    PersistentStorage.persistProp('appMode', '');
+    // 已经弹过「本次更新内容」的版本号（更新后首次启动弹一次）
+    PersistentStorage.persistProp('lastSeenVersion', '');
+    // 上次自动检查更新的时间戳（固定 48 小时一次）
+    PersistentStorage.persistProp('lastAutoCheckAt', 0);
 
     PersistentStorage.persistProp('readerFontSize', 16);
     PersistentStorage.persistProp('readerLineHeight', 1.75);
@@ -48,10 +62,15 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerFontFamily', '');
     PersistentStorage.persistProp('readerParaSpace', 1.0);
     PersistentStorage.persistProp('readerIndent', false);
+    // 目录 / 批注侧边栏是否使用沉浸光感（关闭后用阅读背景色）
+    PersistentStorage.persistProp('drawerImmersive', true);
     PersistentStorage.persistProp('readerShowMeta', true);
     PersistentStorage.persistProp('readerKeepScreenOn', false);
     // 阅读页标签栏位置：false = 顶栏下方（默认）/ true = 底部悬浮栏上方（「更多」里可切换）
     PersistentStorage.persistProp('readerTabBarAtBottom', false);
+    // 大屏 / 平板横屏专属：侧边栏「默认展开」偏好（更多面板里设置，仅宽屏显示）
+    PersistentStorage.persistProp('readerTocPinnedDefault', true);
+    PersistentStorage.persistProp('readerNotesPinnedDefault', true);
     // 窗口亮度，0 表示跟随系统；[0.05, 1] 为固定亮度
     PersistentStorage.persistProp('readerBrightness', 0);
     // 阅读背景自定义色（移植自参考项目的亮/暗分别自定义背景色）；空串 = 主题默认
@@ -72,6 +91,8 @@ export default class EntryAbility extends UIAbility {
     // 旧的单套键 grayTextMode / grayTextColor 保留做兼容解析（见 DesignTokens.grayTextOverride）。
     PersistentStorage.persistProp('grayTextMode', 'auto');
     PersistentStorage.persistProp('grayTextColor', '');
+    // 深浅两套灰体配置的默认值：**自动**（有背景亮度信息才按对比度覆盖，
+    // 否则跟随主题原本的灰字——用户要求默认自动）
     PersistentStorage.persistProp('grayTextModeLight', 'auto');
     PersistentStorage.persistProp('grayTextModeDark', 'auto');
     PersistentStorage.persistProp('grayTextColorLight', '');
@@ -118,6 +139,8 @@ export default class EntryAbility extends UIAbility {
     // "设置改完、退出应用重进就恢复默认"）。放在 persistProp 之后恢复，
     // 镜像更新时覆盖刚读进来的值 —— 见 service/SettingsMirror.ets 的冲突处理说明。
     SettingsMirror.restore(this.context);
+    // 收藏名单的第二腿：按镜像把收藏标记补回 shelf.json（真机上出现过重启丢收藏）
+    DocStore.applyStarredMirror(this.context);
 
     // **应用级颜色模式跟随应用内主题**（浅色模式下系统部件出白字的根因修复）：
     // 深色 → DARK / 浅色 → LIGHT / 跟随系统 → NOT_SET
@@ -130,6 +153,70 @@ export default class EntryAbility extends UIAbility {
   onDestroy(): void {
     SettingsMirror.save(this.context);
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onDestroy');
+  }
+
+  /** 应用已在运行时，再次被"打开方式"拉起（热启动）也要接住新文件 */
+  onNewWant(want: Want): void {
+    this.handleOpenFile(want);
+  }
+
+  /**
+   * **关联 .md 文件**（用户要求）：读取外部传来的文件内容，**立即导入为一篇新文档**
+   * （在 onCreate / onNewWant 阶段读，此时持有 uri 的临时授权；稍后读会失效）。
+   * 导入结果写进 AppStorage（pendingOpenDocName），书架页 onShow 时检测并刷新 + 提示。
+   */
+  private handleOpenFile(want: Want): void {
+    const uri: string | undefined = want.uri;
+    if (uri === undefined || uri === null || uri.length === 0) {
+      return;
+    }
+    try {
+      const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(file.fd);
+      // 上限 2MB：Markdown 文本远小于此，防异常超大文件拖垮启动
+      const size: number = stat.size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : stat.size;
+      const buffer = new ArrayBuffer(size);
+      const bytesRead: number = fileIo.readSync(file.fd, buffer);
+      const textDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
+      const content: string =
+        textDecoder.decodeToString(new Uint8Array(buffer.slice(0, bytesRead)));
+      fileIo.closeSync(file.fd);
+      // 文件名从 uri 尾段截取（file://.../xxx.md），去掉 .md / .markdown / .txt 扩展名
+      let name: string = '外部文档';
+      const cut: number = uri.lastIndexOf('/');
+      if (cut >= 0 && cut + 1 < uri.length) {
+        name = decodeURIComponent(uri.substring(cut + 1));
+      }
+      const lower: string = name.toLowerCase();
+      if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.markdown.txt')
+        || lower.endsWith('.txt')) {
+        const dot: number = name.lastIndexOf('.');
+        if (dot > 0) {
+          name = name.substring(0, dot);
+        }
+        // 双扩展（xxx.md.txt）剥完一层可能仍是 .md，再剥一次
+        if (name.toLowerCase().endsWith('.md') || name.toLowerCase().endsWith('.markdown')) {
+          const dot2: number = name.lastIndexOf('.');
+          if (dot2 > 0) {
+            name = name.substring(0, dot2);
+          }
+        }
+      }
+      // 重名时加时间后缀，避免"打开方式"导入悄悄失败
+      let finalName: string = name;
+      if (DocStore.exists(this.context, finalName)) {
+        finalName = name + ' ' + new Date().getHours().toString() + new Date().getMinutes().toString()
+        + new Date().getSeconds().toString();
+      }
+      const meta = DocStore.create(this.context, finalName, content);
+      if (meta !== null) {
+        AppStorage.setOrCreate('pendingOpenDocName', meta.name);
+        hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'open-file imported: ' + meta.name);
+      }
+    } catch (err) {
+      hilog.error(DOMAIN, 'LiteMdReader', 'open file failed: %{public}d, %{public}s',
+        (err as BusinessError).code, (err as BusinessError).message);
+    }
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {

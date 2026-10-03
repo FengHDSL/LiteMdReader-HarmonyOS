@@ -26,7 +26,10 @@ import {
   annotationColor,
   barFrostColor,
   FOLDER_SPRING,
+  isDarkTheme,
   paletteFor,
+  READER_BG_DEFAULT_DARK,
+  READER_BG_DEFAULT_LIGHT,
   withAlpha
 } from '../theme/DesignTokens';
 import {
@@ -46,7 +49,7 @@ import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrigh
   syncSystemDarkFromContext, markThemeApplied, themeChangedSince,
   startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
-import { DocMeta, DocStore, ReaderRoute, DocFileInfo } from '../service/DocStore';
+import { DocMeta, DocStore, ReaderRoute, DocFileInfo, DocTimes } from '../service/DocStore';
 // 桌面卡片暂时停用（见 flushProgress 里的注释）：FormSync 调用一并注释
 // import { FormSync } from '../service/FormSync';
 import { ReaderTab, TabStore } from '../service/TabStore';
@@ -60,6 +63,7 @@ import { DiagramWeb } from '../components/DiagramWeb';
 import { MdAnnotation, MdBlock, MdBlockKind, MdHeading, MdMetaItem, MdNote, MdParseResult, MdTaskState } from '../markdown/MdTypes';
 import { ChartCache } from '../service/ChartCache';
 import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
+import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
 import { MdBlockView } from '../markdown/MdView';
 import { MdToHtml } from '../markdown/MdToHtml';
@@ -109,6 +113,21 @@ export struct Reader {
   @StorageLink('readerBrightness') @Watch('onDisplaySettingChanged') brightLevel: number = 0;
   /** 文档信息卡开关（阅读设置里的「显示」段） */
   @StorageLink('readerShowMeta') showMetaCard: boolean = true;
+  /**
+   * 首行缩进（传给正文块：MdBlockView 以 @Prop 接收，属性管道才可靠回刷）。
+   * **再加 @Watch 强制重建正文**：真机上仅靠属性下发时，正文 List 里已挂载的条目
+   * 会复用、缩进要退出重进才生效（用户反馈）——换 renderEpoch（条目 key 里含它）
+   * 才能保证当帧重建。
+   */
+  @StorageLink('readerIndent') @Watch('onIndentChanged') indentOn: boolean = false;
+  /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
+  @StorageLink('drawerImmersive') drawerImmersive: boolean = true;
+  /** 信息卡：创建 / 修改时间（毫秒，0 = 未知）与收藏状态 */
+  @State docCreatedAt: number = 0;
+  @State docModifiedAt: number = 0;
+  @State docStarred: boolean = false;
+  /** 面板内容强刷纪元：深浅切换时换容器 key，让 bindSheet 的面板重建 */
+  @State sheetEpoch: number = 0;
   /** 沉浸布局下状态栏 / 手势条的避让高度（px），由 AppWindow 写入 */
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
@@ -137,6 +156,8 @@ export struct Reader {
   @State notes: MdNote[] = [];
   /** 用户批注（荧光笔 / 文字批注） */
   @State annotations: MdAnnotation[] = [];
+  /** 处于"系统选择模式"的块 id：该块恢复系统原生长按菜单（复制 / 翻译 / 小艺） */
+  @State systemSelectBlock: string = '';
   /** YAML Front Matter 抽出的元数据 */
   @State docMeta: MdMetaItem[] = [];
   /** 大纲里被折叠的标题（按 seq 记） */
@@ -272,6 +293,20 @@ export struct Reader {
   @StorageLink('readerTabBarAtBottom') tabBarAtBottom: boolean = false;
   /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手（见 service/GripAware.ets） */
   @State gripSide: number = 0;
+  /**
+   * 大屏 / 平板横屏专属（更多面板里设置，仅宽屏显示）：
+   * 目录 / 注释与批注侧边栏是否**默认展开**。只存偏好 —— 运行中手动收放不改写它。
+   */
+  @StorageProp('readerTocPinnedDefault') tocPinnedDefault: boolean = true;
+  @StorageProp('readerNotesPinnedDefault') notesPinnedDefault: boolean = true;
+  /** 默认停靠偏好是否已应用到本次页面（rootWidth 量到、isWide 可判后应用一次） */
+  private pinnedDefaultsApplied: boolean = false;
+  /** 系统选择胶囊的自定义位置（vp）；-1 = 未拖过 → 用自动贴边公式 */
+  @State sysTabX: number = -1;
+  @State sysTabY: number = -1;
+  /** 拖动手势的起点基准（onActionStart 时快照当前位置） */
+  private sysTabBaseX: number = 0;
+  private sysTabBaseY: number = 0;
   /** 函数绘制壁纸的 id（空 = 不用） */
   @StorageProp('wallpaperGenId') genWallId: string = '';
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
@@ -394,6 +429,13 @@ export struct Reader {
     // 回到本页时 onShown 会按设置重新下发。
     setWindowBrightnessLevel(0);
     setKeepScreenOn(false);
+    // **退出系统选择模式**（防残留）：该模式是"当前块"的临时状态，
+    // 离开页面还留着会让后续交互状态错乱（用户反馈图模块偶现无反应疑似与其相关）
+    if (this.systemSelectBlock.length > 0) {
+      this.systemSelectBlock = '';
+      this.sysTabX = -1;
+      this.sysTabY = -1;
+    }
     // 停掉握姿监听：不在阅读页时没必要一直占着传感器
     GripAware.stop();
     // 停掉深浅探测器：不在本页时不必问系统
@@ -403,6 +445,14 @@ export struct Reader {
   /** 阅读显示设置（常亮 / 亮度）变化时立即作用于主窗口。 */
   onDisplaySettingChanged(): void {
     this.applyDisplaySettings();
+  }
+
+  /**
+   * 首行缩进变化：换 renderEpoch（条目 key 里含它）→ 正文当帧重建。
+   * 真机上仅靠 @Prop 下发时，List 里已挂载的条目会被复用、缩进要退出重进才生效。
+   */
+  onIndentChanged(): void {
+    this.renderEpoch++;
   }
 
   private applyDisplaySettings(): void {
@@ -495,6 +545,9 @@ export struct Reader {
       //（容器不换 key，已挂载的条目 / 按钮会被复用、颜色不更新——用户反馈的现象）
       this.renderEpoch++;
       this.themeEpoch++;
+      // **半模态面板也要重建**：面板内容由 bindSheet 的 builder 渲染、不跟随宿主
+      // 状态刷新——深色切换时面板会出现"切换不完全"（正文变了、面板还是旧色）
+      this.sheetEpoch++;
     });
   }
 
@@ -642,6 +695,11 @@ export struct Reader {
       const finfo: DocFileInfo | null = DocStore.fileInfo(ctx, this.docName);
       this.docSizeBytes = finfo !== null ? finfo.sizeBytes : -1;
       this.docMd5 = finfo !== null ? finfo.md5 : '';
+      // 创建 / 修改日期与收藏标记（信息卡展示 + 爱心按钮）
+      const times: DocTimes = DocStore.fileTimes(ctx, this.docName);
+      this.docCreatedAt = times.created;
+      this.docModifiedAt = times.modified;
+      this.docStarred = DocStore.isStarred(ctx, this.docName);
       // **图表后台预渲染任务**（用户要求：打开文件即后台加载转图片并写缓存，
       // 不等滑到位置才加载；导出也直接用缓存图）
       const tasks: ChartTask[] = [];
@@ -987,9 +1045,28 @@ export struct Reader {
   @StorageLink('readerCustomBgLight') customBgLight: string = '';
   @StorageLink('readerCustomBgDark') customBgDark: string = '';
 
-  /** 当前主题下的自定义背景色；空串表示用主题默认渐变。 */
+  /**
+   * 当前的自定义阅读背景色；**没选时用固定默认色（不再回退主题渐变）**。
+   *
+   * ⚠️ 用 `bgDark()`（只看系统深浅）而不是 `isDark()`（含主题档位）：
+   * 「阅读背景」**完全独立于主题**（用户明确要求"默认固定是阅读背景颜色"）——
+   * 没选自定义色 = 固定纸白 / 碳黑，切主题（羊皮纸/护眼绿/深色）阅读背景永远不变。
+   * 主题只管文字 / 卡片 / 强调色（palette 链），背景与主题彻底分家。
+   */
   private pageBackground(): string {
-    return this.isDark() ? this.customBgDark : this.customBgLight;
+    if (this.bgDark()) {
+      return this.customBgDark.length > 0 ? this.customBgDark : READER_BG_DEFAULT_DARK;
+    }
+    return this.customBgLight.length > 0 ? this.customBgLight : READER_BG_DEFAULT_LIGHT;
+  }
+
+  /**
+   * 目录 / 批注侧边栏在**关闭沉浸光感**时的底色：与阅读背景同色
+   * （没设自定义背景色就退回主题底色）。
+   */
+  private readerBgColor(): string {
+    const c: string = this.pageBackground();
+    return c.length > 0 ? c : this.palette().pageTop;
   }
 
   // ══════════════════════ 批注 ══════════════════════
@@ -1024,6 +1101,12 @@ export struct Reader {
       list.push(this.buildAnnotation(blockId, start, end, text, -1, '', 'wavy'));
       this.commitAnnotations(list);
       this.toast('已添加波浪线');
+      return;
+    }
+    // sysselect：该块进入"系统选择模式"（恢复系统原生长按菜单，方便复制 / 翻译 / 唤起小艺）
+    if (action === 'sysselect') {
+      this.systemSelectBlock = blockId;
+      this.toast('长按文字可复制 / 翻译 / 唤起小艺；点一下正文退出');
       return;
     }
     // highlight：同一区间先清掉旧批注再写入，避免反复涂抹层层叠加
@@ -1495,29 +1578,43 @@ export struct Reader {
   // ══════════════════════ 主题与尺寸 ══════════════════════
 
   /**
+   * 阅读背景（壁纸 / 纯色）该按**哪一档**取色。
+   *
+   * ⚠️ **刻意只看 `systemDark`，不看 `themeMode`**（用户要求）：
+   * 「阅读背景壁纸」是用户自己挑的那张，**切换主题不该改它的颜色**。
+   * 之前这里用 `isDark()`（含主题档位），于是「深色 → 羊皮纸」时遮罩从压黑变压白，
+   * 壁纸看起来被"改色"了。现在只有系统真正切深浅时背景才跟着变。
+   *
+   * 文字/调色板仍走 `palette()`（跟主题），两者各管一摊、互不干扰。
+   */
+  private bgDark(): boolean {
+    return this.systemDark;
+  }
+
+  /**
    * 阅读背景层的遮罩浓度：深色下压得更轻（用户反馈"深色太深了"），
    * 只作用于阅读背景（readerBgPath / readerBgId）两层，外观壁纸不受影响。
    */
   private readerBgScrim(): number {
-    return this.isDark() ? Math.round(this.wallpaperScrim * 0.45) : this.wallpaperScrim;
+    return this.bgDark() ? Math.round(this.wallpaperScrim * 0.45) : this.wallpaperScrim;
   }
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**。
+    // 之前这里只判 Dark / Light，两档纸色会掉到 systemDark → 系统深色时阅读背景
+    // （GenWallpaper darkMode / 遮罩浓度 / 自定义背景色取哪一档）按深色处理，
+    // 纸色底被压成黑底，而文字仍取浅色系深绿字 → 黑底浅字看不清。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   private palette(): ReaderPalette {
-    // 外观刷新计数：主题色 / 灰字 / 沾色在 paletteFor 里读 AppStorage，纯函数读不登记依赖，
-    // 这里登记一下，设置改完回到阅读页就能立刻看到新配色
+    // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色在 paletteFor 里读
+    // AppStorage，纯函数读不登记依赖；这里不登记的话主题切换会被 ArkUI 跳过重算
     const tick: number = this.appearanceTick;
     // 羊皮纸 / 护眼绿有独立调色板，必须按主题模式取色，不能只看明暗
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private measureWidth(): number {
@@ -1950,9 +2047,9 @@ export struct Reader {
       Column().width(HwSpace.xs)
 
       // 目录 / 字号 / 亮度都在底部悬浮工具条（参考图三），顶栏只留返回、标题与查找。
-      // **搜索一镜到底**：这个按钮与查找条共享同一 geometryTransition id，
-      // 所以查找条是「从这颗按钮长出来的」。
-      // 约束：同 id 的两个组件不能同时存在——查找打开时本按钮不渲染。
+      // **不再做共享元素**：按钮与查找条共用 geometryTransition id 时，按钮被移除
+      // 的瞬间会把最后一帧留在查找条中心（用户反馈的"搜索图标残留"）。
+      // 查找条自己带动画，这里普通出现/消失即可。
       if (!this.searchOpen) {
         Stack() {
           ImmersiveIconButton({
@@ -1974,7 +2071,6 @@ export struct Reader {
         }
         .width(34)
         .height(34)
-        .geometryTransition('readerSearch', { follow: true })
       }
       } else {
         this.miniTopContent()
@@ -2160,6 +2256,44 @@ export struct Reader {
 
   // ── 半模态面板的官方标题栏文案（标题区由 ModalSheet 自带，内容不再自绘标题）──
 
+  /** 封面格式角标：MD / TXT（应用同时支持两种文件）。 */
+  private docFormatLabel(): string {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return 'MD';
+    }
+    const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+    if (meta === undefined) {
+      return 'MD';
+    }
+    return meta.fileName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
+  }
+
+  /** 收藏 / 取消收藏（信息卡右上角爱心）。 */  private toggleStar(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const next: boolean = !this.docStarred;
+    if (DocStore.setStarred(ctx, this.docName, next)) {
+      this.docStarred = next;
+      this.toast(next ? '已收藏' : '已取消收藏');
+    }
+  }
+
+  /** 时间戳 → 'YYYY-MM-DD HH:mm'；0 显示「—」。 */
+  private static timeLabel(ms: number): string {
+    if (ms <= 0) {
+      return '—';
+    }
+    const d: Date = new Date(ms);
+    const pad = (v: number): string => {
+      return v < 10 ? '0' + v : '' + v;
+    };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
   /** 当前面板的官方标题栏主标题。 */
   private sheetTitle(): string {
     if (this.activeSheet === 'settings') {
@@ -2224,6 +2358,7 @@ export struct Reader {
       }
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
+      .id('shExport_' + this.sheetEpoch)
     } else if (this.activeSheet === 'more') {
       this.moreSheet()
     }
@@ -2250,6 +2385,7 @@ export struct Reader {
     }
     .width('100%')
     .padding(HwSpace.lg)
+    .id('shNote_' + this.sheetEpoch)
   }
 
   @Builder
@@ -2259,6 +2395,7 @@ export struct Reader {
     }
     .width('100%')
     .padding(HwSpace.lg)
+    .id('shTabMenu_' + this.sheetEpoch)
   }
 
   @Builder
@@ -2268,6 +2405,7 @@ export struct Reader {
     }
     .width('100%')
     .padding(HwSpace.lg)
+    .id('shBright_' + this.sheetEpoch)
   }
 
   @Builder
@@ -2277,6 +2415,7 @@ export struct Reader {
     }
     .width('100%')
     .padding(HwSpace.lg)
+    .id('shMore_' + this.sheetEpoch)
   }
 
   /** 标签长按菜单（对应桌面版的右键菜单；路径类操作在沙箱手机上无对应物，未列入）。标题栏由 ModalSheet 官方标题区提供。 */
@@ -2329,6 +2468,18 @@ export struct Reader {
     Column() {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
+          // ── 收藏爱心（用户要求：信息卡右上角，点击变红表示已收藏）──
+          Row() {
+            Blank()
+            SymbolGlyph(this.docStarred ? $r('sys.symbol.heart_fill') : $r('sys.symbol.heart'))
+              .fontSize(20)
+              .fontColor([this.docStarred ? '#FFE5484D' : this.palette().textTertiary])
+              .onClick(() => {
+                this.toggleStar();
+              })
+          }
+          .width('100%')
+
           // 封面缩略图（程序化书封，与书架同一套）
           Row() {
             Column() {
@@ -2341,7 +2492,9 @@ export struct Reader {
                 coverBadge: this.docBuiltin ? '内置教程' : '澄笺',
                 edgeColor: this.palette().divider,
                 coverColor: this.docCoverColor,
-                coverImage: this.docCoverImage
+                coverImage: this.docCoverImage,
+                // 格式角标：MD / TXT
+                formatLabel: this.docFormatLabel()
               })
             }
             .width(150)
@@ -2421,11 +2574,11 @@ export struct Reader {
             }
             .width('100%')
 
+            // MD5（用户要求保留显示；「文件哈希」行已按要求删除）
             Row({ space: HwSpace.xs }) {
               Text('MD5')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
-              // **数值统一靠右**（与「文件大小」行对齐，用户要求）
               Text(this.docMd5.length > 0 ? this.docMd5 : '—')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textSecondary)
@@ -2436,6 +2589,29 @@ export struct Reader {
             }
             .width('100%')
             .alignItems(VerticalAlign.Center)
+
+            // 创建 / 修改日期（用户要求；内置文档没有独立创建时间，显示 —）
+            Row({ space: HwSpace.xs }) {
+              Text('创建日期')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+              Blank()
+              Text(Reader.timeLabel(this.docCreatedAt))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textSecondary)
+            }
+            .width('100%')
+
+            Row({ space: HwSpace.xs }) {
+              Text('修改日期')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+              Blank()
+              Text(Reader.timeLabel(this.docModifiedAt))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textSecondary)
+            }
+            .width('100%')
           }
           .width('100%')
           .padding({ top: HwSpace.xxs })
@@ -2853,6 +3029,56 @@ export struct Reader {
         .fontColor(this.palette().textTertiary)
         .width('100%')
 
+      // ── 大屏 / 平板横屏专属（用户要求）：侧边栏「默认展开」偏好 ──
+      // 只在宽屏（横屏且根宽 ≥700）显示；竖屏与手机端是侧滑抽屉，没有这个概念。
+      // 改动立即生效（当前会话）并持久化（下次打开文档按此默认）。
+      if (this.isWide()) {
+        Column({ space: HwSpace.sm }) {
+          Row({ space: HwSpace.xs }) {
+            Column({ space: 2 }) {
+              Text('目录侧边栏默认展开')
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textPrimary)
+              Text('进入阅读时目录停靠在左侧；运行中仍可手动收放')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Toggle({ type: ToggleType.Switch, isOn: this.tocPinnedDefault })
+              .onChange((isOn: boolean) => {
+                AppStorage.setOrCreate('readerTocPinnedDefault', isOn);
+                this.tocPinned = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Row({ space: HwSpace.xs }) {
+            Column({ space: 2 }) {
+              Text('批注侧边栏默认展开')
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textPrimary)
+              Text('进入阅读时批注停靠在右侧；运行中仍可手动收放')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Toggle({ type: ToggleType.Switch, isOn: this.notesPinnedDefault })
+              .onChange((isOn: boolean) => {
+                AppStorage.setOrCreate('readerNotesPinnedDefault', isOn);
+                this.notesPinned = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+      }
+
       // ── 主磁贴：等宽平铺（用户要求）──
       Row({ space: HwSpace.xs }) {
         this.moreTile('注释与批注', $r('sys.symbol.paintbrush'), (): void => {
@@ -2879,69 +3105,54 @@ export struct Reader {
       }
       .width('100%')
 
-      // ── 更多操作 ──
-      Text('更多操作')
-        .fontSize(HwType.caption)
-        .fontColor(this.palette().textTertiary)
-        .width('100%')
-
+      // ── 更多操作：与上方同样的**等宽磁贴**（用户要求排版统一）──
       Row({ space: HwSpace.xs }) {
-        ImmersiveChip({
-          palette: this.palette(),
-          chipLabel: '复制全文',
-          chipOnTap: () => {
-            this.copyWholeText();
-          }
+        this.moreTile('复制全文', $r('sys.symbol.doc_plaintext'), (): void => {
+          this.copyWholeText();
         })
-        ImmersiveChip({
+        // 开关类磁贴用**自持状态的子组件**：bindSheet 的 builder 不跟宿主状态重渲染，
+        // 写在宿主里点了标签不变（用户反馈）——组件自己订阅/自己写/自己刷
+        ReaderFlagTile({
+          kind: 'meta',
           palette: this.palette(),
-          chipLabel: this.showMetaCard ? '隐藏信息卡' : '显示信息卡',
-          chipOnTap: () => {
-            AppStorage.setOrCreate('readerShowMeta', !this.showMetaCard);
-          }
-        })
-        ImmersiveChip({
-          palette: this.palette(),
-          chipLabel: '重新加载',
-          chipOnTap: () => {
-            this.loadDoc();
-            this.toast('已重新加载');
+          onChanged: (on: boolean) => {
+            this.toast(on ? '已显示信息卡' : '已隐藏信息卡');
           }
         })
       }
       .width('100%')
 
-      // ── 标签栏位置（用户要求：可把顶部标签栏移到底部悬浮栏上方）──
       Row({ space: HwSpace.xs }) {
-        Text('标签栏位置')
-          .fontSize(HwType.label)
-          .fontColor(this.palette().textPrimary)
-          .layoutWeight(1)
-        ImmersiveChip({
-          palette: this.palette(),
-          chipLabel: '顶部',
-          chipActive: !this.tabBarAtBottom,
-          chipOnTap: () => {
-            if (this.tabBarAtBottom) {
-              this.tabBarAtBottom = false;
-              this.toast('标签栏已移回顶部');
-            }
-          }
+        this.moreTile('重新加载', $r('sys.symbol.arrow_counterclockwise'), (): void => {
+          this.loadDoc();
+          this.toast('已重新加载');
         })
-        ImmersiveChip({
+        ReaderFlagTile({
+          kind: 'drawer',
           palette: this.palette(),
-          chipLabel: '底部悬浮栏上方',
-          chipActive: this.tabBarAtBottom,
-          chipOnTap: () => {
-            if (!this.tabBarAtBottom) {
-              this.tabBarAtBottom = true;
-              this.toast('标签栏已移到底部悬浮栏上方');
-            }
+          onChanged: (on: boolean) => {
+            this.toast(on ? '侧边栏已开启沉浸光感' : '侧边栏改用阅读背景色');
           }
         })
       }
       .width('100%')
-      .alignItems(VerticalAlign.Center)
+
+      // ── 标签栏位置：**自持状态磁贴**（实时切换文案与图标）；
+      //    空出的格子放入「亮度与主题」──
+      Row({ space: HwSpace.xs }) {
+        ReaderFlagTile({
+          kind: 'tabbar',
+          palette: this.palette(),
+          onChanged: (on: boolean) => {
+            this.toast(on ? '标签栏已移到底部悬浮栏上方' : '标签栏已移回顶部');
+          }
+        })
+        // 新增功能（补位）：亮度与主题面板入口（原来只能从底部工具条进）
+        this.moreTile('亮度与主题', $r('sys.symbol.sun_max'), (): void => {
+          this.openBright();
+        })
+      }
+      .width('100%')
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -3039,7 +3250,9 @@ export struct Reader {
       .fontWeight(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal)
       .fontColor(this.themeMode === mode ? this.palette().accent : this.palette().textPrimary)
       .textAlign(TextAlign.Center)
-      .width('100%')
+      // **必须 layoutWeight 均分**：写 width('100%') 时每个芯片都想占满整行，
+      // 三个并排直接顶出屏幕、点不到（用户反馈）
+      .layoutWeight(1)
       .height(36)
       .borderRadius(HwRadius.inner)
       .backgroundColor(this.themeMode === mode ? this.palette().accentSoft : this.palette().quoteBg)
@@ -3058,7 +3271,9 @@ export struct Reader {
         panelRadius: HwRadius.sheet,
         panelPadding: HwSpace.md,
         panelHeight: '100%',
-        panelScrollable: false
+        panelScrollable: false,
+        // 关闭沉浸光感时（「更多」里的开关）：底色用阅读背景色
+        panelPlainColor: this.readerBgColor()
       }) {
         Column({ space: HwSpace.md }) {
           Row({ space: HwSpace.sm }) {
@@ -3238,7 +3453,8 @@ export struct Reader {
         palette: this.palette(),
         panelRadius: HwRadius.sheet,
         panelPadding: HwSpace.md,
-        panelHeight: '100%'
+        panelHeight: '100%',
+        panelPlainColor: this.readerBgColor()
       }) {
         Column({ space: HwSpace.md }) {
           // 标题**左上角**、关闭按钮右上角：同一行，标题占满剩余宽度
@@ -3574,9 +3790,23 @@ export struct Reader {
                   palette: this.palette(),
                   bodySize: this.fontSize,
                   lineMul: this.lineMul,
+                  // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
+                  indentOn: this.indentOn,
                   dark: this.isDark(),
                   annotations: this.annotations,
                   searchQuery: this.searchQuery,
+                  systemSelectId: this.systemSelectBlock,
+                  sysSelectExit: (blockId: string) => {
+                    if (this.systemSelectBlock === blockId) {
+                      this.systemSelectBlock = '';
+                      // 退出即重置胶囊位置（下次进入恢复初始贴边）
+                      this.sysTabX = -1;
+                      this.sysTabY = -1;
+                    }
+                  },
+                  sysSelectEnter: (blockId: string) => {
+                    this.systemSelectBlock = blockId;
+                  },
                   annotateHandler: (action: string, blockId: string, start: number,
                                     end: number, text: string, color: number) => {
                     this.onAnnotate(action, blockId, start, end, text, color);
@@ -3762,6 +3992,84 @@ export struct Reader {
       .hitTestBehavior(HitTestMode.Transparent)
       // **主题纪元拼在底栏层上**：明暗切换时整颗胶囊（含里面的按钮与标签数字）重建
       .key('readerBottomLayer_' + this.themeEpoch)
+
+      // **系统选择模式的退出胶囊**（用户要求）：屏幕右缘中部（智感握姿拇指可及），
+      // 点一下恢复自定义批注菜单、胶囊消失。出现 / 消失都带淡入缩放过渡。
+      if (this.systemSelectBlock.length > 0) {
+        Stack() {
+          Column()
+            .width('100%')
+            .height('100%')
+            .borderRadius(23)
+            .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+            .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+            .hitTestBehavior(HitTestMode.None)
+
+          ImmersiveCardLayer({ layerRadius: 23, layerShadow: true })
+
+          SymbolGlyph($r('sys.symbol.undo'))
+            .fontSize(20)
+            .fontColor([this.palette().accent])
+        }
+        .width(46)
+        .height(46)
+        // **可拖动**（用户要求：支持自由移动位置，但默认自动贴边）：
+        // 未拖过（sysTabX < 0）时按贴边公式定位；拖过后停在松手的位置（本次阅读内有效）。
+        // 用 priorityGesture 压过根 Stack 的横向 priorityGesture，拖动才不会被抢。
+        .position({
+          x: this.sysTabX >= 0 ? this.sysTabX
+            : (this.gripSide === -1
+              ? this.barInsetLeft() + 8
+              : this.rootWidth - this.barInsetRight() - 54),
+          y: this.sysTabY >= 0 ? this.sysTabY
+            : Math.max(80, this.rootHeight * 0.44)
+        })
+        .priorityGesture(
+          PanGesture({ direction: PanDirection.All, distance: 5 })
+            .onActionStart(() => {
+              this.sysTabBaseX = this.sysTabX >= 0 ? this.sysTabX
+                : (this.gripSide === -1
+                  ? this.barInsetLeft() + 8
+                  : this.rootWidth - this.barInsetRight() - 54);
+              this.sysTabBaseY = this.sysTabY >= 0 ? this.sysTabY
+                : Math.max(80, this.rootHeight * 0.44);
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              this.sysTabX = Math.max(8, Math.min(this.rootWidth - 54,
+                this.sysTabBaseX + event.offsetX));
+              this.sysTabY = Math.max(80, Math.min(this.rootHeight - 140,
+                this.sysTabBaseY + event.offsetY));
+            })
+            .onActionEnd(() => {
+              // **吸附屏幕边缘**（用户要求）：松手后 x 吸到最近的左/右边缘
+              //（避开停靠列），y 保持在松手高度。
+              const leftX: number = this.barInsetLeft() + 8;
+              const rightX: number = this.rootWidth - this.barInsetRight() - 54;
+              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                this.sysTabX = Math.abs(this.sysTabX - leftX) <= Math.abs(this.sysTabX - rightX)
+                  ? leftX : rightX;
+              });
+            })
+        )
+        .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+        .onClick(() => {
+          this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+            this.systemSelectBlock = '';
+          });
+          // 退出即重置位置：下次进入恢复初始贴边（用户要求）
+          this.sysTabX = -1;
+          this.sysTabY = -1;
+          this.toast('已恢复批注菜单');
+        })
+        .transition(TransitionEffect.asymmetric(
+          TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 }))
+            .combine(TransitionEffect.translate({ x: 24 })),
+          TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 }))
+            .combine(TransitionEffect.translate({ x: 24 }))
+        ))
+      }
 
       // 图表 / 公式放大查看浮层：毛玻璃暗化背景（相册式），图表卡片 1600px 大画布
       // 横向/纵向滚动平移；行内正文被盖住且根级捏合被抑制，不会误改字号
@@ -4030,12 +4338,13 @@ export struct Reader {
       if (typeof rawH === 'number' && rawH > 0 && rawH !== this.rootHeight) {
         this.rootHeight = rawH;
       }
-      // 进入大屏/横屏时自动把目录与注释钉在两侧——大屏不需要先手动呼出。
-      // 只在「窄→宽」的切换瞬间钉一次，之后用户手动关了就尊重用户的选择。
+      // 进入大屏/横屏时把目录与注释钉在两侧 —— **钉不钉按用户的默认偏好**（更多面板里设置，
+      // 仅宽屏显示；用户反馈：想要"默认不展开"的选择权）。只在「窄→宽」的切换瞬间应用一次，
+      // 之后用户手动开合就尊重用户的选择。
       const wide: boolean = this.isWide();
       if (wide && !this.wasWide) {
-        this.tocPinned = true;
-        this.notesPinned = true;
+        this.tocPinned = this.tocPinnedDefault;
+        this.notesPinned = this.notesPinnedDefault;
       }
       this.wasWide = wide;
     })
@@ -4226,6 +4535,9 @@ export struct Reader {
     //   ③ 主题默认渐变
     // 光斑两团始终保留，让沉浸光感有东西可采样
     // 阅读背景置顶：它只管阅读页，与外观壁纸互相独立
+    //
+    // ⚠️ ①② 两层用 `bgDark()`（只看系统深浅）而不是 `isDark()`（含主题档位）：
+    // 用户挑的壁纸颜色**不因切换主题而改变**（见 bgDark 注释）。
     if (this.readerBgPath.length > 0) {
       Image(WallpaperStore.imageSourceOf(this.readerBgPath))
         .width('100%')
@@ -4236,14 +4548,14 @@ export struct Reader {
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor(WallpaperStore.scrimColorOf(this.readerBgScrim(), this.isDark()))
+        .backgroundColor(WallpaperStore.scrimColorOf(this.readerBgScrim(), this.bgDark()))
     } else if (this.readerBgId.length > 0) {
-      GenWallpaper({ styleId: this.readerBgId, darkMode: this.isDark() })
+      GenWallpaper({ styleId: this.readerBgId, darkMode: this.bgDark() })
 
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor(WallpaperStore.scrimColorOf(this.readerBgScrim(), this.isDark()))
+        .backgroundColor(WallpaperStore.scrimColorOf(this.readerBgScrim(), this.bgDark()))
     } else if (this.wallpaperPathEffective().length > 0) {
       Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
         .width('100%')
@@ -4254,10 +4566,10 @@ export struct Reader {
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor(WallpaperStore.scrimColorOf(this.wallpaperScrim, this.isDark()))
+        .backgroundColor(WallpaperStore.scrimColorOf(this.wallpaperScrim, this.bgDark()))
     } else if (this.genWallId.length > 0) {
       // 函数绘制壁纸（零位图），与书架同一套：见 theme/GenWallpaper.ets
-      GenWallpaper({ styleId: this.genWallId, darkMode: this.isDark() })
+      GenWallpaper({ styleId: this.genWallId, darkMode: this.bgDark() })
 
       Column()
         .width('100%')

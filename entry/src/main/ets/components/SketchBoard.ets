@@ -31,7 +31,8 @@ interface StrokePoint {
 
 @Component
 export struct SketchBoard {
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** 画布尺寸（vp） */
   @Prop boardWidth: number = 320;
   @Prop boardHeight: number = 240;

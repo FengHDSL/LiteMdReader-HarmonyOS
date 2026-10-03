@@ -12,6 +12,7 @@
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { ExportService } from '../service/ExportService';
+import { MdToPlain } from '../markdown/MdToPlain';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 
 @Component
@@ -20,7 +21,8 @@ export struct ExportOptionsPanel {
   @Prop docName: string = '';
   /** 是否内置文档（正文从 rawfile 读） */
   @Prop builtin: boolean = false;
-  palette: ReaderPalette = LIGHT_PALETTE;
+  /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
+  @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** 动作完成（含取消）后收起面板的回调 */
   onClosed: () => void = () => {
   };
@@ -97,6 +99,33 @@ export struct ExportOptionsPanel {
     });
   }
 
+  /** 导出纯文本 TXT：把 Markdown 语法自动剥掉（用户要求）。 */
+  private doExportTxt(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
+    if (content === null) {
+      this.notify('读取正文失败');
+      return;
+    }
+    this.withBusy(() => {
+      try {
+        const text: string = MdToPlain.convert(content);
+        if (text.length === 0) {
+          this.notify('正文为空');
+          return;
+        }
+        ExportService.saveText(ctx, this.docName + '.txt', text, (m: string) => {
+          this.notify(m);
+        });
+      } catch (err) {
+        this.notify('转换纯文本失败');
+      }
+    });
+  }
+
   private doShare(): void {
     const ctx = this.ctx();
     if (ctx === null) {
@@ -157,6 +186,9 @@ export struct ExportOptionsPanel {
         })
         this.exportRow('导出 MD', 'Markdown 原文', () => {
           this.doExportMd();
+        })
+        this.exportRow('导出 TXT', '自动转成纯文本，任何应用都能打开', () => {
+          this.doExportTxt();
         })
         this.exportRow('分享', '以文本方式分享给其他应用', () => {
           this.doShare();

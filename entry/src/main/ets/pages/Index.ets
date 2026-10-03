@@ -16,7 +16,9 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { componentUtils } from '@kit.ArkUI';
 import {
+  CoverStyle,
   FOLDER_SPRING,
   HwBar,
   HwRadius,
@@ -24,7 +26,10 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteFor
+  isDarkTheme,
+  paletteFor,
+  READER_BG_DEFAULT_DARK,
+  READER_BG_DEFAULT_LIGHT
 } from '../theme/DesignTokens';
 import { DocCover, coverColorsOf, coverStyleFromColor } from '../components/DocCover';
 import {
@@ -51,16 +56,42 @@ import { Settings } from './Settings';
 import { SettingsAppearance } from './SettingsAppearance';
 import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
+import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
 import { Changelog } from './Changelog';
+import { Sketch } from './Sketch';
 import { GripAware } from '../service/GripAware';
 import { LegalDoc, LegalDocRoute } from './LegalDoc';
+import { UpdateService, APP_MODE_FULL, APP_MODE_OFFLINE } from '../service/UpdateService';
+import { ChangelogEntry, latestChangelog } from '../service/Changelog';
+import { UpdateContentDialog } from '../components/UpdateContentDialog';
+import { AppModeDialog } from '../components/AppModeDialog';
+import { SettingsMirror } from '../service/SettingsMirror';
 
 /** 搜索结果下拉面板最多显示的条数（更多提示用底部说明） */
 const SEARCH_PANEL_MAX: number = 20;
 
 /** 书架底栏胶囊内「新建 / 导入」按钮的直径（vp），不能超过胶囊内高（52 - 8 = 44） */
 const NEW_BTN_SIZE: number = 36;
+
+/**
+ * 展开文件夹时**先滚到位、再撑开**的一拍间隔（ms）。
+ *
+ * 从前是「撑开 → scrollToIndex(AUTO) → 220ms 后再 correctPanelScroll 补一滚」，
+ * 两段滚动中间隔 220ms，肉眼看到的就是**蹲一下然后跳动**（书架上有「继续阅读」
+ * 横幅时网格更高、面板顶边更靠下，第一滚幅度大，跳动感尤其强）。
+ * 现在开面板这一拍只滚一次（最小滚动），之后高度动画只负责往下撑，全程无二次滚动。
+ */
+const FOLDER_SCROLL_SETTLE: number = 60;
+
+/**
+ * 展开文件夹时那次自动滚动的时长（ms）。
+ *
+ * 用 `scrollTo` 的 animation.duration 显式指定：SDK 自带的 `scrollToIndex(smooth=true)`
+ * 是**固定短时长**跑完全程，跨几屏时快到像"甩"过去（用户反馈"滑动的太快了"）。
+ * 曲线用 FOLDER_SPRING —— 与展开动画同一支，滑动与撑开同步收放。
+ */
+const FOLDER_GLIDE_MS: number = 420;
 
 /**
  * 封面可选底色（只存这一个基色，明暗渐变与文字墨色由 coverStyleFromColor 自动推）。
@@ -130,7 +161,7 @@ struct Index {
 
   @State docs: DocMeta[] = [];
   @State folders: ShelfFolder[] = [];
-  /** 启动页：首帧即显，1.2s 后淡出移除（竹影底 + foreground 图标 + ChengJian） */
+  /** 启动页：首帧即显，1.2s 后淡出移除（竹影底 + foreground 图标 + ChéngJiān） */
   @State splashOn: boolean = true;
   @State splashOpacity: number = 1;
   /**
@@ -138,6 +169,43 @@ struct Index {
    * 由 refresh() 统一构建——build/ForEach 期间只读，不写。
    */
   @State items: ShelfItem[] = [];
+  /** 收藏文档（悬浮栏爱心按钮的快速查看列表） */
+  @State starredDocs: DocMeta[] = [];
+  /** 收藏列表排序：'starred' 最近收藏 / 'recent' 最近打开 / 'name' 按名称 */
+  @State starSort: string = 'starred';
+  /** 当前格子菜单对象的收藏状态（选择操作面板里的「收藏 / 取消收藏」） */
+  @State cellMenuStarred: boolean = false;
+  /** 半模态面板重建纪元：深浅切换时换容器 key，避免面板"切换不完全" */
+  @State sheetEpoch: number = 0;
+  /** 新建 / 导入后回书架：这次刷新带进场动画 */
+  @State animateNextRefresh: boolean = false;
+  // ── 版本更新弹窗 / 使用模式弹窗（首次使用 + 更新后首次启动）──
+  @State updateTitle: string = '';
+  @State updateLines: string[] = [];
+  @State modeTitle: string = '选择使用模式';
+  @State modeCurrent: string = '';
+  updateDialog: CustomDialogController = new CustomDialogController({
+    builder: UpdateContentDialog({ titleText: $updateTitle, lines: $updateLines }),
+    autoCancel: false,
+    customStyle: true
+  });
+  modeDialog: CustomDialogController = new CustomDialogController({
+    builder: AppModeDialog({
+      titleText: $modeTitle,
+      currentMode: $modeCurrent,
+      onPick: (mode: string) => {
+        AppStorage.setOrCreate('appMode', mode);
+        // 第二腿落盘（同 lastSeenVersion：PersistentStorage 在部分设备不可靠）
+        SettingsMirror.save(this.ctx());
+        this.toast(mode === APP_MODE_OFFLINE ? '已切换为基础模式（纯离线）' : '已切换为全量模式');
+      }
+    }),
+    autoCancel: false,
+    customStyle: true
+  });
+  /** 两个一次性弹窗的会话内标记（持久化被系统吞掉时也不重复弹） */
+  private modeAsked: boolean = false;
+  private updateShown: boolean = false;
   @State userDocCount: number = 0;
   @State totalWords: number = 0;
   @State totalChars: number = 0;
@@ -229,6 +297,14 @@ struct Index {
       FontStore.registerAll(ctx);
     }
     this.refresh();
+    // ── 首次使用：先选使用模式（全量 / 基础离线）──
+    this.askAppMode();
+    // ── 更新后首次启动：弹一次本次更新内容（数据取自更新日志最新一条）──
+    this.maybeShowUpdateDialog();
+    // ── 自动检查更新：固定 48 小时一次，有更新用 toast 即时反馈 ──
+    UpdateService.maybeAutoCheck(ctx, (message: string) => {
+      this.toast(message);
+    });
     // 启动页时序：首帧即显 → 1.2s 后开始淡出（420ms）→ 淡出结束移除
     setTimeout(() => {
       this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
@@ -238,6 +314,73 @@ struct Index {
         this.splashOn = false;
       }, 460);
     }, 1200);
+  }
+
+  /** 使用模式未选择时弹窗（首次使用）；选择结果写入 appMode。 */
+  private askAppMode(): void {
+    // **本会话只问一次**：即便持久化被系统吞掉，也不会在一次使用里重复弹
+    if (this.modeAsked) {
+      return;
+    }
+    const mode: string = UpdateService.appMode();
+    if (mode.length > 0) {
+      return;
+    }
+    this.modeAsked = true;
+    this.modeTitle = '选择使用模式';
+    this.modeCurrent = '';
+    // **首次使用不弹更新日志**（用户要求：刚装上没有"更新"一说）：
+    // 顺带把 seen 版本补成当前版本，避免下次启动再补弹。
+    this.suppressUpdateDialogForFirstRun();
+    setTimeout(() => {
+      this.modeDialog.open();
+    }, 1600);
+  }
+
+  /**
+   * 首次使用压制更新日志弹窗：标记已提示 + 记录当前版本号。
+   * 这样「使用模式」先弹、且不会与更新日志同时弹出（用户要求的顺序）。
+   */
+  private suppressUpdateDialogForFirstRun(): void {
+    const latest: ChangelogEntry = latestChangelog();
+    this.updateShown = true;
+    if (latest.version.length > 0) {
+      AppStorage.setOrCreate('lastSeenVersion', latest.version);
+      SettingsMirror.save(this.ctx());
+    }
+  }
+
+  /**
+   * 版本更新弹窗：**更新后首次启动弹一次**（对比最后提示过的版本号），
+   * 内容直接取更新日志最新一条——发版只需维护 service/Changelog.ets，无需另写弹窗文案。
+   */
+  private maybeShowUpdateDialog(): void {
+    if (this.updateShown) {
+      return;
+    }
+    // 首次使用（还没选过使用模式）时，本方法什么都不做——
+    // 由 askAppMode 负责压制，只有升级用户才看得到「本次更新内容」。
+    if (UpdateService.appMode().length === 0) {
+      return;
+    }
+    const latest: ChangelogEntry = latestChangelog();
+    if (latest.version.length === 0) {
+      return;
+    }
+    const seen: string | undefined = AppStorage.get<string>('lastSeenVersion');
+    if (seen !== undefined && seen !== null && seen === latest.version) {
+      return;
+    }
+    this.updateShown = true;
+    AppStorage.setOrCreate('lastSeenVersion', latest.version);
+    // **第二腿落盘**：PersistentStorage 在部分设备上不真正落盘（本工程既有结论），
+    // 这里同步写一次 settings.json，否则每次启动都会重复弹（用户反馈）
+    SettingsMirror.save(this.ctx());
+    this.updateTitle = '已更新到 ' + latest.version;
+    this.updateLines = latest.items;
+    setTimeout(() => {
+      this.updateDialog.open();
+    }, 2400);
   }
 
   // ── 顶栏 / 底栏收起与展开：累计位移阈值（与阅读页同一套） ──
@@ -309,6 +452,11 @@ struct Index {
     this.cellMenuKind = kind;
     this.cellMenuFor = name;
     this.cellMenuBuiltin = builtin;
+    // 打开菜单时同步该文档的收藏状态（菜单里有「收藏 / 取消收藏」）
+    const c = this.ctx();
+    if (c !== null) {
+      this.cellMenuStarred = DocStore.isStarred(c, name);
+    }
     // 打开时同步一次只读状态（后面由按钮自己维护，不再每次渲染现问数据层）
     this.cellMenuReadOnly = kind === 'doc' ? this.isDocReadOnly(name) : false;
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
@@ -605,30 +753,162 @@ struct Index {
       this.folderPanelMounted = true;
     });
     this.folderPanelOpen = false;
+    // **滚动只做一次、且是「最小滚动」，发生在撑开之前**。
+    //
+    // 语义沿用 1.0.2 的 `ScrollAlign.AUTO`：**只在面板露不全时才滚、只滚到刚好露出**。
+    // 文件夹本来就在屏幕中部 → 一点都不滚，面板在原地/folders 下方长开（用户要的观感）。
+    //
+    // 与 1.0.2 的两处差别，都是修「蹲一下然后跳动」与「滑动的太快了」，**不改语义**：
+    // ① 1.0.2 是「AUTO 跳一次 → 220ms 后 correctPanelScroll 再补一滚」= 两跳 = 跳动；
+    //    现在手算差值、**只发一次** scrollTo。
+    // ② 1.0.2 用 `scrollToIndex(smooth=true)`，固定短时长跑完全程、滚得越远越快；
+    //    现在用 `scrollTo` + FOLDER_GLIDE_MS + FOLDER_SPRING，与展开动画同速。
     setTimeout(() => {
+      this.scrollPanelTopIntoPlace();
       this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
         this.folderPanelOpen = true;
       });
-      // 撑开的同时确保面板可见：**ScrollAlign.AUTO 只做最小滚动**
-      // （之前用 CENTER 强制居中，会把列表猛然上滚、最近阅读整段被顶出屏幕——用户反馈）。
-      // 目标已在可视区时 AUTO 不滚动，被底栏挡住时才滚一小段。
-      setTimeout(() => {
-        const idx: number = this.folderPanelGridIndex();
-        if (idx >= 0) {
-          try {
-            this.gridScroller.scrollToIndex(idx, true, ScrollAlign.AUTO);
-          } catch (err) {
-            // 忽略：滚动失败不影响展开
-          }
-        }
-        // 第一跳之后按实测位置补一次：AUTO 只保证面板顶边可见，
-        // 面板底部仍可能压在悬浮胶囊后面 → 这里精确补齐差额。
-        // 等 220ms 让展开动画跑完、onAreaChange 报出最终矩形。
-        setTimeout(() => {
-          this.correctPanelScroll();
-        }, 220);
-      }, 220);
-    }, 40);
+    }, FOLDER_SCROLL_SETTLE);
+  }
+
+  /**
+   * 展开**前**做一次**最小滚动**，把文件夹下方的那块面板挪进可视区。
+   *
+   * ⚠️ **语义必须是「最小滚动」，不是「对齐到某个位置」**（用户连续纠正：
+   * 「文件夹展开要在文件夹下」「不是文件显示区域最下方！时 1.0.2 时的那样」）。
+   * 1.0.2 用的是 `scrollToIndex(..., ScrollAlign.AUTO)` —— AUTO 的语义就是
+   * **只在目标不在可视区时才滚、且只滚到刚好可见**。所以：
+   *   · 文件夹本来就在屏幕中部 → 几乎不滚，面板留在它下方（原地震开）；
+   *   · 文件夹靠近屏幕底部 → 才往上滚一点，让面板露出来。
+   * 一旦改成 START/CENTER 那种"对齐到固定位置"，文件夹就会被拉到屏幕顶部、
+   * 面板被甩到文件区下方 —— 这正是用户看到"放所有文件下方"的成因。
+   *
+   * **滚动上限 = 滚到底**（用户定义）：「长按封面拖…」那条文末提示浮到屏幕顶部、
+   * 停在底栏上方，就是当前手动上滑能到的最低处。所以先算「露出面板需要滚多少」，
+   * 再用「滚到底还剩多少」封顶 —— 取两者较小值。少了这个封顶，
+   * 靠近末尾的文件夹会把内容一路推过文末提示、看起来像滚飞了。
+   *
+   * 与 1.0.2 的差别只有两处（都是修跳动/速度，不改语义）：
+   * ① 用 `scrollTo` + **自定义 duration/curve** 取代 `smooth=true`：
+   *    smooth 是固定短时长跑完全程，滚得越远越快（用户反馈"滑动的太快了"）；
+   *    这里用 FOLDER_SPRING + FOLDER_GLIDE_MS，与展开动画同一支曲线、同档速度。
+   * ② 滚动量自己算（实测文件夹位置），因此**只发一次滚动**，
+   *    不像 1.0.2 那样"AUTO 跳一次 + 220ms 后再补一滚"（两跳 = 蹲一下然后跳动）。
+   *
+   * 实测用 `getRectangleById`（**不能用 onAreaChange**：面板此刻高度 0，回调不触发）。
+   */
+  private scrollPanelTopIntoPlace(): void {
+    const cur: number = this.gridScroller.currentOffset().yOffset;
+    // 锚点 = 被点开的文件夹格子（面板在它下方）
+    const anchorTop: number = this.folderAnchorTopByMeasure();
+    if (anchorTop <= 0) {
+      return;
+    }
+    // 可视区下沿 = 底栏胶囊上沿（面板底部要露在它上面才算看得见）
+    const safeBottom: number = this.rootHeight - this.padBottom() - HwBar.pill - HwSpace.md;
+    // 面板展开后的高度
+    const panelH: number = this.folderPanelTarget();
+    // 面板底边（窗口坐标）= 文件夹顶边 + 一行高 + 面板高
+    const panelBottom: number = anchorTop + this.folderRowHeight() + panelH;
+    if (panelBottom <= safeBottom) {
+      // **整块面板已经在可视区内 → 一点都不滚**（1.0.2 的 AUTO 就是这个行为）
+      return;
+    }
+    // ① 露出面板需要的滚动量
+    let dist: number = panelBottom - safeBottom;
+    // ② 「滚到底」的剩余量：文末提示上沿贴到顶栏（即它停在底栏上方）时为 0
+    const room: number = this.roomToScrollEnd();
+    if (room >= 0 && dist > room) {
+      // 需要的比能滚的还多 → 只滚到"滚到底"这个上限，绝不越过去
+      dist = room;
+    }
+    if (dist <= 1) {
+      // 已经贴着上限（或已在位）→ 不滚
+      return;
+    }
+    try {
+      this.gridScroller.scrollTo({
+        xOffset: 0,
+        yOffset: cur + dist,
+        // 曲线与展开动画**同一支** FOLDER_SPRING：滑动与撑开同步收放
+        // （用户反馈"滑动速度要和文件夹展开的速度一样"）
+        animation: { duration: FOLDER_GLIDE_MS, curve: FOLDER_SPRING }
+      });
+    } catch (err) {
+      // 定位失败不影响展开本身（面板仍会展开，用户可手动滚）
+    }
+  }
+
+  /**
+   * 从当前位置到「滚到底」还能滚多少（vp）。
+   *
+   * 判据（用户定义）：网格末尾那条「长按封面拖到另一张上合并为文件夹 · 封面由文档名生成」
+   * 的文末提示，它的上沿浮到屏幕顶部、整条停在底栏胶囊上方，就是手动上滑的极限。
+   * 该提示的 GridItem 挂了 id `shelfEndHint`，这里实测它的上沿算差值。
+   *
+   * 返回 -1 表示**测不到**（提示不在渲染范围 / 首帧未排版）→ 调用方不做封顶。
+   */
+  private roomToScrollEnd(): number {
+    const hintTop: number = this.endHintTopByMeasure();
+    if (hintTop <= 0) {
+      return -1;
+    }
+    // 文末提示上沿到屏幕顶部还有多远；滚那么多就到底了
+    return hintTop;
+  }
+
+  /** 实测文末提示 GridItem 上沿的窗口坐标（vp）；测不到返回 0。 */
+  private endHintTopByMeasure(): number {
+    try {
+      const info: componentUtils.ComponentInfo =
+        this.getUIContext().getComponentUtils().getRectangleById('shelfEndHint');
+      if (info === undefined || info === null) {
+        return 0;
+      }
+      const wy: number = info.windowOffset.y;
+      if (wy <= 0) {
+        return 0;
+      }
+      return this.getUIContext().px2vp(wy);
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  /** 文件夹所在行的高度（封面 0.72 宽高比 + 名称/数量行 + 行间距），用于估算面板底边位置。 */
+  private folderRowHeight(): number {
+    const gridW: number = this.rootWidth - HwSpace.lg * 2;
+    const cols: number = this.shelfColumns();
+    const cellW: number = (gridW - HwSpace.md * (cols - 1)) / cols;
+    return cellW / 0.72 + 34 + HwSpace.md;
+  }
+
+  /**
+   * 实测「正在展开的文件夹」格子顶边的窗口坐标（vp）；测不到返回 0。
+   *
+   * 走 `getComponentUtils().getRectangleById('folderCellAnchor')`：
+   * 只取 `windowOffset.y` —— 那是节点在窗口里的绝对位置，与节点高度无关，
+   * 所以**不依赖展开动画是否已开始**（这正是不用 onAreaChange 的原因：
+   * 面板高度为 0 时该回调压根不触发）。
+   * （HeroTransition.measure() 会因 size.height <= 0 判失败返回空矩形，这里不能用它。）
+   */
+  private folderAnchorTopByMeasure(): number {
+    try {
+      const info: componentUtils.ComponentInfo =
+        this.getUIContext().getComponentUtils().getRectangleById('folderCellAnchor');
+      if (info === undefined || info === null) {
+        return 0;
+      }
+      const wy: number = info.windowOffset.y;
+      if (wy <= 0) {
+        return 0;
+      }
+      // getRectangleById 返回 px，转 vp
+      return this.getUIContext().px2vp(wy);
+    } catch (err) {
+      // 组件还没挂好（首帧）→ 返回 0，本拍不滚
+      return 0;
+    }
   }
 
   private closeFolderPanel(): void {
@@ -675,36 +955,13 @@ struct Index {
     });
   }
 
-  /** 展开面板的窗口矩形（窗口坐标 vp）。用来校正"滚到刚好看得见面板"。 */
+  /**
+   * 展开面板的窗口矩形（窗口坐标 vp）。
+   * 展开**前**的预滚（preScrollPanelIntoPlace）靠 panelWinTop 定目标位；
+   * panelWinBottom 仍记录完整矩形，便于日后需要时再算"底部是否压到胶囊"。
+   */
   private panelWinTop: number = 0;
   private panelWinBottom: number = 0;
-
-  /**
-   * 面板位置校正（打开文件夹时的第二步滚动）。
-   *
-   * 为什么需要：`scrollToIndex(..., ScrollAlign.AUTO)` 只保证**面板顶边**进入视口，
-   * 面板往往还有一两百 vp 压在底部悬浮胶囊后面 —— 用户反馈"自动滑的幅度太小、
-   * 还得手动补一段"。这里按**实测**的面板窗口矩形算还差多少，
-   * 再用 scrollBy 精确补上（只往上推，不会来回抖）。
-   */
-  private correctPanelScroll(): void {
-    if (this.panelWinBottom <= 0 || this.panelWinTop <= 0) {
-      return;
-    }
-    // 底部悬浮胶囊的上沿 = 可用高 - 胶囊高 - 底部避让 - 一点呼吸位
-    const barTop: number = this.rootHeight - this.padBottom() - HwBar.pill - HwSpace.md;
-    const overflow: number = this.panelWinBottom - barTop;
-    if (overflow <= 1) {
-      return;
-    }
-    try {
-      // 正数 = 内容上移，把面板底部推到胶囊上方。
-      // Grid/List 的 Scroller.scrollBy 在本 SDK 只吃两个参数（dx, dy），不要传动画开关。
-      this.gridScroller.scrollBy(0, overflow);
-    } catch (err) {
-      // 校正失败不影响面板本身（它已经展开了）
-    }
-  }
 
   onPageShow(): void {
     // **系统深浅同步 + 必要的整页刷新**：
@@ -729,6 +986,15 @@ struct Index {
     setTimeout(() => {
       this.refresh();
     }, 420);
+    // **外部"打开方式"导入的文档**（EntryAbility 已写入书架）：刷新后提示一次
+    const pending: string | undefined = AppStorage.get<string>('pendingOpenDocName');
+    if (pending !== undefined && pending.length > 0) {
+      AppStorage.setOrCreate('pendingOpenDocName', '');
+      setTimeout(() => {
+        this.refresh();
+        this.toast('已导入《' + pending + '》');
+      }, 460);
+    }
   }
 
   /** 页面隐藏：停掉深浅探测器（不在本页时没必要问系统）。 */
@@ -760,7 +1026,15 @@ struct Index {
     markThemeApplied(dark);
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.themeEpoch = this.themeEpoch + 1;
+      // **半模态面板也要跟着重建**：面板内容由 bindSheet 的 builder 渲染，
+      // 它不跟随宿主状态刷新——深色切换时会出现"切换不完全"（正文/卡片变了、
+      // 面板还是旧色，用户反馈）。换容器 key 让面板整棵子树重建。
+      this.sheetEpoch = this.sheetEpoch + 1;
     });
+    // 灰体文本的颜色由 paletteFor 现算，这里再广播一次刷新计数，
+    // 保证「自动 / 按主题」的灰字跟着深浅一起换（用户反馈深色下没换色）
+    AppStorage.setOrCreate('appearanceTick',
+      (AppStorage.get<number>('appearanceTick') ?? 0) + 1);
   }
 
   // ══════════════════════ 数据 ══════════════════════
@@ -783,6 +1057,8 @@ struct Index {
       const list: DocMeta[] = DocStore.list(ctx);
       this.docs = list;
       this.folders = DocStore.folderList();
+      // 收藏列表（悬浮栏爱心按钮的快速查看）；沿用当前排序口径
+      this.starredDocs = DocStore.starredList(ctx, this.starSort);
       // **展开状态要跟着文件夹一起收拾**：解散 / 重命名 / 数据变化后，
       // 若 openFolderName 还指着不存在的文件夹，其他格子会一直保持"退后 + 模糊"
       // （用户看到的"解散后偶尔整屏发糊"就是这个残留状态）。
@@ -792,8 +1068,17 @@ struct Index {
         // 文件夹没了，0 高占位的面板也一起摘掉（留着会占一行网格空间）
         this.folderPanelMounted = false;
       }
-      // 统一排序 → 网格项（文件夹与文档混排，拖拽才能互相换位）
-      this.items = this.buildItems(ctx, list);
+      // 统一排序 → 网格项（文件夹与文档混排，拖拽才能互相换位）。
+      // **新建 / 导入后回来**：把这次赋值放进 animateTo，配合格子的 transition
+      // 让新封面淡入 + 轻微放大进场（否则新格子是"啪"地出现，用户反馈没动画）。
+      if (this.animateNextRefresh) {
+        this.animateNextRefresh = false;
+        this.getUIContext().animateTo({ duration: 300, curve: Curve.Friction }, () => {
+          this.items = this.buildItems(ctx, list);
+        });
+      } else {
+        this.items = this.buildItems(ctx, list);
+      }
       let words: number = 0;
       let chars: number = 0;
       let userCount: number = 0;
@@ -874,20 +1159,19 @@ struct Index {
   // ══════════════════════ 主题与尺寸 ══════════════════════
 
   private isDark(): boolean {
-    if (this.themeMode === ReaderThemeMode.Dark) {
-      return true;
-    }
-    if (this.themeMode === ReaderThemeMode.Light) {
-      return false;
-    }
-    return this.systemDark;
+    // 统一转调 isDarkTheme：**羊皮纸 / 护眼绿是浅色纸底**，
+    // 漏判会让壁纸 / 遮罩 / 系统栏按 systemDark 走，与纸色文字对不上。
+    return isDarkTheme(this.themeMode, this.systemDark);
   }
 
   private palette(): ReaderPalette {
-    // 外观刷新计数：主题色 / 灰字 / 沾色是在 paletteFor 里读 AppStorage 的
-    // （纯函数读不登记依赖），这里读一下计数，派生色改完当帧就能重算
+    // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色是在 paletteFor 里
+    // 读 AppStorage 的（纯函数读不登记依赖），这里不登记的话主题切换会被 ArkUI
+    // 跳过重算，表现为部分节点沿用旧调色板（退出重进才恢复）
     const tick: number = this.appearanceTick;
-    return paletteFor(this.themeMode, this.systemDark);
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   private padTop(): number {
@@ -1008,6 +1292,8 @@ struct Index {
   }
 
   private createDoc(): void {
+    // 新建后回到书架：让新封面带动画进场（见 refresh 里的 animateNextRefresh）
+    this.animateNextRefresh = true;
     this.pushPage('pages/Editor');
   }
 
@@ -1587,7 +1873,9 @@ struct Index {
             // 用户自定义：底色 / 封面图 / 是否显示名称
             coverColor: this.coverColorOf(meta),
             coverImage: this.coverImageSrc(meta.coverImage),
-            hideName: meta.hideCoverName === true
+            hideName: meta.hideCoverName === true,
+            // 默认封面上的淡淡格式字：MD / TXT（应用同时支持两种文件）
+            formatLabel: Index.formatLabelOf(meta.fileName)
           })
         }
         // 跨页共享元素：与阅读页详情头封面同 id，实现「一镜到底」
@@ -1744,8 +2032,7 @@ struct Index {
   /** 文件夹格：迷你封面预览（或自定义封面图）+ 名称 + 数量；点开浮层，⋯ 菜单，可接收拖入。 */
   @Builder
   folderCell(folder: ShelfFolder) {
-    Column({ space: 6 }) {
-      Stack({ alignContent: Alignment.TopEnd }) {
+    Column({ space: 6 }) {      Stack({ alignContent: Alignment.TopEnd }) {
         Column({ space: 4 }) {
           Stack({ alignContent: Alignment.TopStart }) {
             // ① 自定义封面图：铺满整格（同样带上"书"的圆角）
@@ -1762,13 +2049,17 @@ struct Index {
               // ② 默认：**2×2 迷你封面预览**（上下两排各两本，文件夹图标的样子）。
               //    永远显示前 4 本封面（不做"+N"顶替——用户反馈第 4 本会消失），
               //    总数由封面下方的「N 篇」表达。
+              //    形状与外面文档封面同款 **D 型语言**（左书脊小圆角、右大圆角），
+              //    但**按迷你封面的尺寸等比缩小**（2/6）：D 型 5/13 是按大封面（约 105vp）
+              //    设计的，迷你封面只有约 46vp，直接套 13 会让右圆角占掉 1/3 宽，看着不协调；
+              //    间距与外框边距统一为 4（原来边距 7 / 内距 4 不一致，难看）。
               Column({ space: 4 }) {
                 Row({ space: 4 }) {
                   ForEach(this.folderPreviewColors(folder).slice(0, 2), (c: string, i: number) => {
                     Column()
                       .layoutWeight(1)
-                      .aspectRatio(0.72)
-                      .borderRadius(4)
+                      .height('100%')
+                      .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 6, bottomRight: 6 })
                       .linearGradient({
                         angle: 200,
                         colors: [[c, 0.0], [c, 1.0]]
@@ -1776,13 +2067,14 @@ struct Index {
                   }, (c: string, i: number) => folder.name + 'a' + i + c)
                 }
                 .width('100%')
+                .layoutWeight(1)
 
                 Row({ space: 4 }) {
                   ForEach(this.folderPreviewColors(folder).slice(2, 4), (c: string, i: number) => {
                     Column()
                       .layoutWeight(1)
-                      .aspectRatio(0.72)
-                      .borderRadius(4)
+                      .height('100%')
+                      .borderRadius({ topLeft: 2, bottomLeft: 2, topRight: 6, bottomRight: 6 })
                       .linearGradient({
                         angle: 200,
                         colors: [[c, 0.0], [c, 1.0]]
@@ -1790,14 +2082,16 @@ struct Index {
                   }, (c: string, i: number) => folder.name + 'b' + i + c)
                 }
                 .width('100%')
+                .layoutWeight(1)
               }
               .width('100%')
+              .height('100%')
             }
             // （原先左上角那颗文件夹小图标按用户要求已删除）
           }
           .width('100%')
           .aspectRatio(0.72)
-          .padding(this.folderHasImage(folder) ? 0 : 7)
+          .padding(this.folderHasImage(folder) ? 0 : 4)
           .borderRadius({ topLeft: 5, bottomLeft: 5, topRight: 13, bottomRight: 13 })
           // 文件夹颜色：自定义色优先。**用不透明色**（之前带 15% 透明 → 看着像"变透明了"）
           .backgroundColor(this.folderColorOf(folder).length > 0
@@ -1869,6 +2163,11 @@ struct Index {
     .onDrop((event: DragEvent) => {
       this.handleDropOnFolder(folder.name);
     })
+    // **正在展开的那个文件夹**挂 id：展开前用它实测此刻的窗口位置，
+    // 滚动目标按「文件夹落在屏幕上部、面板在它下方」来算（见 scrollPanelTopIntoPlace）。
+    // ⚠️ id 必须挂在**卡片本体这层 Column** 上，不能挂 GridItem ——
+    // GridItem 是布局容器，getRectangleById 在它上面实测常常拿不到矩形（本工程踩过）。
+    .id(this.openFolderName === folder.name ? 'folderCellAnchor' : 'foldercell_' + folder.name)
   }
 
   /** 记录文档封面的窗口矩形：一镜到底的起点/终点必须精确到这一格。 */
@@ -1976,6 +2275,20 @@ struct Index {
   }
 
   /** 封面外观指纹（色 / 图 / 名称开关），参与 key。 */
+  /**
+   * 文档封面的外观指纹（自定义色 | 封面图 | 是否显示名）。
+   * **进 ForEach key**：改封面色/图后 key 变化 → 面板内封面才会重建刷新。
+   * 之前展开面板的 key 只有 name + themeEpoch，拖进文件夹后在面板里改封面色
+   * key 不变 → ArkUI 复用旧组件，颜色永远不更新（用户反馈"无法应用"）。
+   */
+  private docCoverTag(meta: DocMeta): string {
+    const rawC: string | undefined = meta.coverColor;
+    const rawI: string | undefined = meta.coverImage;
+    const c: string = rawC === undefined ? '' : rawC;
+    const i: string = rawI === undefined ? '' : rawI;
+    return c + '|' + i + '|' + (meta.hideCoverName === true ? '1' : '0');
+  }
+
   private itemCoverTag(item: ShelfItem): string {
     if (item.kind === 'folder') {
       const f: ShelfFolder | null = item.folder;
@@ -1987,17 +2300,25 @@ struct Index {
       const rawI: string | undefined = f.coverImage;
       const c: string = rawC === undefined ? '' : rawC;
       const i: string = rawI === undefined ? '' : rawI;
-      return c + '|' + i + '|' + (f.hideCoverName === true ? '1' : '0');
+      // **成员文档的封面指纹也要进 key**（用户反馈：改了文件夹内文件的封面，
+      // 文件夹格 2×2 迷你预览不跟着变）—— 预览色取前 4 本的封面色，摘要拼进 key。
+      let member: string = '';
+      const ctx = this.ctx();
+      for (let k = 0; k < f.docs.length && k < 4; k++) {
+        const m: DocMeta | undefined = ctx !== null ? DocStore.find(ctx, f.docs[k]) : undefined;
+        if (m !== undefined) {
+          const mc: string = m.coverColor !== undefined ? m.coverColor : '';
+          const mi: string = m.coverImage !== undefined ? m.coverImage : '';
+          member += mc + ',' + mi + ';';
+        }
+      }
+      return c + '|' + i + '|' + (f.hideCoverName === true ? '1' : '0') + '|' + member;
     }
     const m: DocMeta | null = item.meta;
     if (m === null) {
       return '';
     }
-    const rawC2: string | undefined = m.coverColor;
-    const rawI2: string | undefined = m.coverImage;
-    const c2: string = rawC2 === undefined ? '' : rawC2;
-    const i2: string = rawI2 === undefined ? '' : rawI2;
-    return c2 + '|' + i2 + '|' + (m.hideCoverName === true ? '1' : '0');
+    return this.docCoverTag(m);
   }
 
   /** 当前展开的文件夹在统一排序（items）里的下标（-1 = 没展开）。 */
@@ -2051,9 +2372,39 @@ struct Index {
     return parts.join(' ');
   }
 
+  /**
+   * 该文件夹在**网格里**实际所处的列（0 起）。
+   *
+   * ⚠️ 不能直接用 `openFolderIndex() % 列数`：那是 **items 流内**的下标，
+   * 而 items 前面还排着「继续阅读横幅(1) + 新建卡(1) + looseBuiltinDocs()」这些前置项。
+   * 漏掉这个偏移会算错列 → `panelAfterIndex()` 里的「本行还剩几格」也跟着错 →
+   * **面板被插到下面几行之后**（用户反馈"展开在其他文件下方"）。
+   *
+   * 例：前置 2 项（无松散内置文档）+ 文件夹在 items 里第 0 位 → 网格绝对槽位 2 → 列 2。
+   */
   private openFolderColumn(): number {
     const slot: number = this.openFolderIndex();
-    return slot < 0 ? 0 : slot % this.shelfColumns();
+    if (slot < 0) {
+      return 0;
+    }
+    const lead: number = this.gridLeadCount();
+    return (lead + slot) % this.shelfColumns();
+  }
+
+  /**
+   * 网格流里排在 items **之前**的项数（用于把 items 内下标换算成网格绝对槽位）。
+   *
+   * 真实顺序（见 build 里的 Grid）：
+   *   · 继续阅读横幅 —— **通栏 GridItem（columnStart 0 ~ 列数-1），独占一整行**，
+   *     所以它后面要偏移**一整行 = 列数 个槽位**，不是 1 个；
+   *   · 新建卡 —— 普通 1 格；
+   *   · looseBuiltinDocs() —— 逐个 1 格。
+   */
+  private gridLeadCount(): number {
+    const cols: number = this.shelfColumns();
+    // 横幅存在时才占那一行；没有横幅（resumeName 为空）时它的 GridItem 仍在流里
+    // （resumeBanner() 内部 return，GridItem 壳还在），但它是通栏 → 依然占满一整行。
+    return cols + 1 + this.looseBuiltinDocs().length;
   }
 
   /**
@@ -2071,27 +2422,6 @@ struct Index {
     // 现在收敛到网格末尾：面板跟在最后一个格子后面照常挂载。
     const last: number = this.items.length - 1;
     return Math.min(after, last);
-  }
-
-  /**
-   * 展开面板在**网格里的绝对下标**（GridItem 序号，含通栏项）。
-   *
-   * 真实渲染顺序（见 build 里的 Grid）：
-   *   0 继续阅读横幅 · 1 新建卡 · 2..n **looseBuiltinDocs()**（不在文件夹里的内置文档）
-   *   · 之后是 items（每个 item 后面可能跟一个面板）、空书架提示、文末提示。
-   *
-   * ⚠️ 必须用 **looseBuiltinDocs().length**，不能用 builtinDocs().length：
-   * 内置教程首次启动就被收进「澄笺」文件夹，网格里**一个都不渲染**（报数 2），
-   * 于是算出的下标偏大 2 → scrollToIndex 冲过面板，用户看到「打开文件夹后屏幕不滑动」。
-   */
-  private folderPanelGridIndex(): number {
-    const after: number = this.panelAfterIndex();
-    if (after < 0) {
-      return -1;
-    }
-    // 空书架提示（userDocCount === 0）通栏插在 items 之前，也要算进去
-    const emptyHint: number = this.userDocCount === 0 ? 1 : 0;
-    return 2 + this.looseBuiltinDocs().length + emptyHint + after + 1;
   }
 
   /** 面板展开缩放的横向原点：对准该文件夹所在列的列心（顶缘小箭头已删除，仅作动画原点）。 */
@@ -2155,7 +2485,7 @@ struct Index {
             GridItem() {
               this.docCell(meta, true)
             }
-          }, (meta: DocMeta) => 'fp_' + meta.name + '_t' + this.themeEpoch)
+          }, (meta: DocMeta) => 'fp_' + meta.name + '_' + this.docCoverTag(meta) + '_t' + this.themeEpoch)
         }
         .columnsTemplate(this.panelColumnsStr())
         .columnsGap(HwSpace.sm)
@@ -2218,6 +2548,12 @@ struct Index {
 
   /** 沉浸光感开关（AppStorage 强制开启，见 EntryAbility） */
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /**
+   * 编辑页的未保存标记（Editor 通过 @StorageLink 写入）。
+   * **系统返回手势的拦截判据**：dirty 时 onBackPressed 拦截并让 Editor 弹"保存 / 不保存"窗，
+   * 避免侧滑误触退出丢内容（顶栏返回按钮早有此弹窗，手势此前没有）。
+   */
+  @StorageProp('editorDirty') editorDirty: boolean = false;
   /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）：新建卡外壳据此决定底色 */
   private materialOn(): boolean {
     return this.immersiveOn && getImmersiveMaterial() !== null;
@@ -2349,6 +2685,9 @@ struct Index {
   // ── 半模态面板的官方标题栏文案（标题区由 ModalSheet 自带，内容不再自绘标题）──
 
   private sheetTitle(): string {
+    if (this.shelfSheet === 'starred') {
+      return '我的收藏';
+    }
     if (this.shelfSheet === 'rename') {
       return this.renameKind === 'folder' ? '重命名文件夹' : '重命名文档';
     }
@@ -2359,6 +2698,9 @@ struct Index {
   }
 
   private sheetSubtitle(): string {
+    if (this.shelfSheet === 'starred') {
+      return '共 ' + this.starredDocs.length + ' 篇 · 点一条直接阅读';
+    }
     if (this.shelfSheet === 'rename') {
       return this.renameKind === 'folder'
         ? '文件夹只是归组，不影响文档本身'
@@ -2373,7 +2715,9 @@ struct Index {
   /** bindSheet 内容分发：按 shelfSheet 渲染格子菜单 / 重命名 / 导出面板。 */
   @Builder
   indexSheet() {
-    if (this.shelfSheet === 'rename') {
+    if (this.shelfSheet === 'starred') {
+      this.starredSheet()
+    } else if (this.shelfSheet === 'rename') {
       this.renameSheet()
     } else if (this.shelfSheet === 'export') {
       Column() {
@@ -2402,6 +2746,8 @@ struct Index {
       }
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.lg })
+      // 深浅切换时换 key 强制重建（面板不跟随宿主状态刷新 → "切换不完全"）
+      .id('cellMenu_' + this.sheetEpoch)
     }
     .scrollBar(BarState.Off)
     .width('100%')
@@ -2416,6 +2762,7 @@ struct Index {
     }
     .width('100%')
     .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.lg })
+    .id('rename_' + this.sheetEpoch)
   }
 
   /**
@@ -2488,6 +2835,19 @@ struct Index {
           this.closeCellMenu();
           const route: ReaderRoute = { name: this.cellMenuFor };
           this.pushPage('pages/Reader', route);
+        })
+        // 收藏 / 取消收藏（书架也能收；信息卡的爱心之外多一个入口——用户反馈自带文件不好收藏）
+        this.menuRow(this.cellMenuStarred ? '取消收藏' : '收藏', () => {
+          const c = this.ctx();
+          if (c === null) {
+            return;
+          }
+          const next: boolean = !this.cellMenuStarred;
+          if (DocStore.setStarred(c, this.cellMenuFor, next)) {
+            this.cellMenuStarred = next;
+            this.starredDocs = DocStore.starredList(c, this.starSort);
+            this.toast(next ? '已收藏' : '已取消收藏');
+          }
         })
         // **预置文档支持修改**（用户要求）：编辑不再限制非内置；
         // 但**只读的文档不给编辑入口**（可在本面板切成「可写」再编辑）
@@ -2682,6 +3042,19 @@ ImmersiveChip({
 
   // ══════════════════════ 树形视图（文件树形态） ══════════════════════
 
+  /**
+   * 列表行小书图标的配色：**自定义封面色优先**（与网格封面观感一致），
+   * 没自定义才用文档名哈希色。之前直接用哈希色，改过封面色的文档在列表里
+   * 图标颜色对不上（用户反馈"颜色没有跟随封面颜色"）。
+   */
+  private treeDocColors(meta: DocMeta): CoverStyle {
+    const custom: string = meta.coverColor !== undefined ? meta.coverColor : '';
+    if (custom.length > 0) {
+      return coverStyleFromColor(custom);
+    }
+    return coverColorsOf(meta.name, meta.builtin);
+  }
+
   @Builder
   treeDocRow(meta: DocMeta, indent: number) {
     Row({ space: HwSpace.sm }) {
@@ -2690,11 +3063,12 @@ ImmersiveChip({
       Column()
         .width(12)
         .height(16)
-        .borderRadius(2)
+        // D 型圆角按 12×16 的尺寸等比缩（1/3），与全书封形状语言一致
+        .borderRadius({ topLeft: 1, bottomLeft: 1, topRight: 3, bottomRight: 3 })
         .linearGradient({
           angle: 200,
-          colors: [[coverColorsOf(meta.name, meta.builtin).top, 0.0],
-            [coverColorsOf(meta.name, meta.builtin).bottom, 1.0]]
+          colors: [[this.treeDocColors(meta).top, 0.0],
+            [this.treeDocColors(meta).bottom, 1.0]]
         })
       Text(meta.name)
         .fontSize(HwType.label + 1)
@@ -2749,7 +3123,10 @@ ImmersiveChip({
         .fontColor([this.palette().textTertiary])
       SymbolGlyph($r('sys.symbol.folder'))
         .fontSize(16)
-        .fontColor([this.palette().accent])
+        // 文件夹图标颜色**跟随文件夹封面色**（用户要求；自定义色优先，
+        // 没设置过才用主题强调色）——之前固定用 accent，改过文件夹颜色的对不上
+        .fontColor([this.folderColorOf(folder).length > 0
+          ? this.folderColorOf(folder) : this.palette().accent])
       Text(folder.name)
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
@@ -2795,9 +3172,16 @@ ImmersiveChip({
           this.resumeBanner()
         }
       }
-      .margin({ top: this.padTop() + HwBar.pill + HwSpace.md })
+      // bottom 保底间距：与下方文件夹行永远不贴住（网格模式横幅同款保底）
+      .margin({
+        top: this.padTop() + HwBar.pill + HwSpace.md,
+        bottom: HwSpace.md
+      })
 
-      ForEach(this.builtinDocs(), (meta: DocMeta) => {
+      // ⚠️ 用 **looseBuiltinDocs()**（已过滤"已收入文件夹"的预置文档）而不是 builtinDocs()：
+      // 网格样式同样只列松散预置 —— 之前列表用全量，预置文档已拖进文件夹后
+      // 列表顶层还重复显示一份（用户反馈）。与网格口径一致。
+      ForEach(this.looseBuiltinDocs(), (meta: DocMeta) => {
         ListItem() {
           this.treeDocRow(meta, 0)
         }
@@ -2862,6 +3246,8 @@ ImmersiveChip({
       // 智感握姿：左手时新建按钮靠左（"几篇"文本左边），右手/默认靠右（"字数"文本右边）
       if (this.gripSide === -1) {
         this.newDocButton()
+        // 爱心：收藏快速查看（与新建按钮同侧，一起跟随握姿适配）
+        this.starButton()
       }
       Text(this.docs.length + ' 篇 · ' + this.folders.length + ' 个文件夹')
         .fontSize(HwType.caption)
@@ -2880,8 +3266,157 @@ ImmersiveChip({
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       if (this.gripSide !== -1) {
         this.newDocButton()
+        this.starButton()
       }
     }
+  }
+
+  /**
+   * 胶囊内的「收藏」按钮（用户要求：创建按钮旁，点击快速查看收藏的文件）。
+   * 与新建按钮同一套：圆形小钮 + 主题色薄底 + 爱心；同样跟随智感握姿换边。
+   */
+  @Builder
+  starButton() {
+    Stack() {
+      ImmersiveIconButton({
+        buttonSize: NEW_BTN_SIZE,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          const c = this.ctx();
+          if (c === null) {
+            return;
+          }
+          this.starredDocs = DocStore.starredList(c, this.starSort);
+          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+            this.shelfSheet = 'starred';
+            this.shelfVisible = true;
+          });
+        }
+      }) {
+        SymbolGlyph(this.starredDocs.length > 0 ? $r('sys.symbol.heart_fill') : $r('sys.symbol.heart'))
+          .fontSize(17)
+          .fontColor([this.starredDocs.length > 0 ? '#FFE5484D' : this.palette().accent])
+      }
+    }
+    .width(NEW_BTN_SIZE)
+    .height(NEW_BTN_SIZE)
+    .margin(this.gripSide === -1 ? { right: HwSpace.xs } : { left: HwSpace.xs })
+  }
+
+  /** 收藏面板：排序 chips + 列表（去掉 ♥ 前缀、加收藏日期——用户要求）。 */
+  @Builder
+  starredSheet() {
+    Column({ space: HwSpace.xs }) {
+      // 排序调整（用户要求）
+      Row({ space: HwSpace.xs }) {
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '最近收藏',
+          chipActive: this.starSort === 'starred',
+          chipOnTap: () => {
+            this.applyStarSort('starred');
+          }
+        })
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '最近打开',
+          chipActive: this.starSort === 'recent',
+          chipOnTap: () => {
+            this.applyStarSort('recent');
+          }
+        })
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '按名称',
+          chipActive: this.starSort === 'name',
+          chipOnTap: () => {
+            this.applyStarSort('name');
+          }
+        })
+      }
+      .width('100%')
+
+      if (this.starredDocs.length === 0) {
+        Text('还没有收藏的文档：在阅读页信息卡右上角点爱心即可收藏。')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textTertiary)
+          .lineHeight(HwType.label * 1.6)
+          .width('100%')
+      } else {
+        ForEach(this.starredDocs, (doc: DocMeta) => {
+          // **每条一个独立小卡片**（用户要求：条目多了平铺太乱）；
+          // 底色用主题色薄染 + 描边（默认材质底太淡，用户反馈看不清）。
+          // 外面的 Column 只用来挂描边/圆角——自定义组件 + 尾随闭包之后
+          // **不能再链属性**（直接链 .border 会编译报错）。
+          Column() {
+          ImmersiveCard({
+            cardRadius: HwRadius.card,
+            cardPadding: HwSpace.sm,
+            cardMaterialShadow: false,
+            cardBackground: this.palette().accentSoft,
+            palette: this.palette()
+          }) {
+            Column({ space: 2 }) {
+              Text(doc.name)
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+              Text('收藏于 ' + Index.starDateLabel(doc.starredAt))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textSecondary)
+                .width('100%')
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            .onClick(() => {
+              this.closeCellMenu();
+              const route: ReaderRoute = { name: doc.name };
+              this.pushPage('pages/Reader', route);
+            })
+          }
+          }
+          .width('100%')
+          .borderRadius(HwRadius.card)
+          .border({ width: 1, color: this.palette().divider })
+          .margin({ bottom: HwSpace.xs })
+        }, (doc: DocMeta) => 'star_' + doc.name)
+      }
+    }
+    .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
+    .alignItems(HorizontalAlign.Start)
+    // 深浅切换时整棵子树重建（面板不跟随宿主状态刷新 → "切换不完全"）
+    .id('starred_' + this.sheetEpoch)
+  }
+
+  /** 切换收藏排序并即时重排。 */
+  private applyStarSort(sort: string): void {
+    this.starSort = sort;
+    const c = this.ctx();
+    if (c !== null) {
+      this.starredDocs = DocStore.starredList(c, sort);
+    }
+  }
+
+  /** 收藏时间 → '2026-10-02 12:30'；无记录显示「—」。 */
+  private static starDateLabel(ms: number | undefined): string {
+    if (ms === undefined || ms <= 0) {
+      return '—';
+    }
+    const d: Date = new Date(ms);
+    const pad = (v: number): string => {
+      return v < 10 ? '0' + v : '' + v;
+    };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /** 封面格式角标：TXT / MD（应用同时支持两种文件，用户要求默认封面带一个淡淡的格式字）。 */
+  private static formatLabelOf(fileName: string): string {
+    return fileName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
   }
 
   /**
@@ -2950,6 +3485,10 @@ ImmersiveChip({
           if (this.treeMode) {
             this.treeList()
           } else {
+            // **恢复 1.0.2 的实现**：面板排在网格流里（跨满三列、高度从 0 长到目标值），
+            // 插在「文件夹行」末尾，同行邻居留在原格、下方的图标被推开。
+            // 之前的"网格外浮层"方案在真机上定位不稳（面板跑屏幕上方 / 直接不见），
+            // 这版是验证过可用的。
             // Scroller 必须走构造参数（Grid 没有 .scroller 属性）
             Grid(this.gridScroller) {
             GridItem() {
@@ -2960,7 +3499,11 @@ ImmersiveChip({
             // 首屏留白放在**第一个内容项**上而不是滚动容器上：
             // 滚动容器的 padding 是裁剪边界，放那儿内容就永远进不了顶栏底下；
             // 放在内容项上，静止时内容在胶囊下方，滚动时能穿到胶囊下面。
-            .margin({ top: this.padTop() + HwBar.pill + HwSpace.md })
+            // bottom 保底间距：通栏横幅与下一行（尤其展开面板顶缘）之间永远不贴住
+            .margin({
+              top: this.padTop() + HwBar.pill + HwSpace.md,
+              bottom: HwSpace.md
+            })
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())
             // 淡入淡出：文件夹展开时其他格子是渐隐渐糊，不是硬切
@@ -3009,16 +3552,25 @@ ImmersiveChip({
               .animation({ duration: 260, curve: Curve.FastOutSlowIn })
 
               // 展开面板插在「本行最后一个格子」之后（见 panelAfterIndex），
-              // 这样同行的左右邻居留在原格，只有下方的图标被推开。
+              // 这样同行的左右邻居留在原格，只有下方的图标被推开（1.0.2 的做法）。
               // 条件用 folderPanelMounted（不是 openFolderName）：收起时名字要留到动画
               // 跑完（压暗其他格子用），而节点必须当场摘掉，底部提示文本才不会二次跳。
-              if (item.kind === 'folder' && this.folderPanelMounted
-                && index === this.panelAfterIndex()) {
+              //
+              // **修复「有文档在文件夹右边，展开的文件夹就消失」**：
+              // 原条件带了 `item.kind === 'folder'`，可 panelAfterIndex() 返回的是
+              // **本行最后一个格子**的下标——文件夹不在最右列时（比如在第 1 列、
+              // 右边还并排放着别的文档），那个下标落在右边的**文档**上，
+              // `kind === 'folder'` 判 false → 面板节点**从来没挂载过**，点开等于没反应。
+              // 只有文件夹恰好在最右列（after 指向它自己）时才挂得上，所以表现为"时好时坏"。
+              // 现在只按「是不是本行最后一格」判定，item 是文件夹还是文档都挂。
+              if (this.folderPanelMounted && index === this.panelAfterIndex()) {
                 GridItem() {
                   this.folderExpandPanel()
                 }
                 .columnStart(0)
                 .columnEnd(this.shelfColumns() - 1)
+                // top 保底间距：面板顶缘与上方一行（横幅/新建卡等）之间永远不贴住
+                .margin({ top: HwSpace.md })
                 // 量出面板在窗口里的真实位置：展开动画跑完后用它校正滚动幅度
                 // （AUTO 只保证"面板顶边可见"，底部常被悬浮胶囊压住——用户反馈滚得不够）。
                 .onAreaChange((oldValue: Area, newValue: Area) => {
@@ -3030,8 +3582,7 @@ ImmersiveChip({
                     this.panelWinBottom = gy + gh;
                   }
                 })
-              }
-            }, (item: ShelfItem) => this.itemKey(item))
+              }            }, (item: ShelfItem) => this.itemKey(item))
 
             if (this.userDocCount === 0) {
               GridItem() {
@@ -3040,7 +3591,9 @@ ImmersiveChip({
                     .fontSize(HwType.label)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(this.palette().textPrimary)
-                  Text('点「新建文档」写一篇，或用顶栏的文件夹按钮导入 .md 文件；拖动封面到另一张上可以合并成文件夹')
+                  // **两段提示合成一段**（用户要求精简）：
+                  // 原「怎么新建」与「长按合并文件夹」各占一段，空书架时显得啰嗦
+                  Text('点「新建文档」写一篇、或用文件夹按钮导入 .md 文件；长按封面拖到另一张上可合并成文件夹')
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                     .textAlign(TextAlign.Center)
@@ -3053,6 +3606,8 @@ ImmersiveChip({
               .columnEnd(this.shelfColumns() - 1)
             }
 
+            // 有文档时才显示这条恒常提示（空书架时上面那段已经涵盖同样的信息）
+            if (this.userDocCount > 0) {
             GridItem() {
               Text('长按封面拖到另一张上合并为文件夹 · 封面由文档名生成')
                 .fontSize(HwType.caption)
@@ -3068,10 +3623,16 @@ ImmersiveChip({
             }
             .columnStart(0)
             .columnEnd(this.shelfColumns() - 1)
+            // **「滚到底」的判据**（用户定义）：这条文末提示浮到顶栏位置、停在底栏上方，
+            // 就是当前手动上滑能到达的最低处。展开文件夹时的自动滚动以它为上限，
+            // 滚到它上沿贴着底栏就收手，绝不越过去把文件夹顶到屏幕顶端。
+            .id('shelfEndHint')
+            }
           }
           .columnsTemplate(this.columnsTemplateStr())
           .columnsGap(HwSpace.md)
           .rowsGap(HwSpace.lg)
+          // Grid 自己吃 layoutWeight（与 1.0.2 一致：面板在网格流内，外层无 Stack）
           .width('100%')
           .layoutWeight(1)
           // 右侧滚动条不显示（用户要求）
@@ -3172,7 +3733,7 @@ ImmersiveChip({
         this.docCoverOverlay()
       }
 
-      // ── 启动页：竹影渐变底 + 应用图标（分层图标的 foreground）+ ChengJian ──
+      // ── 启动页：竹影渐变底 + 应用图标（分层图标的 foreground）+ ChéngJiān ──
       // 首帧即显，约 1.2s 后淡出移除；**纯渐变底**（不画光斑圆，用户要求），
       // 铺满全屏（含状态栏 / 手势条）
       if (this.splashOn) {
@@ -3191,7 +3752,7 @@ ImmersiveChip({
             Image($r('app.media.foreground'))
               .width(132)
               .height(132)
-            Text('ChengJian')
+            Text('ChéngJiān')
               .fontSize(24)
               .fontWeight(FontWeight.Medium)
               .letterSpacing(8)
@@ -3278,10 +3839,14 @@ ImmersiveChip({
         SettingsData({ stack: this.pathStack })
       } else if (name === 'pages/SettingsReading') {
         SettingsReading({ stack: this.pathStack })
+      } else if (name === 'pages/SettingsWriting') {
+        SettingsWriting({ stack: this.pathStack })
       } else if (name === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.pathStack })
       } else if (name === 'pages/Changelog') {
         Changelog({ stack: this.pathStack })
+      } else if (name === 'pages/Sketch') {
+        Sketch({ stack: this.pathStack })
       } else if (name === 'pages/LegalDoc') {
         LegalDoc({
           stack: this.pathStack,
@@ -3291,11 +3856,49 @@ ImmersiveChip({
     }
     .hideTitleBar(true)
     .backgroundColor(this.palette().pageBottom)
+    // **设置子页的旋转收栈**（用户要求）：竖屏打开的设置子页旋转到横屏时应回到
+    // 设置主页的左右分栏，而不是被强行拉伸铺满。主页被本页盖住收不到尺寸回调，
+    // 所以由**可见的本页**监听：宽屏（>760 且横屏）且栈深超过进入设置时的基线 →
+    // 把被弹板块名写回 settingsInlineSection（主页 @StorageLink 接住，右栏接上）并逐个 pop。
+    .onAreaChange((oldValue: Area, newValue: Area) => {
+      if (!name.startsWith('pages/Settings')) {
+        return;
+      }
+      const w: Length = newValue.width;
+      const h: Length = newValue.height;
+      if (typeof w !== 'number' || typeof h !== 'number' || !(w > 760 && w > h)) {
+        return;
+      }
+      const depthBase: number = AppStorage.get<number>('settingsStackDepth') ?? 0;
+      if (this.pathStack !== null && this.pathStack.size() > depthBase) {
+        while (this.pathStack !== null && this.pathStack.size() > depthBase) {
+          const names: string[] = this.pathStack.getAllPathName();
+          if (names.length > 0) {
+            AppStorage.setOrCreate('settingsInlineSection', names[names.length - 1]);
+          }
+          this.pathStack.pop();
+        }
+      }
+    })
+    // **系统返回手势拦截（编辑页）**：有未保存修改时拦截侧滑 / 返回键，
+    // 通过 editorGoBackTick 信号让 Editor 弹"保存 / 不保存"窗（与顶栏返回按钮同逻辑），
+    // 避免误触退出丢内容。返回 true = 本次返回已被消费。
+    .onBackPressed(() => {
+      if (name === 'pages/Editor' && this.editorDirty) {
+        AppStorage.setOrCreate('editorGoBackTick', Date.now());
+        return true;
+      }
+      return false;
+    })
     .onShown(() => {
       if (name === 'pages/Reader') {
         this.readerLife.onShow();
       } else if (name === 'pages/Settings') {
         this.settingsLife.onShow();
+      } else if (name === 'pages/Editor') {
+        // **编辑页显示信号**：从手写页返回时触发编辑页检查待插入的手写图
+        //（NavDestination 的 onShown 不会自动到 Editor，这里发 tick 转发）
+        AppStorage.setOrCreate('editorShownTick', Date.now());
       }
     })
     .onHidden(() => {
@@ -3413,8 +4016,15 @@ ImmersiveChip({
   @StorageLink('readerCustomBgLight') customBgLight: string = '';
   @StorageLink('readerCustomBgDark') customBgDark: string = '';
 
-  /** 当前主题下的自定义背景色；空串表示用主题默认渐变。 */
+  /**
+   * 自定义阅读背景色；**没选时用固定默认色（与阅读/编辑页同一套，不再回退主题渐变）**。
+   * 「阅读背景」完全独立于主题（用户要求）—— 书架背景在打开文档的一镜到底转场中
+   * 会短暂露出，之前回退主题渐变时用户实测转场瞬间闪粉紫（主题染色漂移），现在固定不变。
+   */
   private pageBackground(): string {
-    return this.isDark() ? this.customBgDark : this.customBgLight;
+    if (this.isDark()) {
+      return this.customBgDark.length > 0 ? this.customBgDark : READER_BG_DEFAULT_DARK;
+    }
+    return this.customBgLight.length > 0 ? this.customBgLight : READER_BG_DEFAULT_LIGHT;
   }
 }
