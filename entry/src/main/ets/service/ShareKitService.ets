@@ -86,10 +86,10 @@ export class ShareKitService {
       // **URI 用 `file://` + 沙箱绝对路径**：`fileUri.getUriFromPath` 生成的
       // `file://<bundleName>/...` 形式在部分系统组件里取不到文件（用户实测
       // "分享内容获取失败"），绝对路径形式被 Web / 打印等组件一致接受。
-      const uri: string = path.startsWith('file://') ? path : 'file://' + path;
-      // UTD：按扩展名取；系统不认时兜底 general.file（否则分享记录无效）
-      let utd: string =
-        uniformTypeDescriptor.getUniformDataTypeByFilenameExtension('.md');
+      const uri: string = fileUri.getUriFromPath(path);
+      // UTD：根据实际文件扩展名获取精确类型，兜底 general.file
+      const ext: string = path.substring(path.lastIndexOf('.'));
+      let utd: string = uniformTypeDescriptor.getUniformDataTypeByFilenameExtension(ext);
       if (utd === undefined || utd === null || utd.length === 0) {
         utd = 'general.file';
       }

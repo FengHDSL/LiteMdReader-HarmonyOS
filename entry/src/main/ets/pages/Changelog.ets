@@ -6,8 +6,9 @@
  * 发新版本时只在那一个数组头部插一条，本页与版本更新弹窗同步生效。
  */
 
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { NavLifecycle } from '../service/NavLifecycle';
-import { ImmersiveCard } from '../material/ImmersiveCard';
+import { ImmersiveCard, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { SettingsShell } from './SettingsShell';
 import { CHANGELOG_ALL, ChangelogEntry } from '../service/Changelog';
 import {
@@ -44,6 +45,33 @@ export struct Changelog {
     return paletteFor(mode, dark);
   }
 
+  /** 格式化更新日志为纯文本，复制到剪贴板。 */
+  private copyEntry(entry: ChangelogEntry): void {
+    let text: string = `${entry.version} - ${entry.date}\n`;
+    for (let k = 0; k < entry.items.length; k++) {
+      text += `• ${entry.items[k]}\n`;
+    }
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(
+        pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      pasteboard.getSystemPasteboard().setData(data).then(() => {
+        try {
+          this.getUIContext().getPromptAction().showToast({
+            message: '已复制更新日志',
+            duration: 1500
+          });
+        } catch (_) {}
+      }).catch((err: BusinessError) => {
+        try {
+          this.getUIContext().getPromptAction().showToast({
+            message: '复制失败',
+            duration: 1500
+          });
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
   build() {
     SettingsShell({
       shellTitle: '更新日志',
@@ -54,17 +82,31 @@ export struct Changelog {
       ForEach(CHANGELOG, (entry: ChangelogEntry) => {
         ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
           Column({ space: HwSpace.sm }) {
-            Row({ space: HwSpace.sm }) {
-              Text(entry.version)
-                .fontSize(HwType.label + 2)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(this.palette().accent)
-              Text(entry.date)
-                .fontSize(HwType.caption)
-                .fontColor(this.palette().textTertiary)
+            Row() {
+              Row({ space: HwSpace.sm }) {
+                Text(entry.version)
+                  .fontSize(HwType.label + 2)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(this.palette().accent)
+                Text(entry.date)
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textTertiary)
+              }
+
+              ImmersiveIconButton({
+                buttonSize: 30,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => { this.copyEntry(entry); }
+              }) {
+                SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                  .fontSize(18)
+                  .fontColor([this.palette().textSecondary])
+              }
             }
             .width('100%')
             .alignItems(VerticalAlign.Center)
+            .justifyContent(FlexAlign.SpaceBetween)
 
             ForEach(entry.items, (item: string) => {
               Row({ space: HwSpace.xs }) {

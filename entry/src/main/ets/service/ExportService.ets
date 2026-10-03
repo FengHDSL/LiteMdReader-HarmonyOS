@@ -5,7 +5,7 @@
  * 职责只到「拿到字节 / 文件」为止：
  *   · saveText / saveBytes —— 系统另存为（DocumentViewPicker），写入用户选择的
  *     URI，无需任何权限（与阅读页导出 HTML 同一套通道）。
- *   · shareFile —— 系统分享（SystemShare：general.file + 文件 URI）。
+ *   · shareFile —— 系统分享（SystemShare：动态 UTD + 文件 URI）。
  *
  */
 import { common } from '@kit.AbilityKit';
@@ -13,6 +13,7 @@ import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker, fileUri } from '@kit.CoreFileKit';
 import { systemShare } from '@kit.ShareKit';
+import { uniformTypeDescriptor } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DocStore } from './DocStore';
 import { MdParser } from '../markdown/MdParser';
@@ -337,9 +338,17 @@ export class ExportService {
    */
   static shareFile(ctx: common.UIAbilityContext, path: string, notify: Notify): void {
     try {
+      // URI 必须用 fileUri.getUriFromPath（官方规定格式 `file:///<沙箱路径>`），
+      // 直接拼 `file://` + 绝对路径在隔空传送 / 碰一碰中会导致"分享内容获取失败"。
       const uri: string = fileUri.getUriFromPath(path);
+      // UTD：根据扩展名获取精确类型，兜底 general.file
+      const ext: string = path.substring(path.lastIndexOf('.'));
+      let utd: string = uniformTypeDescriptor.getUniformDataTypeByFilenameExtension(ext);
+      if (utd === undefined || utd === null || utd.length === 0) {
+        utd = 'general.file';
+      }
       const record: systemShare.SharedRecord = {
-        utd: 'general.file',
+        utd: utd,
         uri: uri,
         title: path.substring(path.lastIndexOf('/') + 1)
       };

@@ -13,7 +13,7 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { ExportService } from '../service/ExportService';
 import { MdToPlain } from '../markdown/MdToPlain';
-import { PrintRoute } from '../service/DocStore';
+import { DocStore, PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 
 @Component
@@ -182,20 +182,35 @@ export struct ExportOptionsPanel {
     if (ctx === null) {
       return;
     }
-    const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
-    if (content === null) {
-      this.notify('读取正文失败');
-      return;
-    }
     this.withBusy(() => {
       try {
-        const encoder: util.TextEncoder = new util.TextEncoder();
-        const encoded: Uint8Array = encoder.encodeInto(content);
-        const path: string = ExportService.bytesToCache(ctx, this.docName + '.md',
-          encoded.buffer as ArrayBuffer);
-        ExportService.shareFile(ctx, path, (m: string) => {
-          this.notify(m);
-        });
+        // 非内置文档：直接分享原文件，不创建临时副本
+        if (!this.builtin) {
+          DocStore.init(ctx);
+          const meta = DocStore.find(ctx, this.docName);
+          if (meta === undefined) {
+            this.notify('找不到文档');
+            return;
+          }
+          const path: string = DocStore.docAbsolutePath(ctx, meta);
+          ExportService.shareFile(ctx, path, (m: string) => {
+            this.notify(m);
+          });
+        } else {
+          // 内置文档：读取正文后写缓存再分享
+          const content: string | null = ExportService.readContent(ctx, this.docName, true);
+          if (content === null) {
+            this.notify('读取正文失败');
+            return;
+          }
+          const encoder: util.TextEncoder = new util.TextEncoder();
+          const encoded: Uint8Array = encoder.encodeInto(content);
+          const path: string = ExportService.bytesToCache(ctx, this.docName + '.md',
+            encoded.buffer as ArrayBuffer);
+          ExportService.shareFile(ctx, path, (m: string) => {
+            this.notify(m);
+          });
+        }
       } catch (err) {
         this.notify('分享失败');
       }
