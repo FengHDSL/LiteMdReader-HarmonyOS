@@ -10,11 +10,11 @@
 
 | | |
 | --- | --- |
-| 当前版本 | **v1.0.2** |
+| 当前版本 | **v1.0.7** |
 | 平台 | HarmonyOS（ArkTS / ArkUI，Stage 模型） |
 | 设备 | 手机 · 平板 · 2in1 |
 | 包名 | `com.litemdreader.lzb` |
-| 下载 | [Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases)（HAP 安装包） |
+| 下载 | [Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases)（HAP 安装包） · 仓库内 [`releases/`](releases) 目录 |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · 应用内「探索中心 → 更新日志」 |
 | 许可证 | [MIT](LICENSE) |
 
@@ -41,6 +41,9 @@
 
 - **三列封面网格**：程序化书封绘制（`DocCover`，按文档名哈希取色），可自定义底色 /
   封面图 / 是否显示名称
+- **封面上的收藏标记**：已收藏的文档左上角显示一颗沉浸光感红心圆钮，点一下即取消收藏
+- **封面底部的阅读进度**：底部居中的细进度条 + 右下角百分比胶囊；
+  回到书架时进度与数字会**平滑增长**（不是瞬切）
 - **长按拖动归组**：拖到另一张封面上 → 合并成文件夹；拖进文件夹格 → 收进该文件夹；
   文件夹 ↔ 文档还能互换位置（**内置教程同样可拖**）
 - **文件夹原地展开**（iOS 6 主屏式）：面板排在网格流里从图标下方长出来，同伴留在原格、
