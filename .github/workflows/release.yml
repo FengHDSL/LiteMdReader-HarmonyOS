@@ -1,0 +1,50 @@
+name: 发布 Release
+
+# 推送 v* 标签时，由 GitHub 自己的 Runner 创建 Release 并上传安装包。
+# 为什么需要它：本地网络无法直连 api.github.com（DNS 被污染 / 代理链路失效），
+# 而 Actions Runner 运行在 GitHub 服务器上，不受本地网络影响。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的标签，例如 v1.0.7'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 创建 Release 并上传 HAP
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          echo "发布标签：$TAG"
+          # 从 CHANGELOG.md 里取出该版本的条目作为 Release 正文
+          NOTES=$(awk -v tag="## $TAG" '
+            $0 == tag { flag=1; next }
+            /^## / { flag=0 }
+            flag
+          ' CHANGELOG.md)
+          # 仓库内 releases/ 下的安装包（文件名含版本号）
+          ASSET=$(ls releases/*.hap | head -n 1)
+          echo "安装包：$ASSET"
+          # 同名 Release 已存在则先删除标签上的旧 Release，保证可重复执行
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag || true
+          fi
+          gh release create "$TAG" \
+            --title "澄笺 $TAG" \
+            --notes "$(printf '## 本版更新\n\n%s\n\n---\n\n**安装说明**：下载下方的 HAP（GitHub 专用签名，仅用于社区分发）。在 HarmonyOS 设备上用「文件管理」打开安装，首次安装需允许「安装未知来源应用」。\n\n**许可**：MIT。' "$NOTES")" \
+            "$ASSET#澄笺 $TAG 安装包（GitHub 签名）"
+          echo "完成：$(gh release view "$TAG" --json url -q .url)"
