@@ -153,15 +153,17 @@ export struct DiagramWeb {
     if (this.refitRequest <= 0) {
       return;
     }
-    const js: string =
-      'setTimeout(function(){ try{ if(window.refit){ window.refit(); } }catch(e){} }, 40);'
-        + 'setTimeout(function(){ try{ if(window.refit){ window.refit(); } }catch(e){} }, 260);';
     try {
-      this.ctrl.runJavaScript(js);
+      // ⚠️ **重载页面**而不是调 window.refit()：各模板的 refit 只重设 SVG 的 CSS
+      // 宽度，对"图表按旧宽度画好、内容挤在一起"的情况**毫无作用**（用户实测刷新
+      // 没反应）。refresh() 会重新走 onPageEnd → renderPayload，按**当前容器尺寸**
+      // 完整重渲染，webZoom 也会在注入后重新应用 —— 这才是真正的"按当前比例刷新"。
+      this.ctrl.refresh();
     } catch (err) {
       // 页面未就绪：忽略
     }
   }
+
   /**
    * **整页快照**（webPageSnapshot 抓 Web 的完整绘制结果，不受可视区限制——
    * 比 componentSnapshot 对 Web 表面可靠得多）。captureRequest 递增时触发；

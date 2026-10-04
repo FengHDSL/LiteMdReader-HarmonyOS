@@ -18,6 +18,7 @@
  *     autoCancel: false, customStyle: true
  *   });
  */
+import { display } from '@kit.ArkUI';
 import {
   LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
@@ -32,6 +33,30 @@ export struct UpdateContentDialog {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** 条目区的**高度上限**（vp）：进页面时按屏幕算一次，不每帧查 display */
+  @State listMax: number = 240;
+
+  aboutToAppear(): void {
+    this.listMax = UpdateContentDialog.maxListHeight(this.getUIContext());
+  }
+
+  /**
+   * 条目区高度上限。
+   *
+   * **为什么必须有**：更新条数一多（1.0.7 有十几条），原来把条目直接铺在 Column 里，
+   * 弹窗高度随内容一路长高、长出屏幕 —— 底部的「知道了」按钮被顶到看不见，
+   * 用户点不到也划不动（真机实测的严重可用性问题）。
+   * 现在给列表区一个上限（屏高 52%）并让它内部滚动，按钮永远固定在弹窗底部可见。
+   */
+  private static maxListHeight(ui: UIContext): number {
+    try {
+      const d: display.Display = display.getDefaultDisplaySync();
+      const h: number = ui.px2vp(d.height);
+      return Math.max(160, Math.round(h * 0.52));
+    } catch (err) {
+      return 240;
+    }
+  }
 
   /** 实际取色：按当前主题现算（不要用固定的浅色调色板）。 */
   private pal(): ReaderPalette {
@@ -55,18 +80,28 @@ export struct UpdateContentDialog {
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
-      Column({ space: 5 }) {
-        ForEach(this.lines, (line: string, idx: number) => {
-          Text('· ' + line)
-            .fontSize(13)
-            .fontColor(this.pal().textSecondary)
-            .lineHeight(20)
-            .width('100%')
-            .textAlign(TextAlign.Start)
-        }, (line: string, idx: number) => 'ul_' + idx)
+      // **条目区：限高 + 内部滚动**（用户反馈：日志太长把按钮顶出屏幕、点不到，
+      // 现在可以直接上下滑动看完全部内容；按钮不参与滚动，永远在底部可见）
+      Scroll() {
+        Column({ space: 5 }) {
+          ForEach(this.lines, (line: string, idx: number) => {
+            Text('· ' + line)
+              .fontSize(13)
+              .fontColor(this.pal().textSecondary)
+              .lineHeight(20)
+              .width('100%')
+              .textAlign(TextAlign.Start)
+          }, (line: string, idx: number) => 'ul_' + idx)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
       }
       .width('100%')
-      .alignItems(HorizontalAlign.Start)
+      .constraintSize({ maxHeight: this.listMax })
+      .scrollBar(BarState.Auto)
+      // 内容不足一屏时 Scroll 默认居中，显式顶对齐（本工程既有约定）
+      .align(Alignment.Top)
+      .edgeEffect(EdgeEffect.Spring)
 
       Button('知道了')
         .fontSize(14)
@@ -81,6 +116,8 @@ export struct UpdateContentDialog {
         })
     }
     .width('82%')
+    // 整体高度双保险：任何情况下弹窗都不超过屏高 76%，按钮不会被挤出屏幕
+    .constraintSize({ maxHeight: '76%' })
     .padding(20)
     .borderRadius(16)
     .backgroundColor(this.cardBg())

@@ -22,6 +22,11 @@
     ABCJS.renderAbc(app,src,{responsive:'resize',foreground:dark?'#ECEFF4':'#1B1F27'});
     report();
   };
+
+  // 播放 / 停止按钮上的圆圈图标（play_circle / pause_circle，随状态切换）
+  // 播放 / 停止按钮上的圆圈图标（play_circle / pause_circle，随状态切换）
+  // 主题曲播放走 ArkTS 原生 AVPlayer（Reader.ets 的 toggleThemePlayer），
+  // 网页内不再实现音频 —— ArkWeb 的 WebAudio / blob 媒体源在真机上不可靠。
   </script>
 <script>
   function report(){

@@ -21,6 +21,7 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { Changelog } from './Changelog';
 import { DocStore } from '../service/DocStore';
 import { bundleManager, common } from '@kit.AbilityKit';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -357,6 +358,8 @@ export struct Settings {
         SettingsReading({ stack: this.stack })
       } else if (route === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.stack, embedded: true })
+      } else if (route === 'pages/Changelog') {
+        Changelog({ stack: this.stack, embedded: true })
       }
     }, (route: string) => route)
   }
@@ -449,7 +452,7 @@ export struct Settings {
       }, (item: SectionItem) => item.route)
 
       // ── 页脚 ──
-      Text('澄笺 · 光 · 美 · 舒 · 开源')
+      Text('澄心执笔，笺上生光')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')

@@ -45,6 +45,12 @@ export interface ModalSheetSpec {
    */
   phoneLayout: boolean;
   /**
+   * **面板高度改为内容自适应**（SheetSize.FIT_CONTENT）：内容少时面板贴合内容
+   * （不留大块空白），内容多时到系统上限、内部滚动区可滚。
+   * 不传 / false = 维持 MEDIUM 定高（屏高 60%）。
+   */
+  fitContent?: boolean;
+  /**
    * 调用方实测的根宽（vp）。平板竖屏（>600vp，官方断点）时面板宽度
    * **收一半**且水平居中，不铺满屏幕（用户要求 2026-09-30）；
    * 手机竖屏保持全宽；横屏走系统默认，不用此值。
@@ -72,8 +78,9 @@ export function modalSheetOptions(spec: ModalSheetSpec): SheetOptions {
   // 「面板是透明的」——这里抬到 FF，卡片观感由材质/内容自己负责。
   const opaqueSurface: string = withAlpha(spec.surface, 'FF');
   const options: SheetOptions = {
-    // 官方规格：中档位 = 屏高 60%。
-    height: SheetSize.MEDIUM,
+    // 高度：fitContent = 内容自适应（内容少贴合内容、多时到上限内部可滚）；
+    // 否则官方中档位 = 屏高 60% 定高。
+    height: spec.fitContent === true ? SheetSize.FIT_CONTENT : SheetSize.MEDIUM,
     // 构成 1：操作提示（拖拽条），面板尺寸包含多档位时的官方默认结构。
     dragBar: true,
     // 构成 5：关闭按钮，官方默认显示，出现在标题栏右上角。

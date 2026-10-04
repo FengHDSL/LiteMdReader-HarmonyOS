@@ -29,6 +29,8 @@ const CHANGELOG: ChangelogEntry[] = CHANGELOG_ALL;
 export struct Changelog {
   /** 导航栈：返回探索中心 */
   stack: NavPathStack | null = null;
+  /** 平板分栏嵌入模式：返回改为回探索中心板块（不退设置页） */
+  @Prop embedded: boolean = false;
   /** 生命周期转发 */
   life: NavLifecycle = new NavLifecycle();
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
@@ -77,7 +79,15 @@ export struct Changelog {
       shellTitle: '更新日志',
       shellSubtitle: '每个版本做了什么，都在这里',
       stack: this.stack,
-      life: this.life
+      life: this.life,
+      onBack: (): boolean => {
+        // 分栏嵌入：返回到探索中心（而不是退出设置页 —— 用户要求）
+        if (this.embedded) {
+          AppStorage.setOrCreate('settingsInlineSection', 'pages/SettingsExplore');
+          return true;
+        }
+        return false;
+      }
     }) {
       ForEach(CHANGELOG, (entry: ChangelogEntry) => {
         ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {

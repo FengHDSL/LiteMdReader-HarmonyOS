@@ -100,6 +100,8 @@ export struct SettingsAppearance {
   @StorageLink('cardTint') @Watch('onAppearanceChanged') cardTint: boolean = true;
   @StorageLink('immersivePressGlow') @Watch('onAppearanceChanged') pressGlow: boolean = true;
   @StorageLink('cardGlowTouch') @Watch('onAppearanceChanged') glowTouch: boolean = true;
+  /** 书架顶部的「继续阅读」卡片是否显示（用户要求：可在外观设置里关掉） */
+  @StorageLink('shelfResumeBanner') @Watch('onAppearanceChanged') resumeBanner: boolean = true;
   /** 页面背景跟随主题色 / 自定义主题色也染背景 */
   @StorageLink('pageBgTint') @Watch('onAppearanceChanged') pageBgTint: boolean = true;
   @StorageLink('customAccentFull') @Watch('onAppearanceChanged') customAccentFull: boolean = false;
@@ -270,6 +272,7 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('cardTint', true);
     AppStorage.setOrCreate('immersivePressGlow', true);
     AppStorage.setOrCreate('cardGlowTouch', true);
+    AppStorage.setOrCreate('shelfResumeBanner', true);
     AppStorage.setOrCreate('customAccentFull', false);
     AppStorage.setOrCreate('pageBgTint', true);
     AppStorage.setOrCreate('grayTextMode', 'auto');
@@ -970,6 +973,26 @@ export struct SettingsAppearance {
             Toggle({ type: ToggleType.Switch, isOn: this.glowTouch })
               .onChange((isOn: boolean) => {
                 this.glowTouch = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          // 显示「继续阅读」卡片：书架顶部那条最近阅读提示的开关
+          Row() {
+            Column({ space: 2 }) {
+              Text('继续阅读卡片')
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text('在书架顶部显示「继续阅读」提示卡片，关闭后书架更清爽')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.resumeBanner })
+              .onChange((isOn: boolean) => {
+                this.resumeBanner = isOn;
               })
           }
           .width('100%')

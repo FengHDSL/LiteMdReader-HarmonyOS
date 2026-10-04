@@ -199,6 +199,11 @@ export struct Editor {
   @State previewImage: string = '';
   @State previewImgScale: number = 1;
   private previewImgPinchBase: number = 1;
+  /** 图片浮层的**单指拖动**平移与基准（与阅读页放大浮层同款） */
+  @State previewImgDx: number = 0;
+  @State previewImgDy: number = 0;
+  private previewImgDxBase: number = 0;
+  private previewImgDyBase: number = 0;
   @State showSyntax: boolean = false;
   /** 画板浮层 */
   @State previewBlocks: MdBlock[] = [];
@@ -639,6 +644,29 @@ export struct Editor {
     this.absorbSketch();
   }
 
+  /** 语法速查某行被点击：把该行写法插到光标位置并收起面板。 */
+  private insertSyntax(syntax: string): void {
+    this.insertRaw(syntax);
+    this.showSyntax = false;
+    this.toast('已插入到光标位置');
+  }
+
+  /**
+   * 语法速查 / 预览里的「放大」按钮统一入口。
+   * · image → 用编辑页既有的图片浮层（可捏合 + 单指拖动）；
+   * · 图表（Chart / Math）→ 编辑页没有 Web 渲染器，给明确提示，而不是静默无反应。
+   */
+  private openPreviewImagePayload(mode: string, payload: string): void {
+    if (mode === 'image') {
+      this.previewImgScale = 1;
+      this.previewImgDx = 0;
+      this.previewImgDy = 0;
+      this.previewImage = payload;
+      return;
+    }
+    this.toast('图表请在阅读页里放大查看');
+  }
+
   // ══════════════════════ 查找 / 替换 / 跳转行 ══════════════════════
   //
   // 移植自参考项目 CodeMirror 的查找替换与跳转行。以「匹配位置」为单位导航，
@@ -1073,7 +1101,12 @@ export struct Editor {
 
   /** 工具条横向滚动：更新滚动量并重算边缘淡出。 */
   private onBarScroll(): void {
-    this.barScrollX = this.barScroller.currentOffset().xOffset;
+    // 工具条未挂载时 currentOffset() 可能为 undefined（同 Index 的线上崩溃）
+    const off: OffsetResult | undefined = this.barScroller.currentOffset();
+    if (off === undefined || off === null) {
+      return;
+    }
+    this.barScrollX = off.xOffset;
     this.updateChipFade();
   }
 
@@ -1545,7 +1578,16 @@ export struct Editor {
                   palette: this.palette(),
                   bodySize: HwType.label,
                   lineMul: 1.4,
-                  dark: this.isDark()
+                  dark: this.isDark(),
+                  // **必须传放大回调**（用户反馈：流程图那行的放大按钮点了没反应）——
+                  // MdBlockView 的 enlargeHandler / imageTapHandler 不传就是默认空实现，
+                  // 卡片右上角的放大钮成了摆设（预览区那处此前也漏传，同因）。
+                  enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
+                    this.openPreviewImagePayload(mode, payload);
+                  },
+                  imageTapHandler: (key: string, src: string) => {
+                    this.openPreviewImagePayload('image', src);
+                  }
                 })
                 .width('100%')
               }, (b: MdBlock) => row.syntax + '_' + b.id)
@@ -1559,6 +1601,12 @@ export struct Editor {
           .padding(HwSpace.sm)
           .borderRadius(HwRadius.inline)
           .backgroundColor(this.palette().quoteBg)
+          // **点整行插入到光标位置**：面板顶部那句"点任意一行即可插入到光标位置"
+          // 一直是空头承诺 —— 这里此前根本没有 onClick，点上去毫无反应。
+          // 行内的链接 / 图片 / 图表按钮由它们自己先消费点击，不受影响。
+          .onClick(() => {
+            this.insertSyntax(row.syntax);
+          })
         }, (row: SyntaxRow, index: number) => 's' + index)
       }
       .width('100%')
@@ -1673,7 +1721,24 @@ export struct Editor {
             block: block,
             palette: this.palette(),
             bodySize: this.fontSize,
-            lineMul: this.lineMul
+            lineMul: this.lineMul,
+            // **预览里的图片卡片要能放大**（用户反馈：卡片的放大按钮点了没反应）——
+            // 此前这两个回调没传，MdBlockView 用的是默认空实现，所以点右上角放大钮
+            // 与点图片本体都毫无反应。这里接到编辑页既有的图片浮层上（可捏合 / 拖动）。
+            enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
+              if (mode === 'image') {
+                this.previewImgScale = 1;
+                this.previewImgDx = 0;
+                this.previewImgDy = 0;
+                this.previewImage = payload;
+              }
+            },
+            imageTapHandler: (key: string, src: string) => {
+              this.previewImgScale = 1;
+              this.previewImgDx = 0;
+              this.previewImgDy = 0;
+              this.previewImage = src;
+            }
           })
         }
       }, (block: MdBlock) => 'p_' + block.id + '_' + this.renderEpoch)
@@ -2082,15 +2147,30 @@ export struct Editor {
             .width('100%')
             .height('100%')
             .scale({ x: this.previewImgScale, y: this.previewImgScale })
+            .offset({ x: this.previewImgDx, y: this.previewImgDy })
+            // **单指拖动 + 双指缩放并行**（用户反馈：放大后不能单指拖动）——
+            // 此前这里只有 PinchGesture，放大后的图根本推不动；现在补上单指 Pan
+            // （fingers: 1），与捏合放在 Parallel 组里互不抢手势。
             .gesture(
-              PinchGesture({ fingers: 2 })
-                .onActionStart(() => {
-                  this.previewImgPinchBase = this.previewImgScale;
-                })
-                .onActionUpdate((event: GestureEvent) => {
-                  const sc: number = event.scale !== undefined ? event.scale : 1;
-                  this.previewImgScale = Math.min(8, Math.max(0.5, this.previewImgPinchBase * sc));
-                })
+              GestureGroup(GestureMode.Parallel,
+                PanGesture({ fingers: 1, distance: 1 })
+                  .onActionStart(() => {
+                    this.previewImgDxBase = this.previewImgDx;
+                    this.previewImgDyBase = this.previewImgDy;
+                  })
+                  .onActionUpdate((event: GestureEvent) => {
+                    this.previewImgDx = this.previewImgDxBase + event.offsetX;
+                    this.previewImgDy = this.previewImgDyBase + event.offsetY;
+                  }),
+                PinchGesture({ fingers: 2 })
+                  .onActionStart(() => {
+                    this.previewImgPinchBase = this.previewImgScale;
+                  })
+                  .onActionUpdate((event: GestureEvent) => {
+                    const sc: number = event.scale !== undefined ? event.scale : 1;
+                    this.previewImgScale = Math.min(8, Math.max(0.5, this.previewImgPinchBase * sc));
+                  })
+              )
             )
 
           Text('点此关闭')
@@ -2111,6 +2191,13 @@ export struct Editor {
         .onClick(() => {
           this.previewImage = '';
         })
+        // **打开 / 关闭的过渡**（用户要求）：淡入 + 轻微放大进场，关闭时反向收回。
+        // 必须用显式 TransitionEffect —— 隐式对象形式依赖调用方把状态改动包在
+        // animateTo 里才有动画，而"点放大按钮打开"与"点空白关闭"这两条路径都没包，
+        // 会直接硬切（本工程在搜索结果面板上已踩过同一个坑）。
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.scale({ x: 0.92, y: 0.92, centerX: '50%', centerY: '50%' })))
       }
     }
     .width('100%')

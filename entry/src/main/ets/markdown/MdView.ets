@@ -1733,13 +1733,15 @@ export struct MdBlockView {
     try {
       const data: pasteboard.PasteData =
         pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
-      pasteboard.getSystemPasteboard().setData(data).then(() => {
-        this.toast(hint);
-      }).catch((err: BusinessError) => {
-        this.toast('复制失败：' + err.message);
-      });
+      // **改成同步写入**：原来用异步 setData().then() 弹提示，在部分设备上会出现
+      // promise 与剪贴板实际写入不同步的观感 ——「提示已复制，粘出来却没有内容」。
+      // 同步 API 一次性拿到成败，成功才提示，失败给可读原因（不再有假成功提示）。
+      pasteboard.getSystemPasteboard().setDataSync(data);
+      this.toast(hint);
     } catch (err) {
-      this.toast('复制失败');
+      const e: BusinessError = err as BusinessError;
+      const msg: string = (e.message !== undefined && e.message !== null) ? e.message : '未知错误';
+      this.toast('复制失败：' + msg);
     }
   }
 

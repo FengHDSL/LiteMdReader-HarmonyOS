@@ -2045,7 +2045,10 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 <script>
   var seq=0;
   window.__render=function(src,dark){
-    mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:dark?'dark':'neutral',flowchart:{useMaxWidth:false},sequence:{useMaxWidth:false},gantt:{useMaxWidth:false}});
+    // **甘特图刻度密度**：默认按跨度自动铺刻度，跨度只有十几天时日期标签会密到
+    // 糊成一片（用户实测"坐标轴文字全贴在一起"）。这里固定成**一周一个刻度**
+    // 并把字号收小，标签间距立刻拉开；其它图表类型不受影响。
+    mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:dark?'dark':'neutral',flowchart:{useMaxWidth:false},sequence:{useMaxWidth:false},gantt:{useMaxWidth:false,fontSize:11,sectionFontSize:11,tickInterval:'1 week'}});
     var app=document.getElementById('app');
     app.innerHTML='';
     mermaid.render('mmd'+(seq++),src).then(function(r){

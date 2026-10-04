@@ -111,6 +111,10 @@ export struct AppModeDialog {
       .margin({ top: 2 })
     }
     .width('82%')
+    // **大屏（平板横屏）封顶宽度**（用户要求：宽度与手机端一致）——
+    // 只写 82% 时，平板横屏根宽 1200vp 会撑到近 1000vp，弹窗被拉成一张宽扁的板子；
+    // 手机端 82% ≈ 295vp，这里封顶 300vp，两种形态观感一致。
+    .constraintSize({ maxWidth: 300 })
     .padding(20)
     .borderRadius(16)
     .backgroundColor(this.cardBg())

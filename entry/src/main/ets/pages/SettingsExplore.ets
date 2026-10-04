@@ -414,6 +414,12 @@ export struct SettingsExplore {
               palette: this.palette(),
               chipLabel: '更新日志',
               chipOnTap: () => {
+                // **平板分栏嵌入模式**：不进新页，回设置中心右栏展示
+                //（与其它设置板块一致 —— 用户要求）
+                if (this.embedded) {
+                  AppStorage.setOrCreate('settingsInlineSection', 'pages/Changelog');
+                  return;
+                }
                 if (this.stack === null) {
                   return;
                 }

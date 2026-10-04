@@ -44,6 +44,11 @@ export struct SettingsShell {
   @Prop shellSubtitle: string = '';
   /** 导航栈：返回用 */
   stack: NavPathStack | null = null;
+  /**
+   * **自定义返回行为**：返回 true = 已消费（不再 pop）。
+   * 平板分栏嵌入的页面（如更新日志）用它回到上级板块，而不是退出设置页。
+   */
+  onBack: () => boolean = (): boolean => false;
   /** 生命周期转发（NavDestination.onShown/onHidden 调用） */
   life: NavLifecycle = new NavLifecycle();
   /**
@@ -197,8 +202,11 @@ export struct SettingsShell {
     }
   }
 
-  /** 返回设置中心 */
+  /** 返回设置中心（分栏嵌入页面可自行接管，见 onBack） */
   private goBack(): void {
+    if (this.onBack()) {
+      return;
+    }
     if (this.stack !== null) {
       this.stack.pop();
     }

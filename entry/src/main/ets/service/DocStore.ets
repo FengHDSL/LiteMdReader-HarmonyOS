@@ -17,6 +17,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
+import { image } from '@kit.ImageKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { MdParseResult } from '../markdown/MdTypes';
 import { MdParser } from '../markdown/MdParser';
@@ -134,12 +135,42 @@ export interface DocSearchHit {
   name: string;
   /** 命中上下文片段（首尾各留一段正文） */
   snippet: string;
-  /** 该文档内的命中次数 */
+  /** 该文档内的命中次数（文件名命中为 0） */
   count: number;
   /** 是否内置文档 */
   builtin: boolean;
   /** 修改时间，用于结果排序 */
   mtime: number;
+  /** 文档字节数（结果行里显示大小） */
+  size: number;
+  /** 'name' = 文件名命中；'content' = 正文命中（两类**分开展示**，用户要求） */
+  kind: string;
+  /**
+   * 正文片段按关键词切分后的分片：**偶数下标 = 普通文本、奇数下标 = 命中片段**
+   * （UI 直接用它做关键词加粗高亮，避免在 ForEach 里再算）
+   */
+  snippetParts: string[];
+}
+
+/** 图片命中（搜索图片文件名）：文档插图 / 手写笔记 */
+export interface DocImageHit {
+  /** 图片文件名 */
+  name: string;
+  /** 绝对路径（file:// 由 UI 自己拼） */
+  path: string;
+  /** 字节数 */
+  size: number;
+  /** 像素宽（0 = 读取失败，UI 显示「尺寸未知」） */
+  width: number;
+  /** 像素高（0 = 读取失败） */
+  height: number;
+}
+
+/** 搜索结果：文件名 / 正文 / 图片 三组（用户要求分开呈现） */
+export interface DocSearchResult {
+  names: DocSearchHit[];
+  contents: DocSearchHit[];
+  images: DocImageHit[];
 }
 
 /** 文件时间（毫秒；0 = 取不到） */
@@ -196,6 +227,36 @@ export class DocStore {
     DocStore.ready = true;
     // **首次启动**：把两本内置教程收进「澄笺」文件夹（一次性，之后可自行解散）
     DocStore.seedChengjianFolder();
+    // 内置文档用到的插图释放到沙箱（只读 rawfile 里的图片，正文才能用常规 ![]() 引用）
+    DocStore.ensureBuiltinImages(ctx);
+  }
+
+  /**
+   * **内置插图释放**（一次性）：把 `rawfile/builtin/` 下的图片拷进沙箱 `docs/images/`。
+   *
+   * 为什么需要：内置文档正文存在只读 rawfile 里，而 `resolveImagePath()` 只认沙箱里的
+   * `docs/` 与 `docs/images/` 两处 —— 不放一份到沙箱，文档里的 `![](图标.png)` 永远
+   * 解析不到（会显示「找不到本地图片文件」）。**已存在就跳过**，所以用户在图片管理里
+   * 删掉它之后不会被重新塞回来。
+   */
+  private static ensureBuiltinImages(ctx: common.UIAbilityContext): void {
+    const name: string = 'chengjian-icon.png';
+    try {
+      const dir: string = DocStore.imagesDirPath();
+      const target: string = dir + '/' + name;
+      if (fs.accessSync(target)) {
+        return;
+      }
+      if (!fs.accessSync(dir)) {
+        fs.mkdirSync(dir, true);
+      }
+      const bytes: Uint8Array = ctx.resourceManager.getRawFileContentSync('builtin/' + name);
+      const file: fs.File = fs.openSync(target, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      fs.writeSync(file.fd, bytes.buffer);
+      fs.closeSync(file);
+    } catch (err) {
+      // 释放失败不影响使用：文档里那张图会走"找不到本地图片"的占位
+    }
   }
 
   /** 把两本内置教程收进「澄笺」文件夹（只做一次；被隐藏的内置文档不参与）。 */
@@ -1355,13 +1416,15 @@ export class DocStore {
    * 逐文档扫描纯文本（正文是几十 KB 的量级，直接扫足够快），以「出现次数」排序。
    * 片段取首个命中前后各 32 字符，换行折叠成空格。
    */
-  static searchAll(ctx: common.UIAbilityContext, rawQuery: string): DocSearchHit[] {
+  static searchAll(ctx: common.UIAbilityContext, rawQuery: string): DocSearchResult {
     DocStore.init(ctx);
+    const empty: DocSearchResult = { names: [], contents: [], images: [] };
     const query: string = rawQuery.trim();
     if (query.length === 0) {
-      return [];
+      return empty;
     }
     const needle: string = query.toLowerCase();
+    const nameHits: DocSearchHit[] = [];
     const hits: DocSearchHit[] = [];
     const names: string[] = [];
     for (let b = 0; b < DocStore.BUILTINS.length; b++) {
@@ -1398,6 +1461,21 @@ export class DocStore {
         }
         from = at + needle.length;
       }
+      // ① 文件名命中（用户要求）：按修改时间排序即可
+      if (meta.name.toLowerCase().indexOf(needle) >= 0) {
+        const nameHit: DocSearchHit = {
+          name: meta.name,
+          snippet: '',
+          count: 0,
+          builtin: meta.builtin,
+          mtime: meta.mtime,
+          size: meta.size,
+          kind: 'name',
+          snippetParts: []
+        };
+        nameHits.push(nameHit);
+      }
+      // ② 正文命中
       if (count === 0) {
         continue;
       }
@@ -1405,12 +1483,16 @@ export class DocStore {
       const tail: number = firstAt + needle.length + 32;
       let snippet: string = text.substring(head, tail > text.length ? text.length : tail);
       snippet = snippet.replace(/[\r\n]+/g, ' ');
+      const snippetText: string = (head > 0 ? '…' : '') + snippet + (tail < text.length ? '…' : '');
       const hit: DocSearchHit = {
         name: meta.name,
-        snippet: (head > 0 ? '…' : '') + snippet + (tail < text.length ? '…' : ''),
+        snippet: snippetText,
         count: count,
         builtin: meta.builtin,
-        mtime: meta.mtime
+        mtime: meta.mtime,
+        size: meta.size,
+        kind: 'content',
+        snippetParts: DocStore.splitByNeedle(snippetText, query)
       };
       hits.push(hit);
     }
@@ -1420,7 +1502,101 @@ export class DocStore {
       }
       return b.mtime - a.mtime;
     });
-    return hits;
+    nameHits.sort((a: DocSearchHit, b: DocSearchHit) => b.mtime - a.mtime);
+    // ③ 图片文件名命中（用户要求：展示图片名称 + 缩略图）
+    const imageHits: DocImageHit[] = [];
+    try {
+      const dir: string = DocStore.imagesDirPath();
+      if (fs.accessSync(dir)) {
+        const files: string[] = fs.listFileSync(dir);
+        for (let k = 0; k < files.length; k++) {
+          const nm: string = files[k];
+          if (nm.startsWith('.')) {
+            continue;
+          }
+          if (nm.toLowerCase().indexOf(needle) < 0) {
+            continue;
+          }
+          let imgSize: number = 0;
+          try {
+            imgSize = fs.statSync(dir + '/' + nm).size;
+          } catch (statErr) {
+            imgSize = 0;
+          }
+          // 像素尺寸（分辨率）：同步读图片头。**只对已命中的图片读**（前面已按关键词过滤），
+          // 避免为整个图片目录付解码开销；损坏 / 非图片文件读失败就留 0，UI 显示「尺寸未知」。
+          let imgW: number = 0;
+          let imgH: number = 0;
+          try {
+            const src: image.ImageSource = image.createImageSource(dir + '/' + nm);
+            const info: image.ImageInfo = src.getImageInfoSync();
+            imgW = info.size.width;
+            imgH = info.size.height;
+            src.release();
+          } catch (dimErr) {
+            imgW = 0;
+            imgH = 0;
+          }
+          const imgHit: DocImageHit = {
+            name: nm, path: dir + '/' + nm, size: imgSize, width: imgW, height: imgH
+          };
+          imageHits.push(imgHit);
+        }
+      }
+    } catch (err) {
+      // 图片目录不存在 / 读取失败：跳过
+    }
+    const result: DocSearchResult = { names: nameHits, contents: hits, images: imageHits };
+    return result;
+  }
+
+  /** 字节数 → 易读文本（B / KB / MB）。 */
+  static formatSize(bytes: number): string {
+    if (bytes <= 0) {
+      return '0 B';
+    }
+    if (bytes < 1024) {
+      return '' + bytes + ' B';
+    }
+    if (bytes < 1024 * 1024) {
+      return (bytes / 1024).toFixed(1) + ' KB';
+    }
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  /**
+   * 把片段按关键词切成分片：偶数下标 = 普通文本、奇数下标 = 命中片段
+   *（UI 据此给关键词加粗高亮）。大小写不敏感，最多切 24 段防超长。
+   */
+  static splitByNeedle(text: string, needle: string): string[] {
+    const parts: string[] = [];
+    if (needle.length === 0 || text.length === 0) {
+      parts.push(text);
+      return parts;
+    }
+    const lower: string = text.toLowerCase();
+    const key: string = needle.toLowerCase();
+    let from: number = 0;
+    let guard: number = 0;
+    while (from < text.length && guard < 24) {
+      const at: number = lower.indexOf(key, from);
+      if (at < 0) {
+        break;
+      }
+      if (at > from) {
+        parts.push(text.substring(from, at));
+      }
+      parts.push(text.substring(at, at + key.length));
+      from = at + key.length;
+      guard++;
+    }
+    if (from < text.length) {
+      parts.push(text.substring(from));
+    }
+    if (parts.length === 0) {
+      parts.push(text);
+    }
+    return parts;
   }
 
   // ────────────────────────── 内部实现 ──────────────────────────

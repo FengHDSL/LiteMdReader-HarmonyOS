@@ -59,6 +59,8 @@ export class SettingsMirror {
     'customAccentFull', 'pageBgTint', 'grayTextMode', 'grayTextColor',
     'grayTextModeLight', 'grayTextModeDark', 'grayTextColorLight', 'grayTextColorDark',
     'glassStrength', 'cardFallback', 'particleDissolve',
+    // 书架显示：顶部「继续阅读」卡片是否显示
+    'shelfResumeBanner',
     // 版本历史（自动保存与间隔）
     'versionAutoSave', 'versionAutoSaveInterval',
     // 自定义函数壁纸

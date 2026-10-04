@@ -192,23 +192,25 @@ export struct GenWallpaper {
     // 两团转速不同（36s / 52s）、方向相反 → 永远错开。
     // Linear 无往复：转满 360° 从头再来，无缝循环。
     this.getUIContext().animateTo({
-      duration: 36000, curve: Curve.Linear, iterations: -1
+      duration: 40000, curve: Curve.Linear, iterations: -1
     }, () => {
       this.orbitA = 360;
     });
     this.getUIContext().animateTo({
-      duration: 52000, curve: Curve.Linear, iterations: -1
+      duration: 56000, curve: Curve.Linear, iterations: -1
     }, () => {
       this.orbitB = -360;
     });
-    // 光斑呼吸（淡入淡出）：与公转叠加，9s / 11s 两团各自往复
+    // **光斑呼吸**：亮度 + 尺寸一起往复（13s / 17s 两团错相）。
+    // 周期从 9s/11s 放慢到 13s/17s —— 用户要的是"缓慢的呼吸"，
+    // 太快会像闪烁；幅度同时加大（见 build 里的 opacity / scale）。
     this.getUIContext().animateTo({
-      duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 13000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
     }, () => {
       this.glowPulseA = 1;
     });
     this.getUIContext().animateTo({
-      duration: 11000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 17000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
     }, () => {
       this.glowPulseB = 1;
     });
@@ -259,7 +261,9 @@ export struct GenWallpaper {
           centerX: '50%', centerY: '50%'
         }) {
           Column()
-            .width('72%')
+            // **光斑收小**（72% → 46%）：原来是一大团柔光铺满屏心，"移动"被自身面积
+            // 完全淹没了；收小之后才看得出是**一枚光点在缓慢游走**（用户反馈"光点移动不明显"）。
+            .width('46%')
             .aspectRatio(1)
             .borderRadius('50%')
             .radialGradient({
@@ -269,11 +273,14 @@ export struct GenWallpaper {
                 ['#4D' + this.def().glowA.substring(1), 0.55],
                 ['#00000000', 1.0]]
             })
-            .opacity((this.darkMode ? 0.20 : 0.34) + this.glowPulseA * 0.14)
-            .blur(70)
-            // 光斑 72% 宽 → 中心在 (x+36%, y+36%)；取 (30%, 30%) 距屏心约 28%，
-            // 公转半径大、移动量可见；光斑外缘偶出屏但屏心恒被光晕覆盖
-            .position({ x: '-6%', y: '-6%' })
+            // 亮度呼吸：基础 + 峰值（幅度 0.30，原来的 0.14 太含蓄）
+            .opacity((this.darkMode ? 0.22 : 0.36) + this.glowPulseA * 0.30)
+            // 尺寸呼吸：0.92 ↔ 1.08，与亮度同相 → 一眼能看出"在呼吸"
+            .scale({ x: 0.92 + this.glowPulseA * 0.16, y: 0.92 + this.glowPulseA * 0.16 })
+            .blur(56)
+            // 光斑 46% 宽 → 中心在 (x+23%, y+23%)；取 (7%, 7%) 让中心落在 (30%, 30%)，
+            // 距屏心约 28%：公转半径够大、位移看得出来，光斑又始终留在屏内。
+            .position({ x: '7%', y: '7%' })
         }
 
       // 右下冷光（反向公转：130s 一圈，轨道半径约 15%）
@@ -287,7 +294,8 @@ export struct GenWallpaper {
           centerX: '50%', centerY: '50%'
         }) {
           Column()
-            .width('78%')
+            // 78% → 50%（与上面同理：收小才有"光点在走"的观感）
+            .width('50%')
             .aspectRatio(1)
             .borderRadius('50%')
             .radialGradient({
@@ -297,10 +305,11 @@ export struct GenWallpaper {
                 ['#4D' + this.def().glowB.substring(1), 0.55],
                 ['#00000000', 1.0]]
             })
-            .opacity((this.darkMode ? 0.16 : 0.30) + this.glowPulseB * 0.12)
-            .blur(80)
-            // 光斑 78% 宽 → 中心在 (x+39%, y+39%)；取 (70%, 70%) 距屏心约 28%，反向公转
-            .position({ x: '31%', y: '31%' })
+            .opacity((this.darkMode ? 0.18 : 0.32) + this.glowPulseB * 0.26)
+            .scale({ x: 0.92 + this.glowPulseB * 0.16, y: 0.92 + this.glowPulseB * 0.16 })
+            .blur(62)
+            // 光斑 50% 宽 → 中心在 (x+25%, y+25%)；取 (45%, 45%) 让中心落在 (70%, 70%)，反向公转
+            .position({ x: '45%', y: '45%' })
         }
       }
 

@@ -18,6 +18,7 @@ import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { componentUtils } from '@kit.ArkUI';
 import {
+  barFrostColor,
   CoverStyle,
   FOLDER_SPRING,
   HwBar,
@@ -29,7 +30,8 @@ import {
   isDarkTheme,
   paletteFor,
   READER_BG_DEFAULT_DARK,
-  READER_BG_DEFAULT_LIGHT
+  READER_BG_DEFAULT_LIGHT,
+  withAlpha
 } from '../theme/DesignTokens';
 import { DocCover, coverColorsOf, coverStyleFromColor } from '../components/DocCover';
 import {
@@ -45,7 +47,7 @@ import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
-import { DocMeta, DocSearchHit, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
+import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { FontStore } from '../service/FontStore';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -71,6 +73,13 @@ import { SettingsMirror } from '../service/SettingsMirror';
 
 /** 搜索结果下拉面板最多显示的条数（更多提示用底部说明） */
 const SEARCH_PANEL_MAX: number = 20;
+
+/** 重命名面板按钮配色（用户指定：取消蓝、保存绿）。 */
+const RENAME_CANCEL_COLOR: string = '#FF2A6FD6';
+const RENAME_SAVE_COLOR: string = '#FF2F9E5F';
+
+/** 搜索结果「图片」组：缩略图边长（vp） */
+const SEARCH_IMAGE_THUMB: number = 56;
 
 /** 书架底栏胶囊内「新建 / 导入」按钮的直径（vp），不能超过胶囊内高（52 - 8 = 44） */
 const NEW_BTN_SIZE: number = 36;
@@ -214,6 +223,16 @@ struct Index {
   @State searchExpanded: boolean = false;
   @State searchQuery: string = '';
   @State searchHits: DocSearchHit[] = [];
+  /** 搜索：**文件名命中**与**正文命中**分两组（用户要求分开展示） */
+  @State searchNameHits: DocSearchHit[] = [];
+  @State searchContentHits: DocSearchHit[] = [];
+  /** 搜索：**图片文件名命中**（第三组，展示名称 + 缩略图） */
+  @State searchImageHits: DocImageHit[] = [];
+  /** 图片快速查看浮层：src 非空 = 打开中（点搜索结果里的图片项进入） */
+  @State imgPreviewSrc: string = '';
+  @State imgPreviewName: string = '';
+  /** 浮层副标题：大小 · 分辨率 */
+  @State imgPreviewMeta: string = '';
 
   /** 重命名对象类型：doc / folder */
   @State renameKind: string = 'doc';
@@ -282,6 +301,8 @@ struct Index {
   @State resumeName: string = '';
   @State resumeRatio: number = 0;
   @State resumeLastOpen: number = 0;
+  /** 页面存活标记（定时器回调里判断：切走后不要再操作组件） */
+  private pageAlive: boolean = true;
   /** 顶栏 / 底栏是否展开。向下滚动自动收起，向上滚动或回到顶部恢复 */
   @State barsVisible: boolean = true;
   @State rootWidth: number = 360;
@@ -334,6 +355,9 @@ struct Index {
     // 顺带把 seen 版本补成当前版本，避免下次启动再补弹。
     this.suppressUpdateDialogForFirstRun();
     setTimeout(() => {
+      if (!this.pageAlive) {
+        return;
+      }
       this.modeDialog.open();
     }, 1600);
   }
@@ -380,6 +404,9 @@ struct Index {
     this.updateTitle = '已更新到 ' + latest.version;
     this.updateLines = latest.items;
     setTimeout(() => {
+      if (!this.pageAlive) {
+        return;
+      }
       this.updateDialog.open();
     }, 2400);
   }
@@ -425,7 +452,31 @@ struct Index {
       this.searchExpanded = false;
       this.searchQuery = '';
       this.searchHits = [];
+      this.searchNameHits = [];
+      this.searchContentHits = [];
+      this.searchImageHits = [];
     });
+  }
+
+  /**
+   * 打开图片**快速查看浮层**（搜索结果「图片」组点条目）。
+   *
+   * 就地放大而不是"跳阅读页再定位"：图片命中只扫到文件路径、并不知道它被哪篇文档引用，
+   * 就地查看既快又稳（不依赖文档上下文）。若将来要"跳到引用它的文档"，
+   * 需要在 searchAll 里顺带记录引用关系。
+   */
+  private openImagePreview(img: DocImageHit): void {
+    this.imgPreviewSrc = 'file://' + encodeURI(img.path);
+    this.imgPreviewName = img.name;
+    const dim: string = (img.width > 0 && img.height > 0)
+      ? (img.width + ' × ' + img.height) : '尺寸未知';
+    this.imgPreviewMeta = DocStore.formatSize(img.size) + ' · ' + dim;
+  }
+
+  private closeImagePreview(): void {
+    this.imgPreviewSrc = '';
+    this.imgPreviewName = '';
+    this.imgPreviewMeta = '';
   }
 
   private runShelfSearch(text: string): void {
@@ -435,8 +486,16 @@ struct Index {
       return;
     }
     try {
-      this.searchHits = DocStore.searchAll(ctx, text);
+      const res: DocSearchResult = DocStore.searchAll(ctx, text);
+      this.searchNameHits = res.names;
+      this.searchContentHits = res.contents;
+      this.searchImageHits = res.images;
+      // 顶栏计数沿用总数（文件名命中 + 正文命中）
+      this.searchHits = res.names.concat(res.contents);
     } catch (err) {
+      this.searchNameHits = [];
+      this.searchContentHits = [];
+      this.searchImageHits = [];
       this.searchHits = [];
     }
   }
@@ -690,7 +749,12 @@ struct Index {
     this.renameKind = kind;
     this.renameFrom = name;
     this.renameText = name;
-    this.closeCellMenu();
+    // ⚠️ **这里绝对不能先调 closeCellMenu()**：那会在同一帧里把 shelfVisible
+    // 先置 false（触发 bindSheet 的 dismiss 动画）又立刻置 true（要求 show）——
+    // 同一个 bindSheet "关到一半又开"会冲突，真机表现就是**面板不出现 + 页面闪退**
+    // （用户反馈：更多 → 重命名，点完没弹输入框还崩）。
+    // 正确做法：面板保持打开，只把**内容标识**从 menu 换成 rename
+    // （indexSheet() 里的 if 分支会换成重命名内容），顺带还有"菜单就地变输入框"的观感。
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.shelfSheet = 'rename';
       this.shelfVisible = true;
@@ -765,6 +829,11 @@ struct Index {
     // ② 1.0.2 用 `scrollToIndex(smooth=true)`，固定短时长跑完全程、滚得越远越快；
     //    现在用 `scrollTo` + FOLDER_GLIDE_MS + FOLDER_SPRING，与展开动画同速。
     setTimeout(() => {
+      // 定时器期间用户可能已切走页面：此时 Grid 已卸载，继续滚动会拿到
+      // undefined 的偏移（见 scrollPanelTopIntoPlace 的说明）
+      if (!this.pageAlive) {
+        return;
+      }
       this.scrollPanelTopIntoPlace();
       this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
         this.folderPanelOpen = true;
@@ -799,7 +868,15 @@ struct Index {
    * 实测用 `getRectangleById`（**不能用 onAreaChange**：面板此刻高度 0，回调不触发）。
    */
   private scrollPanelTopIntoPlace(): void {
-    const cur: number = this.gridScroller.currentOffset().yOffset;
+    // **线上 jscrash 修复**（HiviewDFX 反馈：TypeError: Cannot read property
+    // yOffset of undefined @ scrollPanelTopIntoPlace）：Grid 未挂载 / 页面已切走 /
+    // 视图在列表与网格间切换时，Scroller.currentOffset() 会返回 undefined。
+    // 这里先取出来判空，拿不到就跳过一次滚动（下次展开时会重新算）。
+    const off: OffsetResult | undefined = this.gridScroller.currentOffset();
+    if (off === undefined || off === null) {
+      return;
+    }
+    const cur: number = off.yOffset;
     // 锚点 = 被点开的文件夹格子（面板在它下方）
     const anchorTop: number = this.folderAnchorTopByMeasure();
     if (anchorTop <= 0) {
@@ -946,7 +1023,8 @@ struct Index {
   }
 
   private cellBlur(): number {
-    return this.cellDimmed() ? 6 : 0;
+    // **搜索展开时整个书架同程度模糊**（用户要求：程度参考打开文件夹时的效果 = 6）
+    return (this.cellDimmed() || this.searchExpanded) ? 6 : 0;
   }
 
   /** 树形视图的行内展开也要有动画：状态变更包在弹簧 animateTo 里。 */
@@ -965,6 +1043,7 @@ struct Index {
   private panelWinBottom: number = 0;
 
   onPageShow(): void {
+    this.pageAlive = true;
     // **系统深浅同步 + 必要的整页刷新**：
     // 实机日志证明 AppStorage 里 systemDark 会更新，但 @Watch 不触发，
     // 所以这里手动比对——不一致就整树重建（材质 / 壁纸 / 卡片一次到位）。
@@ -1000,8 +1079,34 @@ struct Index {
 
   /** 页面隐藏：停掉深浅探测器（不在本页时没必要问系统）。 */
   onPageHide(): void {
+    // 页面不可见：定时器回调不要再操作组件（见 scrollPanelTopIntoPlace 的崩溃修复）
+    this.pageAlive = false;
     GripAware.stop();
     stopThemeWatchdog();
+  }
+
+  /**
+   * **系统返回键 / 侧滑手势**（@Entry 页面的生命周期回调）。
+   *
+   * 书架页有两层"临时浮出"的内容，返回时应逐层收掉，而不是直接退出应用：
+   *   ① 图片快速查看浮层（最上层）→ 关闭浮层；
+   *   ② 搜索展开（含结果下拉）→ 收起搜索。
+   * 两层都收掉之后再返回 false，交回系统（退出应用）。
+   *
+   * 注：这里刻意不用「EntryAbility.onBackPressed + AppStorage 信号」那套 ——
+   * `@StorageProp` 的 `@Watch` 在 AppStorage 被 Ability 改写时**不触发**（实机铁证），
+   * 页面级 onBackPress 是唯一可靠的入口。
+   */
+  onBackPress(): boolean {
+    if (this.imgPreviewSrc.length > 0) {
+      this.closeImagePreview();
+      return true;
+    }
+    if (this.searchExpanded) {
+      this.collapseSearch();
+      return true;
+    }
+    return false;
   }
 
   /** 应用主题模式变化（设置里切五档）：同步系统栏 / 颜色模式，并整页刷新。 */
@@ -1627,7 +1732,10 @@ struct Index {
       barHeight: HwBar.pill,
       // **平板放屏幕右上角**：宽屏胶囊只装按钮（标题固定在左上角，不进胶囊）；
       // 点搜索展开时胶囊加宽到 420 装下搜索框，手机仍整行
-      barWidth: this.isWideShelf() ? (this.searchExpanded ? 420 : 190) : '100%'
+      // 收起态宽度：真实内容 4×36 + 3×6 间距(xs) + 2×10 内边距(sm) = 182，
+      // 留 4vp 余量（186）由 Row 居中把余量**均分到两侧** → 左右间距恒相等
+      // （±2vp 以内的渲染误差也被居中吸收，不再出现单侧偏大）
+      barWidth: this.isWideShelf() ? (this.searchExpanded ? 420 : 186) : '100%'
     }) {
     Row({ space: HwSpace.xs }) {
       if (this.searchExpanded) {
@@ -1638,6 +1746,7 @@ struct Index {
             .fontSize(17)
             .fontColor([this.palette().textTertiary])
           TextInput({ text: this.searchQuery, placeholder: '在全部文档中搜索…' })
+            .id('shelfSearchInput')
             .layoutWeight(1)
             .height('100%')
             .fontSize(HwType.label + 2)
@@ -1673,6 +1782,14 @@ struct Index {
         .layoutWeight(1)
         .padding({ left: HwSpace.sm, right: HwSpace.xs, top: 4, bottom: 4 })
         .borderRadius(HwRadius.pill)
+        .onClick(() => {
+          // 收起输入法后再点搜索框：主动请求焦点，唤回键盘（用户反馈点不弹键盘）
+          try {
+            this.getUIContext().getFocusController().requestFocus('shelfSearchInput');
+          } catch (err) {
+            // 焦点请求失败无副作用
+          }
+        })
         // **不再铺 quoteBg**：默认调色板的 quoteBg 是 28% 透明的主题蓝，
         // 搜索框整圈发蓝（用户要求去掉）。外层 ImmersiveBar 胶囊本身就是
         // 沉浸光感底，这里保持全透明即可。
@@ -1682,7 +1799,7 @@ struct Index {
         // **平板：标题不进胶囊**（固定在屏幕左上角，见外层），胶囊只装按钮
         if (!this.isWideShelf()) {
           Column({ space: 1 }) {
-            Text('全部文档')
+            Text('书架')
               .fontSize(22)
               .fontWeight(FontWeight.Bold)
               .fontColor(this.palette().textPrimary)
@@ -1754,82 +1871,367 @@ struct Index {
         }
       }
     }
+    // **居中排列**：把宽度余量均分到两侧 → 左右间距恒等（用户要求对称）
+    .justifyContent(FlexAlign.Center)
     }
     // 注意：ImmersiveBar 是「自定义组件 + 尾随闭包」，不能再链式调属性；
     // 宽度已经用 barWidth 参数传入（'100%'）。
   }
 
-  /** 搜索结果下拉：非模态，盖在网格上方，点结果直达。 */
+  /**
+   * 搜索结果下拉：非模态，盖在网格上方，点结果直达。
+   *
+   * **外壳**走沉浸光感承载层（照 miha_hm「Toggle 承载方案」的 Stack 分层）。
+   *
+   * 三层自下而上：① 降级层 → ② 承载层 → ③ 内容层。
+   * 两条硬规则决定了这里的写法（照抄参考项目文档结论）：
+   *   · **材质的视觉层级位于 backgroundColor / backgroundBlurStyle 之下**——
+   *     所以降级层在材质生效时必须全透明，否则实色底会把材质整块盖住
+   *     （这正是改前"挂了承载层却毫无光感"的原因）；
+   *   · **承载层必须是 Toggle**（内容区的 Column/Row 挂 systemMaterial 不渲染、不报错）。
+   * 内容层的缩进与写法保持不变，单独放在 searchResultsBody() 里。
+   */
   @Builder
   searchResultsPanel() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // ① 降级层：材质不可用时才可见（磨砂底，与顶/底栏同一配方）
+      Column()
+        .width(LayoutPolicy.matchParent)
+        .height(LayoutPolicy.matchParent)
+        .borderRadius(HwRadius.card)
+        .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .hitTestBehavior(HitTestMode.None)
+
+      // ② 材质承载层：隐形 Toggle 画布。材质采样的是它**背后窗口里的内容**，
+      //    搜索展开时书架整体被模糊（cellBlur），玻璃后面就是那片模糊的书架。
+      ImmersiveCardLayer({ layerRadius: HwRadius.card, layerShadow: false })
+
+      // ③ 内容层
+      this.searchResultsBody()
+    }
+    .width('100%')
+    .constraintSize({ maxHeight: 420 })
+    .borderRadius(HwRadius.card)
+    // 描边留在外壳上：材质画在 border 之下，细描边正好勾出玻璃边缘
+    .border({ width: 0.8, color: this.palette().surfaceBorder })
+    .clip(true)
+    // **面板内的空白（组标题、卡片之间的缝隙）点一下也收起搜索**：
+    // 用户要求"除了结果卡片本身，点任意区域都能退出搜索"。
+    // 卡片自己的 onClick 会先消费点击（打开文档 / 放大图片），
+    // 没被卡片接住的点击才冒泡到这里 → 收起。
+    .onClick(() => {
+      // 图片卡片的 onClick 会先执行（子先于父）并打开图片浮层，
+      // 这里据此判断：浮层已打开就说明点击落在图片卡上 → 不要顺手把搜索收掉。
+      // （ClickEvent 没有 stopPropagation，所以用「子先父后 + 状态判断」实现等效拦截。）
+      if (this.imgPreviewSrc.length === 0) {
+        this.collapseSearch();
+      }
+    })
+    // **出现 / 收起的过渡**：从顶缘「伸长」出来（高度方向缩放）+ 淡入 + 轻微位移，
+    // 收起时反向缩回。用 scale 的 centerY: 0 让缩放钉在面板顶缘，看起来就是往下长出来。
+    .transition(TransitionEffect.OPACITY
+      .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+      .combine(TransitionEffect.scale({ x: 1, y: 0.9, centerX: '50%', centerY: 0 }))
+      .combine(TransitionEffect.translate({ y: -10 })))
+  }
+
+  /** 搜索结果面板**内容**（文件名 / 正文 / 图片三组 + 空态）。 */
+  @Builder
+  searchResultsBody() {
     Column({ space: HwSpace.xs }) {
       if (this.searchQuery.trim().length === 0) {
-        Text('输入关键词，在全部文档正文里查找')
+        Text('输入关键词，搜索文件名与全部文档正文')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
           .padding({ left: HwSpace.sm, top: HwSpace.xxs, bottom: HwSpace.xxs })
-      } else if (this.searchHits.length === 0) {
-        Text('没有匹配的内容')
-          .fontSize(HwType.caption)
-          .fontColor(this.palette().textTertiary)
-          .width('100%')
-          .padding({ left: HwSpace.sm, top: HwSpace.xxs, bottom: HwSpace.xxs })
-      } else {
-        ForEach(this.searchHits, (hit: DocSearchHit, index: number) => {
-          Column({ space: 2 }) {
-            Row({ space: HwSpace.xs }) {
-              Text(hit.name)
-                .fontSize(HwType.label)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(this.palette().textPrimary)
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .layoutWeight(1)
-              if (hit.builtin) {
-                Text('内置')
-                  .fontSize(HwType.caption - 1)
-                  .fontColor(this.palette().textTertiary)
-              }
-              Text(hit.count + ' 处')
-                .fontSize(HwType.caption - 1)
-                .fontColor(this.palette().accent)
-            }
+      } else if (this.searchNameHits.length === 0 && this.searchContentHits.length === 0
+        && this.searchImageHits.length === 0) {
+        // **空态也放在卡片里**（用户要求：稍大的卡片、居中、正常字号）
+        Column() {
+          Text('没有匹配的文件名、正文或图片')
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textSecondary)
             .width('100%')
+            .textAlign(TextAlign.Center)
+        }
+        .width('100%')
+        .padding({ top: HwSpace.xl, bottom: HwSpace.xl, left: HwSpace.md, right: HwSpace.md })
+        .borderRadius(HwRadius.card)
+        // **材质生效时绝不能铺不透明底**：沉浸光感的视觉层级位于 backgroundColor 之下，
+        // 实色底会把材质整块盖住（表现为"挂了承载层却一点光感都没有"）。
+        // 只有在材质不可用时才用磨砂底兜底 —— 与顶/底栏 barFrostColor 同一套配方。
+        .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        // **出现 / 消失过渡**（用户要求）
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.translate({ y: -8 })))
+      } else {
+        // ══ ① 文档（文件名命中：展示具体文档，参考系统搜索的卡片样式）══
+        if (this.searchNameHits.length > 0) {
+          Text('文档')
+            .fontSize(HwType.label + 5)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+            .width('100%')
+            // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
+            .padding({ left: HwSpace.md, top: HwSpace.md, bottom: HwSpace.md })
 
-            Text(hit.snippet)
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textSecondary)
-              .lineHeight(HwType.caption * 1.5)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Column() {
+            ForEach(this.searchNameHits, (hit: DocSearchHit, index: number) => {
+              Row({ space: HwSpace.sm }) {
+                // 文件类型图标：圆角方块底 + 白色文档图标
+                Stack() {
+                  SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                    .fontSize(20)
+                    .fontColor(['#FFFFFFFF'])
+                }
+                .width(40)
+                .height(40)
+                .borderRadius(10)
+                .backgroundColor(this.palette().accent)
+
+                Column({ space: 3 }) {
+                  Text(hit.name)
+                    .fontSize(HwType.label + 1)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(this.palette().textPrimary)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(hit.builtin ? '内置文档' : '我的文档')
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                    .maxLines(1)
+                  Text(DocStore.formatSize(hit.size) + ' · ' + DocStore.formatTime(hit.mtime))
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                    .maxLines(1)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                // 打开箭头（参考图右侧的圆形箭头）
+                SymbolGlyph($r('sys.symbol.arrow_up_right'))
+                  .fontSize(17)
+                  .fontColor([this.palette().textSecondary])
+              }
               .width('100%')
+              // **淡磨砂底**（用户要求）：每条命中自带一层半透明磨砂 + 圆角 +
+              // 行间距，条目之间有了明确分界；材质生效时它与面板玻璃叠出层次，
+              // 材质不可用时也仍是一层可见的浅底（withAlpha 保证不吃掉模糊）。
+              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 9, bottom: 9 })
+              .borderRadius(HwRadius.inner)
+              // 半透明磨砂底：三组（文档 / 内容 / 图片）**同一档**，保证观感一致。
+              // 45% 太淡时在白玻璃上几乎看不出来（用户反馈"图片卡片没有半透明效果"），
+              // 提到 60% —— 仍是半透明，但卡片边界明确可见。
+              .backgroundColor(withAlpha(this.palette().surface, '99'))
+              .backgroundBlurStyle(BlurStyle.Thin)
+              .margin({ bottom: HwSpace.xs })
+              // 逐条出现 / 消失的过渡（用户要求：结果的出现与伸长收起都要有动画）
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+              .onClick(() => {
+                this.openSearchHit(hit);
+              })
+            }, (hit: DocSearchHit, index: number) => 'nm' + index + '_' + hit.name)
+
           }
           .width('100%')
-          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 6, bottom: 6 })
-          .borderRadius(HwRadius.inner)
-          .onClick(() => {
-            this.openSearchHit(hit);
-          })
-        }, (hit: DocSearchHit, index: number) => 'hit' + index + '_' + hit.name)
+          .padding({ left: HwSpace.md, right: HwSpace.md, top: 2, bottom: 2 })
+          .borderRadius(HwRadius.card)
+          // 材质生效时透明：光感由**最外层搜索面板**的承载层统一出（单层材质）。
+          // 这里若再挂一层承载，就成了"玻璃上再叠一块玻璃"——两层都采样同一片背景，
+          // 叠出来发白浑浊，反而不像光感。
+          .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+          .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+          // **出现 / 消失过渡**（用户要求）
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -8 })))
+        }
+
+        // ══ ② 内容（正文命中：展示出现这段内容的具体文件）══
+        if (this.searchContentHits.length > 0) {
+          Text('内容')
+            .fontSize(HwType.label + 5)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+            .width('100%')
+            // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
+            .padding({ left: HwSpace.md, top: HwSpace.md, bottom: HwSpace.md })
+
+          Column() {
+            ForEach(this.searchContentHits, (hit: DocSearchHit, index: number) => {
+              Row({ space: HwSpace.sm }) {
+                Stack() {
+                  SymbolGlyph($r('sys.symbol.text_alignleft'))
+                    .fontSize(20)
+                    .fontColor(['#FFFFFFFF'])
+                }
+                .width(40)
+                .height(40)
+                .borderRadius(10)
+                // **实色主题色底**：原来用 accentSoft（28% 主题色薄底）配白图标，
+                // 白字压在浅薄底上几乎看不见（用户反馈"内容图标看不清"）。
+                // 实色底 + 白图标对比度立刻拉开，与「文档」组同一档观感。
+                .backgroundColor(this.palette().accent)
+
+                Column({ space: 3 }) {
+                  // 命中片段（关键词加粗高亮）
+                  Text() {
+                    ForEach(hit.snippetParts, (part: string, pi: number) => {
+                      Span(part)
+                        .fontSize(HwType.label)
+                        .fontWeight(pi % 2 === 1 ? FontWeight.Bold : FontWeight.Normal)
+                        .fontColor(pi % 2 === 1 ? this.palette().accent : this.palette().textPrimary)
+                    }, (part: string, pi: number) => 'sp' + index + '_' + pi)
+                  }
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  // **出自哪个文件**
+                  Text(hit.name)
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  Text(DocStore.formatSize(hit.size) + ' · ' + DocStore.formatTime(hit.mtime))
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                    .maxLines(1)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                SymbolGlyph($r('sys.symbol.arrow_up_right'))
+                  .fontSize(17)
+                  .fontColor([this.palette().textSecondary])
+              }
+              .width('100%')
+              // **淡磨砂底**（用户要求）：每条命中自带一层半透明磨砂 + 圆角 +
+              // 行间距，条目之间有了明确分界；材质生效时它与面板玻璃叠出层次，
+              // 材质不可用时也仍是一层可见的浅底（withAlpha 保证不吃掉模糊）。
+              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 9, bottom: 9 })
+              .borderRadius(HwRadius.inner)
+              // 半透明磨砂底：三组（文档 / 内容 / 图片）**同一档**，保证观感一致。
+              // 45% 太淡时在白玻璃上几乎看不出来（用户反馈"图片卡片没有半透明效果"），
+              // 提到 60% —— 仍是半透明，但卡片边界明确可见。
+              .backgroundColor(withAlpha(this.palette().surface, '99'))
+              .backgroundBlurStyle(BlurStyle.Thin)
+              .margin({ bottom: HwSpace.xs })
+              // 逐条出现 / 消失的过渡（用户要求：结果的出现与伸长收起都要有动画）
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+              .onClick(() => {
+                this.openSearchHit(hit);
+              })
+            }, (hit: DocSearchHit, index: number) => 'ct' + index + '_' + hit.name)
+
+          }
+          .width('100%')
+          .padding({ left: HwSpace.md, right: HwSpace.md, top: 2, bottom: 2 })
+          .borderRadius(HwRadius.card)
+          // 与「文件」组同款：材质生效时透明，单层材质由外层搜索面板承载
+          .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+          .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+          // **出现 / 消失过渡**（用户要求）
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -8 })))
+        }
+
+        // ══ ③ 图片（图片文件名命中：名称 + 缩略图，横向滚动）══
+        if (this.searchImageHits.length > 0) {
+          Text('图片')
+            .fontSize(HwType.label + 5)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+            .width('100%')
+            // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
+            .padding({ left: HwSpace.md, top: HwSpace.md, bottom: HwSpace.md })
+
+          // **竖向通栏列表**（用户要求）：卡片宽度与「文档 / 内容」两组**完全一致**（撑满面板），
+          // 不再做横向滚动的窄卡片；每张卡内部是「左缩略图 + 右文字」，整体靠左对齐。
+          Column() {
+            ForEach(this.searchImageHits, (img: DocImageHit, index: number) => {
+              Row({ space: HwSpace.sm }) {
+                Image('file://' + encodeURI(img.path))
+                  .width(SEARCH_IMAGE_THUMB)
+                  .height(SEARCH_IMAGE_THUMB)
+                  .borderRadius(10)
+                  .objectFit(ImageFit.Cover)
+                  .draggable(false)
+
+                Column({ space: 3 }) {
+                  Text(img.name)
+                    .fontSize(HwType.label + 1)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(this.palette().textPrimary)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                    .textAlign(TextAlign.Start)
+                  // 大小 · 分辨率（读不到尺寸时写「尺寸未知」，不留空行）
+                  Text(DocStore.formatSize(img.size)
+                    + ' · ' + ((img.width > 0 && img.height > 0)
+                      ? (img.width + ' × ' + img.height) : '尺寸未知'))
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                    .textAlign(TextAlign.Start)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                SymbolGlyph($r('sys.symbol.arrow_up_right'))
+                  .fontSize(17)
+                  .fontColor([this.palette().textSecondary])
+              }
+              .width('100%')
+              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 9, bottom: 9 })
+              .borderRadius(HwRadius.inner)
+              // 与「文档 / 内容」两组明细行同一档淡磨砂底
+              // 半透明磨砂底：三组（文档 / 内容 / 图片）**同一档**，保证观感一致。
+              // 45% 太淡时在白玻璃上几乎看不出来（用户反馈"图片卡片没有半透明效果"），
+              // 提到 60% —— 仍是半透明，但卡片边界明确可见。
+              .backgroundColor(withAlpha(this.palette().surface, '99'))
+              .backgroundBlurStyle(BlurStyle.Thin)
+              .margin({ bottom: HwSpace.xs })
+              // 逐条出现 / 消失的过渡
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+              .onClick(() => {
+                // 看完大图关掉后还要能接着看别的图 → 打开浮层后**不收搜索**
+                // （面板外壳的 onClick 会读 imgPreviewSrc 判断，见 searchResultsPanel）
+                this.openImagePreview(img);
+              })
+            }, (img: DocImageHit, index: number) => 'im' + index + '_' + img.name)
+          }
+          .width('100%')
+          .padding({ left: HwSpace.md, right: HwSpace.md, top: 2, bottom: 2 })
+          .borderRadius(HwRadius.card)
+          // 同「文档 / 内容」两组：材质生效时透明，由外层承载层出光感
+          .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette().surface))
+          .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+          // **出现 / 消失过渡**（用户要求）
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -8 })))
+        }
 
         if (this.searchHits.length > SEARCH_PANEL_MAX) {
-          Text('共 ' + this.searchHits.length + ' 篇命中，仅显示前 ' + SEARCH_PANEL_MAX + ' 篇')
+          Text('共 ' + this.searchHits.length + ' 条命中，仅显示前 ' + SEARCH_PANEL_MAX + ' 条')
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette().textTertiary)
             .width('100%')
             .textAlign(TextAlign.Center)
-            .padding(4)
         }
       }
     }
     .width('100%')
-    .constraintSize({ maxHeight: 260 })
-    .borderRadius(HwRadius.card)
-    .backgroundColor(this.palette().surface)
-    .backgroundBlurStyle(BlurStyle.Thin)
-    .border({ width: 0.8, color: this.palette().surfaceBorder })
-    .clip(true)
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -1901,7 +2303,8 @@ struct Index {
 
         Column() {
           ImmersiveIconButton({
-            buttonSize: 26,
+            // 26 → 30（用户反馈"右上角按钮看上去太小"，14vp 图标也确实偏小）
+            buttonSize: 30,
             buttonMaterialShadow: false,
             palette: this.palette(),
             buttonOnTap: () => {
@@ -1911,9 +2314,10 @@ struct Index {
               this.openCellMenu('doc', meta.name, meta.builtin);
             }
           }) {
-            Image($r('app.media.dot_grid_2x2'))
-              .width(14)
-              .height(14)
+            Image($r('app.media.more_dots'))
+              // 14 → 18（用户反馈图标太小）
+              .width(18)
+              .height(18)
               .fillColor(this.palette().textSecondary)
           }
         }
@@ -2107,16 +2511,18 @@ struct Index {
 
         Column() {
           ImmersiveIconButton({
-            buttonSize: 26,
+            // 26 → 30（用户反馈"右上角按钮看上去太小"，14vp 图标也确实偏小）
+            buttonSize: 30,
             buttonMaterialShadow: false,
             palette: this.palette(),
             buttonOnTap: () => {
               this.openCellMenu('folder', folder.name, false);
             }
           }) {
-            Image($r('app.media.dot_grid_2x2'))
-              .width(14)
-              .height(14)
+            Image($r('app.media.more_dots'))
+              // 14 → 18（用户反馈图标太小）
+              .width(18)
+              .height(18)
               .fillColor(this.palette().textSecondary)
           }
         }
@@ -2552,6 +2958,8 @@ struct Index {
 
   /** 沉浸光感开关（AppStorage 强制开启，见 EntryAbility） */
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /** 书架顶部「继续阅读」卡片是否显示（外观设置里的开关，默认显示） */
+  @StorageProp('shelfResumeBanner') showResumeBanner: boolean = true;
   /**
    * 编辑页的未保存标记（Editor 通过 @StorageLink 写入）。
    * **系统返回手势的拦截判据**：dirty 时 onBackPressed 拦截并让 Editor 弹"保存 / 不保存"窗，
@@ -2635,10 +3043,17 @@ struct Index {
     )
   }
 
-  /** 继续阅读横幅（网格首行通栏） */
+  /**
+   * 继续阅读横幅（网格首行通栏）。
+   *
+   * **可由外观设置里的「继续阅读卡片」开关关掉**：关掉时本 Builder 直接 return，
+   * 但外层 GridItem / ListItem 的壳仍在流里（它是通栏项 → 依然占一整行槽位），
+   * 所以 gridLeadCount() 的列偏移不用改；首屏留白也仍挂在那个 GridItem 上，
+   * 关掉后书架顶部不会顶到悬浮胶囊底下。
+   */
   @Builder
   resumeBanner() {
-    if (this.resumeName.length > 0) {
+    if (this.resumeName.length > 0 && this.showResumeBanner) {
       ImmersiveCard({
         cardRadius: HwRadius.card,
         cardPadding: HwSpace.md,
@@ -2750,19 +3165,25 @@ struct Index {
   /** bindSheet 内容包装（格子菜单 / 重命名）。菜单内容较高，**整页可滚**（MEDIUM 定高，超出会被裁掉）。 */
   @Builder
   cellMenuSheet() {
+    // **与阅读页「阅读设置」面板同构**（用户验证过那个形态是对的）：
+    // Scroll 直接撑满面板高度（MEDIUM 定高），内容超出即在面板内滚动，
+    // 不再额外包 Column / layoutWeight / maxHeight —— 那几层包装在
+    // 平板横屏的居中面板里会算错高度（底部裁掉 / 大块空白，都踩过）。
     Scroll() {
       Column() {
         this.cellMenuPanel()
       }
       .width('100%')
-      .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.lg })
+      .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.xl })
       // 深浅切换时换 key 强制重建（面板不跟随宿主状态刷新 → "切换不完全"）
       .id('cellMenu_' + this.sheetEpoch)
     }
-    .scrollBar(BarState.Off)
+    .scrollBar(BarState.Auto)
     .width('100%')
-    .height('100%')
-    .align(Alignment.Top)
+    // **高度：内容自适应 + 明确上限**（0.65 屏高）：FIT_CONTENT 面板里
+    // height('100%') 参与测量会循环、导致内容超限时 Scroll 不滚（开关被遮挡
+    // 且滑不上来 —— 用户实测）。上限拉高到 0.65 屏，内容少贴合、多可滚。
+    .constraintSize({ maxHeight: this.rootHeight * 0.65 })
   }
 
   @Builder
@@ -3017,9 +3438,19 @@ struct Index {
 
   @Builder
   renamePanel() {
-    Column({ space: HwSpace.md }) {
+    // **固定单行布局：取消 · 输入框 · 保存**。
+    //
+    // 为什么不再做"键盘弹起就把保存挪到输入框右边"的两态切换：
+    // 重命名面板走的是 fitContent（面板高度贴合内容），两态的高度不同，
+    // 收起键盘那一刻布局从"两行"变回"一行"，**面板高度突变 = 看得见的跳一下**。
+    // 现在一行排开、任何状态都不变：高度恒定 → 没有跳动；
+    // 而键盘弹起时两个按钮本来就在输入框左右两侧，天然不会被键盘挡住。
+    Row({ space: HwSpace.sm }) {
+      this.renameCancelChip()
+
       TextInput({ text: this.renameText, placeholder: '名称' })
-        .width('100%')
+        .layoutWeight(1)
+        .height(44)
         .fontSize(HwType.label + 1)
         .fontColor(this.palette().textPrimary)
         .backgroundColor(this.palette().quoteBg)
@@ -3027,28 +3458,47 @@ struct Index {
         .onChange((value: string) => {
           this.renameText = value;
         })
+        // 键盘上按回车 = 保存
+        .onSubmit(() => {
+          this.doRename();
+        })
 
-      Row({ space: HwSpace.sm }) {
-ImmersiveChip({
-            palette: this.palette(),
-            chipLabel: '取消',
-            chipOnTap: () => {
-            this.closeRename();
-          }
-          })
-ImmersiveChip({
-            palette: this.palette(),
-            chipLabel: '保存',
-            chipOnTap: () => {
-            this.doRename();
-          }
-          })
-      }
-      .width('100%')
-      .justifyContent(FlexAlign.End)
+      this.renameSaveChip()
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /** 重命名面板：取消（蓝，用户指定配色）。 */
+  @Builder
+  renameCancelChip() {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipPaddingH: HwSpace.md,
+      chipPaddingV: 7,
+      chipTint: RENAME_CANCEL_COLOR,
+      chipActive: true,
+      chipLabel: '取消',
+      chipOnTap: () => {
+        this.closeRename();
+      }
+    })
+  }
+
+  /** 重命名面板：保存（绿，用户指定配色）。 */
+  @Builder
+  renameSaveChip() {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipPaddingH: HwSpace.md,
+      chipPaddingV: 7,
+      chipTint: RENAME_SAVE_COLOR,
+      chipActive: true,
+      chipLabel: '保存',
+      chipOnTap: () => {
+        this.doRename();
+      }
+    })
   }
 
   // ══════════════════════ 树形视图（文件树形态） ══════════════════════
@@ -3102,16 +3552,18 @@ ImmersiveChip({
       }
       Column() {
         ImmersiveIconButton({
-          buttonSize: 26,
+          // 26 → 30（同上：右上角按钮整体放大）
+          buttonSize: 30,
           buttonMaterialShadow: false,
           palette: this.palette(),
           buttonOnTap: () => {
             this.openCellMenu('doc', meta.name, meta.builtin);
           }
         }) {
-          Image($r('app.media.dot_grid_2x2'))
-            .width(14)
-            .height(14)
+          Image($r('app.media.more_dots'))
+            // 14 → 18（同上：右上角图标整体放大）
+            .width(18)
+            .height(18)
             .fillColor(this.palette().textSecondary)
         }
       }
@@ -3157,16 +3609,18 @@ ImmersiveChip({
         .fontColor(this.palette().textTertiary)
       Column() {
         ImmersiveIconButton({
-          buttonSize: 26,
+          // 26 → 30（同上：右上角按钮整体放大）
+          buttonSize: 30,
           buttonMaterialShadow: false,
           palette: this.palette(),
           buttonOnTap: () => {
             this.openCellMenu('folder', folder.name, false);
           }
         }) {
-          Image($r('app.media.dot_grid_2x2'))
-            .width(14)
-            .height(14)
+          Image($r('app.media.more_dots'))
+            // 14 → 18（同上：右上角图标整体放大）
+            .width(18)
+            .height(18)
             .fillColor(this.palette().textSecondary)
         }
       }
@@ -3682,14 +4136,35 @@ ImmersiveChip({
           .key('shelfGrid_' + this.themeEpoch)
           }
 
+          // ── 搜索展开时的「点任意区域收起」层 ──
+          //
+          // 这里有两个必须同时满足的约束，缺一个就"点了没反应"：
+          //  ① **必须脱离布局流**：本层位于一个纵向 Column 内（同层还有网格、顶栏、底栏），
+          //     若用普通的 height('100%')，它会按 Column 的可用高度解析并**再占一份高度**，
+          //     把布局挤变形、自己也跑到网格下方 —— 所以必须 `.position` 绝对定位；
+          //  ② **绘制顺序要在网格之上、顶栏/底栏之下**：节点顺序就决定了层级 ——
+          //     它排在 Grid 之后（盖住网格与格子上那些"点开文档"的手势）、
+          //     排在顶栏 / 底栏之前（顶栏按钮、搜索框、关闭钮照常可点）。
+          // 于是：点网格 / 文件夹 / 任何空白 → 命中本层 → 收起搜索；
+          //       点顶栏按钮、搜索框、结果卡片 → 由它们自己消费，不受影响。
+          if (this.searchExpanded) {
+            Column()
+              .width('100%')
+              .height('100%')
+              .position({ x: 0, y: 0 })
+              .onClick(() => {
+                this.collapseSearch();
+              })
+          }
+
           // ── 悬浮顶栏 / 底栏（材质胶囊）─────────────────────────
           // 两者都**脱离布局流**（position 定位），内容从它们下面滚过。
           // hitTestBehavior 用 Transparent：胶囊自身的空隙不拦截触摸，
           // 点击会落到下方的卡片上；胶囊上的按钮照常可点。
           Row() {
-            // **「全部文档」标题固定在左上角**（平板；不进胶囊、不随内容滚动位置变化）
+            // **「书架」标题固定在左上角**（平板；不进胶囊、不随内容滚动位置变化）
             if (this.isWideShelf()) {
-              Text('全部文档')
+              Text('书架')
                 .fontSize(24)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -3740,12 +4215,89 @@ ImmersiveChip({
           this.searchResultsPanel()
         }
         .width('100%')
-        .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.padTop() + 52 })
-        .transition({ opacity: 0, translate: { y: -12 } })
+        // **不与搜索条贴住**（用户要求）：顶栏高度之外再留一段间距
+        .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.padTop() + 52 + HwSpace.sm })
+        // **自身不拦截触摸**（用户反馈：输入后收起键盘，点搜索框不弹键盘、点关闭也
+        // 收不起来）。这个容器全宽、上方留了顶栏高度的 padding —— 那一段本该属于
+        // 顶栏的区域把搜索框 / 关闭按钮的点击全挡住了。
+        // Transparent = 自己不吃事件、子级（结果行）照常可点。
+        .hitTestBehavior(HitTestMode.Transparent)
+        // **必须是显式 TransitionEffect（带 animation），不能用隐式对象形式**：
+        // 隐式 transition 依赖调用方把状态改动包在 animateTo 里才有动画 ——
+        // 点关闭按钮走 collapseSearch()（内部有 animateTo）所以有动画，
+        // 而**手动把搜索框删空**走 runShelfSearch()（直接赋值、没有 animateTo），
+        // 隐式 transition 于是被跳过，面板「啪」地瞬移消失（用户反馈收起动画生硬）。
+        // 显式形式自带时长，两条路径都会播放动画。
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.translate({ y: -12 })))
       }
 
       // 格子「⋯」菜单 / 重命名：官方规范半模态面板（material/ModalSheet.ets，
       // 挂在本页根节点上，见 build 末尾的 .bindSheet）
+
+      // ── 图片快速查看浮层（搜索结果「图片」组点开）──
+      // 就地放大：全屏深色遮罩 + 居中大图 + 底部文件名 / 大小 / 分辨率；
+      // 点任意处关闭（右上角另给一颗关闭钮）。返回键 / 侧滑由 onBackPress 先收掉本层。
+      if (this.imgPreviewSrc.length > 0) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          // ① 遮罩 + 大图 + 信息（整层可点：点任意位置关闭）
+          Column({ space: HwSpace.md }) {
+            Image(this.imgPreviewSrc)
+              .width('100%')
+              .layoutWeight(1)
+              .objectFit(ImageFit.Contain)
+              .draggable(false)
+              // 图片自身不参与命中测试 → 点图也会落到这一层的 onClick 上（"点任意处关闭"）
+              .hitTestBehavior(HitTestMode.None)
+
+            Column({ space: 3 }) {
+              Text(this.imgPreviewName)
+                .fontSize(HwType.label)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFFFF')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(this.imgPreviewMeta)
+                .fontSize(HwType.caption)
+                .fontColor('#B3FFFFFF')
+                .maxLines(1)
+            }
+            .alignItems(HorizontalAlign.Center)
+          }
+          .width('100%')
+          .height('100%')
+          .padding({
+            left: HwSpace.lg,
+            right: HwSpace.lg,
+            top: this.padTop() + 56,
+            bottom: this.padBottom() + HwSpace.xxl
+          })
+          .backgroundColor(withAlpha('#000000', 'E0'))
+          .onClick(() => {
+            this.closeImagePreview();
+          })
+
+          // ② 右上角关闭钮（在遮罩之上，点它只关闭，不穿透）
+          Column() {
+            SymbolGlyph($r('sys.symbol.xmark'))
+              .fontSize(16)
+              .fontColor(['#FFFFFFFF'])
+          }
+          .width(34)
+          .height(34)
+          .borderRadius(17)
+          .backgroundColor(withAlpha('#FFFFFF', '2E'))
+          .justifyContent(FlexAlign.Center)
+          .position({ x: this.rootWidth - HwSpace.lg - 34, y: this.padTop() + HwSpace.xs })
+          .onClick(() => {
+            this.closeImagePreview();
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+      }
 
       // ── 文档封面的「一镜到底」飞行层：打开 / 返回的第二段 ──
       if (this.docCoverName.length > 0) {
@@ -3796,6 +4348,7 @@ ImmersiveChip({
     // ══════════ 半模态面板：官方规范（material/ModalSheet.ets）══════════
     // 模态型 + 固定 MEDIUM 高 + 官方标题栏 / 关闭按钮 / 拖拽条。
     .bindSheet(this.shelfVisible, this.indexSheet(), modalSheetOptions({
+      fitContent: true,
       title: this.sheetTitle(),
       subtitle: this.sheetSubtitle(),
       surface: this.palette().surface,

@@ -128,6 +128,12 @@ export default class EntryAbility extends UIAbility {
     WallpaperStore.validateReaderBg(this.context);
     // 卡片降级样式：mica（云母磨砂）/ solid（实色纯底）
     PersistentStorage.persistProp('cardFallback', 'mica');
+    // 书架顶部「继续阅读」卡片是否显示（外观设置里的开关）
+    PersistentStorage.persistProp('shelfResumeBanner', true);
+    // 手写画布背景：底色（空 = 跟随主题）+ 底纹（none / grid / lines / dots）+ 线条粗细
+    PersistentStorage.persistProp('sketchBgColor', '');
+    PersistentStorage.persistProp('sketchBgPattern', 'none');
+    PersistentStorage.persistProp('sketchBgLineWidth', 1);
     PersistentStorage.persistProp('particleDissolve', true); // 默认开启（用户要求）
     // 老安装的持久化值可能是 false（此前默认关）——启动时强制开一次，
     // 用户之后仍可通过外观设置关闭（本会话内生效）

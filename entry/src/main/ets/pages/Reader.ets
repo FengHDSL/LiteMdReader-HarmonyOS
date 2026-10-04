@@ -69,8 +69,98 @@ import { MdParser } from '../markdown/MdParser';
 import { MdBlockView } from '../markdown/MdView';
 import { ExportService } from '../service/ExportService';
 
+// ══ 乐谱音频合成（后台线程）：音符事件 → 16bit WAV ══
+interface ScoreNote {
+  /** 起始拍 */
+  t: number;
+  /** 时值（拍） */
+  d: number;
+  /** 频率 Hz */
+  f: number;
+  /** 1 = 伴奏声部（低音量正弦） */
+  b: number;
+}
+
+interface ScoreSpec {
+  bpm: number;
+  notes: ScoreNote[];
+}
+
+/** 后台合成：按音符事件叠加谐波并加起收包络，输出 16bit 单声道 WAV（ArrayBuffer）。 */
+@Concurrent
+function synthScoreWavTask(spec: string): ArrayBuffer {
+  const parsed: ScoreSpec = JSON.parse(spec) as ScoreSpec;
+  const sr: number = 22050;
+  const beatSec: number = 60 / (parsed.bpm > 0 ? parsed.bpm : 72);
+  let totalB: number = 1;
+  for (let k = 0; k < parsed.notes.length; k++) {
+    const nt = parsed.notes[k];
+    const t = nt.t + nt.d;
+    if (t > totalB) {
+      totalB = t;
+    }
+  }
+  const totalSec: number = totalB * beatSec + 0.6;
+  const n: number = Math.floor(totalSec * sr);
+  const buf: Float32Array = new Float32Array(n);
+  for (let k = 0; k < parsed.notes.length; k++) {
+    const nt = parsed.notes[k];
+    const vol: number = nt.b > 0 ? 0.16 : 0.34;
+    const tau: number = (nt.b > 0 ? 0.9 : 0.7) + Math.max(0, 1000 - nt.f) / 2000;
+    const startS: number = Math.floor(nt.t * beatSec * sr);
+    const lenS: number = Math.floor(Math.min(nt.d * beatSec + 0.15, 2.2) * sr);
+    for (let i = 0; i < lenS; i++) {
+      const idx: number = startS + i;
+      if (idx >= n) {
+        break;
+      }
+      const tt: number = i / sr;
+      const env: number = Math.min(1, tt / 0.008) * Math.exp(-tt / tau) * Math.min(1, (lenS - i) / (sr * 0.05));
+      let s: number = Math.sin(2 * Math.PI * nt.f * tt);
+      if (nt.b === 0) {
+        s += 0.5 * Math.sin(4 * Math.PI * nt.f * tt) + 0.33 * Math.sin(6 * Math.PI * nt.f * tt)
+          + 0.22 * Math.sin(8 * Math.PI * nt.f * tt) + 0.14 * Math.sin(10 * Math.PI * nt.f * tt);
+      }
+      buf[idx] += s * vol * env;
+    }
+  }
+  const bytes: number = 44 + n * 2;
+  const ab: ArrayBuffer = new ArrayBuffer(bytes);
+  const dv: DataView = new DataView(ab);
+  const wstr = (off: number, str: string) => {
+    for (let i = 0; i < str.length; i++) {
+      dv.setUint8(off + i, str.charCodeAt(i));
+    }
+  };
+  wstr(0, 'RIFF');
+  dv.setUint32(4, bytes - 8, true);
+  wstr(8, 'WAVE');
+  wstr(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true);
+  dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * 2, true);
+  dv.setUint16(32, 2, true);
+  dv.setUint16(34, 16, true);
+  wstr(36, 'data');
+  dv.setUint32(40, n * 2, true);
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(-1, Math.min(1, buf[i]));
+    dv.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7FFF, true);
+    off += 2;
+  }
+  return ab;
+}
+
 /** 列表里正文块之前固定占用的条目数：文档信息卡占 1 条。 */
-const LIST_HEADER_COUNT: number = 1;/**
+const LIST_HEADER_COUNT: number = 1;
+
+/** 阅读页查找条占用的顶部高度（vp）：命中行要停在它下方（64 不够，实测差一点 → 76） */
+const SEARCH_BAR_INSET: number = 76;
+
+/**
  * 锚点归一化：忽略空白、大小写与常见标点。
  * 标题里带标点、锚点里不带（或反之）是很常见的情况，不归一化就会「点了没反应」。
  */
@@ -262,6 +352,7 @@ export struct Reader {
   /** 画布区实测尺寸：旋转画布时按"高×宽"互换 */
   @State canvasW: number = 0;
   @State canvasH: number = 0;
+
 
   /** 旋转 / 取消旋转（横屏展示），带转场动画。 */
   private toggleRotate(): void {
@@ -1671,7 +1762,7 @@ export struct Reader {
     this.searchHits = hits;
     this.searchCursor = hits.length > 0 ? 0 : -1;
     if (this.searchCursor >= 0) {
-      this.jumpTo(hits[0]);
+      this.jumpToSearchHit(hits[0]);
     }
   }
 
@@ -1689,7 +1780,7 @@ export struct Reader {
       next = 0;
     }
     this.searchCursor = next;
-    this.jumpTo(this.searchHits[next]);
+    this.jumpToSearchHit(this.searchHits[next]);
   }
 
   private searchLabel(): string {
@@ -2185,6 +2276,27 @@ export struct Reader {
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
+  }
+
+  /**
+   * 查找命中跳转：**命中行要停在查找条下方**（用户反馈：之前滚到视口顶部，
+   * 整行被搜索框盖住，找半天）。做法 = 先瞬时滚到该块顶部，再上移一个
+   * 「查找条高度 + 间距」的量。
+   */
+  private jumpToSearchHit(blockIndex: number): void {
+    if (!this.isWide()) {
+      this.closeDrawers();
+    }
+    this.lockAutoHide();
+    try {
+      // 先瞬时到位（不用动画），再做一次偏移：避免两段滚动互相打断
+      this.scroller.scrollToIndex(blockIndex + this.headerCount(), false, ScrollAlign.START);
+      this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+        this.scroller.scrollBy(0, -SEARCH_BAR_INSET);
+      });
+    } catch (err) {
+      // 列表尚未就绪时忽略
+    }
   }
 
   private jumpTo(blockIndex: number): void {
@@ -3114,6 +3226,11 @@ export struct Reader {
     .scrollBar(BarState.Off)
     .width(this.bottomTabsWidth())
     .height(30)
+    // **两端圆形裁切**（用户要求：直角裁切难看）：曲率与悬浮胶囊同源
+    // （HwRadius.pill），横向滑动时数字芯片从圆弧里滑出 / 滑入，
+    // 不会在直边上被"切一刀"。clip 必须放在 borderRadius 之后才按圆角裁。
+    .borderRadius(HwRadius.pill)
+    .clip(true)
   }
 
   /** 收起态顶栏内容：返回 + 搜索 + 标签序号。外壳由 topBar 的 ImmersiveBar 统一提供。 */  @Builder
@@ -4226,10 +4343,10 @@ export struct Reader {
           }
           .width('100%')
 
-          if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom) {
-            // 占位：标签栏在下方独立的「标签栏层」里（没有左右 padding，
-            // 视口横跨整屏，出血才对称）；这里只占住高度，让查找条位置不变。
-            // 标签栏置底时不需要占位（下方也没有标签栏）。
+          if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom
+            && !this.searchOpen) {
+            // 占位：标签栏在下方独立的「标签栏层」里（没有左右 padding，视口横跨整屏）。
+            // **查找条展开时标签栏隐藏 → 占位也去掉**，查找条上移到无标签栏时的位置（用户要求）。
             Column().width('100%').height(HwBar.tabs - 4)
           }
 
@@ -4266,8 +4383,16 @@ export struct Reader {
       // Scroll 的 '100%' 就是整屏宽，标签的出现 / 消失点天然落在屏幕边缘。
       // **标签栏置底时这一层不渲染**（改挂在下面「悬浮底栏」那一层里）。
       Stack({ alignContent: Alignment.TopStart }) {
-        if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom) {
-          this.tabBar()
+        if (this.topBarVisible && this.tabs.length > 1 && !this.tabBarAtBottom && !this.searchOpen) {
+          // **查找条展开时隐藏标签栏**（用户要求）；包一层 Column 挂 transition：
+          // 收起查找后标签栏**滑入 + 淡入**出现（用户要求过渡动画）
+          Column() {
+            this.tabBar()
+          }
+          .width('100%')
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -10 })))
         }
       }
       .width('100%')
@@ -4287,6 +4412,13 @@ export struct Reader {
             }
             .width(this.bottomBarAdaptiveWidth())
             .alignItems(HorizontalAlign.Start)
+            // **两端圆形裁切**（用户要求：直角裁切难看）：置底时标签栏是"固定宽的一条"，
+            // 横向滑动会在两端把芯片直角切掉半块 —— 用与悬浮胶囊同源的曲率
+            // （HwRadius.pill）裁成圆弧，芯片从圆弧里滑出 / 滑入。
+            // ⚠️ 只加在这里，不要加进 tabBar() 里面：顶部的 tabBar() 视口是整屏宽，
+            // 静止时首标签距屏幕边缘只有 lg 的余量，加圆角会把它的左缘切掉。
+            .borderRadius(HwRadius.pill)
+            .clip(true)
           }
           this.floatingToolBar()
         }
@@ -4454,6 +4586,25 @@ export struct Reader {
                   .fontSize(15)
                   .fontColor([this.isDark() ? '#FFFFFFFF' : '#E6222226'])
               }
+              // **刷新**（用户要求）：图表内容挤在一起时，按当前的缩放比例与容器尺寸
+              // 让页面重新自适应（refit）—— mermaid / markmap / graphviz / svg 会按
+              // 新宽度重新排布，不用退出重进。图片模式没有 refit 概念，不显示此按钮。
+              if (this.enlargeMode !== 'image') {
+                ImmersiveIconButton({
+                  buttonSize: 34,
+                  buttonMaterialShadow: false,
+                  palette: this.palette(),
+                  buttonOnTap: () => {
+                    // 递增触发 DiagramWeb 的 @Watch('doRefit') → 重载页面按当前容器重渲染
+                    this.enlargeRefitTick = this.enlargeRefitTick + 1;
+                  }
+                }) {
+                  Image($r('app.media.arrow_2_circlepath'))
+                    .width(18)
+                    .height(18)
+                    .fillColor(this.isDark() ? '#FFFFFFFF' : '#E6222226')
+                }
+              }
               ImmersiveIconButton({
                 buttonSize: 34,
                 buttonMaterialShadow: false,
@@ -4513,8 +4664,11 @@ export struct Reader {
                     // 普通 gesture 会被它拦掉（用户实测"不能滑动、不能双指缩放"）
                     .priorityGesture(
                       // **拖动 + 双指缩放并行**（用户要求：能滑动、能双指缩放）
+                      // ⚠️ 拖动必须是 **fingers: 1（单指）**：此前写的是 2 指，用户实测
+                      // "放大查看图片 / 手写笔记不能单指拖动"（必须两指按住才动，等于不可用）。
+                      // 单指拖 + 双指捏合在 Parallel 组里互不冲突。
                       GestureGroup(GestureMode.Parallel,
-                        PanGesture({ fingers: 2, distance: 1 })
+                        PanGesture({ fingers: 1, distance: 1 })
                           .onActionStart(() => {
                             this.imgDxBase = this.imgDx;
                             this.imgDyBase = this.imgDy;
@@ -4542,6 +4696,9 @@ export struct Reader {
                     fit: true,
                     fillHeight: true,
                     webZoom: this.webZoom,
+                    // **refit 通道**（此前一直没接上）：工具栏「刷新」/旋转后递增，
+                    // DiagramWeb 的 @Watch('doRefit') 会让页面按当前容器与缩放重新自适应
+                    refitRequest: this.enlargeRefitTick,
                     onWebTouch: (down: boolean) => {
                       this.webTouchDepth = Math.max(0, this.webTouchDepth + (down ? 1 : -1));
                     }

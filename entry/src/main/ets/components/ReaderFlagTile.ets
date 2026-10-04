@@ -49,15 +49,23 @@ export struct ReaderFlagTile {
 
   build() {
     Column({ space: 6 }) {
-      // 标签栏位置用用户提供的 SVG（顶 / 底两张），其余两种用系统符号
+      // 标签栏位置与侧边栏光感用用户提供的 SVG，信息卡仍用系统符号
       if (this.kind === 'tabbar') {
         Image(this.tabBarBottom ? $r('app.media.chevron_down_l') : $r('app.media.chevron_up'))
           .width(22)
           .height(22)
           .fillColor(this.palette.accent)
           .objectFit(ImageFit.Contain)
+      } else if (this.kind === 'drawer') {
+        // **侧边栏光感**：改用用户提供的 circle_dashed.svg（虚线圆）。
+        // fillColor 会覆盖 SVG 内置的 fill，所以能跟着开关 / 主题染色。
+        Image($r('app.media.circle_dashed'))
+          .width(22)
+          .height(22)
+          .fillColor(this.isOn() ? this.palette.accent : this.palette.textTertiary)
+          .objectFit(ImageFit.Contain)
       } else {
-        SymbolGlyph(this.kind === 'meta' ? $r('sys.symbol.info_circle') : $r('sys.symbol.square_grid_2x2'))
+        SymbolGlyph($r('sys.symbol.info_circle'))
           .fontSize(22)
           .fontColor([this.isOn() ? this.palette.accent : this.palette.textTertiary])
       }

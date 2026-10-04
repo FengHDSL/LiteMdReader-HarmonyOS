@@ -358,6 +358,30 @@ export struct ImmersiveIconButton {
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /**
+   * 按压跟手流光（与 ImmersiveCard 同一套实现、同一组开关）。
+   * miha_hm 的做法：材质本身**不做**按压反馈（`interactive: true` 的材质实测不渲染），
+   * 按压光效是在材质**之上**再叠一层跟手的径向渐变光斑 —— 手指滑到哪，光跟到哪。
+   */
+  /** 卡片流光触感（外观设置）：关闭后按压一点光都不出现 */
+  @StorageProp('cardGlowTouch') flowTouch: boolean = true;
+  /** 主题色流光（外观设置）：开启用 accent，关闭为白光 */
+  @StorageProp('immersivePressGlow') pressGlow: boolean = true;
+  @State pressing: boolean = false;
+  @State glowX: number = 0;
+  @State glowY: number = 0;
+  /**
+   * 坐标换算用的普通字段组（照搬 ImmersiveCard / xjau MaterialCard，不参与渲染）：
+   * 按下那一瞬用 `windowX - x` 反推按钮的窗口原点，之后靠 onAreaChange 的**位移增量**维护
+   * —— 网格滚动时按钮在动，增量必须跟上，否则光斑会黏在按钮原处。
+   */
+  private cardWinX: number = 0;
+  private cardWinY: number = 0;
+  private lastTouchWinX: number = 0;
+  private lastTouchWinY: number = 0;
+  private lastAreaX: number = 0;
+  private lastAreaY: number = 0;
+  private areaReady: boolean = false;
   buttonOnTap: () => void = () => {
   };
 
@@ -369,6 +393,75 @@ export struct ImmersiveIconButton {
 
   private materialOn(): boolean {
     return this.immersiveOn && getImmersiveMaterial() !== null;
+  }
+
+  // ── 按压跟手流光：开关与坐标字段的声明放在组件顶部，见 struct 开头 ──
+
+  /** 流光颜色：主题色流光开 = accent；关 = 白光。 */
+  private glowColor(): string {
+    return this.pressGlow ? this.palette.accent : '#FFFFFF';
+  }
+
+  /**
+   * 光斑直径：取按钮本身的 2 倍。
+   * 按钮只有 26~36vp 且常成排挨着，光斑再大就会糊到相邻按钮上（面板又裁不到），
+   * 所以这里缩放为按钮尺寸的 2 倍，配合外层 clip(true) 收在按钮圆内。
+   */
+  private glowSize(): number {
+    return this.buttonSize * 2;
+  }
+
+  /** 跟手更新光斑位置；Up / Cancel 必须熄灭，否则按钮上会留一块不消失的光斑。 */
+  private updatePressGlow(event: TouchEvent): void {
+    if (!this.flowTouch) {
+      return;
+    }
+    if (event.touches.length === 0) {
+      return;
+    }
+    const t: TouchObject = event.touches[0];
+    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.pressing = false;
+      return;
+    }
+    if (event.type !== TouchType.Down && event.type !== TouchType.Move) {
+      return;
+    }
+    if (event.type === TouchType.Down) {
+      this.cardWinX = t.windowX - t.x;
+      this.cardWinY = t.windowY - t.y;
+    }
+    this.lastTouchWinX = t.windowX;
+    this.lastTouchWinY = t.windowY;
+    this.syncGlowPosition();
+    this.pressing = true;
+  }
+
+  /** 用最近一次触摸的窗口坐标重算光斑位置（页面滚动导致按钮移动时也要调）。 */
+  private syncGlowPosition(): void {
+    this.glowX = this.lastTouchWinX - this.cardWinX;
+    this.glowY = this.lastTouchWinY - this.cardWinY;
+  }
+
+  /**
+   * 流光层走 **overlay**（不参与布局）：作为 Stack 子节点会把按钮撑大，
+   * 而 overlay 只画在按钮自己的区域上。
+   */
+  @Builder
+  pressGlowOverlay() {
+    if (this.flowTouch && this.pressing) {
+      Column()
+        .width(this.glowSize())
+        .height(this.glowSize())
+        .radialGradient({
+          center: ['50%', '50%'],
+          radius: this.glowSize() / 2,
+          // 两档淡出：单档实色会得到一个硬边圆盘，看着不像光
+          colors: [[withAlpha(this.glowColor(), '2E'), 0], ['#00000000', 1]]
+        })
+        .position({ x: this.glowX - this.glowSize() / 2, y: this.glowY - this.glowSize() / 2 })
+        .hitTestBehavior(HitTestMode.None)
+    }
   }
 
   build() {
@@ -389,6 +482,34 @@ export struct ImmersiveIconButton {
     .width(this.buttonSize)
     .height(this.buttonSize)
     .borderRadius(this.buttonRadius)
+    // **光斑裁在按钮圆内**：按钮小、彼此挨得近，不裁就会糊到相邻按钮上。
+    // 必须在 borderRadius 之后，圆角才参与裁剪（否则裁成直角）。
+    .clip(true)
+    .overlay(this.pressGlowOverlay, { align: Alignment.TopStart })
+    // 位移增量维护：按钮被列表/网格带走时重算光斑（否则手指不动、光斑黏在原处）
+    .onAreaChange((_oldArea: Area, newArea: Area): void => {
+      if (!this.flowTouch) {
+        // 流光关闭时不维护坐标：书架上每个格子都挂着一颗 ⋯ 按钮，
+        // 网格滚动会高频回调，能省的换算就省掉。areaReady 保持 false，
+        // 之后重新打开开关时第一次回调只记基准、不算增量，不会跳。
+        return;
+      }
+      const gx: number = typeof newArea.globalPosition.x === 'number' ? newArea.globalPosition.x : this.lastAreaX;
+      const gy: number = typeof newArea.globalPosition.y === 'number' ? newArea.globalPosition.y : this.lastAreaY;
+      if (this.areaReady) {
+        this.cardWinX += gx - this.lastAreaX;
+        this.cardWinY += gy - this.lastAreaY;
+        if (this.pressing) {
+          this.syncGlowPosition();
+        }
+      }
+      this.lastAreaX = gx;
+      this.lastAreaY = gy;
+      this.areaReady = true;
+    })
+    .onTouch((event: TouchEvent) => {
+      this.updatePressGlow(event);
+    })
     .onClick(() => {
       this.buttonOnTap();
     })
