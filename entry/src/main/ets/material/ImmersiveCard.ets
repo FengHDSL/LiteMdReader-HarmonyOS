@@ -534,6 +534,8 @@ export struct ImmersiveChip {
   @Prop chipTint: string = '';
   /** **必须 @Prop**：文案随状态变化（如使用模式切换后）要能回刷 */
   @Prop chipLabel: string = '';
+  /** 文案字号（0 = 用默认 13）。书架封面上的百分比胶囊需要更小，用它调。 */
+  @Prop chipFontSize: number = 0;
   chipOnTap: () => void = () => {
   };
 
@@ -585,7 +587,7 @@ export struct ImmersiveChip {
       Row({ space: HwSpace.xs }) {
         this.chipPrefix()
         Text(this.chipLabel)
-          .fontSize(13)
+          .fontSize(this.chipFontSize > 0 ? this.chipFontSize : 13)
           .fontColor(this.chipTextColor())
           .fontWeight(this.chipActive ? FontWeight.Medium : FontWeight.Normal)
       }

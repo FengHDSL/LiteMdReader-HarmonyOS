@@ -397,29 +397,27 @@ export struct SettingsWriting {
   @Builder
   heatmapCard() {
     Column({ space: HwSpace.sm }) {
-      // 年份选择：**右上角**（用户要求；GitHub 年份列表的同功能，手机上收成小芯片靠右）
+      // 年份选择：**右上角下拉 Select**（用户要求；替代原一排年份芯片）
       Row({ space: HwSpace.xs }) {
         Blank()
-        ForEach(this.yearOptions(), (y: number) => {
-          Text(y + ' 年')
-            .fontSize(HwType.caption)
-            .fontWeight(this.viewYear === y ? FontWeight.Medium : FontWeight.Normal)
-            .fontColor(this.viewYear === y ? this.palette().accent : this.palette().textTertiary)
-            .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-            .borderRadius(HwRadius.inner)
-            .backgroundColor(this.viewYear === y
-              ? withAlpha(this.palette().accent, '2E') : '#00000000')
-            .onClick(() => {
-              // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
-              this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
-                this.viewYear = y;
-              });
-              // 切年份后重新定位到该年最新有数据的列
-              setTimeout(() => {
-                this.scrollHeatToLatest();
-              }, 120);
-            })
-        }, (y: number) => 'yr_' + y)
+        Select(this.yearSelectOptions())
+          .selected(this.yearOptions().indexOf(this.viewYear))
+          .value(this.viewYear + ' 年')
+          .font({ size: HwType.caption })
+          .fontColor(this.palette().textPrimary)
+          .backgroundColor(withAlpha(this.palette().accent, '2E'))
+          .borderRadius(HwRadius.inner)
+          .onSelect((index: number) => {
+            const y: number = this.yearOptions()[index];
+            // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
+            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+              this.viewYear = y;
+            });
+            // 切年份后重新定位到该年最新有数据的列
+            setTimeout(() => {
+              this.scrollHeatToLatest();
+            }, 120);
+          })
       }
       .width('100%')
 
@@ -562,6 +560,17 @@ export struct SettingsWriting {
     const out: number[] = [];
     for (let k = 0; k < YEAR_OPTIONS; k++) {
       out.push(now - k);
+    }
+    return out;
+  }
+
+  /** Select 下拉的选项（数字年份 → SelectOption）。 */
+  private yearSelectOptions(): SelectOption[] {
+    const out: SelectOption[] = [];
+    const ys: number[] = this.yearOptions();
+    for (let k = 0; k < ys.length; k++) {
+      const opt: SelectOption = { value: ys[k] + ' 年' };
+      out.push(opt);
     }
     return out;
   }

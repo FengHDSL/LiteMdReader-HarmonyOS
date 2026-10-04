@@ -340,7 +340,7 @@ export struct SettingsExplore {
     Column() {
       SettingsShell({
         shellTitle: '探索中心',
-        shellSubtitle: '关于应用 · 法务 · 参考与致谢',
+        shellSubtitle: '关于应用 · 参考与致谢',
         stack: this.stack,
         life: this.life
       }) {

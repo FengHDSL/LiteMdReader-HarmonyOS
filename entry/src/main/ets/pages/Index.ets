@@ -1161,7 +1161,9 @@ struct Index {
     try {
       DocStore.init(ctx);
       const list: DocMeta[] = DocStore.list(ctx);
-      this.docs = list;
+      // **换成新数组引用**：DocStore 内部是原地改对象（saveProgress 直接改
+      // meta.progressRatio），直接赋同一引用时 @State 会被判定"没变化"而不刷新。
+      this.docs = list.slice();
       this.folders = DocStore.folderList();
       // 收藏列表（悬浮栏爱心按钮的快速查看）；沿用当前排序口径
       this.starredDocs = DocStore.starredList(ctx, this.starSort);
@@ -1907,11 +1909,19 @@ struct Index {
       //    搜索展开时书架整体被模糊（cellBlur），玻璃后面就是那片模糊的书架。
       ImmersiveCardLayer({ layerRadius: HwRadius.card, layerShadow: false })
 
-      // ③ 内容层
-      this.searchResultsBody()
+      // ③ 内容层：**包 Scroll**（用户实测：内容超高被 420 上限裁掉且不可滚，
+      // 上滑手势还会穿透到书架网格、触发"搜索展开时滚动即收起搜索"）——
+      // Scroll 消费掉面板内的滑动，内容超高时在面板内滚动；
+      // 点击（结果卡片 / 空白）仍会冒泡到外壳的 onClick 收起逻辑，不受影响。
+      Scroll() {
+        this.searchResultsBody()
+      }
+      .width('100%')
+      .scrollBar(BarState.Off)
+      .align(Alignment.Top)
+      .constraintSize({ maxHeight: 420 })
     }
     .width('100%')
-    .constraintSize({ maxHeight: 420 })
     .borderRadius(HwRadius.card)
     // 描边留在外壳上：材质画在 border 之下，细描边正好勾出玻璃边缘
     .border({ width: 0.8, color: this.palette().surfaceBorder })
@@ -2237,28 +2247,7 @@ struct Index {
 
   // ══════════════════════ 封面网格 ══════════════════════
 
-  /**
-   * 封面右下角的**圆形百分比徽标**（替代原来的细长进度条）。
-   * 圆环 = 已读比例，中心是百分比数字。
-   */
-  @Builder
-  coverProgressBadge(ratio: number) {
-    Stack({ alignContent: Alignment.Center }) {
-      Progress({ value: Math.round(ratio * 100), total: 100, type: ProgressType.Ring })
-        .width(30)
-        .height(30)
-        .color(this.palette().accent)
-        .backgroundColor(this.palette().surface)
-        .style({ strokeWidth: 3 })
-      Text(Math.round(ratio * 100) + '%')
-        .fontSize(9)
-        .fontColor(this.palette().accent)
-    }
-    .width(30)
-    .height(30)
-    .margin({ right: 6, bottom: 6 })
-    .hitTestBehavior(HitTestMode.None)
-  }
+  /** 封面底部居中的细进度条 + 右下角百分比胶囊（见文件末尾的 CoverProgressBar 组件）。 */
 
   /** 封面 + 标题 + 日期的格子本体（拖拽属性在外层 Column 上，内置教程与自建文档同款）。 */
   @Builder
@@ -2301,6 +2290,41 @@ struct Index {
           this.rememberDocRect(meta.name, newValue);
         })
 
+        // 收藏标记：**左上角红色爱心圆钮**（沉浸光感承载，仅收藏的文档显示；点击取消收藏）
+        // starredDocs 是 DocMeta[]（含完整信息），按名称匹配当前格
+        if (this.starredDocs.findIndex((d: DocMeta) => d.name === meta.name) >= 0) {
+          Stack() {
+            ImmersiveIconButton({
+              buttonSize: 30,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                // 点击爱心 = 取消收藏（与「⋯」菜单里的取消收藏同一通道）
+                const c = this.ctx();
+                if (c === null) {
+                  return;
+                }
+                if (DocStore.setStarred(c, meta.name, false)) {
+                  this.starredDocs = DocStore.starredList(c, this.starSort);
+                  // 「⋯」面板开着且正指向这篇 → 同步菜单文案（否则要重开面板才变）
+                  if (this.cellMenuFor === meta.name) {
+                    this.cellMenuStarred = false;
+                  }
+                  this.toast('已取消收藏');
+                }
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.heart_fill'))
+                .fontSize(16)
+                .fontColor(['#FFFF4D6D'])
+            }
+          }
+          .width(30)
+          .height(30)
+          // 顶 / 左偏移 4：与右上角 ⋯ 按钮（margin top/right 4）同一水平线
+          .position({ x: 4, y: 4 })
+        }
+
         Column() {
           ImmersiveIconButton({
             // 26 → 30（用户反馈"右上角按钮看上去太小"，14vp 图标也确实偏小）
@@ -2323,10 +2347,17 @@ struct Index {
         }
         .margin({ top: 4, right: 4 })
 
-        // 阅读进度：**封面右下角的圆形百分比徽标**（细长进度条已删除）
+        // 阅读进度：底部居中细进度条 + 右下角百分比胶囊（**独立组件**）
+        // ⚠️ 进度值进了格子指纹 → 进度变化会重建格子 → 新建节点无法播放属性动画
+        //（初始即终值，"和直接切换没区别"是用户实测反馈）。所以进度条自己记住
+        // 上次显示的比例，挂载后从旧值**平滑长到新值**，百分比数字随帧滚动。
         if (!meta.builtin && meta.progressRatio > 0.001) {
-          Stack({ alignContent: Alignment.BottomEnd }) {
-            this.coverProgressBadge(meta.progressRatio)
+          Stack({ alignContent: Alignment.Bottom }) {
+            CoverProgressBar({
+              target: meta.progressRatio,
+              docName: meta.name,
+              palette: this.palette()
+            })
           }
           // Stack 子节点尺寸统一用 matchParent（百分比在内容撑开的父级里会解析错）
           .width(LayoutPolicy.matchParent)
@@ -2695,7 +2726,10 @@ struct Index {
     const rawI: string | undefined = meta.coverImage;
     const c: string = rawC === undefined ? '' : rawC;
     const i: string = rawI === undefined ? '' : rawI;
-    return c + '|' + i + '|' + (meta.hideCoverName === true ? '1' : '0');
+    // ⚠️ **阅读进度必须进指纹**：格子 ForEach 的 key 不变时 ArkUI 会复用旧组件，
+    // 封面底部的进度条 / 百分比永远停在旧值（用户实测"要重启应用才更新"）。
+    const p: string = Math.round(meta.progressRatio * 100).toString();
+    return c + '|' + i + '|' + (meta.hideCoverName === true ? '1' : '0') + '|p' + p;
   }
 
   private itemCoverTag(item: ShelfItem): string {
@@ -3140,7 +3174,12 @@ struct Index {
   @Builder
   indexSheet() {
     if (this.shelfSheet === 'starred') {
-      this.starredSheet()
+      // 同上：分支切换强制重建（收藏面板的排序 chip 选中态也依赖它刷新）
+      if (this.sheetEpoch % 2 === 0) {
+        this.starredSheet()
+      } else {
+        this.starredSheet()
+      }
     } else if (this.shelfSheet === 'rename') {
       this.renameSheet()
     } else if (this.shelfSheet === 'export') {
@@ -3158,7 +3197,15 @@ struct Index {
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
     } else {
-      this.cellMenuSheet()
+      // **强制重建靠分支切换**（用户实测：面板里点收藏后文案不刷新）——
+      // `.id()` / `.key()` 换值都不会重建节点，只有 if 分支切换是确定的
+      // "销毁旧节点 + 创建新节点"（工程里手写页"一键清空"也是这么修的）。
+      // 两个分支写法完全一致，仅所处分支不同。
+      if (this.sheetEpoch % 2 === 0) {
+        this.cellMenuSheet()
+      } else {
+        this.cellMenuSheet()
+      }
     }
   }
 
@@ -3178,7 +3225,7 @@ struct Index {
       // 深浅切换时换 key 强制重建（面板不跟随宿主状态刷新 → "切换不完全"）
       .id('cellMenu_' + this.sheetEpoch)
     }
-    .scrollBar(BarState.Auto)
+    .scrollBar(BarState.Off)
     .width('100%')
     // **高度：内容自适应 + 明确上限**（0.65 屏高）：FIT_CONTENT 面板里
     // height('100%') 参与测量会循环、导致内容超限时 Scroll 不滚（开关被遮挡
@@ -3278,6 +3325,9 @@ struct Index {
           if (DocStore.setStarred(c, this.cellMenuFor, next)) {
             this.cellMenuStarred = next;
             this.starredDocs = DocStore.starredList(c, this.starSort);
+            // **面板内容不跟随宿主状态刷新**（工程已知问题）→ 递增 sheetEpoch
+            // 强制重建面板，否则「收藏 / 取消收藏」文案要点开第二次才变（用户实测）。
+            this.sheetEpoch = this.sheetEpoch + 1;
             this.toast(next ? '已收藏' : '已取消收藏');
           }
         })
@@ -4348,7 +4398,9 @@ struct Index {
     // ══════════ 半模态面板：官方规范（material/ModalSheet.ets）══════════
     // 模态型 + 固定 MEDIUM 高 + 官方标题栏 / 关闭按钮 / 拖拽条。
     .bindSheet(this.shelfVisible, this.indexSheet(), modalSheetOptions({
-      fitContent: true,
+      // **我的收藏固定半屏高**（用户要求）：其余面板（菜单/重命名/导出）保持内容自适应；
+      // modalSheetOptions 里非 fitContent 即官方 MEDIUM 档（屏高 60% ≈ 半屏）
+      fitContent: this.shelfSheet !== 'starred',
       title: this.sheetTitle(),
       subtitle: this.sheetSubtitle(),
       surface: this.palette().surface,
@@ -4498,7 +4550,9 @@ struct Index {
     // onWillDisappear 在子页即将销毁（弹出）时触发；延迟一点等返回转场结束，
     // 避免列表重排打断转场动画。
     .onWillDisappear(() => {
-      if (name === 'pages/Editor') {
+      // **Reader 也要刷新**：阅读页退出时已写回阅读进度（封面进度条 / 百分比 / 续读横幅
+      // 都读这份数据），不重读列表的话要重启应用才更新（用户实测）。
+      if (name === 'pages/Editor' || name === 'pages/Reader') {
         setTimeout(() => {
           this.refresh();
         }, 320);
@@ -4612,5 +4666,81 @@ struct Index {
       return this.customBgDark.length > 0 ? this.customBgDark : READER_BG_DEFAULT_DARK;
     }
     return this.customBgLight.length > 0 ? this.customBgLight : READER_BG_DEFAULT_LIGHT;
+  }
+}
+
+/**
+ * 封面阅读进度：底部居中的细进度条 + 右下角的百分比胶囊。
+ *
+ * ⚠️ 为什么做成**独立组件**而不是 @Builder：
+ * 进度值必须进格子 ForEach 的指纹（否则进度变化根本不刷新），而指纹一变格子就会
+ * **整格重建** —— 新建节点不会播放属性动画（初始即终值），用户实测"动画太快、
+ * 和直接切换没区别"。独立组件在 `aboutToAppear` 里先取**上次显示的比例**
+ * （静态缓存跨重建保留），延迟一帧再 animateTo 到新值 →
+ * 进度条从旧值平滑增长、百分比数字随动画逐帧变化。
+ */
+@Component
+export struct CoverProgressBar {
+  /** 目标比例（0~1） */
+  @Prop target: number = 0;
+  /** 文档名：作为跨重建记住"上次显示比例"的键 */
+  @Prop docName: string = '';
+  /** 调色板：必须由父组件传入（在 Index 内，主题变化会随父重建一起刷新） */
+  @Require @Prop palette: ReaderPalette;
+  /** 上次显示的比例（静态缓存：格子重建后仍能接着上次的值继续长） */
+  private static lastRatio: Map<string, number> = new Map<string, number>();
+  /** 当前显示的比例（动画驱动值，数字与条宽都由它算） */
+  @State shown: number = 0;
+
+  aboutToAppear(): void {
+    const prev: number = CoverProgressBar.lastRatio.get(this.docName) ?? 0;
+    CoverProgressBar.lastRatio.set(this.docName, this.target);
+    this.shown = prev;
+    // 延迟一帧再起动画：挂载当帧直接改值不会产生补间
+    setTimeout(() => {
+      this.getUIContext().animateTo({ duration: 560, curve: Curve.EaseInOut }, () => {
+        this.shown = this.target;
+      });
+    }, 16);
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      // 底部居中的细进度条（占封面 72%，两端对称留白）
+      Stack({ alignContent: Alignment.Start }) {
+        Column()
+          .width('100%')
+          .height(3)
+          .borderRadius(1.5)
+          .backgroundColor(this.palette.divider)
+        Column()
+          .width((this.shown * 100) + '%')
+          .height(3)
+          .borderRadius(1.5)
+          .backgroundColor(this.palette.accent)
+      }
+      .width('72%')
+      .margin({ bottom: 6 })
+
+      // 右下角百分比胶囊（沉浸光感，位于进度条上方避免重叠）
+      Row() {
+        ImmersiveChip({
+          palette: this.palette,
+          chipPaddingH: 5,
+          chipPaddingV: 1,
+          chipFontSize: 10,
+          chipActive: true,
+          chipLabel: Math.round(this.shown * 100) + '%',
+          chipOnTap: () => {
+          }
+        })
+      }
+      .width('100%')
+      .justifyContent(FlexAlign.End)
+      .padding({ right: 6, bottom: 14 })
+    }
+    .width('100%')
+    .height('100%')
+    .hitTestBehavior(HitTestMode.None)
   }
 }
