@@ -45,6 +45,7 @@
 - [MrCashmere/miha_hm](https://github.com/MrCashmere/miha_hm)：沉浸光感承载层（Toggle + attributeModifier）方案
 - [skadjhljhas/zhumo-reader](https://github.com/skadjhljhas/zhumo-reader)：注释卡片式的阅读形态
 - [younghz/Markdown](https://github.com/younghz/Markdown)：《Markdown 语法教程》的语法口径与分类参考
+- [luvi/lv-markdown-in](https://gitee.com/luvi/lv-markdown-in)：代码块行号 / 折叠 / 操作区、HTML 常用标签与 **font 快速样式**、懒渲染与预渲染块数的实现思路
 
 **内置的渲染组件**（随应用打包、全部离线可用，各自遵循其原始开源许可，许可全文见各自仓库）：
 
@@ -529,6 +530,344 @@ V:LH
 ---
 
 *澄笺 · 安静地读，顺手地写。*
+
+---
+
+## 十、代码块与 HTML 预览（v1.0.8）
+
+### 代码块：行号 + 长代码折叠
+
+代码块**默认显示行号**；超过 **10 行**的代码块会自动折叠，点下方的「展开全部 N 行」看完整内容
+（再点「收起代码」收回去）。
+
+```js
+// 这段超过 10 行，在阅读页里默认是折叠状态
+function fib(n) {
+  if (n <= 1) {
+    return n;
+  }
+  let a = 0;
+  let b = 1;
+  for (let i = 2; i <= n; i++) {
+    const t = a + b;
+    a = b;
+    b = t;
+  }
+  return b;
+}
+```
+
+下面三段都是**超过 10 行**的长代码，用来验证折叠与行号（点「展开全部」看全文）：
+
+**Python**
+
+```python
+def quicksort(arr):
+    """快速排序：小数组直接插入排序，避免递归开销。"""
+    if len(arr) <= 1:
+        return arr
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    mid = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    return quicksort(left) + mid + quicksort(right)
+
+if __name__ == '__main__':
+    data = [3, 6, 1, 8, 2, 9, 4]
+    print(quicksort(data))
+```
+
+**C**
+
+```c
+#include <stdio.h>
+#include <string.h>
+
+#define BUF_SIZE 256
+
+int main(void) {
+    char buf[BUF_SIZE];
+    int words = 0;
+    printf("请输入一行文字：");
+    if (fgets(buf, BUF_SIZE, stdin) == NULL) {
+        return 1;
+    }
+    for (int i = 0; buf[i] != '\0'; i++) {
+        if (buf[i] == ' ' || buf[i] == '\n') {
+            words++;
+        }
+    }
+    printf("大约 %d 个单词\n", words);
+    return 0;
+}
+```
+
+**Java**
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+public class WordCount {
+    /** 统计每个字符出现的次数，按插入顺序输出。 */
+    public static Map<Character, Integer> count(String text) {
+        Map<Character, Integer> map = new HashMap<>();
+        for (char c : text.toCharArray()) {
+            if (Character.isWhitespace(c)) {
+                continue;
+            }
+            map.put(c, map.getOrDefault(c, 0) + 1);
+        }
+        return map;
+    }
+
+    public static void main(String[] args) {
+        for (Map.Entry<Character, Integer> e : count("澄心执笔 笺上生光").entrySet()) {
+            System.out.println(e.getKey() + " -> " + e.getValue());
+        }
+    }
+}
+```
+
+### 支持高亮的常用语言（一览）
+
+语言名写在围栏后面（如 ```` ```python ````），它决定左上角的**语言徽标**与**语法高亮**。
+下面每种给一个短例子，方便对照：
+
+**Python**
+```python
+def greet(name: str) -> str:
+    return f"你好，{name}"
+
+print(greet("澄笺"))
+```
+
+**JavaScript**
+```js
+const sum = (xs) => xs.reduce((a, b) => a + b, 0);
+console.log(sum([1, 2, 3, 4]));
+```
+
+**TypeScript**
+```ts
+interface Doc { name: string; words: number }
+const d: Doc = { name: '澄笺', words: 1200 };
+```
+
+**Java**
+```java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("你好，澄笺");
+    }
+}
+```
+
+**C**
+```c
+#include <stdio.h>
+
+int main(void) {
+    printf("hello, chengjian\n");
+    return 0;
+}
+```
+
+**C++**
+```cpp
+#include <iostream>
+int main() {
+    std::cout << "hello" << std::endl;
+}
+```
+
+**C#**
+```cs
+using System;
+class P {
+    static void Main() => Console.WriteLine("hi");
+}
+```
+
+**Go**
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("hi")
+}
+```
+
+**Rust**
+```rust
+fn main() {
+    println!("hi");
+}
+```
+
+**Swift**
+```swift
+print("hi")
+```
+
+**Kotlin**
+```kotlin
+fun main() = println("hi")
+```
+
+**Shell**
+```sh
+for f in *.md; do
+  echo "处理 $f"
+done
+```
+
+**SQL**
+```sql
+SELECT name, words FROM docs
+WHERE words > 1000
+ORDER BY words DESC;
+```
+
+**JSON**
+```json
+{ "name": "澄笺", "version": "1.0.8" }
+```
+
+**YAML**
+```yaml
+name: 澄笺
+version: 1.0.8
+```
+
+**HTML / CSS** —— 注意：`html` 围栏会**渲染成预览**，想展示源码请用 `markdown` 或 `text`
+```markdown
+<p>一段 <b>HTML</b> 也可以直接写在围栏里。</p>
+```
+
+```css
+.card {
+  border-radius: 16px;
+  background: #fff;
+}
+```
+
+### HTML 快速样式与预览
+
+把代码块的语言写成 `html`，它会**直接渲染成预览**（不显示源码），于是 `<font>` 这类
+**快速样式**与常见标签都能立刻看到效果：
+
+```html
+<style>
+  .dino-game {
+    font-family: HarmonyOS Sans, system-ui, sans-serif;
+    padding: 14px; border-radius: 16px; user-select: none;
+    background: linear-gradient(180deg, #EEF3FF, #DCE7FF);
+    border: 1px solid rgba(18, 50, 79, 0.10);
+  }
+  .dino-game .hud {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: #2A3F5F; margin-bottom: 8px;
+  }
+  .dino-game canvas {
+    width: 100%; height: 130px; display: block;
+    border-radius: 10px; background: rgba(255, 255, 255, 0.75);
+  }
+  .dino-game .tip { margin-top: 8px; font-size: 12px; color: #5B7396; text-align: center; }
+</style>
+<div class="dino-game">
+  <div class="hud"><span>🦕 小恐龙跳一跳</span><span>得分 <b id="dgScore">0</b></span></div>
+  <canvas id="dgCanvas" width="640" height="260"></canvas>
+  <div class="tip">点一下画面（或按空格）让它跳起来，撞到障碍就结束</div>
+</div>
+<script>
+(function () {
+  var cv = document.getElementById('dgCanvas');
+  var ctx = cv.getContext('2d');
+  var scoreNode = document.getElementById('dgScore');
+  var W = cv.width, H = cv.height, ground = H - 46;
+  var dino = { x: 46, y: ground, w: 34, h: 38, vy: 0, onGround: true };
+  var rock = { x: W + 60, w: 20, h: 34 };
+  var speed = 3.4, score = 0, dead = false, raf = 0;
+
+  function jump() {
+    if (dead) { reset(); return; }
+    if (dino.onGround) { dino.vy = -9.6; dino.onGround = false; }
+  }
+  function reset() {
+    dino.y = ground; dino.vy = 0; dino.onGround = true;
+    rock.x = W + 60; speed = 3.4; score = 0; dead = false;
+    scoreNode.innerText = '0';
+    loop();
+  }
+  function drawDino() {
+    ctx.fillStyle = '#1F8A70';
+    ctx.fillRect(dino.x, dino.y - dino.h, dino.w, dino.h);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(dino.x + dino.w - 12, dino.y - dino.h + 8, 6, 6);
+    ctx.fillStyle = '#166B57';
+    ctx.fillRect(dino.x + 4, dino.y - 7, 6, 7);
+    ctx.fillRect(dino.x + dino.w - 12, dino.y - 7, 6, 7);
+  }
+  function drawRock() {
+    ctx.fillStyle = '#2A3F5F';
+    ctx.fillRect(rock.x, ground - rock.h, rock.w, rock.h);
+    ctx.fillRect(rock.x + 5, ground - rock.h - 9, 7, 9);
+  }
+  function loop() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(42, 63, 95, 0.28)';
+    ctx.fillRect(0, ground, W, 2);
+
+    dino.vy += 0.52;
+    dino.y += dino.vy;
+    if (dino.y >= ground) { dino.y = ground; dino.vy = 0; dino.onGround = true; }
+
+    rock.x -= speed;
+    if (rock.x + rock.w < 0) {
+      rock.x = W + 40 + Math.random() * 120;
+      score++;
+      scoreNode.innerText = String(score);
+      speed = Math.min(7.2, speed + 0.12);
+    }
+    if (dino.x + dino.w - 6 > rock.x && dino.x + 6 < rock.x + rock.w
+      && dino.y > ground - rock.h) {
+      dead = true;
+    }
+
+    drawRock();
+    drawDino();
+
+    if (dead) {
+      ctx.fillStyle = 'rgba(42, 63, 95, 0.86)';
+      ctx.font = 'bold 22px HarmonyOS Sans, sans-serif';
+      ctx.fillText('结束 · 点一下重来', 92, H / 2 - 4);
+      return;
+    }
+    raf = requestAnimationFrame(loop);
+  }
+
+  cv.addEventListener('click', jump);
+  cv.addEventListener('touchstart', function (e) { e.preventDefault(); jump(); }, { passive: false });
+  document.addEventListener('keydown', function (e) {
+    if (e.code === 'Space') { e.preventDefault(); jump(); }
+  });
+  loop();
+})();
+</script>
+```
+
+预览区可以点开放大查看。`<script>` 标签会被自动剥离 —— 文档里的 HTML 只作为内容渲染，
+不会作为代码执行。
+
+### 公式：四种写法都支持
+
+| 形态 | 写法 |
+| --- | --- |
+| 行内 | `$E=mc^2$` 或 `\(E=mc^2\)` |
+| 块级 | `$$…$$` 或 `\[…\]` |
 
 ---
 

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes">
+<title>HTML 预览</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{font:14px/1.7 -apple-system,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+       color:#1B1F27;-webkit-text-size-adjust:100%;}
+  body.dark{color:#ECEFF4;}
+  #app{padding:8px 10px;box-sizing:border-box;overflow-wrap:break-word;min-height:1px;}
+  #app img{max-width:100%;height:auto;}
+  #app table{border-collapse:collapse;max-width:100%;}
+  #app th,#app td{border:1px solid rgba(128,128,128,0.35);padding:4px 8px;}
+  body.dark #app th,body.dark #app td{border-color:rgba(200,200,200,0.28);}
+  #app a{color:#2F63E8;}
+  body.dark #app a{color:#7FA7FF;}
+  /* font 快速样式支持 size 的 1~7 档（浏览器对 size 数字档位会处理，这里补齐
+     显式 px 写法时的一致性） */
+  #app font{line-height:inherit;}
+  .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  var app=document.getElementById('app');
+
+  // 上报高度：让宿主按内容自适应卡片高度
+  function report(){
+    try{
+      // 三处取最大：高度回传不准（偏小）时卡片会偏矮，与下一张卡片视觉上**叠在一起**
+      // （用户实测）；documentElement 兜底 img / table 延迟撑开的情况。
+      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                     document.documentElement.scrollHeight);
+      if(!(h>0)){h=1;}
+      if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+    }catch(e){}
+  }
+
+  /**
+   * 宿主注入入口（与其它模板同一约定）：p = {src, dark, fit, vw}
+   * src = HTML 代码块的原文，直接作为预览内容渲染。
+   *
+   * 安全性：内容来自用户本地文档，运行在离线沙箱 Web 内；用 innerHTML 注入 ——
+   * 浏览器规范下**注入的 <script> 不会执行**，外链 <img>/<a> 也不会自动加载脚本，
+   * 因此不会引入可执行代码。为稳妥仍显式剥掉 <script> 标签。
+   */
+  window.renderPayload=function(p){
+    try{
+      document.body.className = p && p.dark ? 'dark' : '';
+      var html=(p&&p.src)?String(p.src):'';
+      // **不剥离 <script>**（用户要求：预览要像真的网页 —— 示例里的按钮计数要能点）。
+      // 内容来自用户自己的本地文档，运行在离线沙箱 Web 内，不加载任何远程脚本。
+      app.innerHTML=html;
+
+      // innerHTML 注入的 <script> 按规范**不会执行** → 逐个重建 script 节点补上，
+      // 这样示例里的 onclick / addEventListener 才真正生效。
+      try{
+        var tmp=document.createElement('div');
+        tmp.innerHTML=html;
+        var olds=tmp.querySelectorAll('script');
+        for(var s=0;s<olds.length;s++){
+          var ns=document.createElement('script');
+          if(olds[s].src){ns.src=olds[s].src;}else{ns.textContent=olds[s].textContent;}
+          document.body.appendChild(ns);
+        }
+      }catch(e1){}
+      // 图片异步加载会改变高度 → 给每张图挂上重报（否则卡片偏矮、与下一块贴住）
+      var imgs=app.querySelectorAll('img');
+      for(var i=0;i<imgs.length;i++){
+        imgs[i].addEventListener('load',report);
+        imgs[i].addEventListener('error',report);
+      }
+      report();
+      setTimeout(report,60);
+      setTimeout(report,240);
+      setTimeout(report,600);
+      setTimeout(report,1200);
+    }catch(err){
+      app.innerHTML='<div class="err">HTML 预览失败：'+(err&&err.message?err.message:err)+'</div>';
+      report();
+    }
+  };
+
+  window.addEventListener('load',report);
+})();
+</script>
+</body></html>

@@ -532,10 +532,19 @@ export class MdParser {
       // ── 围栏代码块 ────────────────────────────────────────────────
       if (MdParser.isFence(t)) {
         const lang: string = MdParser.fenceLang(t);
+        // **围栏长度**：外层围栏可能比内层长（教程里用 4 个反引号包住 3 个反引号的
+        // 示例，这是 Markdown 标准写法）—— 只有**同长或更长**的围栏才算结束。
+        // 否则内层围栏会被误判为结束标记，外层块内容变成空的（用户实测
+        //「语法教程这两块是空的」就是这个问题）。
+        const openLen: number = MdParser.fenceLen(t);
         const fenceLine: number = i;
         const body: string[] = [];
         i++;
-        while (i < lines.length && !MdParser.isFence(lines[i].trim())) {
+        while (i < lines.length) {
+          const cur: string = lines[i].trim();
+          if (MdParser.isFence(cur) && MdParser.fenceLen(cur) >= openLen) {
+            break;
+          }
           body.push(lines[i]);
           i++;
         }
@@ -543,8 +552,11 @@ export class MdParser {
           i++;
         }
         const langLower: string = lang.toLowerCase();
+        // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
+        // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
-          || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart') {
+          || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
+          || langLower === 'html') {
           blocks.push(MdBlockFactory.chart(lang, body, blocks.length, fenceLine));
         } else {
           blocks.push(MdBlockFactory.code(lang, body, blocks.length));
@@ -574,6 +586,38 @@ export class MdParser {
           i++;
         }
         blocks.push(MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length, detailsStart));
+        continue;
+      }
+
+      // ── 数学公式块 \[...\]（CherryStudio / 常见 LaTeX 写法，兼容补强）────
+      // 与 $$...$$ 完全同构：同样支持单行与多行，交给同一套 MathLite 渲染。
+      if (t.startsWith('\\[')) {
+        const mathStart: number = i;
+        const latexLines: string[] = [];
+        if (t.length > 4 && t.endsWith('\\]')) {
+          latexLines.push(t.substring(2, t.length - 2).trim());
+          i++;
+        } else {
+          latexLines.push(t.substring(2).trim());
+          i++;
+          while (i < lines.length) {
+            const cur: string = lines[i].trim();
+            if (cur.endsWith('\\]')) {
+              const seg: string = cur.substring(0, cur.length - 2).trim();
+              if (seg.length > 0) {
+                latexLines.push(seg);
+              }
+              i++;
+              break;
+            }
+            latexLines.push(cur);
+            i++;
+          }
+        }
+        const latexBracket: string = latexLines.join('\n').trim();
+        if (latexBracket.length > 0) {
+          blocks.push(MdBlockFactory.math(latexBracket, blocks.length, mathStart));
+        }
         continue;
       }
 
@@ -838,6 +882,21 @@ export class MdParser {
             bold, italic, strike, true));
           i = end + 1;
           continue;
+        }
+      }
+
+      // 行内数学 \(...\)（CherryStudio / 常见 LaTeX 写法，与 $...$ 等价）
+      if (c === '\\' && i + 1 < n && src.charAt(i + 1) === '(') {
+        const closeP: number = src.indexOf('\\)', i + 2);
+        if (closeP > i + 2) {
+          const contentP: string = src.substring(i + 2, closeP);
+          if (contentP.trim().length > 0) {
+            buf = MdParser.flush(out, buf, bold, italic, strike, code);
+            out.push(inlineOf(MdInlineKind.MathInline, MathLite.inlineText(contentP), '', 0,
+              bold, italic, strike, code));
+            i = closeP + 2;
+            continue;
+          }
         }
       }
 
@@ -1197,6 +1256,19 @@ export class MdParser {
       n++;
     }
     return n >= 3;
+  }
+
+  /** 围栏标记的字符数（``` → 3，```` → 4，~~~ → 3…）。用于匹配"同长或更长"的结束围栏。 */
+  private static fenceLen(t: string): number {
+    if (t.length === 0) {
+      return 0;
+    }
+    const ch: string = t.charAt(0);
+    let n: number = 0;
+    while (n < t.length && t.charAt(n) === ch) {
+      n++;
+    }
+    return n;
   }
 
   private static fenceLang(t: string): string {

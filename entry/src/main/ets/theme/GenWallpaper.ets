@@ -205,12 +205,12 @@ export struct GenWallpaper {
     // 周期从 9s/11s 放慢到 13s/17s —— 用户要的是"缓慢的呼吸"，
     // 太快会像闪烁；幅度同时加大（见 build 里的 opacity / scale）。
     this.getUIContext().animateTo({
-      duration: 13000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
     }, () => {
       this.glowPulseA = 1;
     });
     this.getUIContext().animateTo({
-      duration: 17000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      duration: 12000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
     }, () => {
       this.glowPulseB = 1;
     });
@@ -273,14 +273,15 @@ export struct GenWallpaper {
                 ['#4D' + this.def().glowA.substring(1), 0.55],
                 ['#00000000', 1.0]]
             })
-            // 亮度呼吸：基础 + 峰值（幅度 0.30，原来的 0.14 太含蓄）
-            .opacity((this.darkMode ? 0.22 : 0.36) + this.glowPulseA * 0.30)
-            // 尺寸呼吸：0.92 ↔ 1.08，与亮度同相 → 一眼能看出"在呼吸"
-            .scale({ x: 0.92 + this.glowPulseA * 0.16, y: 0.92 + this.glowPulseA * 0.16 })
+            // 亮度呼吸：基础 + 峰值（幅度加大到 0.36 —— 光斑带大模糊，幅度小会被糊掉看不出）
+            .opacity((this.darkMode ? 0.18 : 0.30) + this.glowPulseA * 0.36)
+            // 尺寸呼吸：0.88 ↔ 1.12（幅度 0.24），与亮度同相
+            .scale({ x: 0.88 + this.glowPulseA * 0.24, y: 0.88 + this.glowPulseA * 0.24 })
             .blur(56)
-            // 光斑 46% 宽 → 中心在 (x+23%, y+23%)；取 (7%, 7%) 让中心落在 (30%, 30%)，
-            // 距屏心约 28%：公转半径够大、位移看得出来，光斑又始终留在屏内。
-            .position({ x: '7%', y: '7%' })
+            // **光斑只在角落区域活动**（用户要求：不许出现在屏幕中间）：
+            // 光斑 46% 宽 → 中心在 (x+23%, y+23%)；取 (-8%, -8%) 让中心落在 (15%, 15%)，
+            // 公转半径约 49% 屏宽 → 光斑边缘距屏心最近也有 26%，扫不到屏心附近。
+            .position({ x: '-8%', y: '-8%' })
         }
 
       // 右下冷光（反向公转：130s 一圈，轨道半径约 15%）
@@ -305,11 +306,12 @@ export struct GenWallpaper {
                 ['#4D' + this.def().glowB.substring(1), 0.55],
                 ['#00000000', 1.0]]
             })
-            .opacity((this.darkMode ? 0.18 : 0.32) + this.glowPulseB * 0.26)
-            .scale({ x: 0.92 + this.glowPulseB * 0.16, y: 0.92 + this.glowPulseB * 0.16 })
+            .opacity((this.darkMode ? 0.14 : 0.26) + this.glowPulseB * 0.32)
+            .scale({ x: 0.88 + this.glowPulseB * 0.24, y: 0.88 + this.glowPulseB * 0.24 })
             .blur(62)
-            // 光斑 50% 宽 → 中心在 (x+25%, y+25%)；取 (45%, 45%) 让中心落在 (70%, 70%)，反向公转
-            .position({ x: '45%', y: '45%' })
+            // 同上：光斑 50% 宽 → 中心在 (x+25%, y+25%)；取 (58%, 58%) 让中心落在 (83%, 83%)，
+            // 公转半径约 47% 屏宽 → 同样只在角落区域活动，反向公转。
+            .position({ x: '58%', y: '58%' })
         }
       }
 

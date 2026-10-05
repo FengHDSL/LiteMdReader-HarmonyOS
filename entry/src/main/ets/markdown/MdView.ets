@@ -542,6 +542,11 @@ export struct MdBlockView {
   /** 加载失败的图表缓存 key（Image onError 记入 → 回落 DiagramWeb 实时渲染） */
   @State brokenCharts: string[] = [];
   @State copied: boolean = false;
+  /**
+   * 代码块是否已展开。**长代码默认折叠**（阈值 10 行，参考 lv-markdown-in 的
+   * 代码块折叠能力），点底部的「展开全部 N 行」按钮切换。
+   */
+  @State codeExpanded: boolean = false;
   /** 当前选区（相对本块渲染文本的偏移），由 onTextSelectionChange 给出 */
   @State selStart: number = -1;
   /** 批注菜单的宽度上限（= 本块宽度 + 页边距），超出在胶囊内滚动 */
@@ -635,7 +640,9 @@ export struct MdBlockView {
           .fontColor([this.palette.textTertiary])
       }
     }
-    .margin({ top: 4, right: 4 })
+    // 只留右边距（用户反馈：与旁边的代码按钮高度对不齐 —— top:4 让它在 Row 里
+    // 比同尺寸的按钮低 4vp，去掉后靠 Row 的 VerticalAlign.Center 统一对齐）
+    .margin({ right: 4 })
   }
 
   /**
@@ -661,6 +668,180 @@ export struct MdBlockView {
     return MdViewUtil.buildPieces(this.block, this.annotations, this.dark, this.searchQuery);
   }
 
+  /**
+   * 代码块的语言徽标：**品牌色小方块 + 语言缩写 + 语言名**（自绘，不用 emoji、
+   * 不引入图片资源）。盒子里是几何色块与字母，配色按各语言惯用色，
+   * 一眼能分辨语言；未登记的语言只显示原名。
+   */
+  @Builder
+  langBadgeView() {
+    Row({ space: 6 }) {
+      if (this.langAbbr().length > 0) {
+        Text(this.langAbbr())
+          .fontSize(9)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFFFF')
+          .padding({ left: 4, right: 4, top: 1, bottom: 1 })
+          .borderRadius(4)
+          .backgroundColor(this.langColor())
+      }
+      Text(this.block.lang.length > 0 ? this.block.lang : 'text')
+        .fontSize(HwType.caption)
+        .fontColor(this.palette.textTertiary)
+    }
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /** 语言缩写（方块里显示的字）。 */
+  private langAbbr(): string {
+    const l: string = this.block.lang.toLowerCase();
+    if (l === 'js' || l === 'javascript') {
+      return 'JS';
+    }
+    if (l === 'ts' || l === 'typescript') {
+      return 'TS';
+    }
+    if (l === 'ets' || l === 'arkts') {
+      return 'ETS';
+    }
+    if (l === 'python' || l === 'py') {
+      return 'PY';
+    }
+    if (l === 'java') {
+      return 'JV';
+    }
+    if (l === 'c') {
+      return 'C';
+    }
+    if (l === 'cpp' || l === 'c++') {
+      return 'C++';
+    }
+    if (l === 'cs' || l === 'csharp') {
+      return 'C#';
+    }
+    if (l === 'go' || l === 'golang') {
+      return 'GO';
+    }
+    if (l === 'rust' || l === 'rs') {
+      return 'RS';
+    }
+    if (l === 'swift') {
+      return 'SW';
+    }
+    if (l === 'kotlin' || l === 'kt') {
+      return 'KT';
+    }
+    if (l === 'html' || l === 'htm') {
+      return 'HTML';
+    }
+    if (l === 'xml' || l === 'svg') {
+      return 'XML';
+    }
+    if (l === 'vue') {
+      return 'VUE';
+    }
+    if (l === 'css') {
+      return 'CSS';
+    }
+    if (l === 'scss' || l === 'less') {
+      return 'SCSS';
+    }
+    if (l === 'sh' || l === 'bash' || l === 'zsh' || l === 'shell') {
+      return 'SH';
+    }
+    if (l === 'powershell') {
+      return 'PS';
+    }
+    if (l === 'json') {
+      return 'JSON';
+    }
+    if (l === 'yaml' || l === 'yml') {
+      return 'YML';
+    }
+    if (l === 'toml' || l === 'ini') {
+      return 'CFG';
+    }
+    if (l === 'sql' || l === 'mysql' || l === 'postgresql') {
+      return 'SQL';
+    }
+    return '';
+  }
+
+  /** 语言方块的品牌色（暗一档的底色，保证白字对比度）。 */
+  private langColor(): string {
+    const l: string = this.block.lang.toLowerCase();
+    if (l === 'js' || l === 'javascript') {
+      return '#FFB8860B';
+    }
+    if (l === 'ts' || l === 'typescript') {
+      return '#FF3178C6';
+    }
+    if (l === 'ets' || l === 'arkts') {
+      return '#FF2F63E8';
+    }
+    if (l === 'python' || l === 'py') {
+      return '#FF3776AB';
+    }
+    if (l === 'java') {
+      return '#FFD9600A';
+    }
+    if (l === 'c') {
+      return '#FF5C6BC0';
+    }
+    if (l === 'cpp' || l === 'c++') {
+      return '#FF00599C';
+    }
+    if (l === 'cs' || l === 'csharp') {
+      return '#FF68217A';
+    }
+    if (l === 'go' || l === 'golang') {
+      return '#FF0E8FA8';
+    }
+    if (l === 'rust' || l === 'rs') {
+      return '#FFB7410E';
+    }
+    if (l === 'swift') {
+      return '#FFD9600A';
+    }
+    if (l === 'kotlin' || l === 'kt') {
+      return '#FF7F52FF';
+    }
+    if (l === 'html' || l === 'htm') {
+      return '#FFE34F26';
+    }
+    if (l === 'xml' || l === 'svg') {
+      return '#FF2F6F4F';
+    }
+    if (l === 'vue') {
+      return '#FF3F8F6B';
+    }
+    if (l === 'css') {
+      return '#FF1572B6';
+    }
+    if (l === 'scss' || l === 'less') {
+      return '#FFC6538C';
+    }
+    if (l === 'sh' || l === 'bash' || l === 'zsh' || l === 'shell') {
+      return '#FF3E8E41';
+    }
+    if (l === 'powershell') {
+      return '#FF2C5F8A';
+    }
+    if (l === 'json') {
+      return '#FF8A7A00';
+    }
+    if (l === 'yaml' || l === 'yml') {
+      return '#FF6E5BA8';
+    }
+    if (l === 'toml' || l === 'ini') {
+      return '#FF5A6B7A';
+    }
+    if (l === 'sql' || l === 'mysql' || l === 'postgresql') {
+      return '#FF00758F';
+    }
+    return '#FF6B7280';
+  }
+
   /** 代码块的 token 化结果，按块缓存。 */
   private tokensForCode(): CodeToken[][] {
     const key: string = this.block.id + '|' + this.block.lang + '|' + this.block.codeLines.length;
@@ -676,6 +857,16 @@ export struct MdBlockView {
     }
     this.codeTokens = out;
     return out;
+  }
+
+  /** 代码块折叠阈值：超过这个行数就默认折叠（用户要求：默认开启、阈值 10）。 */
+  private visibleCodeLines(): number {
+    const total: number = this.block.codeLines.length;
+    // 折叠阈值 = 10 行
+    if (this.codeExpanded || total <= 10) {
+      return total;
+    }
+    return 10;
   }
 
   /** 选区内的纯文本。 */
@@ -1126,9 +1317,8 @@ export struct MdBlockView {
       }) {
         Column() {
         Row() {
-          Text(this.block.lang.length > 0 ? this.block.lang : 'text')
-            .fontSize(HwType.caption)
-            .fontColor(this.palette.textTertiary)
+          this.langBadgeView()
+          Blank()
           ImmersiveIconButton({
             buttonSize: 28,
             buttonMaterialShadow: false,
@@ -1147,27 +1337,67 @@ export struct MdBlockView {
                 .fontColor([this.palette.textTertiary])
             }
           }
+          // 两个按钮之间的空隙（用户反馈贴在一起）
+          Column()
+            .width(HwSpace.xs)
+          // **放大查看放最右边**（用户要求）：走与图表卡同一套放大浮层
+          // （mode='code' 由 render/code.html 渲染带行号的等宽代码）。
+          ImmersiveIconButton({
+            buttonSize: 28,
+            buttonMaterialShadow: false,
+            palette: this.palette,
+            buttonOnTap: () => {
+              this.enlargeHandler('code', this.block.code, 'mdcode_' + this.block.id,
+                this.block.lang.length > 0 ? this.block.lang : 'code');
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.arrow_up_left_and_arrow_down_right'))
+              .fontSize(14)
+              .fontColor([this.palette.textTertiary])
+          }
         }
         .width('100%')
         .justifyContent(FlexAlign.SpaceBetween)
+        .alignItems(VerticalAlign.Center)
         .alignItems(VerticalAlign.Center)
         .padding({ left: HwSpace.md, right: HwSpace.xs, top: HwSpace.xs, bottom: 0 })
 
         Scroll() {
           Column() {
-            ForEach(this.tokensForCode(), (tokens: CodeToken[], lineIndex: number) => {
-              Text() {
-                ForEach(tokens, (token: CodeToken) => {
-                  Span(token.text)
-                    .fontSize(this.bodySize * HwType.codeScale)
-                    .fontColor(MdViewUtil.tokenColor(token.kind, this.palette))
-                }, (token: CodeToken, ti: number) => 't' + ti + '_' + token.kind + '_' + token.text.length)
-              }
-              .fontSize(this.bodySize * HwType.codeScale)
-              .fontColor(this.palette.textPrimary)
-              .lineHeight(this.bodySize * HwType.codeScale * 1.6)
-              .width('100%')
-            }, (tokens: CodeToken[], lineIndex: number) => 'c' + lineIndex + '_' + tokens.length)
+            // **行号 + 代码**（索引默认展示，参考 lv-markdown-in 的 setCodeBlockIdxState）：
+            // 行号等宽右对齐，与代码之间一条细竖分割线；折叠时只渲染前 10 行
+            // （用 slice 在数据层截断，比在 itemGenerator 里写 if 更稳）。
+            ForEach(this.tokensForCode().slice(0, this.visibleCodeLines()),
+              (tokens: CodeToken[], lineIndex: number) => {
+                Row() {
+                  Text((lineIndex + 1).toString())
+                    .fontSize(this.bodySize * HwType.codeScale * 0.85)
+                    .fontColor(this.palette.textTertiary)
+                    .width(22)
+                    .textAlign(TextAlign.End)
+                    .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+                  Divider()
+                    .vertical(true)
+                    .height(this.bodySize * HwType.codeScale * 1.4)
+                    .strokeWidth(0.6)
+                    .color(this.palette.divider)
+                    .margin({ left: 6, right: 8 })
+                  Text() {
+                    ForEach(tokens, (token: CodeToken) => {
+                      Span(token.text)
+                        .fontSize(this.bodySize * HwType.codeScale)
+                        .fontColor(MdViewUtil.tokenColor(token.kind, this.palette))
+                    }, (token: CodeToken, ti: number) => 't' + ti + '_' + token.kind + '_' + token.text.length)
+                  }
+                  .fontSize(this.bodySize * HwType.codeScale)
+                  .fontColor(this.palette.textPrimary)
+                  .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+                  .layoutWeight(1)
+                }
+                .width('100%')
+                .alignItems(VerticalAlign.Center)
+              }, (tokens: CodeToken[], lineIndex: number) => 'c' + lineIndex + '_' + tokens.length)
+
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
@@ -1176,7 +1406,31 @@ export struct MdBlockView {
         .scrollable(ScrollDirection.Vertical)
         .scrollBar(BarState.Auto)
         .width('100%')
-        .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
+        // 展开 / 收起控制条已移到 Scroll 之外（固定在卡片底部），
+        // 这里把它的高度一并算进去 —— 否则卡片比内容矮，下边缘会压住正文
+        //（用户实测：代码块下方的文字被卡片遮住）。
+        .height(codeBlockHeight(this.visibleCodeLines(), this.bodySize)
+          + (this.block.codeLines.length > 10 ? 32 : 0))
+
+        // **折叠控制条固定在卡片底部**（用户要求：不随代码一起滚动）——
+        // 之前它放在 Scroll 内部，长代码滚下去就看不到入口了；移出来常驻卡片底部。
+        if (this.block.codeLines.length > 10) {
+          Row() {
+            Text(this.codeExpanded
+              ? '收起代码'
+              : '展开全部 ' + this.block.codeLines.length + ' 行')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette.accent)
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .padding({ top: HwSpace.xs, bottom: HwSpace.sm })
+          .onClick(() => {
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.codeExpanded = !this.codeExpanded;
+            });
+          })
+        }
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
@@ -1529,6 +1783,8 @@ export struct MdBlockView {
           this.enlargeButton('katex', this.block.code, 'mdchart_' + this.block.id, '')
         }
         .width('100%')
+        // 与图表卡同一处理：整行下压 4vp，与自带 top:4 的放大按钮位置一致
+        .padding({ top: 4 })
       }
       .width('100%')
     }
@@ -1566,7 +1822,23 @@ export struct MdBlockView {
     }) {
     Stack({ alignContent: Alignment.TopEnd }) {
       Column() {
-        if (this.block.lang.toLowerCase() === 'markmap') {
+        // **查看代码**（用户要求）：直接展示源码，等宽可滚动；切回预览会重新挂载
+        // DiagramWeb（组件重挂即重新 renderPayload，不会留下旧画面）。
+        if (this.chartShowCode) {
+          Scroll() {
+            Text(this.block.code)
+              .fontSize(this.bodySize * HwType.codeScale)
+              .fontColor(this.palette.textPrimary)
+              .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+              .width('100%')
+              .textAlign(TextAlign.Start)
+          }
+          .scrollable(ScrollDirection.Vertical)
+          .scrollBar(BarState.Auto)
+          .width('100%')
+          .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
+          .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
+        } else if (this.block.lang.toLowerCase() === 'markmap') {
           DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
         } else if (this.block.lang.toLowerCase() === 'mermaid') {
           DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
@@ -1578,6 +1850,11 @@ export struct MdBlockView {
           DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
         } else if (this.block.lang.toLowerCase() === 'flowchart') {
           DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+        } else if (this.block.lang.toLowerCase() === 'html') {
+          // **HTML 代码块预览**：解析层（MdParser）已把 `html` 归入图表块，
+          // 这里必须补上对应分支 —— 否则会落到最后的 else 走 codeView，
+          // 于是"预览"变成了显示源码（用户实测：html 块显示的是代码不是效果）。
+          DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
         } else {
           // 未登记的图表语言：按代码块原样呈现
           this.codeView()
@@ -1587,9 +1864,32 @@ export struct MdBlockView {
 
       Row() {
         Blank()
+        // **预览 ↔ 查看代码**（用户要求）：图表与 HTML 预览都能切到源码核对写法。
+        // 图标用 text_alignleft 表示"代码"；处于代码态时点亮为主题色。
+        ImmersiveIconButton({
+          buttonSize: 28,
+          buttonMaterialShadow: false,
+          palette: this.palette,
+          buttonOnTap: () => {
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.chartShowCode = !this.chartShowCode;
+            });
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.text_alignleft'))
+            .fontSize(13)
+            .fontColor([this.chartShowCode ? this.palette.accent : this.palette.textTertiary])
+        }
+        // 两个按钮之间的空隙（用户反馈贴在一起）
+        Column()
+          .width(HwSpace.xs)
         this.enlargeButton(this.block.lang.toLowerCase(), this.block.code, 'mdchart_' + this.block.id, this.chartTitle())
       }
       .width('100%')
+      .alignItems(VerticalAlign.Center)
+      // 放大按钮自带 top:4（见 enlargeButton）→ 整行同样下压 4vp，
+      // 代码按钮与放大按钮**同高对齐**（用户要求：代码按钮跟随放大按钮）
+      .padding({ top: 4 })
     }
     .width('100%')
     }
@@ -1603,6 +1903,12 @@ export struct MdBlockView {
 
   // ── 折叠细节块（<details><summary>）──
   @State detailsOpen: boolean = false;
+
+  /**
+   * 图表块（mermaid / echarts / markmap / flowchart / graphviz / abc / html）是否
+   * 以「源码」形态展示。**预览 ↔ 查看代码**切换（用户要求）：核对写法时不必离开阅读页。
+   */
+  @State chartShowCode: boolean = false;
 
   @Builder
   detailsView() {

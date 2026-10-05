@@ -62,6 +62,11 @@ const CREDITS: CreditItem[] = [
     name: 'HarmonyOS Samples · transitions-collection',
     url: 'https://gitcode.com/HarmonyOS_Samples/transitions-collection',
     note: '一镜到底 / 多模态转场动效参考'
+  },
+  {
+    name: 'luvi / lv-markdown-in',
+    url: 'https://gitee.com/luvi/lv-markdown-in',
+    note: 'Markdown 渲染能力参考：代码块行号 / 折叠 / 操作区、HTML 常用标签与 font 快速样式、懒渲染与预渲染块数思路'
   }
 ];
 
@@ -439,6 +444,14 @@ export struct SettingsExplore {
           Text('设计与实现参考')
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
+            .width('100%')
+
+          // **致谢**（用户要求）：标题下方一句，向参考项目致意
+          Text('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，'
+            + '在此向这些付出致意。')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
             .width('100%')
 
           // 只写参考项目的名称（用户要求）

@@ -16,7 +16,7 @@ import { image } from '@kit.ImageKit';
 @Component
 export struct DiagramWeb {
   /** 渲染模板名（对应 rawfile/render/<mode>.html） */
-  @Prop mode: string = 'mermaid';
+  @Prop @Watch('onModeChanged') mode: string = 'mermaid';
   /** 源码（公式 LaTeX / 图表源码 / echarts JSON） */
   @Prop payload: string = '';
   /** 暗色模式（传给页面切主题） */
@@ -85,7 +85,10 @@ export struct DiagramWeb {
               return;
             }
             const v: number = typeof h === 'number' && !isNaN(h) ? h : 100;
-            this.hVp = Math.max(56, Math.min(1200, v));
+            // ⚠️ html 预览**保底 140vp**：若高度回传偏小/未回传，卡片会矮到与
+            // 下一块内容视觉重叠（用户实测「两个卡片叠在一起」）。
+            const floor: number = this.mode === 'html' ? 140 : 56;
+            this.hVp = Math.max(floor, Math.min(1200, v));
             this.onHeightReady(this.hVp);
           }
         },
@@ -148,6 +151,20 @@ export struct DiagramWeb {
    * 页面早已加载完成，不会自动再 report()，不主动触发的话组件高度停在旧值，
    * 快照就会严重裁切（用户实测：导出图只剩顶部一小条）。
    */
+  /**
+   * **渲染形态切换（图表 ↔ 源码）时显式重载页面**。
+   * ⚠️ 只改 @Prop `mode` 是不够的：Web 的初始 src 在创建时已固定，
+   * 真机上不会因为属性变化自动重新加载 —— 用户实测"放大后点代码按钮，
+   * 画面还是图表"。这里手动 loadUrl 到新模板，并等页面重新注入 payload。
+   */
+  private onModeChanged(): void {
+    try {
+      this.ctrl.loadUrl('resource://rawfile/render/' + this.mode + '.html');
+    } catch (err) {
+      // 页面未就绪：忽略
+    }
+  }
+
   /** 重新自适应（旋转 / 尺寸互换后调用）。 */
   private doRefit(): void {
     if (this.refitRequest <= 0) {

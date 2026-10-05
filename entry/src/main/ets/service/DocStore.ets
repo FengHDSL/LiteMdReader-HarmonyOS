@@ -1019,21 +1019,79 @@ export class DocStore {
    * 读取文档正文。内置文档走 rawfile，其余走沙箱文件。
    * **预置文档支持修改**（用户要求）：改过一次后正文落在 docs/<fileName>
    * （覆盖文件），读取时优先用覆盖文件，没改过才回落 rawfile。
+   * ⚠️ **编码**：默认按 UTF-8 读取；用户可在阅读页「更多」里手动指定
+   * （GBK / GB18030 / Big5 / Latin-1）—— 非 UTF-8 文件按 UTF-8 硬解会乱码。
    */
-  static readText(ctx: common.UIAbilityContext, meta: DocMeta): string {
+  static readText(ctx: common.UIAbilityContext, meta: DocMeta, encoding: string = 'utf-8'): string {
+    const enc: string = encoding.length > 0 ? encoding : 'utf-8';
     if (meta.builtin) {
-      const override: string = DocStore.pathOf(meta.fileName);
-      try {
-        if (fs.accessSync(override)) {
-          return fs.readTextSync(override, { encoding: 'utf-8' });
-        }
-      } catch (err) {
-        // 覆盖文件读不到就回落 rawfile
-      }
+      // **内置文档始终读应用包内的 rawfile**。
+      // 用户实测「内置文档明明更新了、应用里却看不到新内容」：沙箱里残留的旧覆盖文件
+      // `docs/<名字>` 会一直优先于 rawfile，把更新后的内容压住。内置文档是只读示例，
+      // 这里不再支持"改过即覆盖"——想改内容请新建一份自己的文档。
       const bytes: Uint8Array = ctx.resourceManager.getRawFileContentSync(meta.fileName);
-      return util.TextDecoder.create('utf-8').decodeToString(bytes);
+      return DocStore.decodeBytesAs(bytes, enc);
     }
-    return fs.readTextSync(DocStore.pathOf(meta.fileName), { encoding: 'utf-8' });
+    return DocStore.readBytesAs(DocStore.pathOf(meta.fileName), enc);
+  }
+
+  /** 按指定编码读文件（读字节 → TextDecoder）；失败回落 UTF-8。 */
+  private static readBytesAs(path: string, enc: string): string {
+    try {
+      const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const st = fs.statSync(path);
+      const buf: ArrayBuffer = new ArrayBuffer(st.size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+      return DocStore.decodeBytesAs(new Uint8Array(buf), enc);
+    } catch (err) {
+      return '';
+    }
+  }
+
+  /**
+   * 按编码解码字节。
+   * · 自动（enc = 'auto'）：有 BOM 按 BOM；否则先按 UTF-8 解，若出现替换符
+   *   （U+FFFD，说明不是合法 UTF-8）再按 GB18030 重试 —— 覆盖绝大多数中文文档。
+   * · 指定编码：直接用 TextDecoder；失败回落 UTF-8。
+   */
+  static decodeBytesAs(bytes: Uint8Array, enc: string): string {
+    // BOM 优先
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return DocStore.tryDecode(bytes, 'utf-8');
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      return DocStore.tryDecode(bytes, 'utf-16le');
+    }
+    if (enc === 'auto') {
+      const u: string = DocStore.tryDecode(bytes, 'utf-8');
+      // 替换符占比高 → 不是 UTF-8（中文文档按 GB18030 兜底）
+      let bad: number = 0;
+      for (let k = 0; k < u.length; k++) {
+        if (u.charCodeAt(k) === 0xFFFD) {
+          bad++;
+        }
+      }
+      if (bad > 0 && bad > u.length / 500) {
+        const g: string = DocStore.tryDecode(bytes, 'gb18030');
+        return g.length > 0 ? g : u;
+      }
+      return u;
+    }
+    return DocStore.tryDecode(bytes, enc);
+  }
+
+  /** TextDecoder 解码（失败回落 UTF-8；再失败返回空串）。 */
+  private static tryDecode(bytes: Uint8Array, enc: string): string {
+    try {
+      return util.TextDecoder.create(enc).decodeToString(bytes);
+    } catch (err) {
+      try {
+        return util.TextDecoder.create('utf-8').decodeToString(bytes);
+      } catch (err2) {
+        return '';
+      }
+    }
   }
 
   /** 名字是否为任一内置文档名。 */

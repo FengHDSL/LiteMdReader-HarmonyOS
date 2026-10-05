@@ -157,6 +157,21 @@ function synthScoreWavTask(spec: string): ArrayBuffer {
 /** 列表里正文块之前固定占用的条目数：文档信息卡占 1 条。 */
 const LIST_HEADER_COUNT: number = 1;
 
+/** 文档编码选项（识别错误时手动指定；auto 为自动识别）。 */
+interface EncodingChoice {
+  label: string;
+  value: string;
+}
+
+const ENCODING_CHOICES: EncodingChoice[] = [
+  { label: '自动', value: 'auto' },
+  { label: 'UTF-8', value: 'utf-8' },
+  { label: 'GBK', value: 'gbk' },
+  { label: 'GB18030', value: 'gb18030' },
+  { label: 'Big5', value: 'big5' },
+  { label: 'Latin-1', value: 'iso-8859-1' }
+];
+
 /** 阅读页查找条占用的顶部高度（vp）：命中行要停在它下方（64 不够，实测差一点 → 76） */
 const SEARCH_BAR_INSET: number = 76;
 
@@ -555,6 +570,33 @@ export struct Reader {
   @State topBarVisible: boolean = true;
   @State bottomBarVisible: boolean = true;
   /**
+   * **沉浸阅读**（用户要求）：隐藏顶栏与底栏（含其中所有功能按钮），
+   * 只在**右下角**保留一个退出按钮。入口在顶栏返回按钮的右侧。
+   * 直接复用既有的 `topBarVisible` / `bottomBarVisible` 两个开关（它们本来就决定
+   * 顶栏 / 底栏是否渲染），再让滚动收放逻辑在沉浸期间整体短路 —— 否则往下滑一下
+   * 又会被"滚回顶部自动展开"带回来。
+   */
+  @State immersiveRead: boolean = false;
+  /**
+   * 文档编码（用户要求：识别错误时手动选择）。
+   * `auto` = 自动：BOM 优先（UTF-8 / UTF-16），否则先按 UTF-8 解，出现替换符
+   * 说明不是合法 UTF-8 → 回落 GB18030（覆盖绝大多数中文文档）。
+   * 其余值手动指定：utf-8 / gbk / gb18030 / big5 / iso-8859-1。
+   */
+  @State docEncoding: string = 'auto';
+  /**
+   * **大文件懒渲染**（用户要求：大体积 md 不严重卡顿/卡死）。
+   * ArkUI 的 ForEach 会一次性创建全部 ListItem —— 几万块的文档光建组件就卡死。
+   * 这里只渲染前 `visibleBlocks` 块，末尾放一个「哨兵」ListItem，滚动到它时再追加一批
+   * （参考 lv-markdown-in 的 lazyRender + 预渲染块数思路）。
+   */
+  @State visibleBlocks: number = 80;
+  /**
+   * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
+   * 用于从源码形态一键切回原来的预览形态。
+   */
+  @State enlargePrevMode: string = '';
+  /**
    * 标签栏位置（用户要求）：false = 顶栏下方（默认）/ true = **底部悬浮栏上方**。
    * 置底时：宽度与底部悬浮胶囊**完全一致**、固定贴在它上面（不随滚动收放），
    * 入口在「更多」面板里。持久化键 readerTabBarAtBottom。
@@ -889,6 +931,10 @@ export struct Reader {
   // 收起时外层容器高度折叠到只剩系统栏避让，正文真实扩大（而不是被隐形栏占着）。
 
   private toggleAllBars(show: boolean): void {
+    // 沉浸阅读期间不允许把栏条带回来（滚动收放 / 回到顶部强制展开都要让路）
+    if (this.immersiveRead) {
+      return;
+    }
     if (this.topBarVisible === show && this.bottomBarVisible === show) {
       return;
     }
@@ -899,6 +945,9 @@ export struct Reader {
   }
 
   private toggleTopBar(show: boolean): void {
+    if (this.immersiveRead) {
+      return;
+    }
     if (this.topBarVisible === show) {
       return;
     }
@@ -908,11 +957,49 @@ export struct Reader {
   }
 
   private toggleBottomBar(show: boolean): void {
+    if (this.immersiveRead) {
+      return;
+    }
     if (this.bottomBarVisible === show) {
       return;
     }
     this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
       this.bottomBarVisible = show;
+    });
+  }
+
+  /** 放大浮层当前内容是否带源码（图表 / HTML / 代码本身）。 */
+  private enlargeHasCode(): boolean {
+    const m: string = this.enlargeMode.toLowerCase();
+    // **本身就是源码放大**（从代码块点放大进来）：不显示"查看源码"开关 ——
+    // 它已经是源码，再切没有意义，早前的实现还会让状态错乱（用户实测点击会出错）。
+    if (m === 'code' && this.enlargePrevMode.length === 0) {
+      return false;
+    }
+    return m === 'mermaid' || m === 'markmap' || m === 'echarts' || m === 'abc'
+      || m === 'graphviz' || m === 'flowchart' || m === 'html' || m === 'code';
+  }
+
+  /**
+   * 放大浮层里「查看源码 ↔ 返回预览」（用户要求：按钮放在「减」左边）。
+   * 切换只换 `enlargeMode`（渲染形态），payload 不变 —— 缩放 / 旋转参数都保留。
+   */
+  private toggleEnlargeCode(): void {
+    if (this.enlargeMode.toLowerCase() === 'code') {
+      this.enlargeMode = this.enlargePrevMode.length > 0 ? this.enlargePrevMode : 'code';
+      return;
+    }
+    this.enlargePrevMode = this.enlargeMode;
+    this.enlargeMode = 'code';
+  }
+
+  /** 切换沉浸阅读：进入即收起顶栏 / 底栏，退出即恢复。 */
+  private toggleImmersive(): void {
+    const next: boolean = !this.immersiveRead;
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+      this.immersiveRead = next;
+      this.topBarVisible = !next;
+      this.bottomBarVisible = !next;
     });
   }
 
@@ -993,9 +1080,16 @@ export struct Reader {
         this.toast(this.loadError);
         return;
       }
-      const text: string = DocStore.readText(ctx, meta);
+      // 书架「⋯ → 文档编码」可能给这篇设过编码（AppStorage 按文档存）→ 优先采用
+      const storedEnc: string | undefined = AppStorage.get<string>('docEncoding_' + this.docName);
+      if (storedEnc !== undefined && storedEnc.length > 0) {
+        this.docEncoding = storedEnc;
+      }
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
       const result: MdParseResult = MdParser.parse(text);
       this.blocks = result.blocks;
+      // 换文档 / 换编码都从首批重新开始（否则上一份文档的加载进度会带过来）
+      this.visibleBlocks = 80;
       this.docOutline = result.outline;
       this.notes = result.notes;
       this.annotations = AnnotationStore.load(ctx, this.docName);
@@ -1601,7 +1695,7 @@ export struct Reader {
     // **智能导出**（用户要求）：渲染库提前缓存到应用内、导出时内嵌（自包含、
     // 离线可渲染）；首次自动下载；下载失败回退在线模式。
     try {
-      const content: string = DocStore.readText(ctx, DocStore.find(ctx, this.docName)!);
+      const content: string = DocStore.readText(ctx, DocStore.find(ctx, this.docName)!, this.docEncoding);
       ExportService.exportHtmlSmart(ctx, this.docName, content, (m: string) => {
         this.toast(m);
       });
@@ -1681,7 +1775,7 @@ export struct Reader {
       if (meta === undefined) {
         return;
       }
-      const text: string = DocStore.readText(ctx, meta);
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
       const lines: string[] = text.split('\n');
       const lineNo: number = block.srcLine;
       if (lineNo < 0 || lineNo >= lines.length) {
@@ -2300,6 +2394,12 @@ export struct Reader {
   }
 
   private jumpTo(blockIndex: number): void {
+    // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
+    // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
+    // 先把它纳入渲染范围，再跳。
+    if (blockIndex + 8 > this.visibleBlocks) {
+      this.visibleBlocks = Math.min(this.blocks.length, blockIndex + 24);
+    }
     // **平板（宽屏）：跳转后目录 / 注释保持展开**，不自动收起（用户要求）
     if (!this.isWide()) {
       this.closeDrawers();
@@ -2376,6 +2476,22 @@ export struct Reader {
           .fontColor([this.palette().textPrimary])
       }
 
+      // **沉浸阅读入口**（用户要求：放在顶栏返回按钮的右侧；与右侧两按钮保持同样的间隙）
+      Column()
+        .width(HwSpace.xs)
+      ImmersiveIconButton({
+        buttonSize: 34,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          this.toggleImmersive();
+        }
+      }) {
+        SymbolGlyph($r('sys.symbol.eye'))
+          .fontSize(17)
+          .fontColor([this.palette().textPrimary])
+      }
+
       Column({ space: 1 }) {
         Text(this.docName.length > 0 ? this.docName : '未命名文档')
           .fontSize(HwType.label)
@@ -2392,6 +2508,12 @@ export struct Reader {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Center)
       .padding({ left: HwSpace.xs, right: HwSpace.xs })
+      // **双击标题快速回到文档顶部**（用户要求）。
+      // 用 priorityGesture：顶栏胶囊自己带手势，普通 gesture 会被父级先消费掉。
+      .priorityGesture(TapGesture({ count: 2 }).onAction(() => {
+        this.scroller.scrollEdge(Edge.Top);
+        this.toast('已回到顶部');
+      }))
 
       // 导出入口（用户要求）：搜索按钮左边，弹出 HTML / MD / 分享。
       // 与查找按钮的间隙用**独立占位**（不包 Column / 不链 margin——
@@ -2733,8 +2855,10 @@ export struct Reader {
   @Builder
   settingsSheet() {
     Scroll() {
-      Column() {
+      Column({ space: HwSpace.md }) {
         ReadingSettingsPanel({ showReadingHints: true, showHeader: false })
+        // **文档编码**（用户要求）：识别错误时手动指定，切换后重新解析正文
+        this.encodingCard()
       }
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.lg })
@@ -2742,6 +2866,74 @@ export struct Reader {
     .scrollBar(BarState.Off)
     .width('100%')
     .height('100%')
+  }
+
+  /**
+   * 文档编码选择卡（「阅读设置」底部）。
+   * **为什么需要它**：非 UTF-8 的文档（例如 Windows 记事本存出来的 GBK/ANSI 文本）
+   * 按 UTF-8 硬解会整篇乱码。自动模式已能覆盖大多数情况，识别不准时在这里手动指定。
+   */
+  @Builder
+  encodingCard() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette()
+    }) {
+      Column({ space: HwSpace.sm }) {
+        Text('文档编码')
+          .fontSize(HwType.label + 1)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+
+        Text(this.docEncoding === 'auto'
+          ? '自动识别：先按 UTF-8 解码，出现乱码则按 GB18030 重试；识别不准时可手动指定。'
+          : '当前手动指定为 ' + this.encodingLabel(this.docEncoding) + '。切换后正文会重新解析。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .lineHeight(HwType.caption * 1.7)
+          .width('100%')
+
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(ENCODING_CHOICES, (item: EncodingChoice) => {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: item.label,
+              chipActive: this.docEncoding === item.value,
+              chipOnTap: () => {
+                this.switchEncoding(item.value);
+              }
+            })
+              .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+          }, (item: EncodingChoice) => item.value)
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /** 编码的显示名（找不到就原样返回）。 */
+  private encodingLabel(value: string): string {
+    for (let k = 0; k < ENCODING_CHOICES.length; k++) {
+      if (ENCODING_CHOICES[k].value === value) {
+        return ENCODING_CHOICES[k].label;
+      }
+    }
+    return value;
+  }
+
+  /** 切换文档编码并重新解析正文。 */
+  private switchEncoding(value: string): void {
+    if (this.docEncoding === value) {
+      return;
+    }
+    this.docEncoding = value;
+    // 同步到 AppStorage：书架「⋯ → 文档编码」读同一份，两处切换互相可见
+    AppStorage.setOrCreate('docEncoding_' + this.docName, value);
+    this.loadDoc();
+    this.toast('编码已切换：' + this.encodingLabel(value));
   }
 
   @Builder
@@ -3564,7 +3756,7 @@ export struct Reader {
         this.toast('文档不存在');
         return;
       }
-      const text: string = DocStore.readText(ctx, meta);
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       pasteboard.getSystemPasteboard().setData(data).then(() => {
         this.toast('已复制全文（' + text.length + ' 字）');
@@ -4175,7 +4367,9 @@ export struct Reader {
               }
             }
 
-            ForEach(this.blocks, (block: MdBlock) => {
+            // **只渲染已加载的块**：`.slice` 返回新数组，key 不变时已渲染的块被复用，
+            // 新增的一批才会创建组件（不会整列重建）。
+            ForEach(this.blocks.slice(0, this.visibleBlocks), (block: MdBlock) => {
               ListItem() {
                 MdBlockView({
                   block: block,
@@ -4233,6 +4427,9 @@ export struct Reader {
                       // 才会把正文里的小卡片形变成全屏大画布
                       this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
                         this.enlargeMode = mode;
+                        // 每次打开浮层都清空"切源码前的形态"：从代码块放大进来时它为空，
+                        // 用于隐藏「查看源码」开关（见 enlargeHasCode）
+                        this.enlargePrevMode = '';
                         this.enlargePayload = pl;
                         this.enlargeGeo = geoKey;
                         this.enlargeTitle = title;
@@ -4272,6 +4469,32 @@ export struct Reader {
                 }
                 return block.id + '_' + this.docName + '_' + this.renderEpoch;
               })
+
+            // **懒渲染的「继续加载」入口**（大文件分批渲染）。
+            // ⚠️ 不能用 ListItem 的 onAppear 自动追加：ForEach 不是懒加载，所有
+            // ListItem 一创建 onAppear 就全部触发 —— 用户实测表现为"一直显示加载中
+            // 却加载不出来"（还可能反复触发）。改成**点一下加载一批**，行为确定。
+            if (this.blocks.length > this.visibleBlocks) {
+              ListItem() {
+                Row() {
+                  Text('正在加载更多…（已显示 ' + this.visibleBlocks + ' / ' + this.blocks.length + ' 块）')
+                    .fontSize(HwType.caption)
+                    .fontColor(this.palette().textTertiary)
+                }
+                .width('100%')
+                .justifyContent(FlexAlign.Center)
+                .padding({ top: HwSpace.md, bottom: HwSpace.md })
+              }
+              // **滚动到就自动加载**（用户要求：不要手动点，否则体验割裂）。
+              // 用 onVisibleAreaChange 而不是 ListItem.onAppear —— ForEach 不是懒加载，
+              // onAppear 会在条目创建时全部触发（此前"一直加载中"就是这个原因）；
+              // 可见比例回调只在**真的滚到这里**时触发，语义正确且可靠。
+              .onVisibleAreaChange([0.0, 1.0], (isVisible: boolean) => {
+                if (isVisible) {
+                  this.visibleBlocks = Math.min(this.blocks.length, this.visibleBlocks + 60);
+                }
+              })
+            }
 
             ListItem() {
               Text('—— 文档结束 ——')
@@ -4378,6 +4601,9 @@ export struct Reader {
       // **主题纪元拼在顶栏层上**：明暗切换时整个顶栏（胶囊 + 里面的按钮）重建。
       // 只改条目 key 不够——按钮是由这一层复用的，会保留旧颜色。
       .key('readerTopLayer_' + this.themeEpoch)
+      // **沉浸阅读：整层完全不渲染**（用户要求"完全隐藏"，而不是收成迷你胶囊）——
+      // Visibility.None 既不绘制也不占位，比只翻 topBarVisible 彻底得多。
+      .visibility(this.immersiveRead ? Visibility.None : Visibility.Visible)
 
       // ── 标签栏层：与顶栏 Stack **平级**、没有左右 padding ——
       // Scroll 的 '100%' 就是整屏宽，标签的出现 / 消失点天然落在屏幕边缘。
@@ -4440,6 +4666,34 @@ export struct Reader {
       .hitTestBehavior(HitTestMode.Transparent)
       // **主题纪元拼在底栏层上**：明暗切换时整颗胶囊（含里面的按钮与标签数字）重建
       .key('readerBottomLayer_' + this.themeEpoch)
+      // 同上：沉浸阅读时底栏层整层不渲染（连收起态的迷你胶囊也一并消失）
+      .visibility(this.immersiveRead ? Visibility.None : Visibility.Visible)
+
+      // **沉浸阅读的退出按钮**（用户要求：**右上角**一颗，高度与顶部悬浮胶囊一致；
+      // 沉浸期间顶栏 / 底栏 / 标签栏 / 查找条全部不渲染，它是屏幕上唯一的控件）
+      if (this.immersiveRead) {
+        Stack() {
+          ImmersiveIconButton({
+            buttonSize: 34,
+            buttonMaterialShadow: true,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.toggleImmersive();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.xmark'))
+              .fontSize(17)
+              .fontColor([this.palette().accent])
+          }
+        }
+        .width(34)
+        .height(34)
+        // 顶部避开系统状态栏（约 44vp）+ 与顶栏同档留白；右边不压停靠栏
+        .position({
+          x: this.rootWidth - this.barInsetRight() - 42,
+          y: 52
+        })
+      }
 
       // **系统选择模式的退出胶囊**（用户要求）：屏幕右缘中部（智感握姿拇指可及），
       // 点一下恢复自定义批注菜单、胶囊消失。出现 / 消失都带淡入缩放过渡。
@@ -4546,6 +4800,24 @@ export struct Reader {
                   .textAlign(TextAlign.Start)
               } else {
                 Blank()
+              }
+              // **查看源码 ↔ 返回预览**（用户要求：放在「减」按钮左边）。
+              // 图表 / HTML / 代码三类放大内容都适用：只换渲染形态，payload 不变。
+              if (this.enlargeHasCode()) {
+                ImmersiveIconButton({
+                  buttonSize: 34,
+                  buttonMaterialShadow: false,
+                  palette: this.palette(),
+                  buttonOnTap: () => {
+                    this.toggleEnlargeCode();
+                  }
+                }) {
+                  SymbolGlyph($r('sys.symbol.text_alignleft'))
+                    .fontSize(15)
+                    .fontColor([this.enlargeMode === 'code'
+                      ? this.palette().accent
+                      : (this.isDark() ? '#FFFFFFFF' : '#E6222226')])
+                }
               }
               // 缩小：body 缩放 ×0.8（最小 0.5）
               ImmersiveIconButton({

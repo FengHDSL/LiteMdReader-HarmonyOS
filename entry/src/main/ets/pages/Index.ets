@@ -185,6 +185,8 @@ struct Index {
   @State starSort: string = 'starred';
   /** 当前格子菜单对象的收藏状态（选择操作面板里的「收藏 / 取消收藏」） */
   @State cellMenuStarred: boolean = false;
+  /** 当前格子菜单对象的文档编码（与阅读页共用 AppStorage 键 `docEncoding_<文档名>`） */
+  @State cellMenuEncoding: string = 'auto';
   /** 半模态面板重建纪元：深浅切换时换容器 key，避免面板"切换不完全" */
   @State sheetEpoch: number = 0;
   /** 新建 / 导入后回书架：这次刷新带进场动画 */
@@ -516,6 +518,9 @@ struct Index {
     const c = this.ctx();
     if (c !== null) {
       this.cellMenuStarred = DocStore.isStarred(c, name);
+      this.cellMenuEncoding = this.encodingOf(name);
+      // 写入固定键：面板里的编码卡（EncodingChoiceCard）用 @StorageLink 订阅它
+      AppStorage.setOrCreate('cellMenuEncoding', this.cellMenuEncoding);
     }
     // 打开时同步一次只读状态（后面由按钮自己维护，不再每次渲染现问数据层）
     this.cellMenuReadOnly = kind === 'doc' ? this.isDocReadOnly(name) : false;
@@ -1421,6 +1426,11 @@ struct Index {
     }
   }
 
+  /**
+   * 导入文档：**支持一次选多个文件**（用户要求批量导入）。
+   * 逐个导入并统计成功 / 失败数，最后一个 toast 汇总结果；
+   * 重名由 DocStore.importFromUri 自行处理（自动加序号，不会覆盖已有文档）。
+   */
   private importDoc(): void {
     const ctx = this.ctx();
     if (ctx === null) {
@@ -1429,19 +1439,33 @@ struct Index {
     try {
       const docPicker = new picker.DocumentViewPicker(ctx);
       const options = new picker.DocumentSelectOptions();
-      options.maxSelectNumber = 1;
+      // 1 → 50：多选批量导入
+      options.maxSelectNumber = 50;
       options.fileSuffixFilters = ['.md', '.markdown', '.txt'];
       docPicker.select(options).then((uris: string[]) => {
         if (uris.length === 0) {
           return;
         }
-        const meta: DocMeta | null = DocStore.importFromUri(ctx, uris[0]);
-        if (meta === null) {
-          this.toast('导入失败：文件无法读取');
-          return;
+        let ok: number = 0;
+        let fail: number = 0;
+        let lastName: string = '';
+        for (let k = 0; k < uris.length; k++) {
+          const meta: DocMeta | null = DocStore.importFromUri(ctx, uris[k]);
+          if (meta === null) {
+            fail++;
+          } else {
+            ok++;
+            lastName = meta.name;
+          }
         }
         this.refresh();
-        this.toast('已导入《' + meta.name + '》');
+        if (ok === 1 && fail === 0) {
+          this.toast('已导入《' + lastName + '》');
+        } else if (fail === 0) {
+          this.toast('已导入 ' + ok + ' 个文件');
+        } else {
+          this.toast('已导入 ' + ok + ' 个，失败 ' + fail + ' 个');
+        }
       }).catch((err: BusinessError) => {
         this.toast('选择文件失败：' + err.message);
       });
@@ -3331,6 +3355,8 @@ struct Index {
             this.toast(next ? '已收藏' : '已取消收藏');
           }
         })
+        // （文档编码已改为卡片样式，移到面板最底部 —— 见本 builder 末尾）
+
         // **预置文档支持修改**（用户要求）：编辑不再限制非内置；
         // 但**只读的文档不给编辑入口**（可在本面板切成「可写」再编辑）
         if (!this.cellMenuReadOnly) {
@@ -3447,6 +3473,17 @@ struct Index {
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
+      }
+
+      // ── **文档编码**（用户要求：卡片样式、放在面板最底部）──
+      // 用独立组件承载：它内部用 @StorageLink 订阅当前档位，切换时只写 AppStorage，
+      // **不重建面板** —— 之前靠 sheetEpoch++ 刷选中态会把半模态面板的滚动位置
+      // 一起重置（用户实测："一改编码面板就跳回顶部"）。
+      if (this.cellMenuKind === 'doc') {
+        EncodingChoiceCard({
+          docName: this.cellMenuFor,
+          palette: this.palette()
+        })
       }
     }
     .width('100%')
@@ -3915,9 +3952,71 @@ struct Index {
     .id('starred_' + this.sheetEpoch)
   }
 
+  /** 文档编码在 AppStorage 里的键（按文档名存，与阅读页共用同一份）。 */
+  private encodingKeyOf(docName: string): string {
+    return 'docEncoding_' + docName;
+  }
+
+  /** 读取某篇文档的编码（没设过 = auto 自动识别）。 */
+  private encodingOf(docName: string): string {
+    const v: string | undefined = AppStorage.get<string>(this.encodingKeyOf(docName));
+    return v === undefined || v.length === 0 ? 'auto' : v;
+  }
+
+  /** 下一档编码（循环：自动 → UTF-8 → GBK → GB18030 → Big5 → Latin-1 → 自动）。 */
+  private nextEncoding(cur: string): string {
+    if (cur === 'auto') {
+      return 'utf-8';
+    }
+    if (cur === 'utf-8') {
+      return 'gbk';
+    }
+    if (cur === 'gbk') {
+      return 'gb18030';
+    }
+    if (cur === 'gb18030') {
+      return 'big5';
+    }
+    if (cur === 'big5') {
+      return 'iso-8859-1';
+    }
+    return 'auto';
+  }
+
+  /** 编码档位列表（书架「⋯」面板的下拉用；与阅读页六档一致）。 */
+  private encodingValues(): string[] {
+    const out: string[] = [];
+    out.push('auto');
+    out.push('utf-8');
+    out.push('gbk');
+    out.push('gb18030');
+    out.push('big5');
+    out.push('iso-8859-1');
+    return out;
+  }
+
+  /** 编码的显示名。 */
+  private encodingLabel(value: string): string {
+    if (value === 'utf-8') {
+      return 'UTF-8';
+    }
+    if (value === 'gbk') {
+      return 'GBK';
+    }
+    if (value === 'gb18030') {
+      return 'GB18030';
+    }
+    if (value === 'big5') {
+      return 'Big5';
+    }
+    if (value === 'iso-8859-1') {
+      return 'Latin-1';
+    }
+    return '自动';
+  }
+
   /** 切换收藏排序并即时重排。 */
-  private applyStarSort(sort: string): void {
-    this.starSort = sort;
+  private applyStarSort(sort: string): void {    this.starSort = sort;
     const c = this.ctx();
     if (c !== null) {
       this.starredDocs = DocStore.starredList(c, sort);
@@ -4742,5 +4841,105 @@ export struct CoverProgressBar {
     .width('100%')
     .height('100%')
     .hitTestBehavior(HitTestMode.None)
+  }
+}
+
+/**
+ * 书架「⋯」面板里的**文档编码卡**。
+ *
+ * ⚠️ 为什么单独做成组件：原来靠 `sheetEpoch++` 强制重建面板来刷新选中态，而重建会把
+ * 半模态面板的滚动位置一起重置 —— 用户实测「一改编码，面板就跳回顶部」。
+ * 这里用 `@StorageLink('cellMenuEncoding')` 让卡片**自己订阅**当前档位：
+ * 切换只写 AppStorage 就能自动重绘，面板本身不重建、滚动位置保持不动。
+ */
+@Component
+export struct EncodingChoiceCard {
+  /** 目标文档名（写入 `docEncoding_<名字>`，阅读页读同一份） */
+  @Prop docName: string = '';
+  /** 调色板（由宿主传入） */
+  @Require @Prop palette: ReaderPalette;
+  /** 当前档位（固定键；打开面板时由宿主写入当前文档的编码） */
+  @StorageLink('cellMenuEncoding') current: string = 'auto';
+
+  private values(): string[] {
+    const out: string[] = [];
+    out.push('auto');
+    out.push('utf-8');
+    out.push('gbk');
+    out.push('gb18030');
+    out.push('big5');
+    out.push('iso-8859-1');
+    return out;
+  }
+
+  private labelOf(v: string): string {
+    if (v === 'utf-8') {
+      return 'UTF-8';
+    }
+    if (v === 'gbk') {
+      return 'GBK';
+    }
+    if (v === 'gb18030') {
+      return 'GB18030';
+    }
+    if (v === 'big5') {
+      return 'Big5';
+    }
+    if (v === 'iso-8859-1') {
+      return 'Latin-1';
+    }
+    return '自动识别';
+  }
+
+  build() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette
+    }) {
+      Column({ space: HwSpace.xs }) {
+        Text('文档编码')
+          .fontSize(HwType.label + 1)
+          .fontColor(this.palette.textPrimary)
+          .width('100%')
+        Text('非 UTF-8 的文档（例如 GBK 存出来的 txt）按 UTF-8 硬解会整篇乱码；'
+          + '自动识别不准时在这里手动指定。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette.textTertiary)
+          .lineHeight(HwType.caption * 1.7)
+          .width('100%')
+
+        ForEach(this.values(), (enc: string) => {
+          Row({ space: HwSpace.sm }) {
+            Text(this.labelOf(enc))
+              .fontSize(HwType.label)
+              .fontColor(this.current === enc
+                ? this.palette.accent : this.palette.textPrimary)
+              .layoutWeight(1)
+              .textAlign(TextAlign.Start)
+            if (this.current === enc) {
+              SymbolGlyph($r('sys.symbol.checkmark'))
+                .fontSize(15)
+                .fontColor([this.palette.accent])
+            }
+          }
+          .width('100%')
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: HwSpace.xs, bottom: HwSpace.xs })
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.current === enc
+            ? withAlpha(this.palette.accent, '1F') : '#00000000')
+          .onClick(() => {
+            // @StorageLink 双向：赋值即写 AppStorage → 卡片自身重绘（**面板不重建**）
+            this.current = enc;
+            AppStorage.setOrCreate('docEncoding_' + this.docName, enc);
+            this.getUIContext().getPromptAction().showToast({
+              message: '文档编码：' + this.labelOf(enc)
+            });
+          })
+        }, (enc: string) => 'enc_' + enc)
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
   }
 }
