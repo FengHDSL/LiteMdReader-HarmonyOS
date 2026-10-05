@@ -51,6 +51,13 @@ export interface ModalSheetSpec {
    */
   fitContent?: boolean;
   /**
+   * **多档高度**（用户要求：批注面板支持自由调节）：
+   * 传入后走 `detents`（拖拽条在几档间切换），忽略 fitContent / 默认高度。
+   * ⚠️ SheetOptions.detents 是 **1~3 个元素的元组**（不是数组）。
+   * 例：`[SheetSize.FIT_CONTENT, SheetSize.MEDIUM, SheetSize.LARGE]`。
+   */
+  detents?: [string | number | Resource, (string | number | Resource)?, (string | number | Resource)?];
+  /**
    * 调用方实测的根宽（vp）。平板竖屏（>600vp，官方断点）时面板宽度
    * **收一半**且水平居中，不铺满屏幕（用户要求 2026-09-30）；
    * 手机竖屏保持全宽；横屏走系统默认，不用此值。
@@ -78,10 +85,9 @@ export function modalSheetOptions(spec: ModalSheetSpec): SheetOptions {
   // 「面板是透明的」——这里抬到 FF，卡片观感由材质/内容自己负责。
   const opaqueSurface: string = withAlpha(spec.surface, 'FF');
   const options: SheetOptions = {
-    // 高度：fitContent = 内容自适应（内容少贴合内容、多时到上限内部可滚）；
-    // 否则官方中档位 = 屏高 60% 定高。
-    height: spec.fitContent === true ? SheetSize.FIT_CONTENT : SheetSize.MEDIUM,
-    // 构成 1：操作提示（拖拽条），面板尺寸包含多档位时的官方默认结构。
+    // 高度：有 detents 时**不设 height**（detents 接管，拖拽条切档）；
+    // 否则 fitContent = 内容自适应，默认官方中档位 = 屏高 60% 定高。
+    // dragBar 已开（构成 1），detents 的档位切换正是靠它拖动。
     dragBar: true,
     // 构成 5：关闭按钮，官方默认显示，出现在标题栏右上角。
     showClose: true,
@@ -98,6 +104,11 @@ export function modalSheetOptions(spec: ModalSheetSpec): SheetOptions {
     // 点遮罩 / 关闭按钮 / 下滑关闭都走这里，入口状态由调用方清空。
     onDisappear: spec.onDismiss
   };
+  if (spec.detents !== undefined) {
+    options.detents = spec.detents;
+  } else {
+    options.height = spec.fitContent === true ? SheetSize.FIT_CONTENT : SheetSize.MEDIUM;
+  }
   // **竖屏走手机形态**（用户要求 2026-09-30）：强制底部面板，
   // 平板竖屏不转居中窗口；横屏交还系统默认（平板按官方规格居中 480vp）。
   if (spec.phoneLayout) {

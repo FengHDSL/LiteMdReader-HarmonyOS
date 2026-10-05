@@ -85,6 +85,21 @@ export class DocLint {
     return { char: c, len: n } as FenceMark;
   }
 
+  /** 该行是否"像表格行"（含竖线且剥掉竖线后还有内容）。 */
+  private static isTableLine(line: string): boolean {
+    const t: string = line.trim();
+    return t.length > 1 && t.indexOf('|') >= 0;
+  }
+
+  /** 该行是否是表格分隔行（`| --- | :--: |`）。 */
+  private static isDelimiterLike(line: string): boolean {
+    const t: string = line.trim();
+    if (t.indexOf('-') < 0) {
+      return false;
+    }
+    return t.replace(/[|\s:\-]/g, '').length === 0;
+  }
+
   /** ATX 标题：返回 { level, text }；不是标题返回 null。 */
   private static headingOf(line: string): HeadingHit | null {
     const t: string = line.trim();
@@ -277,6 +292,22 @@ export class DocLint {
           level: 'warn', line: i + 1, kind: '超长行',
           message: '这一行有 ' + line.length + ' 个字符，编辑与渲染都会吃力，建议手动换行'
         } as LintIssue);
+      }
+
+      // **表格缺少分隔行**：表头下面必须紧跟 `| --- |`，否则整张表会被当成普通段落渲染
+      // —— 用户看到的是一行带竖线的文字，很难自己想到原因。只报"表头行"：
+      // 本行像表格、上一行不是表格行、而下一行虽是表格行却不是分隔行。
+      if (DocLint.isTableLine(line)) {
+        const nextLine: string = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+        const prevIsTable: boolean = i > 0 && DocLint.isTableLine(lines[i - 1]);
+        if (!prevIsTable && DocLint.isTableLine(nextLine)
+          && !DocLint.isDelimiterLike(nextLine)) {
+          issues.push({
+            level: 'warn', line: i + 1, kind: '表格缺少分隔行',
+            message: '这一行像是表头，但下一行不是 | --- | 分隔行；补一行分隔行才会渲染成表格'
+              + '（也可以直接删掉竖线，改成普通文字）'
+          } as LintIssue);
+        }
       }
 
       // 表格列数一致性

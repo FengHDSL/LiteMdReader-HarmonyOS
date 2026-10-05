@@ -710,6 +710,9 @@ export class MdParser {
 
       // ── 表格 ──────────────────────────────────────────────────────
       if (t.indexOf('|') >= 0 && i + 1 < lines.length && MdParser.isTableDelimiter(lines[i + 1].trim())) {
+        // **记录表头行号**（0 起）：表格可视化编辑写回原文按块的 srcLine 定位行段，
+        // 之前 MdBlockFactory.table 里 srcLine 恒为 0 → 保存时拿文档第一行校验必失败。
+        const tableStart: number = i;
         const headerCells: string[] = MdParser.splitRow(t);
         const aligns: number[] = MdParser.delimiterAligns(lines[i + 1].trim());
         const rows: MdTableRow[] = [];
@@ -723,7 +726,9 @@ export class MdParser {
           rows.push(MdBlockFactory.tableRow(MdParser.splitRow(cur), false));
           i++;
         }
-        blocks.push(MdBlockFactory.table(rows, aligns, blocks.length));
+        const tb: MdBlock = MdBlockFactory.table(rows, aligns, blocks.length);
+        tb.srcLine = tableStart;
+        blocks.push(tb);
         continue;
       }
 

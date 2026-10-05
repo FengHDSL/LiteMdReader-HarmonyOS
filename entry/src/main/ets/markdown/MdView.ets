@@ -603,6 +603,10 @@ export struct MdBlockView {
   taskToggleHandler: (blockId: string) => void = () => {
   };
 
+  /** 点击表格块：打开可视化表格编辑（页面按 srcLine 写回原文；只读文档由页面拦截）。 */
+  tableEditHandler: (blockId: string) => void = () => {
+  };
+
   /** 图表/公式放大查看：mode 对应 DiagramWeb 模板名，geoKey = 一镜到底的共享 id，title = 原内容标题（可空）。 */
   enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => void = () => {
   };
@@ -1615,6 +1619,11 @@ export struct MdBlockView {
     .clip(true)
     .border({ width: 1, color: this.palette.divider })
     .margin({ top: HwSpace.xs, bottom: HwSpace.xs })
+    // **点表格打开可视化编辑**（TableEditorDialog，页面按块 srcLine 写回原文）。
+    // onClick 不影响表格内部的横向滚动手势（滚动手势由 Scroll 消费，单击才冒泡）。
+    .onClick(() => {
+      this.tableEditHandler(this.block.id);
+    })
   }
 
   @Builder
@@ -1998,7 +2007,13 @@ export struct MdBlockView {
     .onAreaChange((oldValue: Area, newValue: Area) => {
       const w: Length = newValue.width;
       if (typeof w === 'number' && w > 0) {
-        this.menuMaxW = w + 48;
+        // **容差 24vp**：侧边栏展开/收起动画期间正文宽度逐帧微变——逐帧写
+        // menuMaxW 会让批注菜单约束反复重建（正文抽搐闪烁，用户实测）。
+        // 动画中间态全部忽略；动画结束的终值差远超容差、会更新一次。
+        const next: number = w + 48;
+        if (Math.abs(next - this.menuMaxW) > 24) {
+          this.menuMaxW = next;
+        }
       }
     })
   }

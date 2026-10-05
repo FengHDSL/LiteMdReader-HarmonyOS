@@ -42,6 +42,8 @@ import {
 } from '../material/ImmersiveCard';
 import { getImmersiveMaterial } from '../material/SystemMaterial';
 import { modalSheetOptions } from '../material/ModalSheet';
+import { MdTable, TableAlign, TableTool } from '../service/TableTool';
+import { TableEditorDialog } from '../components/TableEditorDialog';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
@@ -57,7 +59,7 @@ import { FontStore } from '../service/FontStore';
 import { NavLifecycle } from '../service/NavLifecycle';
 import { GripAware } from '../service/GripAware';
 import { ShareKitService } from '../service/ShareKitService';
-import { GenWallpaper } from '../theme/GenWallpaper';
+import { GenWallpaper, genWallpaperFlatColor } from '../theme/GenWallpaper';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { DocCover, coverColorsOf } from '../components/DocCover';
 import { DiagramWeb } from '../components/DiagramWeb';
@@ -68,6 +70,7 @@ import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
 import { MdBlockView } from '../markdown/MdView';
 import { ExportService } from '../service/ExportService';
+import { EpubExport } from '../service/EpubExport';
 
 // ══ 乐谱音频合成（后台线程）：音符事件 → 16bit WAV ══
 interface ScoreNote {
@@ -156,6 +159,14 @@ function synthScoreWavTask(spec: string): ArrayBuffer {
 
 /** 列表里正文块之前固定占用的条目数：文档信息卡占 1 条。 */
 const LIST_HEADER_COUNT: number = 1;
+
+/**
+ * 批注草稿（用户要求：不小心退出后重新点「添加批注」，输入的内容还在）。
+ * 用 AppStorage 记「草稿文本 + 时间戳」，**3 分钟内有效**，超时视为已放弃。
+ */
+const NOTE_DRAFT_KEY: string = 'readerNoteDraft';
+const NOTE_DRAFT_AT_KEY: string = 'readerNoteDraftAt';
+const NOTE_DRAFT_TTL: number = 3 * 60 * 1000;
 
 /** 文档编码选项（识别错误时手动指定；auto 为自动识别）。 */
 interface EncodingChoice {
@@ -516,6 +527,13 @@ export struct Reader {
     this.rotated = false;
     this.webZoom = 1;
     this.imgScale = 1;
+    // **对照面板恢复**（用户要求）：从对照面板里点开的浮层，关闭后自动把
+    // 面板重新拉起（对照文档还选着，直接回到对照现场，不用重新选）
+    if (this.compareSheetWasOpen) {
+      this.compareSheetWasOpen = false;
+      this.activeSheet = 'compare';
+      this.sheetVisible = true;
+    }
     this.imgDx = 0;
     this.imgDy = 0;
     this.enlargeWebMounted = true;
@@ -544,13 +562,9 @@ export struct Reader {
 
   /** 上一帧是否处于大屏：用于捕捉「窄→宽」的切换瞬间（自动钉住两侧面板）。 */
   private wasWide: boolean = false;
-  /** 停靠面板宽度（大屏下拖分隔条可调，范围 220~460） */
-  @State tocPanelWidth: number = 300;
-  @State notesPanelWidth: number = 300;
-  /** 分隔条拖动状态：'toc' | 'notes' | ''（空 = 未在拖分隔条） */
-  private sideDrag: string = '';
-  private sideDragStartWidth: number = 0;
-  private sideDragBaseX: number = 0;
+  /** 停靠面板宽度（持久化记忆：拖分隔条功能已移除，宽度固定为上次记忆值） */
+  @StorageLink('readerTocPanelW') tocPanelWidth: number = 300;
+  @StorageLink('readerNotesPanelW') notesPanelWidth: number = 300;
   /** 大屏/横屏：注释停靠右侧 */
   @State notesPinned: boolean = false;
   /** 标签长按菜单 */
@@ -620,6 +634,13 @@ export struct Reader {
   private sysTabBaseY: number = 0;
   /** 函数绘制壁纸的 id（空 = 不用） */
   @StorageProp('wallpaperGenId') genWallId: string = '';
+  /**
+   * 自定义函数壁纸的两端色（暗端 A / 亮端 B）。
+   * 侧边栏关闭沉浸光感时用它算"与背景同色"的底色，**必须在本页订阅**：
+   * 纯函数里读 AppStorage 不登记渲染依赖，改色后已画出的侧边栏不会重算。
+   */
+  @StorageProp('wallpaperCustomA') customWallA: string = '#1E222B';
+  @StorageProp('wallpaperCustomB') customWallB: string = '#E8EDF4';
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
   @StorageProp('readerBgPath') readerBgPath: string = '';
   @StorageProp('readerBgId') readerBgId: string = '';
@@ -655,6 +676,28 @@ export struct Reader {
   private pinchBaseFont: number = 0;
   /** 全库搜索带进来的关键词。等首帧布局完成、恢复阅读位置之后再执行查找 */
   private routeQuery: string = '';
+  /**
+   * 「全部待办」点条目带进来的目标行号（1 起，0 = 无）。
+   * 首帧布局完成后按行号找块并滚过去（用户反馈"点进去要自己找位置"）。
+   */
+  private routeFocusLine: number = 0;
+  /** 是否从「全部待办」面板进来：退出时给书架一个"重新打开该面板"的信号 */
+  private fromTaskBoard: boolean = false;
+  // ── 表格可视化编辑（点正文表格打开，保存按块 srcLine 写回原文）──
+  /** 编辑中的表格（与 TableEditorDialog 的 @Link 同一引用；打开时整体替换） */
+  @State editTable: MdTable = { header: [''], rows: [['']], align: ['none'] } as MdTable;
+  /** 正在编辑的表格块 id（保存时按块的 srcLine 定位原文行段） */
+  @State tableEditBlockId: string = '';
+  tableDialog: CustomDialogController = new CustomDialogController({
+    builder: TableEditorDialog({
+      tbl: $editTable,
+      onSave: (): void => {
+        this.saveTableEdit();
+      }
+    }),
+    autoCancel: true,
+    customStyle: true
+  });
 
   aboutToAppear(): void {
     this.startBlobDrift();
@@ -667,6 +710,14 @@ export struct Reader {
     if (params !== undefined && params !== null && params.query !== undefined
       && params.query !== null && params.query.trim().length > 0) {
       this.routeQuery = params.query.trim();
+    }
+    // 「全部待办」条目跳转：记下目标行与"退出后回任务面板"的意图
+    if (params !== undefined && params !== null && params.focusLine !== undefined
+      && params.focusLine !== null && params.focusLine > 0) {
+      this.routeFocusLine = params.focusLine;
+    }
+    if (params !== undefined && params !== null && params.fromTasks === true) {
+      this.fromTaskBoard = true;
     }
     // 多标签：进阅读页先恢复落盘的标签会话，路由参数指向的文档聚焦既有标签或新开
     const ctx = this.ctx();
@@ -740,6 +791,10 @@ export struct Reader {
         // 换手后清掉手动拖动位置：胶囊立即回到该手一侧（"智感握姿"要跟着手走）
         this.sysTabX = -1;
         this.sysTabY = -1;
+        // 分屏退出浮钮同样跟手（用户没拖过才跟；拖过则尊重手动位置）
+        if (this.compareSplit && !this.exitBtnDragged) {
+          this.exitBtnX = side === -1 ? 10 : this.rootWidth - 44;
+        }
       }
     };
     const gripCtx = this.ctx();
@@ -760,6 +815,12 @@ export struct Reader {
   /** 原 aboutToDisappear 的内容：由 NavDestination.onHidden 转发进来（被盖住时）。 */
   private onHiddenNow(): void {
     this.flushProgress();
+    // **从「全部待办」进来时给书架留一个"回来"的信号**（用户要求：退出文件后
+    // 返回全部待办页面，而不是落回书架）。书架在 NavDestination.onWillDisappear
+    // 里读它 —— 那时机在本方法之后，标志一定已经写好。
+    if (this.fromTaskBoard) {
+      AppStorage.setOrCreate('readerExitToTasks', true);
+    }
     // 离开阅读页：叠加层标志一并复位（防残留导致侧滑返回失灵）
     AppStorage.setOrCreate('readerOverlayOpen', false);
     // 离开阅读页：亮度交还系统（-1.0 的语义见 AppWindow 注释），常亮一并关闭。
@@ -1141,6 +1202,19 @@ export struct Reader {
         } as ChartTask);
       }
       this.chartTasks = tasks;
+      // **多设备流转数据源**（应用接续）：迁移发起时 EntryAbility.onContinue
+      // 从这里取当前文档与进度
+      AppStorage.setOrCreate('continueDocName', this.docName);
+      AppStorage.setOrCreate('continueDocContent', text);
+      AppStorage.setOrCreate('continueDocProgress', meta.progressRatio);
+      // **标签栏自愈**（用户要求）：指向已删除文档的标签自动移除
+      for (let t = this.tabs.length - 1; t >= 0; t--) {
+        if (this.tabs[t].name !== this.docName
+          && DocStore.find(ctx, this.tabs[t].name) === undefined) {
+          TabStore.close(this.tabs[t].name);
+          this.tabs = TabStore.list();
+        }
+      }
       this.loadError = '';
       this.progress = meta.progressRatio;
       this.progressBlock = meta.progressIndex;
@@ -1154,8 +1228,20 @@ export struct Reader {
         this.skipRestoreOnce = false;
         this.pendingJump = -1;
       } else if (this.firstLoad) {
-        this.listInitialIndex = jumpTarget;
-        this.pendingJump = -1;
+        // 「全部待办」点条目进来：**首帧就定到那一行**（initialIndex 在构造时生效，
+        // 与恢复进度同一套机制，不会「先渲染顶部再闪跳」）。pendingJump 一并给上，
+        // 让 applyPendingJump 走完剩下的收尾（定位提示 / 关抽屉）。
+        let initial: number = jumpTarget;
+        let jump: number = -1;
+        if (this.routeFocusLine > 0) {
+          const bi: number = this.blockIndexOfLine(this.routeFocusLine);
+          if (bi >= 0) {
+            initial = bi + this.headerCount();
+            jump = bi;
+          }
+        }
+        this.listInitialIndex = initial;
+        this.pendingJump = jump;
       } else {
         this.pendingJump = meta.progressIndex > 0 ? meta.progressIndex : 0;
       }
@@ -1240,6 +1326,14 @@ export struct Reader {
     const anchor: string = TabStore.consumeAnchor(this.docName);
     if (anchor.length > 0) {
       this.jumpToAnchor(anchor);
+      return;
+    }
+    // 「全部待办」点条目进来的目标行（一次性消费）：**比进度恢复优先**——
+    // 用户是冲着某一条待办来的，不能又被"上次读到哪"拉走。
+    if (this.routeFocusLine > 0) {
+      const line: number = this.routeFocusLine;
+      this.routeFocusLine = 0;
+      this.jumpToSourceLine(line);
       return;
     }
     if (target <= 0) {
@@ -1482,10 +1576,45 @@ export struct Reader {
   }
 
   /**
-   * 目录 / 批注侧边栏在**关闭沉浸光感**时的底色：与阅读背景同色
-   * （没设自定义背景色就退回主题底色）。
+   * 目录 / 批注侧边栏在**关闭沉浸光感**时的底色：与当前阅读背景**同色**。
+   *
+   * ⚠️ 不能只读 `pageBackground()`（自定义纯色 / 固定纸白碳黑）——阅读背景实际有
+   * 更高优先级的来源，与 `backdrop()` 的取层顺序必须**逐条对齐**：
+   *   ① 阅读背景图 → ② 阅读背景生成壁纸 → ③ 外观壁纸图 → ④ 外观生成壁纸 → ⑤ 纯色
+   * 之前只做了 ⑤，而 `readerBgId` 出厂默认就是「竹影」（一款淡青渐变壁纸），
+   * 于是关掉光感的侧边栏永远是 #FAF7F1（白）/#141414（黑），
+   * 跟背景完全对不上（用户反馈"颜色还是白色或黑色，没有变成背景选的颜色"）。
+   *
+   * 图片类背景（①③）取不到主色，就用**与背景层同浓度的遮罩色**当面板底色：
+   * 半透明 + 面板自身的 `backgroundBlurStyle(Thin)`，观感是"背景图被磨砂压暗的一块"，
+   * 色温与整屏一致，不会跳出一块纯白/纯黑。
    */
   private readerBgColor(): string {
+    // ① 阅读背景图：沿用阅读背景层的遮罩（半透明，透出图片色调）
+    if (this.readerBgPath.length > 0) {
+      return WallpaperStore.scrimColorOf(this.readerBgScrim(), this.bgDark());
+    }
+    // ② 阅读背景生成壁纸：取当前深浅下生效款的主底色
+    if (this.readerBgId.length > 0) {
+      const c: string = genWallpaperFlatColor(this.readerBgId, this.bgDark(),
+        this.customWallA, this.customWallB);
+      if (c.length > 0) {
+        return c;
+      }
+    }
+    // ③ 外观壁纸图：同上，用外观壁纸的遮罩浓度
+    if (this.wallpaperPathEffective().length > 0) {
+      return WallpaperStore.scrimColorOf(this.wallpaperScrim, this.bgDark());
+    }
+    // ④ 外观生成壁纸
+    if (this.genWallId.length > 0) {
+      const c: string = genWallpaperFlatColor(this.genWallId, this.bgDark(),
+        this.customWallA, this.customWallB);
+      if (c.length > 0) {
+        return c;
+      }
+    }
+    // ⑤ 自定义纯色阅读背景；再兜底固定默认纸色
     const c: string = this.pageBackground();
     return c.length > 0 ? c : this.palette().pageTop;
   }
@@ -1509,7 +1638,14 @@ export struct Reader {
       this.pendingEnd = end;
       this.pendingColor = -1;
       this.noteQuote = text;
-      this.noteDraft = '';
+      // **恢复未过期的草稿**：不小心退出后再点「添加批注」，之前写的内容还在；
+      // 超过 3 分钟视为已放弃（避免很久以后突然冒出旧草稿）。
+      const draftAt: number = AppStorage.get<number>(NOTE_DRAFT_AT_KEY) ?? 0;
+      if (draftAt > 0 && Date.now() - draftAt <= NOTE_DRAFT_TTL) {
+        this.noteDraft = AppStorage.get<string>(NOTE_DRAFT_KEY) ?? '';
+      } else {
+        this.noteDraft = '';
+      }
       this.getUIContext().animateTo(this.animateParam(), () => {
         this.activeSheet = 'note';
         this.sheetVisible = true;
@@ -1633,6 +1769,9 @@ export struct Reader {
       this.noteQuote, this.pendingColor, draft, ''));
     this.commitAnnotations(list);
     this.pendingStart = -1;
+    // 提交成功 → 清掉草稿（3 分钟窗口结束，避免下次打开又冒出旧内容）
+    AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
+    AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
@@ -1731,6 +1870,100 @@ export struct Reader {
     }).catch((err: BusinessError) => {
       this.toast('保存失败：' + err.message);
     });
+  }
+
+  // ══════════════════════ 表格可视化编辑 ══════════════════════
+  //
+  // 点正文表格打开 TableEditorDialog（结构化网格），保存时按块的 srcLine
+  // 把 `TableTool.toLines()` 产物写回原文行段并重载 —— 与任务勾选同一套
+  // "改原文 + 重载"链路，块 id / 批注坐标由重新 parse 自愈。
+
+  /** 打开表格编辑：从块上的解析结果构造 MdTable（rows[0]=表头，分隔行不在块里）。 */
+  private openTableEdit(blockId: string): void {
+    if (this.docReadOnly) {
+      this.toast('只读文档不能编辑表格，先在「更多」里切成可写');
+      return;
+    }
+    const idx: number = this.blockIndexOf(blockId);
+    if (idx < 0) {
+      return;
+    }
+    const block: MdBlock = this.blocks[idx];
+    if (block.rows.length < 1) {
+      return;
+    }
+    const header: string[] = [];
+    const headerRaw: string[] = block.rows[0].raw;
+    for (let k = 0; k < headerRaw.length; k++) {
+      header.push(headerRaw[k]);
+    }
+    const rows: string[][] = [];
+    for (let i = 1; i < block.rows.length; i++) {
+      const r: string[] = [];
+      const raw: string[] = block.rows[i].raw;
+      // 补齐 / 裁齐到表头列数：手写 Markdown 常见某行少写一列，不齐会在网格里错位
+      for (let k = 0; k < header.length; k++) {
+        r.push(k < raw.length ? raw[k] : '');
+      }
+      rows.push(r);
+    }
+    const align: TableAlign[] = [];
+    for (let k = 0; k < header.length; k++) {
+      const a: number = k < block.aligns.length ? block.aligns[k] : 0;
+      align.push(a === 1 ? 'center' : (a === 2 ? 'right' : 'left'));
+    }
+    this.editTable = { header: header, rows: rows, align: align } as MdTable;
+    this.tableEditBlockId = blockId;
+    this.tableDialog.open();
+  }
+
+  /** 保存表格：写回原文对应行段（表头 + 分隔 + 数据行），重载正文。 */
+  private saveTableEdit(): void {
+    this.tableDialog.close();
+    const ctx = this.ctx();
+    if (ctx === null || this.tableEditBlockId.length === 0) {
+      return;
+    }
+    const idx: number = this.blockIndexOf(this.tableEditBlockId);
+    if (idx < 0) {
+      return;
+    }
+    const block: MdBlock = this.blocks[idx];
+    const srcLine: number = block.srcLine;
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+      if (meta === undefined) {
+        this.toast('文档不存在');
+        return;
+      }
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
+      const lines: string[] = text.replace(/\r\n?/g, '\n').split('\n');
+      // 定位校验三连（⚠️ 不能拿"编辑后的列数"与原文比对——用户加/删列后必然对不上）：
+      // ① srcLine 行确实是表格行；② 下一行是分隔行；③ 不在引用内（行首 '>'）。
+      // 引用内表格块的 srcLine 是引用体相对行号，指向原文几乎必然错位，这里一并拦下。
+      if (srcLine < 0 || srcLine + 1 >= lines.length
+        || lines[srcLine].trim().startsWith('>')
+        || !TableTool.isTableRow(lines[srcLine])
+        || !TableTool.isDelimiterRow(lines[srcLine + 1])) {
+        this.toast('该表格所在位置暂不支持直接写回（如引用内的表格）');
+        return;
+      }
+      // 行段终点：分隔行下一行起**连续的表格行**（与解析口径一致；不依赖编辑后的行数，
+      // 写回本来就要支持增删行改变行数）
+      let end: number = srcLine + 2;
+      while (end < lines.length && TableTool.isTableRow(lines[end])) {
+        end++;
+      }
+      const newLines: string[] = TableTool.toLines(this.editTable);
+      const out: string[] = lines.slice(0, srcLine).concat(newLines, lines.slice(end));
+      DocStore.update(ctx, this.docName, out.join('\n'));
+      this.tableEditBlockId = '';
+      this.skipRestoreOnce = true;
+      this.loadDoc();
+      this.toast('表格已更新');
+    } catch (err) {
+      this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
+    }
   }
 
   // ══════════════════════ 任务列表勾选 ══════════════════════
@@ -2160,6 +2393,11 @@ export struct Reader {
   }
 
   private togglePinned(kind: string): void {
+    // **动画锁**（用户要求）：上一个开合动画没执行完，忽略下一次操作——
+    // 快速"收起又拉出"会打断前一动画，正文宽度来回跳（抽搐）
+    if (this.sideAnimLock()) {
+      return;
+    }
     this.getUIContext().animateTo(this.animateParam(), () => {
       if (kind === 'toc') {
         this.tocPinned = !this.tocPinned;
@@ -2170,6 +2408,10 @@ export struct Reader {
   }
 
   private closePinned(kind: string): void {
+    // **动画锁**：同 togglePinned
+    if (this.sideAnimLock()) {
+      return;
+    }
     this.getUIContext().animateTo(this.animateParam(), () => {
       if (kind === 'toc') {
         this.tocPinned = false;
@@ -2280,6 +2522,24 @@ export struct Reader {
     return param;
   }
 
+  /**
+   * **侧边栏开合动画锁**（用户要求：动画必须完全执行完才能执行下一个）：
+   * 锁着时开合入口直接忽略本次操作——快速"收起又拉出"不再打断前一动画，
+   * 正文宽度不会来回跳（抽搐根因）。锁 320ms（260ms 动画 + 余量）。
+   */
+  private sideAnimBusy: boolean = false;
+
+  private sideAnimLock(): boolean {
+    if (this.sideAnimBusy) {
+      return true;
+    }
+    this.sideAnimBusy = true;
+    setTimeout(() => {
+      this.sideAnimBusy = false;
+    }, 320);
+    return false;
+  }
+
   /** 目录抽屉的进出场位移：从左侧屏外滑入。 */
   private tocTransition(): TransitionOptions {
     // 滑出距离放宽到屏宽级别：即使宽度快照与面板实际宽度略有出入，
@@ -2304,6 +2564,10 @@ export struct Reader {
   private openToc(): void {
     // 大屏/横屏：目录固定停靠在左侧（可手动关闭），不再用浮层抽屉
     if (this.isWide()) {
+      // **动画锁**：上一个停靠开合动画没走完，忽略本次（防打断抽搐）
+      if (this.sideAnimLock()) {
+        return;
+      }
       this.getUIContext().animateTo(this.animateParam(), () => {
         this.tocPinned = !this.tocPinned;
       });
@@ -2318,6 +2582,10 @@ export struct Reader {
   private openNotes(): void {
     // 大屏/横屏：注释固定停靠在右侧
     if (this.isWide()) {
+      // **动画锁**：同 openToc
+      if (this.sideAnimLock()) {
+        return;
+      }
       this.getUIContext().animateTo(this.animateParam(), () => {
         this.notesPinned = !this.notesPinned;
       });
@@ -2410,6 +2678,42 @@ export struct Reader {
     } catch (err) {
       // 忽略
     }
+  }
+
+  /**
+   * 原文行号（**1 起**，与 TaskBoard.collect 返回的 `line` 同口径）→ 块下标。
+   *
+   * ⚠️ 块上记的 `srcLine` 是 **0 起**（与勾选写回时 `lines[block.srcLine]` 一致），
+   * 所以比较用 `srcLine >= line - 1`，取第一个覆盖该行的块；
+   * 行号落在文档末尾之后时退回最后一块。
+   *
+   * @returns 块下标；正文为空时返回 -1。
+   */
+  private blockIndexOfLine(line: number): number {
+    if (this.blocks.length === 0) {
+      return -1;
+    }
+    const want: number = line - 1;
+    for (let k = 0; k < this.blocks.length; k++) {
+      if (this.blocks[k].srcLine >= want) {
+        return k;
+      }
+    }
+    return this.blocks.length - 1;
+  }
+
+  /**
+   * 定位到原文第 `line` 行并提示行号（「全部待办」点条目进来用）。
+   * 与 jumpTo 的区别：先按行号反查块，找不到时给出明确提示而不是静默不动。
+   */
+  private jumpToSourceLine(line: number): void {
+    const bi: number = this.blockIndexOfLine(line);
+    if (bi < 0) {
+      this.toast('这一行在正文里找不到对应内容');
+      return;
+    }
+    this.jumpTo(bi);
+    this.toast('已定位到第 ' + line + ' 行');
   }
 
   // ══════════════════════ 滚动 ══════════════════════
@@ -2798,6 +3102,9 @@ export struct Reader {
     if (this.activeSheet === 'export') {
       return '导出与分享';
     }
+    if (this.activeSheet === 'compare') {
+      return '对照阅读';
+    }
     return '更多';
   }
 
@@ -2849,7 +3156,207 @@ export struct Reader {
       .id('shExport_' + this.sheetEpoch)
     } else if (this.activeSheet === 'more') {
       this.moreSheet()
+    } else if (this.activeSheet === 'compare') {
+      this.compareSheet()
     }
+  }
+
+  // ══════════════════════ 分屏对照（批 5） ══════════════════════
+  //
+  // 复用 bindSheet 面板机制做「对照阅读」：面板第一态是**选文档列表**，
+  // 选中后同一面板切换为第二篇文档的**只读渲染**（与当前文档并排对照 ——
+  // 面板从底部拉起、可与正文并排看）。零核心布局改动、定高面板无结构跳动。
+
+  /** 对照的文档名（空串 = 面板处于"选文档"状态） */
+  @State compareDoc: string = '';
+  /** 对照文档解析出的块（只读渲染） */
+  @State compareBlocks: MdBlock[] = [];
+  /** 对照切换纪元：换文档时 ++，列表 ForEach 重建 */
+  @State compareEpoch: number = 0;
+  /** 对照面板在浮层打开前是否开着：关闭浮层后据此自动恢复面板 */
+  private compareSheetWasOpen: boolean = false;
+  /** **左右分屏对照**：正文左半、对照文档右半（对照面板里开启） */
+  @State compareSplit: boolean = false;
+  /** 分屏退出浮钮位置（translate 状态）：拖动 / 吸附都改它；-1 = 未初始化 */
+  @State exitBtnX: number = -1;
+  @State exitBtnY: number = -1;
+  private exitDragBaseX: number = 0;
+  private exitDragBaseY: number = 0;
+  /** 用户手动拖过浮钮 = true：此后握姿不再自动挪它（尊重手动位置） */
+  private exitBtnDragged: boolean = false;
+
+  /** 打开对照面板（从更多面板磁贴进）。 */
+  private openCompare(): void {
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.compareDoc = '';
+      this.compareBlocks = [];
+      this.activeSheet = 'compare';
+      this.sheetVisible = true;
+    });
+  }
+
+  /** 选定对照文档：解析为只读块。 */
+  private loadCompare(name: string): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, name);
+      if (meta === undefined) {
+        this.toast('文档不存在');
+        return;
+      }
+      const content: string = DocStore.readText(ctx, meta);
+      const parsed = MdParser.parse(content);
+      this.compareBlocks = parsed.blocks;
+      this.compareDoc = name;
+      this.compareEpoch = this.compareEpoch + 1;
+    } catch (err) {
+      this.toast('读取失败：' + DocStore.describeError(err as BusinessError));
+    }
+  }
+
+  /** 对照面板：未选文档 = **宫格选择**；已选 = 只读渲染 + 换一篇 / 左右分屏。 */
+  @Builder
+  compareSheet() {
+    Column({ space: HwSpace.sm }) {
+      if (this.compareDoc.length > 0) {
+        Row({ space: HwSpace.xs }) {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '‹ 换一篇',
+            chipOnTap: () => {
+              this.compareDoc = '';
+              this.compareBlocks = [];
+            }
+          })
+          ImmersiveChip({
+            palette: this.palette(),
+            chipActive: true,
+            chipLabel: '左右分屏',
+            chipOnTap: () => {
+              // 进入**左右分屏**：正文左半、对照文档右半。
+              // ⚠️ 只翻 sheetVisible（activeSheet 留给 onDismiss 清）——同一帧里
+              // "关面板 + 清内容标识"会冲突（工程铁律：真机白屏 + 面板不退）。
+              // 浮钮初始位置：按智感握姿定边、垂直居中（之后可自由拖动吸附）
+              this.exitBtnX = this.gripSide === -1 ? 10 : this.rootWidth - 44;
+              this.exitBtnY = this.rootHeight / 2 - 17;
+              this.compareSplit = true;
+              this.sheetVisible = false;
+            }
+          })
+          Text('《' + this.compareDoc + '》 · 只读')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Scroll() {
+          Column({ space: HwSpace.sm }) {
+            ForEach(this.compareBlocks, (b: MdBlock) => {
+              MdBlockView({
+                block: b,
+                palette: this.palette(),
+                bodySize: this.fontSize,
+                lineMul: this.lineMul,
+                dark: this.isDark(),
+                // 对照是只读视图：批注 / 勾选 / 锚点等回调不传（默认空实现）；
+                // 放大有反应（铁律），但 **geoKey 传空**——对照块与正文块共享同一套
+                // geometryTransition id，两份同 id 元素会让一镜到底错乱（图层错误），
+                // 对照侧不走共享元素、浮层直接全屏出现。
+                // ⚠️ **先收面板再开浮层**：半模态是系统层，永远盖住页面内的浮层
+                //（面板开着点放大 = 浮层被压在下面，图层错误实测）。
+                // 关浮层后 closeOverlays 会按 compareSheetWasOpen 自动恢复面板
+                enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
+                  this.compareSheetWasOpen = true;
+                  this.sheetVisible = false;
+                  this.openEnlarge(mode, payload, '', title);
+                },
+                imageTapHandler: (key: string, src: string) => {
+                  this.compareSheetWasOpen = true;
+                  this.sheetVisible = false;
+                  this.openZoomImage(key, src);
+                }
+              })
+            }, (b: MdBlock) => 'cmp_' + this.compareEpoch + '_' + b.id)
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+        }
+        .align(Alignment.Top)
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .layoutWeight(1)
+      } else {
+        Text('选一篇文档与《' + this.docName + '》对照（译文 / 原文 / 笔记）；选定后可进左右分屏。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+
+        // **宫格选择**（用户要求：列表改成宫格样式）
+        Grid() {
+          ForEach(this.trailCandidateDocs(), (m: DocMeta) => {
+            GridItem() {
+              Column({ space: 2 }) {
+                Text(m.name)
+                  .fontSize(HwType.caption + 1)
+                  .fontColor(this.palette().textPrimary)
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .textAlign(TextAlign.Center)
+                  .width('100%')
+                Text(m.progressRatio > 0.005
+                  ? '已读 ' + Math.round(m.progressRatio * 100) + '%' : '未读')
+                  .fontSize(HwType.caption - 2)
+                  .fontColor(this.palette().textTertiary)
+              }
+              .width('100%')
+              .height(72)
+              .justifyContent(FlexAlign.Center)
+              .padding(HwSpace.xs)
+              .borderRadius(HwRadius.inner)
+              .backgroundColor(this.palette().quoteBg)
+              .onClick(() => {
+                this.loadCompare(m.name);
+              })
+            }
+          }, (m: DocMeta) => 'cmpsel_' + m.name)
+        }
+        .columnsTemplate('1fr 1fr 1fr')
+        .columnsGap(6)
+        .rowsGap(6)
+        .width('100%')
+        .layoutWeight(1)
+        .scrollBar(BarState.Off)
+        .align(Alignment.Top)
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.sm })
+    .id('shCompare_' + this.compareEpoch)
+  }
+
+  /** 对照选文档的候选：书架全部文档，排除当前正在读的这篇，按最近打开排序。 */
+  private trailCandidateDocs(): DocMeta[] {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return [];
+    }
+    const list: DocMeta[] = DocStore.list(ctx);
+    const items: DocMeta[] = [];
+    for (let k = 0; k < list.length; k++) {
+      if (list[k].name !== this.docName) {
+        items.push(list[k]);
+      }
+    }
+    items.sort((a: DocMeta, b: DocMeta): number => b.lastOpen - a.lastOpen);
+    return items.slice(0, 30);
   }
 
   @Builder
@@ -3132,16 +3639,18 @@ export struct Reader {
             }
             .width('100%')
 
-            // MD5（用户要求保留显示；「文件哈希」行已按要求删除）
+            // MD5（用户要求保留显示；「文件哈希」行已按要求删除）。
+            // **结构与"文件大小 / 日期"行完全同构**（Blank 撑开右对齐）——
+            // 此前用 layoutWeight，与相邻行的滑动表现不一致（用户反馈）
             Row({ space: HwSpace.xs }) {
               Text('MD5')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
+              Blank()
               Text(this.docMd5.length > 0 ? this.docMd5 : '—')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textSecondary)
-                .layoutWeight(1)
-                .textAlign(TextAlign.End)
+                .constraintSize({ maxWidth: '62%' })
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }
@@ -3668,10 +4177,34 @@ export struct Reader {
       }
       .width('100%')
 
+      Row({ space: HwSpace.xs }) {
+        // EPUB 导出（批 5）：整篇转成电子书（单章 + 内嵌样式）
+        this.moreTile('EPUB 电子书', $r('sys.symbol.book'), (): void => {
+          this.exportEpub();
+        })
+      }
+      .width('100%')
+
+      Row({ space: HwSpace.xs }) {
+        // 分屏对照（批 5）：选另一篇文档与当前并排对照
+        this.moreTile('对照阅读', $r('sys.symbol.rectangle_split_2x1'), (): void => {
+          this.openCompare();
+        })
+        // 文献引用（批 5）：GB/T 7714 / APA / BibTeX 三格式一次复制
+        this.moreTile('文献引用', $r('sys.symbol.doc_text'), (): void => {
+          this.copyCitation();
+        })
+      }
+      .width('100%')
+
       // ── 更多操作：与上方同样的**等宽磁贴**（用户要求排版统一）──
       Row({ space: HwSpace.xs }) {
         this.moreTile('复制全文', $r('sys.symbol.doc_plaintext'), (): void => {
           this.copyWholeText();
+        })
+        // 文献引用（批 5）：GB/T 7714 / APA / BibTeX 三格式一次复制
+        this.moreTile('文献引用', $r('sys.symbol.doc_text'), (): void => {
+          this.copyCitation();
         })
         // 开关类磁贴用**自持状态的子组件**：bindSheet 的 builder 不跟宿主状态重渲染，
         // 写在宿主里点了标签不变（用户反馈）——组件自己订阅/自己写/自己刷
@@ -3765,6 +4298,87 @@ export struct Reader {
       });
     } catch (err) {
       this.toast('复制失败');
+    }
+  }
+
+  /**
+   * 复制文献引用（批 5 之文献引用）：按文档名 + 修改时间生成
+   * GB/T 7714（中文首选）/ APA / BibTeX 三种格式，一次复制，写作时直接粘。
+   */
+  private copyCitation(): void {
+    const y: number = this.docModifiedAt > 0 ? new Date(this.docModifiedAt).getFullYear()
+      : new Date().getFullYear();
+    const safe: string = this.docName.replace(/[^A-Za-z0-9]/g, '') || 'doc';
+    const gb: string = '[1] ' + this.docName + '[Z]. 澄笺笔记, ' + y + '.';
+    const apa: string = this.docName + '. (' + y + '). 澄笺笔记.';
+    const bib: string = '@misc{' + safe + y + ',\n  title = {' + this.docName + '},\n  year = {' + y + '},\n  note = {澄笺笔记}\n}';
+    const text: string = gb + '\n\n' + apa + '\n\n' + bib;
+    const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      this.toast('已复制 GB/T 7714 / APA / BibTeX 三种引用');
+    }).catch(() => {
+      this.toast('复制失败');
+    });
+  }
+
+  /** 打开放大浮层（正文 / 对照面板共用）：图片 payload 统一转 file:// + URL 编码，
+   *  挂载包在 animateTo 里让一镜到底几何动画生效。 */
+  private openEnlarge(mode: string, payload: string, geoKey: string, title: string): void {
+    // 图片放大用**原生 Image 组件**；payload 统一转
+    // `file://` + URL 编码（中文路径不编码时首次加载会失败，
+    // 用户实测"第一次打开没画面，重开才正常"）
+    let pl: string = payload;
+    if (mode === 'image') {
+      if (!pl.startsWith('file://') && !pl.startsWith('http')) {
+        pl = pl.startsWith('/') ? 'file://' + encodeURI(pl)
+          : 'file://' + encodeURI(DocStore.docsRoot() + '/' + pl);
+      } else if (pl.startsWith('file://')) {
+        pl = 'file://' + encodeURI(pl.substring('file://'.length));
+      }
+      this.imgScale = 1;
+      this.imgDx = 0;
+      this.imgDy = 0;
+      this.rotated = false;
+    }
+    // **一镜到底**：挂载浮层必须包在 animateTo 里，geometryTransition
+    // 才会把正文里的小卡片形变成全屏大画布
+    this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+      this.enlargeMode = mode;
+      // 每次打开浮层都清空"切源码前的形态"：从代码块放大进来时它为空，
+      // 用于隐藏「查看源码」开关（见 enlargeHasCode）
+      this.enlargePrevMode = '';
+      this.enlargePayload = pl;
+      this.enlargeGeo = geoKey;
+      this.enlargeTitle = title;
+      // 每次打开生成唯一 Web id：导出图片快照按它定位；
+      // 唯一化也避免与正文/池子的 Web 组件 id 撞车
+      this.enlargeWebId = 'enlarge_' + Date.now();
+      this.enlargeWebMounted = true;
+      this.enlargeRefitTick = 0;
+      AppStorage.setOrCreate('readerOverlayOpen', true);
+    });
+  }
+
+  // ══════════════════════ EPUB 导出（批 5） ══════════════════════
+
+  /** EPUB 导出入口：读正文交给 EpubExport（拉系统另存为）。 */
+  private exportEpub(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+      if (meta === undefined) {
+        this.toast('文档不存在');
+        return;
+      }
+      const content: string = DocStore.readText(ctx, meta, this.docEncoding);
+      EpubExport.exportEpub(ctx, this.docName, content, (m: string): void => {
+        this.toast(m);
+      });
+    } catch (err) {
+      this.toast('读取失败：' + DocStore.describeError(err as BusinessError));
     }
   }
 
@@ -4091,6 +4705,8 @@ export struct Reader {
           }
           ImmersiveChip({
             palette: this.palette(),
+            chipTint: '#FFD32F2F',
+            chipActive: true,
             chipLabel: '删除',
             chipOnTap: () => {
               // **包在 animateTo 里**：卡片淡出（transition），其余卡片滑动补位
@@ -4228,6 +4844,12 @@ export struct Reader {
         this.zoomImgSrc = '';
       }
     }, 300);
+    // **对照面板恢复**：从对照面板点开的图片浮层，关闭后把面板拉回来（同 closeOverlays）
+    if (this.compareSheetWasOpen) {
+      this.compareSheetWasOpen = false;
+      this.activeSheet = 'compare';
+      this.sheetVisible = true;
+    }
   }
 
   /**
@@ -4311,6 +4933,7 @@ export struct Reader {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+
       // 背景层：一镜到底展开时从透明渐显（缩回时渐隐，露出下层书架封面）
       Column() {
         this.backdrop()
@@ -4347,8 +4970,8 @@ export struct Reader {
               .width(this.tocPanelWidth)
               .height('100%')
               .margin({ left: HwSpace.xs })
-              // 内缘分隔线：既是视觉提示，也是拖拽热区
-              .border({ width: { right: 1 }, color: this.palette().divider })
+              // **分隔条黑线已移除**（用户实测：拖拽热区与侧滑手势竞争导致
+              // 侧滑滑出不完全），调宽功能一并移除
             }
           List({ scroller: this.scroller, space: 0, initialIndex: this.listInitialIndex }) {
             // 首屏间隙做成**随内容滚动的占位条目**，而不是 List 的 padding。
@@ -4406,40 +5029,11 @@ export struct Reader {
                     taskToggleHandler: (blockId: string) => {
                       this.onTaskToggle(blockId);
                     },
+                    tableEditHandler: (blockId: string) => {
+                      this.openTableEdit(blockId);
+                    },
                     enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
-                      // 图片放大用**原生 Image 组件**；payload 统一转
-                      // `file://` + URL 编码（中文路径不编码时首次加载会失败，
-                      // 用户实测"第一次打开没画面，重开才正常"）
-                      let pl: string = payload;
-                      if (mode === 'image') {
-                        if (!pl.startsWith('file://') && !pl.startsWith('http')) {
-                          pl = pl.startsWith('/') ? 'file://' + encodeURI(pl)
-                            : 'file://' + encodeURI(DocStore.docsRoot() + '/' + pl);
-                        } else if (pl.startsWith('file://')) {
-                          pl = 'file://' + encodeURI(pl.substring('file://'.length));
-                        }
-                        this.imgScale = 1;
-                        this.imgDx = 0;
-                        this.imgDy = 0;
-                        this.rotated = false;
-                      }
-                      // **一镜到底**：挂载浮层必须包在 animateTo 里，geometryTransition
-                      // 才会把正文里的小卡片形变成全屏大画布
-                      this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
-                        this.enlargeMode = mode;
-                        // 每次打开浮层都清空"切源码前的形态"：从代码块放大进来时它为空，
-                        // 用于隐藏「查看源码」开关（见 enlargeHasCode）
-                        this.enlargePrevMode = '';
-                        this.enlargePayload = pl;
-                        this.enlargeGeo = geoKey;
-                        this.enlargeTitle = title;
-                        // 每次打开生成唯一 Web id：导出图片快照按它定位；
-                        // 唯一化也避免与正文/池子的 Web 组件 id 撞车
-                        this.enlargeWebId = 'enlarge_' + Date.now();
-                        this.enlargeWebMounted = true;
-                        this.enlargeRefitTick = 0;
-                        AppStorage.setOrCreate('readerOverlayOpen', true);
-                      });
+                      this.openEnlarge(mode, payload, geoKey, title);
                     },
                     webTouchHandler: (down: boolean) => {
                       this.webTouchDepth = Math.max(0, this.webTouchDepth + (down ? 1 : -1));
@@ -4541,7 +5135,63 @@ export struct Reader {
             .width(this.notesPanelWidth)
             .height('100%')
             .margin({ right: HwSpace.xs })
+          }
+
+          // ── 对照列（分屏对照，批 5）：右半屏渲染第二篇文档（只读）──
+          // 与正文 List 平级的 layoutWeight 兄弟 → 五五开；退出 = 屏幕侧缘中部浮钮（随握姿）。
+          if (this.compareSplit) {
+            Column({ space: HwSpace.xs }) {
+              Row({ space: HwSpace.xs }) {
+                Text('对照 · 《' + this.compareDoc + '》')
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textSecondary)
+                  .layoutWeight(1)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+
+              Scroll() {
+                Column({ space: HwSpace.sm }) {
+                  ForEach(this.compareBlocks, (b: MdBlock) => {
+                    MdBlockView({
+                      block: b,
+                      palette: this.palette(),
+                      // 分屏列窄，正文用小一号字
+                      bodySize: Math.max(HwType.bodyMin, this.fontSize - 2),
+                      lineMul: this.lineMul,
+                      dark: this.isDark(),
+                      // 分屏列的放大同样 **geoKey 传空**（与正文同 id 元素共存会让
+                      // 一镜到底错乱，见对照面板同名注释）
+                      enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
+                        this.openEnlarge(mode, payload, '', title);
+                      },
+                      imageTapHandler: (key: string, src: string) => {
+                        this.openZoomImage(key, src);
+                      }
+                    })
+                  }, (b: MdBlock) => 'split_' + this.compareEpoch + '_' + b.id)
+                }
+                .width('100%')
+                .alignItems(HorizontalAlign.Start)
+              }
+              .align(Alignment.Top)
+              .scrollBar(BarState.Off)
+              .width('100%')
+              .layoutWeight(1)
+            }
+            .layoutWeight(1)
+            .height('100%')
+            // 顶/底避让：顶部让开顶栏胶囊；**底部直通屏幕底**（用户要求显示区域到屏底、顶部不动）
+            .padding({ top: this.padTop() + HwBar.pill + 6, bottom: 0 })
             .border({ width: { left: 1 }, color: this.palette().divider })
+            // 打开从右侧滑入、退出向右滑出（用户要求出入都有动画）
+            .transition(TransitionEffect.asymmetric(
+              TransitionEffect.translate({ x: 80 }).combine(TransitionEffect.OPACITY)
+                .animation({ duration: 300, curve: Curve.FastOutSlowIn }),
+              TransitionEffect.translate({ x: 80 }).combine(TransitionEffect.OPACITY)
+                .animation({ duration: 240, curve: Curve.FastOutSlowIn })))
           }
         }
       .width(this.heroClipW)
@@ -4556,6 +5206,57 @@ export struct Reader {
       // 切换标签时的**翻页动效**：整页从切换方向滑入 + 淡入（位移由 openInTab 设置）
       .translate({ x: this.contentSlideX })
       .opacity(this.contentFade)
+
+      // ── 分屏对照的退出浮钮：**可自由拖动、松手吸附最近的屏幕侧缘**（用户要求），
+      // 出现/消失带缩放淡入淡出动画。初始位置按智感握姿定边。
+      if (this.compareSplit) {
+        Stack() {
+          ImmersiveIconButton({
+            buttonSize: 34,
+            buttonMaterialShadow: true,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.compareSplit = false;
+              });
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.xmark'))
+              .fontSize(15)
+              .fontColor([this.palette().accent])
+          }
+        }
+        .width(34)
+        .height(34)
+        // 位置 = 基准 position(0,0) + translate 状态（拖动 / 吸附都改状态）
+        .translate({ x: this.exitBtnX, y: this.exitBtnY })
+        // ⚠️ 单指拖动必须写 fingers: 1（工程铁律）
+        .gesture(PanGesture({ fingers: 1 })
+          .onActionStart((_e: GestureEvent) => {
+            this.exitBtnDragged = true;
+            this.exitDragBaseX = this.exitBtnX;
+            this.exitDragBaseY = this.exitBtnY;
+          })
+          .onActionUpdate((e: GestureEvent) => {
+            this.exitBtnX = Math.min(Math.max(this.exitDragBaseX + e.offsetX, 6),
+              this.rootWidth - 40);
+            this.exitBtnY = Math.min(Math.max(this.exitDragBaseY + e.offsetY, 60),
+              this.rootHeight - 110);
+          })
+          .onActionEnd(() => {
+            // 吸附：重心在左半 → 贴左缘，否则贴右缘
+            const targetX: number = this.exitBtnX + 17 < this.rootWidth / 2
+              ? 10 : this.rootWidth - 44;
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.exitBtnX = targetX;
+            });
+          }))
+        .transition(TransitionEffect.asymmetric(
+          TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 260, curve: Curve.FastOutSlowIn }),
+          TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 200, curve: Curve.FastOutSlowIn })))
+      }
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
       //    同一时刻只有一层，杜绝「两层叠加 + 内容溢出胶囊」的错位。──
@@ -4621,10 +5322,15 @@ export struct Reader {
             .combine(TransitionEffect.translate({ y: -10 })))
         }
       }
-      .width('100%')
       .height('100%')
       .padding({ top: this.padTop() + HwBar.pill })
       .hitTestBehavior(HitTestMode.Transparent)
+      // **标签栏长度按正文显示区域而定**（用户要求）：让开目录/注释停靠列；
+      // 分屏对照时再让出右半——标签不再跑到目录和注释区域下面
+      .width(this.compareSplit
+        ? (this.rootWidth - this.barInsetLeft() - this.barInsetRight()) / 2
+        : this.rootWidth - this.barInsetLeft() - this.barInsetRight())
+      .margin({ left: this.barInsetLeft() })
 
       // ── 悬浮底栏：同样一个胶囊、宽度插值，内容用 if 切换 ──
       Stack({ alignContent: Alignment.BottomEnd }) {
@@ -4669,30 +5375,35 @@ export struct Reader {
       // 同上：沉浸阅读时底栏层整层不渲染（连收起态的迷你胶囊也一并消失）
       .visibility(this.immersiveRead ? Visibility.None : Visibility.Visible)
 
-      // **沉浸阅读的退出按钮**（用户要求：**右上角**一颗，高度与顶部悬浮胶囊一致；
-      // 沉浸期间顶栏 / 底栏 / 标签栏 / 查找条全部不渲染，它是屏幕上唯一的控件）
+      // **沉浸阅读的退出胶囊**（用户要求：改到**左上角**、样式与编辑页「专注中」一致）；
+      // 沉浸期间顶栏 / 底栏 / 标签栏 / 查找条全部不渲染，它是屏幕上唯一的控件。
+      // 底色走沉浸光感承载层（用户要求：胶囊也要有光感）——内容 Row 透明底浮在上层
       if (this.immersiveRead) {
         Stack() {
-          ImmersiveIconButton({
-            buttonSize: 34,
-            buttonMaterialShadow: true,
-            palette: this.palette(),
-            buttonOnTap: () => {
-              this.toggleImmersive();
+          ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
+          Row({ space: 6 }) {
+            Text('专注中')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            ImmersiveIconButton({
+              buttonSize: 30,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.toggleImmersive();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.xmark'))
+                .fontSize(14)
+                .fontColor([this.palette().accent])
             }
-          }) {
-            SymbolGlyph($r('sys.symbol.xmark'))
-              .fontSize(17)
-              .fontColor([this.palette().accent])
           }
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: 10, right: 6, top: 4, bottom: 4 })
         }
-        .width(34)
-        .height(34)
-        // 顶部避开系统状态栏（约 44vp）+ 与顶栏同档留白；右边不压停靠栏
-        .position({
-          x: this.rootWidth - this.barInsetRight() - 42,
-          y: 52
-        })
+        .borderRadius(HwRadius.pill)
+        // 左上角：避开系统状态栏（与顶栏同档留白）
+        .position({ x: HwSpace.lg, y: 52 })
       }
 
       // **系统选择模式的退出胶囊**（用户要求）：屏幕右缘中部（智感握姿拇指可及），
@@ -4882,17 +5593,10 @@ export struct Reader {
                 buttonMaterialShadow: false,
                 palette: this.palette(),
                 buttonOnTap: () => {
-                  // 关闭也要包 animateTo：卸载浮层时一镜到底才能反向播放
-                  this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
-                    this.enlargeMode = '';
-                    this.enlargeGeo = '';
-                    this.enlargeTitle = '';
-                  });
-                  this.rotated = false;
-                  this.webZoom = 1;
-                  // **必须清掉叠加层标志**：否则返回键拦截会一直生效，
-                  // 侧滑返回就"失灵"了（用户实测）
-                  AppStorage.setOrCreate('readerOverlayOpen', false);
+                  // **统一走 closeOverlays**：除了复位缩放状态，还会把"从对照面板
+                  // 点开"的浮层关闭后面板自动拉回来（内联关闭漏了这条恢复链，
+                  // 用户实测点 × 不弹回、只有侧滑返回才弹回）
+                  this.closeOverlays();
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.xmark'))
@@ -5106,6 +5810,12 @@ export struct Reader {
       title: this.sheetTitle(),
       subtitle: this.sheetSubtitle(),
       surface: this.palette().surface,
+      // 批注面板**多档高度**（用户要求"支持自由调节高度"）：默认贴合内容，
+      // 拖拽条可上拉到 60% / 大屏两档。其余面板不传 detents，走默认定高。
+      detents: this.noteDetents(),
+      // **大屏横屏的批注面板**：detents 平台不支持，改贴合内容高度
+      //（其余面板仍 MEDIUM 定高）
+      fitContent: this.activeSheet === 'note' && this.rootWidth > this.rootHeight,
       // 竖屏（含平板竖屏）按手机形态出底部面板；平板竖屏宽度收一半
       phoneLayout: this.rootWidth <= this.rootHeight,
       screenWidth: this.rootWidth,
@@ -5147,58 +5857,22 @@ export struct Reader {
     // 纵向拖动不满足手势识别条件，会正常交还给 List 滚动。
     .priorityGesture(
       PanGesture({ direction: PanDirection.Horizontal, distance: 24 })
-        // 大屏：横扫开合被禁用（停靠列用顶栏按钮开合），
-        // 但**拖分隔条调宽**仍走这根手势——priorityGesture 优先级最高，
-        // 正好独占横向拖动，不会和正文滚动/停靠面板打架。
-        .onActionStart((event: GestureEvent) => {
-          this.sideDrag = '';
-          if (!this.isWide()) {
-            return;
-          }
-          // GestureEvent 本体没有窗口坐标，从 fingerList 里取第一根手指的位置
-          if (event.fingerList.length === 0) {
-            return;
-          }
-          const x: number = event.fingerList[0].globalDisplayX;
-          const tocEdge: number = HwSpace.xs + this.tocPanelWidth;
-          const notesEdge: number = this.rootWidth - HwSpace.xs - this.notesPanelWidth;
-          if (this.tocPinned && Math.abs(x - tocEdge) <= 18) {
-            this.sideDrag = 'toc';
-            this.sideDragStartWidth = this.tocPanelWidth;
-            this.sideDragBaseX = x;
-          } else if (this.notesPinned && Math.abs(x - notesEdge) <= 18) {
-            this.sideDrag = 'notes';
-            this.sideDragStartWidth = this.notesPanelWidth;
-            this.sideDragBaseX = x;
-          }
-        })
-        .onActionUpdate((event: GestureEvent) => {
-          if (this.sideDrag.length === 0 || event.fingerList.length === 0) {
-            return;
-          }
-          const x: number = event.fingerList[0].globalDisplayX;
-          const delta: number = x - this.sideDragBaseX;
-          if (this.sideDrag === 'toc') {
-            // 拖拽调宽的上限与 drawerWidth() 的上限一致，避免面板比滑入数学宽出错位
-            this.tocPanelWidth = Math.max(220, Math.min(this.drawerWidth(), this.sideDragStartWidth + delta));
-          } else if (this.sideDrag === 'notes') {
-            this.notesPanelWidth = Math.max(220, Math.min(this.drawerWidth(), this.sideDragStartWidth - delta));
-          }
-        })
+        // **拖分隔条调宽功能已移除**（用户实测：分隔条拖拽热区与侧滑手势竞争，
+        // 导致侧滑滑出不完全；黑线分隔条一并去掉）。
+        // 这根手势现在只负责：侧滑开合目录 / 注释（onActionEnd 的分区逻辑）。
         .onActionEnd((event: GestureEvent) => {
-          this.sideDrag = '';
           const dx: number = event.offsetX;
           // 按触点分区（用户要求）：起点在屏幕偏左 → 这一次滑动只管目录；
           // 起点在屏幕偏右 → 只管注释与批注。避免两边互相抢手势。
           // GestureEvent 本体没有窗口坐标，从 fingerList 里取第一根手指的屏幕绝对 X
           // （与本侧滑手势其它回调里的 globalDisplayX 同一口径）
-          // globalDisplayX 是 number | undefined：先落局部常量再收窄（ArkTS 规则）
+          // globalDisplayX 是 number | undefined：先落局部常量再收窄（ArkTS 规则）。
+          // ⚠️ 双指竞争收尾时 fingerList[0] 可能 undefined（真机崩溃实录），逐层判空
           let startX: number = 0;
-          if (event.fingerList.length > 0) {
-            const gx: number | undefined = event.fingerList[0].globalDisplayX;
-            if (gx !== undefined) {
-              startX = gx;
-            }
+          const fl = event.fingerList;
+          if (fl !== undefined && fl.length > 0 && fl[0] !== undefined
+            && fl[0].globalDisplayX !== undefined) {
+            startX = fl[0].globalDisplayX;
           }
           const leftZone: boolean = startX * 2 < this.rootWidth;
           const notesShown: boolean = this.isWide() ? this.notesPinned : this.notesOpen;
@@ -5267,6 +5941,28 @@ export struct Reader {
     )
   }
 
+  /**
+   * 批注面板的多档高度（拖拽条切换）：贴合内容 → 60% → 大屏。
+   * ⚠️ SheetOptions.detents 是 **1~3 元元组**（不是数组）；其他面板返回
+   * undefined = 不启用 detents，走默认 MEDIUM 定高。
+   */
+  private noteDetents(): [string | number | Resource,
+    (string | number | Resource)?, (string | number | Resource)?] | undefined {
+    if (this.activeSheet !== 'note') {
+      return undefined;
+    }
+    // **大屏横屏（非 phoneLayout）detents 不生效**（系统限制：多档拖拽仅
+    // 手机形态支持）——此时返回 undefined，改走 fitContent 贴合内容高度
+    //（见 bindSheet 选项），面板高度合理、不再是一块定高死面板
+    if (this.rootWidth > this.rootHeight) {
+      return undefined;
+    }
+    const d: [string | number | Resource,
+      (string | number | Resource)?, (string | number | Resource)?] =
+      [SheetSize.FIT_CONTENT, SheetSize.MEDIUM, SheetSize.LARGE];
+    return d;
+  }
+
   /** 文字批注输入面板的内容（标题栏由 ModalSheet 官方标题区提供）。 */
   @Builder
   notePanel() {
@@ -5277,6 +5973,9 @@ export struct Reader {
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
+            // 引用过长时收进 4 行（fitContent 面板高度跟内容走，不收会顶爆面板）
+            .maxLines(4)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .width('100%')
         .padding(HwSpace.sm)
@@ -5286,7 +5985,10 @@ export struct Reader {
 
         TextArea({ text: this.noteDraft, placeholder: '写下你的批注……' })
           .width('100%')
-          .height(120)
+          // **不固定高度**：内容多时输入框自己长高，fitContent 面板跟着长
+          //（用户要求"面板要跟随文本框内容增加而伸长"）；
+          // 上下限防呆：空态不塌、超长内容到顶后内部滚动。
+          .constraintSize({ minHeight: 120, maxHeight: 260 })
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .placeholderColor(this.palette().textTertiary)
@@ -5294,11 +5996,16 @@ export struct Reader {
           .borderRadius(HwRadius.inner)
           .onChange((value: string) => {
             this.noteDraft = value;
+            // 边输入边记草稿（带时间戳）—— 误退出后 3 分钟内可恢复
+            AppStorage.setOrCreate(NOTE_DRAFT_KEY, value);
+            AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
           })
 
         Row({ space: HwSpace.sm }) {
           ImmersiveChip({
             palette: this.palette(),
+            chipTint: '#FFD32F2F',
+            chipActive: true,
             chipLabel: '取消',
             chipOnTap: () => {
               this.closeNoteSheet();

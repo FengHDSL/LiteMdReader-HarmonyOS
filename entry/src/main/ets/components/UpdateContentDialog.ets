@@ -98,7 +98,8 @@ export struct UpdateContentDialog {
       }
       .width('100%')
       .constraintSize({ maxHeight: this.listMax })
-      .scrollBar(BarState.Auto)
+      // 滚动条关闭（用户反馈"右边的滑动条太碍事"）
+      .scrollBar(BarState.Off)
       // 内容不足一屏时 Scroll 默认居中，显式顶对齐（本工程既有约定）
       .align(Alignment.Top)
       .edgeEffect(EdgeEffect.Spring)

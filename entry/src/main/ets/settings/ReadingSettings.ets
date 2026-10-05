@@ -594,6 +594,49 @@ export struct ReadingSettingsPanel {
         .width('100%')
         .alignItems(HorizontalAlign.Start)
 
+        // ── 排版氛围预设（批 5 之氛围排版）：一键组合 行距 × 段间距 ──
+        Row({ space: HwSpace.xs }) {
+          Text('排版氛围')
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textSecondary)
+            .width(64)
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '紧凑',
+            chipActive: this.lineMul <= 1.55 && this.paraSpace <= 0.9,
+            chipOnTap: (): void => {
+              this.lineMul = 1.5;
+              this.paraSpace = 0.7;
+            }
+          })
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '标准',
+            chipActive: this.lineMul > 1.55 && this.lineMul <= 1.85 && this.paraSpace > 0.9
+              && this.paraSpace <= 1.2,
+            chipOnTap: (): void => {
+              this.lineMul = HwType.lineDefault;
+              this.paraSpace = 1.0;
+            }
+          })
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '舒展',
+            chipActive: this.lineMul > 1.85 || this.paraSpace > 1.2,
+            chipOnTap: (): void => {
+              this.lineMul = Math.min(HwType.lineMax, HwType.lineDefault + 0.4);
+              this.paraSpace = 1.6;
+            }
+          })
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Text('一键切捧行距与段落间距的组合，下面的滑块仍可单独微调')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+
         this.sliderRow('font', '正文字号', HwType.bodyMin, HwType.bodyMax, 1, '标题字号会按同一比例跟着缩放')
 
         this.sliderRow('line', '行高倍数', HwType.lineMin, HwType.lineMax, 0.05, '')

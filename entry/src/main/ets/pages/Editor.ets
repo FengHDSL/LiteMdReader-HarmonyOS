@@ -24,6 +24,8 @@ import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { modalSheetOptions } from '../material/ModalSheet';
 import { VersionSnapshot, VersionStore } from '../service/VersionStore';
+import { EditorDraft } from '../service/EditorDraft';
+import { UnsavedConfirmDialog } from '../components/UnsavedConfirmDialog';
 import { WallpaperStore } from '../service/WallpaperStore';
 import {
   HwBar,
@@ -194,7 +196,35 @@ export struct Editor {
   @StorageLink('editorDirty') dirty: boolean = false;
   /** Index 的返回拦截发来的信号：系统返回手势触发 → 弹"保存/不保存"窗（与顶栏返回同逻辑） */
   @StorageProp('editorGoBackTick') @Watch('onGoBackTick') goBackTick: number = 0;
+  /**
+   * 未保存确认弹窗（自绘 2×2：取消 | 直接离开 / 不保存 | 保存）。
+   * 系统 showDialog 的按钮只能横排一行，四个按钮手机上放不下 —— 用户要求 2×2。
+   * 回调用箭头函数绑定 this（成员初始化时创建，捕获的是当前组件实例）。
+   */
+  unsavedDialog: CustomDialogController = new CustomDialogController({
+    builder: UnsavedConfirmDialog({
+      onCancel: (): void => {
+        this.unsavedDialog.close();
+      },
+      onLeaveWithDraft: (): void => {
+        this.leaveWithDraft();
+      },
+      onDiscard: (): void => {
+        this.leaveDiscarding();
+      },
+      onSave: (): void => {
+        this.leaveAfterSave();
+      }
+    }),
+    autoCancel: true,
+    customStyle: true
+  });
   @State preview: boolean = false;
+  /**
+   * 焦点写作（批 5 之一）：隐藏顶栏与底部工具层，只留正文与右上角退出钮。
+   * 正文区随隐藏自动扩大，排版设置照常生效；再点退出钮（或保存/返回）恢复。
+   */
+  @State focusMode: boolean = false;
   /** 预览图片放大浮层：非空 = 显示（点击预览里的图片触发） */
   @State previewImage: string = '';
   @State previewImgScale: number = 1;
@@ -262,7 +292,13 @@ export struct Editor {
     } else {
       this.isNew = true;
       this.docName = '';
-      this.content = DocStore.NEW_DOC_TEMPLATE;
+      // 从模板新建：模板正文经路由传入（**不提前落盘**）—— 这样编辑页里点
+      // 「直接离开 / 不保存」才是真的不创建文档（用户反馈修复）。
+      const seed: string | undefined = params !== undefined && params !== null
+        ? params.seed : undefined;
+      this.content = seed !== undefined && seed !== null && seed.length > 0
+        ? seed
+        : DocStore.NEW_DOC_TEMPLATE;
       this.dirty = false;
     }
     applySystemBarTheme(this.isDark());
@@ -455,7 +491,23 @@ export struct Editor {
       this.content = DocStore.readText(ctx, meta);
       // 只读文档：正文照常显示，但保存会被拦下（入口侧已隐藏编辑按钮，这里兜底）
       this.docReadOnly = DocStore.isReadOnly(ctx, meta.name);
+      // 先复位（@StorageLink 初值可能残留上一次进入的 true）
       this.dirty = false;
+      // **恢复「直接离开」留下的草稿**（用户要求"不小心退出的内容还在"）：
+      // 草稿与正文一致 = 上次离开后没再改过文档，静默清掉即可，不打扰；
+      // 不一致才恢复并标记未保存。
+      const draft: string = EditorDraft.load(ctx, meta.name);
+      if (draft.length > 0) {
+        if (draft !== this.content) {
+          this.content = draft;
+          this.dirty = true;
+          setTimeout(() => {
+            this.toast('已恢复上次未保存的修改，可继续编辑或保存');
+          }, 350);
+        } else {
+          EditorDraft.clear(ctx, meta.name);
+        }
+      }
     } catch (err) {
       this.toast('读取失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -897,6 +949,7 @@ export struct Editor {
         this.originalName = meta.name;
         this.docName = meta.name;
         this.dirty = false;
+        EditorDraft.clear(ctx, meta.name);
         this.snapshotAfterSave(ctx);
         this.toast('已保存《' + meta.name + '》');
         return true;
@@ -914,6 +967,8 @@ export struct Editor {
         return false;
       }
       this.dirty = false;
+      // 已写入正文：草稿没有存在意义了，清掉（否则下次打开又会冒出旧内容）
+      EditorDraft.clear(ctx, this.originalName);
       this.snapshotAfterSave(ctx);
       this.toast('已保存《' + this.originalName + '》');
       return true;
@@ -939,28 +994,47 @@ export struct Editor {
       this.closePage();
       return;
     }
-    this.getUIContext().getPromptAction().showDialog({
-      title: '还有未保存的修改',
-      message: '离开前要先保存吗？',
-      buttons: [
-        { text: '取消', color: this.palette().textSecondary },
-        { text: '不保存', color: '#FFD93B3B' },
-        { text: '保存', color: this.palette().accent }
-      ]
-    }).then((result) => {
-      if (result.index === 0) {
-        return;
+    // 自绘 2×2 弹窗（用户要求）：系统 showDialog 的按钮只能横排一行，
+    // 四个动作（取消 / 直接离开 / 不保存 / 保存）手机上一行放不下。
+    this.unsavedDialog.open();
+  }
+
+  /**
+   * 「直接离开」：不写文档正文，但把当前内容存一份草稿（EditorDraft），
+   * 下次打开这篇文档时自动恢复 —— 走人的路要顺，内容不能丢。
+   * 新文档（还没存过盘、没有名字）没有草稿挂靠点，退化为不保存直接走。
+   */
+  private leaveWithDraft(): void {
+    const ctx = this.ctx();
+    if (ctx !== null && this.docName.length > 0) {
+      if (EditorDraft.save(ctx, this.docName, this.content)) {
+        this.toast('已存草稿，下次打开自动恢复');
       }
-      if (result.index === 2) {
-        if (this.save()) {
-          this.closePage();
-        }
-        return;
-      }
+    }
+    this.dirty = false;
+    this.unsavedDialog.close();
+    this.closePage();
+  }
+
+  /** 「不保存」：丢弃修改（连旧草稿一起清掉，用户明确说不要了），返回书架。 */
+  private leaveDiscarding(): void {
+    const ctx = this.ctx();
+    if (ctx !== null) {
+      EditorDraft.clear(ctx, this.docName);
+    }
+    this.dirty = false;
+    this.unsavedDialog.close();
+    this.closePage();
+  }
+
+  /** 「保存」：写入文档后返回书架；保存失败则留在编辑页处理（save 内部已提示）。 */
+  private leaveAfterSave(): void {
+    if (this.save()) {
+      this.unsavedDialog.close();
       this.closePage();
-    }).catch((err: BusinessError) => {
-      this.toast('操作失败：' + err.message);
-    });
+      return;
+    }
+    this.unsavedDialog.close();
   }
 
   /** Index 的系统返回拦截发来信号（editorGoBackTick 变化）→ 走与顶栏返回相同的弹窗逻辑。 */
@@ -1241,6 +1315,10 @@ export struct Editor {
     })
     .width('100%')
     .height(40)
+    // **两端圆弧裁切**（用户要求"片段两段裁切要圆形"）：滚动内容从圆弧边缘进出，
+    // 不再是直角切断（与底栏胶囊的弧线同语言）
+    .borderRadius(HwRadius.pill)
+    .clip(true)
     }
   }
 
@@ -1252,42 +1330,63 @@ export struct Editor {
       Text(this.stats())
         .fontSize(HwType.caption)
         .fontColor(this.palette().textSecondary)
-      Column()
-        .layoutWeight(1)
-      // 右侧芯片包进带间距的 Row：ImmersiveBar 内部 Row 没有 space，会贴在一起。
-      // 保存状态（未保存/新文档/已保存）也做成胶囊，与分屏/语法同一排、同一观感
-      Row({ space: HwSpace.xs }) {
-        ImmersiveChip({
-          palette: this.palette(),
-          chipActive: this.dirty,
-          chipLabel: this.dirty ? '未保存' : (this.isNew ? '新文档' : '已保存'),
-          chipOnTap: () => {
-            this.save();
-          }
-        })
+        .constraintSize({ maxWidth: 120 })
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      // 右侧芯片整排**横向滑动**（与上方片段条同一交互；用户反馈 4 颗 chip 全挤一起）：
+      // 占满统计文字之外的剩余宽度，chip 多了滑出来选
+      Scroll() {
+        Row({ space: HwSpace.xs }) {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '专注',
+            chipOnTap: () => {
+              // 焦点写作（批 5）：隐藏顶栏 / 底部工具层，只留正文
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.focusMode = true;
+              });
+            }
+          })
 
-        ImmersiveChip({
-          palette: this.palette(),
-          chipActive: this.splitMode > 0,
-          chipLabel: this.splitMode === 1 ? '上下分屏' : (this.splitMode === 2 ? '左右分屏' : '分屏'),
-          chipOnTap: () => {
-            this.cycleSplit();
-          }
-        })
+          ImmersiveChip({
+            palette: this.palette(),
+            chipActive: this.dirty,
+            chipLabel: this.dirty ? '未保存' : (this.isNew ? '新文档' : '已保存'),
+            chipOnTap: () => {
+              this.save();
+            }
+          })
 
-        ImmersiveChip({
-          palette: this.palette(),
-          chipLabel: '语法',
-          chipOnTap: () => {
-            this.openSyntax();
+          ImmersiveChip({
+            palette: this.palette(),
+            chipActive: this.splitMode > 0,
+            chipLabel: this.splitMode === 1 ? '上下分屏' : (this.splitMode === 2 ? '左右分屏' : '分屏'),
+            chipOnTap: () => {
+              this.cycleSplit();
+            }
+          })
+
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '语法',
+            chipOnTap: () => {
+              this.openSyntax();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.book'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
           }
-        }) {
-          SymbolGlyph($r('sys.symbol.book'))
-            .fontSize(13)
-            .fontColor([this.palette().accent])
         }
+        .alignItems(VerticalAlign.Center)
       }
-      .alignItems(VerticalAlign.Center)
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .layoutWeight(1)
+      .align(Alignment.End)
+      // **圆弧裁切**（用户要求）：chip 滑入/滑出的交界处按胶囊弧线收，不再是直角
+      .borderRadius(HwRadius.pill)
+      .clip(true)
     }
   }
 
@@ -1943,32 +2042,66 @@ export struct Editor {
         }
       }))
 
-      // ── 悬浮顶栏：材质胶囊，内容从它底下穿过 ──
-      Column() {
-        this.topBar()
-      }
-      .width('100%')
-      .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.padTop() })
-
-      // ── 悬浮底部工具层：片段条 + 底栏，固定在键盘之上 ──
-      // 页面走系统键盘避让：键盘弹起时整页高度收缩，钉在底部的那层自然抬到键盘上沿
-      Stack({ alignContent: Alignment.BottomStart }) {
-        Column({ space: HwSpace.xs }) {
-          if (!this.preview) {
-            this.snippetBar()
-          }
-          this.bottomBar()
+      // ── 悬浮顶栏：材质胶囊，内容从它底下穿过（焦点写作时隐藏）──
+      if (!this.focusMode) {
+        Column() {
+          this.topBar()
         }
         .width('100%')
-        .padding({
-          left: HwSpace.lg,
-          right: HwSpace.lg,
-          bottom: this.keyboardPx > 0 ? 6 : this.padBottom()
-        })
+        .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.padTop() })
       }
-      .width('100%')
-      .height('100%')
-      .hitTestBehavior(HitTestMode.Transparent)
+
+      // ── 悬浮底部工具层：片段条 + 底栏，固定在键盘之上（焦点写作时隐藏）──
+      // 页面走系统键盘避让：键盘弹起时整页高度收缩，钉在底部的那层自然抬到键盘上沿
+      if (!this.focusMode) {
+        Stack({ alignContent: Alignment.BottomStart }) {
+          Column({ space: HwSpace.xs }) {
+            if (!this.preview) {
+              this.snippetBar()
+            }
+            this.bottomBar()
+          }
+          .width('100%')
+          .padding({
+            left: HwSpace.lg,
+            right: HwSpace.lg,
+            bottom: this.keyboardPx > 0 ? 6 : this.padBottom()
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+
+      // ── 焦点写作的退出钮：右上角小胶囊（避让状态栏），唯一入口提示 ──
+      if (this.focusMode) {
+        Stack() {
+          ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
+          Row({ space: 6 }) {
+            Text('专注中')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            ImmersiveIconButton({
+              buttonSize: 30,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                  this.focusMode = false;
+                });
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.xmark'))
+                .fontSize(14)
+                .fontColor([this.palette().textPrimary])
+            }
+          }
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: 10, right: 6, top: 4, bottom: 4 })
+        }
+        .borderRadius(HwRadius.pill)
+        .margin({ left: HwSpace.lg, top: this.padTop() + 4 })
+      }
 
       // 语法速查：**官方 bindSheet**（居中卡片，高度自适应 + 88% 封顶内滚）
       if (this.showSyntax) {

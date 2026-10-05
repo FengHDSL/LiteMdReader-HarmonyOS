@@ -393,34 +393,10 @@ export struct SettingsWriting {
     .alignItems(HorizontalAlign.Start)
   }
 
-  /** 写作热力图卡（GitHub 风格：年份选择右上角 + 横向滑动一年 + 月份对齐列 + 左侧星期）。 */
+  /** 写作热力图卡（GitHub 风格：横向滑动一年 + 月份对齐列 + 左侧星期；年份选择在**右下角**）。 */
   @Builder
   heatmapCard() {
     Column({ space: HwSpace.sm }) {
-      // 年份选择：**右上角下拉 Select**（用户要求；替代原一排年份芯片）
-      Row({ space: HwSpace.xs }) {
-        Blank()
-        Select(this.yearSelectOptions())
-          .selected(this.yearOptions().indexOf(this.viewYear))
-          .value(this.viewYear + ' 年')
-          .font({ size: HwType.caption })
-          .fontColor(this.palette().textPrimary)
-          .backgroundColor(withAlpha(this.palette().accent, '2E'))
-          .borderRadius(HwRadius.inner)
-          .onSelect((index: number) => {
-            const y: number = this.yearOptions()[index];
-            // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
-            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
-              this.viewYear = y;
-            });
-            // 切年份后重新定位到该年最新有数据的列
-            setTimeout(() => {
-              this.scrollHeatToLatest();
-            }, 120);
-          })
-      }
-      .width('100%')
-
       Row({ space: HwSpace.xs }) {
         // 左侧星期标注（只标一/三/五行），行高与格子严格一致；**不随横向滚动**（GitHub 同款）
         Column({ space: this.heatGap() }) {
@@ -496,6 +472,30 @@ export struct SettingsWriting {
       }
       .width('100%')
       .alignItems(VerticalAlign.Top)
+
+      // 年份选择：**右下角下拉 Select**（用户要求：从右上角挪下来）
+      Row({ space: HwSpace.xs }) {
+        Blank()
+        Select(this.yearSelectOptions())
+          .selected(this.yearOptions().indexOf(this.viewYear))
+          .value(this.viewYear + ' 年')
+          .font({ size: HwType.caption })
+          .fontColor(this.palette().textPrimary)
+          .backgroundColor(withAlpha(this.palette().accent, '2E'))
+          .borderRadius(HwRadius.inner)
+          .onSelect((index: number) => {
+            const y: number = this.yearOptions()[index];
+            // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
+            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+              this.viewYear = y;
+            });
+            // 切年份后重新定位到该年最新有数据的列
+            setTimeout(() => {
+              this.scrollHeatToLatest();
+            }, 120);
+          })
+      }
+      .width('100%')
 
       // 底部：左统计口径说明（GitHub "Learn how we count contributions" 位）+ 右图例
       //（图例收紧：格 8vp、间距 3 —— 用户反馈之前间距太宽）

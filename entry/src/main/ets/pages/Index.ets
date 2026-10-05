@@ -48,6 +48,12 @@ import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
+import { DocLint, LintIssue, LintReport } from '../service/DocLint';
+import { AnnotationStore } from '../service/AnnotationStore';
+import { MdAnnotation } from '../markdown/MdTypes';
+import { TaskBoard, TaskBoardResult, TaskItem } from '../service/TaskBoard';
+import { GraphResult, KnowledgeGraph } from '../service/KnowledgeGraph';
+import { ReviewCard, ReviewCardStore, ReviewSeed, ReviewStats } from '../service/ReviewCard';
 import { FontStore } from '../service/FontStore';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -70,6 +76,58 @@ import { ChangelogEntry, latestChangelog } from '../service/Changelog';
 import { UpdateContentDialog } from '../components/UpdateContentDialog';
 import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
+import { uniformDataStruct, uniformTypeDescriptor } from '@kit.ArkData';
+
+// ══════════════ 模块级常量（⚠️ 必须位于**全部 import 之后**）══════════════
+// ArkTS 硬性规则：import 必须全部在文件顶部；夹在 import 之间声明 interface / const
+// 会报 `arkts-no-misplaced-imports`（本文件已因此报错过一次）。
+
+/** 文档模板（批 4：模板库）。`## 标题` 让目录开箱可用，`- [ ]` 让待办功能有内容。 */
+interface DocTemplate {
+  name: string;
+  body: string;
+}
+
+const DOC_TEMPLATES: DocTemplate[] = [
+  {
+    name: '读书笔记',
+    body: '# 《书名》\n\n- 作者：\n- 读完日期：\n\n## 核心论点\n\n1. \n\n'
+      + '## 摘录\n\n> \n\n## 我的思考\n\n- [ ] 提炼一句话总结\n'
+  },
+  {
+    name: '会议记录',
+    body: '# 会议记录\n\n- 时间：\n- 参会：\n\n## 议题\n\n1. \n\n## 结论\n\n- \n\n## 待办\n\n- [ ] \n'
+  },
+  {
+    name: '周报',
+    body: '# 周报\n\n## 本周完成\n\n- [x] \n\n## 下周计划\n\n- [ ] \n\n## 风险与需要支持\n\n- \n'
+  },
+  {
+    name: '康奈尔笔记',
+    body: '# 主题\n\n| 线索 / 问题 | 笔记 |\n| --- | --- |\n|  |  |\n\n## 总结\n\n'
+  },
+  {
+    name: '每日复盘',
+    body: '# 复盘\n\n## 今天做成了什么\n\n- \n\n## 卡在哪里\n\n- \n\n## 明天第一件事\n\n- [ ] \n'
+  },
+  {
+    // 这个模板是**给批注与复习卡片练手**用的：新建出来是可编辑的自建文档，
+    // 可以自由划荧光笔、写批注，再去看「批注汇总」「复习卡片」的效果。
+    name: '复习素材',
+    body: '# 复习素材\n\n'
+      + '> 用自己的话复述一遍，划上荧光笔或加上批注；'
+      + '再到书架「⋯ → 批注汇总 / 复习卡片」看效果。\n\n'
+      + '## 一句话概念\n\n'
+      + '- ：\n'
+      + '- ：\n'
+      + '- ：\n\n'
+      + '## 容易混的点\n\n'
+      + '- 与 的区别：\n'
+      + '- 与 的区别：\n\n'
+      + '## 还没弄懂的\n\n'
+      + '- [ ] \n'
+  }
+];
 
 /** 搜索结果下拉面板最多显示的条数（更多提示用底部说明） */
 const SEARCH_PANEL_MAX: number = 20;
@@ -185,6 +243,24 @@ struct Index {
   @State starSort: string = 'starred';
   /** 当前格子菜单对象的收藏状态（选择操作面板里的「收藏 / 取消收藏」） */
   @State cellMenuStarred: boolean = false;
+  /** 复习卡片墙（批 3）：当前批次卡片、当前下标、是否已翻面看批注 */
+  @State reviewCards: ReviewCard[] = [];
+  @State reviewIndex: number = 0;
+  @State reviewFlipped: boolean = false;
+  /** 全部待办（批 2 改进）：面板里可滑动的完整列表 + 顶部摘要 */
+  @State taskItems: TaskItem[] = [];
+  @State taskSummary: string = '';
+  /**
+   * 勾选框点击的"闸门"：`ClickEvent` 没有 `stopPropagation()`，父容器的 onClick
+   * 拦不住子组件已处理的点击。只能用**执行顺序（子先父后）+ 状态标记** ——
+   * 勾选时置 true，整行 onClick 读到就复位并跳过跳转（工程既有做法）。
+   */
+  @State taskToggleGuard: boolean = false;
+  /** 阅读轨迹：最近打开的文档（按 lastOpen 倒序，最多 20 条） */
+  @State trailItems: DocMeta[] = [];
+  /** 批量操作（批 5）：多选模式开关与已选文档名集合 */
+  @State multiSelect: boolean = false;
+  @State multiNames: string[] = [];
   /** 当前格子菜单对象的文档编码（与阅读页共用 AppStorage 键 `docEncoding_<文档名>`） */
   @State cellMenuEncoding: string = 'auto';
   /** 半模态面板重建纪元：深浅切换时换容器 key，避免面板"切换不完全" */
@@ -1060,12 +1136,26 @@ struct Index {
       applySystemBarTheme(this.isDark());
     });
     applySystemBarTheme(this.isDark());
-    // 智感握姿：开始监听握持手（animateTo 让底部按钮滑动到位）
-    GripAware.start((side: number) => {
-      this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
-        this.gripSide = side;
+    // 智感握姿：开始监听握持手（animateTo 让底部按钮滑动到位）。
+    // ⚠️ 必须走 **startWithPermission**（DETECT_GESTURE 是 user_grant 权限，
+    // 不申请 motion.on 静默抛错 → gripSide 恒 0 →"一直在右边"，用户实测）——
+    // 与阅读页同一入口，已授权时不重复弹窗。
+    const gripCtx = this.ctx();
+    if (gripCtx !== null) {
+      GripAware.startWithPermission(gripCtx, (side: number) => {
+        this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+          this.gripSide = side;
+        });
+      }).catch(() => {
+        // 权限/能力不可用：保持默认位置
       });
-    });
+    } else {
+      GripAware.start((side: number) => {
+        this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+          this.gripSide = side;
+        });
+      });
+    }
     // 返程转场期间**不刷新列表**：refresh 会让 Grid 重排，共享元素（封面）动画
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
     setTimeout(() => {
@@ -1079,6 +1169,52 @@ struct Index {
         this.refresh();
         this.toast('已导入《' + pending + '》');
       }, 460);
+    }
+    // **多设备流转接续**（EntryAbility 已把迁移数据写进 AppStorage）：
+    // 目标端有同名文档 → 直接打开；没有 → 用迁移来的正文创建一篇再打开。
+    const cName: string | undefined = AppStorage.get<string>('pendingContinueDocName');
+    if (cName !== undefined && cName.length > 0) {
+      AppStorage.setOrCreate('pendingContinueDocName', '');
+      const cContent: string = AppStorage.get<string>('pendingContinueDocContent') ?? '';
+      const oversize: string = AppStorage.get<string>('pendingContinueOversize') ?? '0';
+      const gc = this.ctx();
+      if (gc === null) {
+        return;
+      }
+      this.refresh();
+      let target: string = cName;
+      if (DocStore.find(gc, cName) === undefined) {
+        if (oversize === '1' || cContent.length === 0) {
+          this.toast('《' + cName + '》内容过大，未随流转传输正文');
+          return;
+        }
+        const created: DocMeta | null = DocStore.create(gc, cName, cContent);
+        if (created === null) {
+          this.toast('接续文档创建失败');
+          return;
+        }
+        target = created.name;
+        this.refresh();
+        // **接续文档 5 分钟后自动清理**（用户要求）：临时接续的文件不留书架——
+        // 5 分钟内没有被编辑过（mtime 未变）就自动删除；编辑过则视为正式文档保留
+        const bornAt: number = Date.now();
+        const bornName: string = created.name;
+        setTimeout(() => {
+          const cc2 = this.ctx();
+          if (cc2 === null) {
+            return;
+          }
+          const m: DocMeta | undefined = DocStore.find(cc2, bornName);
+          if (m !== undefined && m.mtime <= bornAt + 1000) {
+            DocStore.remove(cc2, bornName);
+            this.refresh();
+            this.toast('接续的《' + bornName + '》已自动清理');
+          }
+        }, 5 * 60 * 1000);
+      }
+      const route: ReaderRoute = { name: target };
+      this.pushPage('pages/Reader', route);
+      this.toast('已从另一台设备接续《' + cName + '》');
     }
   }
 
@@ -1103,6 +1239,11 @@ struct Index {
    * 页面级 onBackPress 是唯一可靠的入口。
    */
   onBackPress(): boolean {
+    if (this.multiSelect) {
+      // 批量选择中：返回先退出多选，不退出应用
+      this.exitMultiSelect();
+      return true;
+    }
     if (this.imgPreviewSrc.length > 0) {
       this.closeImagePreview();
       return true;
@@ -1310,6 +1451,11 @@ struct Index {
    * 反向：从阅读页返回时先合上封面，再缩回同一格（见 onPageShow）。
    */
   private openDoc(meta: DocMeta, ev?: ClickEvent): void {
+    // **批量管理模式**：点封面 = 勾选 / 取消勾选，不打开文档（用户要求批量操作）
+    if (this.multiSelect) {
+      this.toggleMulti(meta.name);
+      return;
+    }
     // 一镜到底·出发（官方 BookFlip 方案）：拿到这一格封面的窗口矩形并预算展开几何。
     // 几何来源按可靠性排三层（任何一层拿到都能播动画）：
     //   ① onAreaChange 记录的 globalPosition（vp，窗口坐标，最稳）
@@ -1404,7 +1550,19 @@ struct Index {
     this.pushPage('pages/Editor', route);
   }
 
+  /**
+   * 新建文档（书架的新建卡与底栏「新建」都走这里）。
+   * 先弹出「新建」面板，让用户选**空白文档**还是**从模板开始** ——
+   * 模板本来就属于新建流程（原先挂在封面「⋯」菜单里，逻辑不顺，用户提出）。
+   */
   private createDoc(): void {
+    this.shelfSheet = 'newDoc';
+    this.shelfVisible = true;
+  }
+
+  /** 打开空白编辑器新建。 */
+  private openEditorNew(): void {
+    this.shelfVisible = false;
     // 新建后回到书架：让新封面带动画进场（见 refresh 里的 animateNextRefresh）
     this.animateNextRefresh = true;
     this.pushPage('pages/Editor');
@@ -1822,8 +1980,27 @@ struct Index {
         .backgroundColor('#00000000')
         .geometryTransition('shelfSearch', { follow: true })
       } else {
-        // **平板：标题不进胶囊**（固定在屏幕左上角，见外层），胶囊只装按钮
+        // **搜索按钮放到「书架」标题左边**（用户要求；手机端 + 大屏竖屏同此布局，
+        // 宽屏横屏标题不进胶囊、保持原按钮顺序）
         if (!this.isWideShelf()) {
+          Stack() {
+            ImmersiveIconButton({
+              buttonSize: 36,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.expandSearch();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.magnifyingglass'))
+                .fontSize(18)
+                .fontColor([this.palette().textPrimary])
+            }
+          }
+          .width(36)
+          .height(36)
+          .geometryTransition('shelfSearch', { follow: true })
+
           Column({ space: 1 }) {
             Text('书架')
               .fontSize(22)
@@ -1835,6 +2012,24 @@ struct Index {
         } else {
           Blank()
             .layoutWeight(1)
+
+          Stack() {
+            ImmersiveIconButton({
+              buttonSize: 36,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.expandSearch();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.magnifyingglass'))
+                .fontSize(18)
+                .fontColor([this.palette().textPrimary])
+            }
+          }
+          .width(36)
+          .height(36)
+          .geometryTransition('shelfSearch', { follow: true })
         }
 
       ImmersiveIconButton({
@@ -1849,26 +2044,6 @@ struct Index {
           .fontSize(18)
           .fontColor([this.palette().textPrimary])
       }
-
-      // 搜索一镜到底的**源**：与展开态搜索框共享 'shelfSearch'。
-      // 自定义组件 + 尾随闭包不能链式调属性，所以外面包一层 Stack 再挂 geometryTransition。
-      Stack() {
-        ImmersiveIconButton({
-          buttonSize: 36,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            this.expandSearch();
-          }
-        }) {
-          SymbolGlyph($r('sys.symbol.magnifyingglass'))
-            .fontSize(18)
-            .fontColor([this.palette().textPrimary])
-        }
-      }
-      .width(36)
-      .height(36)
-      .geometryTransition('shelfSearch', { follow: true })
 
         ImmersiveIconButton({
           buttonSize: 36,
@@ -2316,7 +2491,7 @@ struct Index {
 
         // 收藏标记：**左上角红色爱心圆钮**（沉浸光感承载，仅收藏的文档显示；点击取消收藏）
         // starredDocs 是 DocMeta[]（含完整信息），按名称匹配当前格
-        if (this.starredDocs.findIndex((d: DocMeta) => d.name === meta.name) >= 0) {
+        if (!this.multiSelect && this.starredDocs.findIndex((d: DocMeta) => d.name === meta.name) >= 0) {
           Stack() {
             ImmersiveIconButton({
               buttonSize: 30,
@@ -2349,33 +2524,51 @@ struct Index {
           .position({ x: 4, y: 4 })
         }
 
-        Column() {
-          ImmersiveIconButton({
-            // 26 → 30（用户反馈"右上角按钮看上去太小"，14vp 图标也确实偏小）
-            buttonSize: 30,
-            buttonMaterialShadow: false,
-            palette: this.palette(),
-            buttonOnTap: () => {
-              if (!inPanel && this.openFolderName.length > 0) {
-                return;
+        if (!this.multiSelect) {
+          Column() {
+            ImmersiveIconButton({
+              // 26 → 30（用户反馈"右上角按钮看上去太小"，14vp 图标也确实偏小）
+              buttonSize: 30,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                if (!inPanel && this.openFolderName.length > 0) {
+                  return;
+                }
+                this.openCellMenu('doc', meta.name, meta.builtin);
               }
-              this.openCellMenu('doc', meta.name, meta.builtin);
+            }) {
+              Image($r('app.media.more_dots'))
+                // 14 → 18（用户反馈图标太小）
+                .width(18)
+                .height(18)
+                .fillColor(this.palette().textSecondary)
             }
-          }) {
-            Image($r('app.media.more_dots'))
-              // 14 → 18（用户反馈图标太小）
-              .width(18)
-              .height(18)
-              .fillColor(this.palette().textSecondary)
           }
+          .margin({ top: 4, right: 4 })
         }
-        .margin({ top: 4, right: 4 })
 
         // 阅读进度：底部居中细进度条 + 右下角百分比胶囊（**独立组件**）
         // ⚠️ 进度值进了格子指纹 → 进度变化会重建格子 → 新建节点无法播放属性动画
         //（初始即终值，"和直接切换没区别"是用户实测反馈）。所以进度条自己记住
         // 上次显示的比例，挂载后从旧值**平滑长到新值**，百分比数字随帧滚动。
-        if (!meta.builtin && meta.progressRatio > 0.001) {
+        if (this.multiSelect) {
+          // 批量多选：左上角勾选圆点占位（爱心隐藏）
+          Column() {
+            if (this.isMultiSelected(meta.name)) {
+              SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
+                .fontSize(22)
+                .fontColor([this.palette().accent])
+            } else {
+              Column()
+                .width(22)
+                .height(22)
+                .borderRadius(11)
+                .border({ width: 2, color: this.palette().textTertiary })
+            }
+          }
+          .position({ x: 4, y: 4 })
+        } else if (!meta.builtin && meta.progressRatio > 0.001) {
           Stack({ alignContent: Alignment.Bottom }) {
             CoverProgressBar({
               target: meta.progressRatio,
@@ -3170,6 +3363,9 @@ struct Index {
     if (this.shelfSheet === 'starred') {
       return '我的收藏';
     }
+    if (this.shelfSheet === 'trail') {
+      return '阅读轨迹';
+    }
     if (this.shelfSheet === 'rename') {
       return this.renameKind === 'folder' ? '重命名文件夹' : '重命名文档';
     }
@@ -3183,6 +3379,9 @@ struct Index {
     if (this.shelfSheet === 'starred') {
       return '共 ' + this.starredDocs.length + ' 篇 · 点一条直接阅读';
     }
+    if (this.shelfSheet === 'trail') {
+      return '最近打开的文档 · 点一条继续读';
+    }
     if (this.shelfSheet === 'rename') {
       return this.renameKind === 'folder'
         ? '文件夹只是归组，不影响文档本身'
@@ -3192,6 +3391,390 @@ struct Index {
       return '「' + this.cellMenuFor + '」';
     }
     return '选择操作';
+  }
+
+  /**
+   * 复习面板（批 3）：正面是高亮文本，点一下翻面看批注，再按三档自评推进排期。
+   * ⚠️ 卡面内容用**方法返回文本**而不是在 @Builder 里写结构分支 ——
+   * 工程踩过"@Builder 内跨分支返回不同结构导致空白"的坑，这里刻意规避。
+   */
+  @Builder
+  reviewSheet() {
+    Column({ space: HwSpace.md }) {
+      Row() {
+        Text('复习卡片')
+          .fontSize(HwType.label + 1)
+          .fontColor(this.palette().textPrimary)
+          .layoutWeight(1)
+        Text((this.reviewIndex + 1) + ' / ' + this.reviewCards.length)
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      // 卡片主体（包一层 Column 承载 onClick —— ImmersiveCard 是尾随闭包组件，
+      // 后面不能再链属性）
+      Column() {
+        ImmersiveCard({
+          cardRadius: HwRadius.card,
+          cardPadding: HwSpace.lg,
+          palette: this.palette()
+        }) {
+          Column({ space: HwSpace.sm }) {
+            Text(this.reviewFrontText())
+              .fontSize(HwType.label + 2)
+              .fontColor(this.palette().textPrimary)
+              .lineHeight(HwType.label * 1.8)
+              .width('100%')
+            Text(this.reviewBackText())
+              .fontSize(this.reviewFlipped ? HwType.label : HwType.caption)
+              .fontColor(this.reviewFlipped ? this.palette().textSecondary
+                : this.palette().textTertiary)
+              .lineHeight(HwType.label * 1.7)
+              .width('100%')
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+        }
+      }
+      .width('100%')
+      .onClick(() => {
+        this.reviewFlipped = !this.reviewFlipped;
+      })
+
+      Row({ space: HwSpace.sm }) {
+        this.reviewButton('忘了', 0, '#FFD9534F')
+        this.reviewButton('模糊', 1, '#FFE0A030')
+        this.reviewButton('记得', 2, this.palette().accent)
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.lg })
+  }
+
+  /** 卡面正面（高亮文本）。 */
+  private reviewFrontText(): string {
+    if (this.reviewIndex >= this.reviewCards.length) {
+      return '';
+    }
+    return this.reviewCards[this.reviewIndex].front;
+  }
+
+  /** 卡面副文：未翻面给提示，翻面后给批注内容（或说明没有批注）+ 出处。 */
+  private reviewBackText(): string {
+    if (this.reviewIndex >= this.reviewCards.length) {
+      return '';
+    }
+    const card: ReviewCard = this.reviewCards[this.reviewIndex];
+    if (!this.reviewFlipped) {
+      return '点一下卡片看批注';
+    }
+    const from: string = '\n\n—— 来自《' + card.docName + '》';
+    if (card.back.length === 0) {
+      return '（这条只有高亮，没有文字批注）' + from;
+    }
+    return card.back + from;
+  }
+
+  /** 三档评分按钮。 */
+  @Builder
+  reviewButton(label: string, grade: number, color: string) {
+    Button(label)
+      .fontSize(HwType.label)
+      .fontColor('#FFFFFFFF')
+      .backgroundColor(color)
+      .layoutWeight(1)
+      .height(42)
+      .borderRadius(HwRadius.pill)
+      .onClick(() => {
+        this.gradeCurrent(grade);
+      })
+  }
+
+  /**
+   * 「全部待办」面板：跨文档的未完成任务清单，**可滑动查看全部**，
+   * 点任意一条直接进那篇文档（用户反馈对话框只能看前几条，看不到剩下的）。
+   */
+  @Builder
+  tasksSheet() {
+    Column({ space: HwSpace.sm }) {
+      Row({ space: HwSpace.xs }) {
+        // **返回上一级**（用户要求）：回到封面「⋯」菜单，而不是关掉面板
+        Text('‹ 返回')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().accent)
+          .onClick(() => {
+            this.shelfSheet = 'cellMenu';
+            // 面板切换靠分支变化触发重建（工程约定）
+            this.sheetEpoch = this.sheetEpoch + 1;
+          })
+        Text('全部待办')
+          .fontSize(HwType.label + 1)
+          .fontColor(this.palette().textPrimary)
+          .layoutWeight(1)
+        Text(this.taskSummary)
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Scroll() {
+        Column({ space: HwSpace.xs }) {
+          ForEach(this.taskItems, (it: TaskItem) => {
+            Row({ space: HwSpace.sm }) {
+              // 左侧勾选框：**点它只勾选、不跳转**（用户要求"支持勾选完成，
+              // 同时影响到文件内的"）；点整行仍是跳进那篇文档的待办所在行。
+              this.taskCheckBox(it)
+              Column({ space: 2 }) {
+                Text(it.text.length > 0 ? it.text : '（空任务）')
+                  .fontSize(HwType.label)
+                  // 已完成：划线 + 置灰（条目**保留在列表里**，用户要能看到勾过了什么）
+                  .decoration({
+                    type: it.done ? TextDecorationType.LineThrough : TextDecorationType.None,
+                    color: this.palette().textTertiary
+                  })
+                  .fontColor(it.done ? this.palette().textTertiary : this.palette().textPrimary)
+                  .width('100%')
+                Text('《' + it.docName + '》第 ' + it.line + ' 行'
+                  + (it.builtin ? ' · 内置只读' : (it.readOnly ? ' · 只读' : '')))
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textTertiary)
+                  .width('100%')
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Top)
+            .padding({ top: HwSpace.xs, bottom: HwSpace.xs })
+            .onClick(() => {
+              // 勾选框已处理过本次点击（子先父后）：复位闸门、不跳转
+              if (this.taskToggleGuard) {
+                this.taskToggleGuard = false;
+                return;
+              }
+              this.shelfVisible = false;
+              // focusLine：进页面就滚到这条待办所在行；fromTasks：退出后回本面板
+              const route: ReaderRoute = { name: it.docName, focusLine: it.line, fromTasks: true };
+              this.pushPage('pages/Reader', route);
+            })
+          }, (it: TaskItem, idx: number) => 'task_' + idx + '_' + it.docName + '_' + it.line
+            + '_' + (it.done ? 'd' : 'o'))
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+      .scrollBar(BarState.Auto)
+      .width('100%')
+      // **内容顶对齐**（Scroll 不足一屏默认居中——用户反馈"怎么把内容居中了"）
+      .align(Alignment.Top)
+      // 面板高度随内容（外层 bindSheet 对非收藏面板是 fitContent）；条目多时到限高内部滚
+      .constraintSize({ maxHeight: 420 })
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.lg })
+  }
+
+  /**
+   * 任务勾选框：自绘（空心方块 / 勾选填充），与正文任务列表同一套视觉与手感
+   * （系统 Checkbox 在深浅主题下配色不可控，工程内一律自绘）。
+   */
+  @Builder
+  taskCheckBox(it: TaskItem) {
+    if (it.done) {
+      SymbolGlyph($r('sys.symbol.checkmark_square_fill'))
+        .fontSize(18)
+        .fontColor([this.palette().accent])
+        .margin({ top: 2 })
+        .onClick(() => {
+          this.toggleTaskItem(it);
+        })
+    } else {
+      Column()
+        .width(17)
+        .height(17)
+        .borderRadius(5)
+        .border({ width: 1.5, color: this.palette().textTertiary })
+        .margin({ top: 3 })
+        .onClick(() => {
+          this.toggleTaskItem(it);
+        })
+    }
+  }
+
+  /**
+   * 勾选 / 取消勾选一条任务：**写回原文**（TaskBoard.toggle 只改 `[ ]`↔`[x]`），
+   * 然后就地重收未完成列表 —— 勾完的那条自动消失，面板不关，可以连着勾。
+   * 内置 / 只读文档由 TaskBoard 拒绝并给出可读原因，这里只负责弹提示。
+   */
+  private toggleTaskItem(it: TaskItem): void {
+    // 置闸门：紧随其后的整行 onClick 读到就跳过跳转
+    this.taskToggleGuard = true;
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const err: string = TaskBoard.toggle(c, it.docName, it.line);
+    if (err.length > 0) {
+      this.toast(err);
+      return;
+    }
+    // 就地重收**全部条目**（勾选的留下并划线，不消失）；key 含 done 状态 → 该行重建
+    const r: TaskBoardResult = TaskBoard.collect(c, false);
+    this.taskItems = r.items;
+    this.taskSummary = TaskBoard.summary(r) + ' · ' + r.docs + ' 篇'
+      + (r.truncated ? '（已达上限）' : '');
+  }
+
+  /**
+   * 「新建」面板（从书架新建卡 / 底栏「新建」进入）：空白文档 + 五个内置模板。
+   *
+   * ⚠️ 两种写法上的规避：① 不传回调参数给 @Builder（ArkTS 上不稳），改用**下标**；
+   * ② 不在 ForEach 的 itemGenerator 里调用 @Builder（工程踩过的坑），直接逐个列出。
+   */
+  @Builder
+  newDocSheet() {
+    Column({ space: HwSpace.xs }) {
+      Text('新建文档')
+        .fontSize(HwType.label + 1)
+        .fontColor(this.palette().textPrimary)
+        .width('100%')
+      Text('可以直接写空白文档，也可以从模板开始 —— 模板自带小节标题与待办项。')
+        .fontSize(HwType.caption)
+        .fontColor(this.palette().textTertiary)
+        .lineHeight(HwType.caption * 1.7)
+        .width('100%')
+
+      this.templateRow(0)
+      this.templateRow(1)
+      this.templateRow(2)
+      this.templateRow(3)
+      this.templateRow(4)
+      this.templateRow(5)
+      this.templateRow(6)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.lg })
+  }
+
+  /** 新建面板里的一行：index 0 = 空白文档，其余对应 DOC_TEMPLATES[index - 1]。 */
+  @Builder
+  templateRow(index: number) {
+    Row({ space: HwSpace.sm }) {
+      // **图标**：自绘的圆角色块 + 单字徽标（不依赖符号库、不引资源，
+      // 与代码块的语言徽标同一套做法，深浅主题下都清晰）
+      Text(this.templateBadge(index))
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#FFFFFFFF')
+        .width(26)
+        .height(26)
+        .textAlign(TextAlign.Center)
+        .borderRadius(8)
+        .backgroundColor(this.templateBadgeColor(index))
+
+      Column({ space: 2 }) {
+        Text(index === 0 ? '空白文档' : DOC_TEMPLATES[index - 1].name)
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+        Text(index === 0 ? '从零开始写' : this.templateHint(index - 1))
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({ top: HwSpace.sm, bottom: HwSpace.sm })
+    .onClick(() => {
+      this.createFromTemplate(index === 0 ? '' : DOC_TEMPLATES[index - 1].name);
+    })
+  }
+
+  /** 模板徽标上的单字（0 = 空白）。 */
+  private templateBadge(index: number): string {
+    if (index === 0) {
+      return '＋';
+    }
+    const n: string = DOC_TEMPLATES[index - 1].name;
+    if (n === '读书笔记') {
+      return '读';
+    }
+    if (n === '会议记录') {
+      return '会';
+    }
+    if (n === '周报') {
+      return '周';
+    }
+    if (n === '康奈尔笔记') {
+      return '康';
+    }
+    if (n === '每日复盘') {
+      return '复';
+    }
+    if (n === '复习素材') {
+      return '记';
+    }
+    return '文';
+  }
+
+  /** 模板徽标底色（暗一档，保证白字对比度）。 */
+  private templateBadgeColor(index: number): string {
+    if (index === 0) {
+      return '#FF6B7280';
+    }
+    const n: string = DOC_TEMPLATES[index - 1].name;
+    if (n === '读书笔记') {
+      return '#FF4E6E9F';
+    }
+    if (n === '会议记录') {
+      return '#FF7A5EA8';
+    }
+    if (n === '周报') {
+      return '#FF2F7D6B';
+    }
+    if (n === '康奈尔笔记') {
+      return '#FFB06A2E';
+    }
+    if (n === '每日复盘') {
+      return '#FF9A5B4E';
+    }
+    if (n === '复习素材') {
+      return '#FF3F7A8C';
+    }
+    return '#FF6B7280';
+  }
+
+  /** 模板的一句话说明 —— 让用户选之前就知道会得到什么结构。 */
+  private templateHint(i: number): string {
+    if (i < 0 || i >= DOC_TEMPLATES.length) {
+      return '';
+    }
+    const n: string = DOC_TEMPLATES[i].name;
+    if (n === '读书笔记') {
+      return '作者 · 核心论点 · 摘录 · 我的思考';
+    }
+    if (n === '会议记录') {
+      return '时间 · 参会 · 议题 · 结论 · 待办';
+    }
+    if (n === '周报') {
+      return '本周完成 · 下周计划 · 风险与需要支持';
+    }
+    if (n === '康奈尔笔记') {
+      return '线索与问题两列表格 · 总结';
+    }
+    if (n === '每日复盘') {
+      return '做成了什么 · 卡在哪里 · 明天第一件事';
+    }
+    return '';
   }
 
   /** bindSheet 内容分发：按 shelfSheet 渲染格子菜单 / 重命名 / 导出面板。 */
@@ -3204,6 +3787,14 @@ struct Index {
       } else {
         this.starredSheet()
       }
+    } else if (this.shelfSheet === 'tasks') {
+      this.tasksSheet()
+    } else if (this.shelfSheet === 'trail') {
+      this.trailSheet()
+    } else if (this.shelfSheet === 'newDoc') {
+      this.newDocSheet()
+    } else if (this.shelfSheet === 'review') {
+      this.reviewSheet()
     } else if (this.shelfSheet === 'rename') {
       this.renameSheet()
     } else if (this.shelfSheet === 'export') {
@@ -3339,6 +3930,12 @@ struct Index {
           const route: ReaderRoute = { name: this.cellMenuFor };
           this.pushPage('pages/Reader', route);
         })
+        // 批量管理（批 5）：进入多选模式，当前这篇默认选中
+        if (!this.cellMenuBuiltin) {
+          this.menuRow('批量管理', () => {
+            this.openMultiSelect(this.cellMenuFor);
+          })
+        }
         // 收藏 / 取消收藏（书架也能收；信息卡的爱心之外多一个入口——用户反馈自带文件不好收藏）
         this.menuRow(this.cellMenuStarred ? '取消收藏' : '收藏', () => {
           const c = this.ctx();
@@ -3479,6 +4076,35 @@ struct Index {
       // 用独立组件承载：它内部用 @StorageLink 订阅当前档位，切换时只写 AppStorage，
       // **不重建面板** —— 之前靠 sheetEpoch++ 刷选中态会把半模态面板的滚动位置
       // 一起重置（用户实测："一改编码面板就跳回顶部"）。
+      // ── **文档体检**（批 1）：扫描结构性问题（围栏未闭合 / 图片缺失 / 锚点失效 …），
+      // 结果用对话框按行号列出。只对文档开放（文件夹没有正文）。
+      if (this.cellMenuKind === 'doc') {
+        this.menuRow('文档体检', () => {
+          this.runLint(this.cellMenuFor);
+        })
+        this.menuRow('批注汇总', () => {
+          this.runAnnotationSummary(this.cellMenuFor);
+        })
+        this.menuRow('批注汇总导出为文档', () => {
+          this.exportAnnotationSummary();
+        })
+      }
+
+      // **全部待办**（批 2）：跨文档功能，放在这里先给个入口（后续可移到书架顶栏）
+      // 模板新建已移到「新建」面板（模板属于新建流程，见 createDoc / newDocSheet）
+      this.menuRow('复习卡片 · 今日到期', () => {
+        this.openReview();
+      })
+      this.menuRow('知识图谱 · 文档引用关系', () => {
+        this.runGraph();
+      })
+      this.menuRow('今日笺 · 今天做什么', () => {
+        this.runDailyNote();
+      })
+      this.menuRow('全部待办 · 所有文档', () => {
+        this.runTaskBoard();
+      })
+
       if (this.cellMenuKind === 'doc') {
         EncodingChoiceCard({
           docName: this.cellMenuFor,
@@ -3637,21 +4263,37 @@ struct Index {
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       }
+      if (this.multiSelect) {
+        // 批量多选：行首勾选圆点
+        if (this.isMultiSelected(meta.name)) {
+          SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
+            .fontSize(20)
+            .fontColor([this.palette().accent])
+        } else {
+          Column()
+            .width(20)
+            .height(20)
+            .borderRadius(10)
+            .border({ width: 2, color: this.palette().textTertiary })
+        }
+      }
       Column() {
-        ImmersiveIconButton({
-          // 26 → 30（同上：右上角按钮整体放大）
-          buttonSize: 30,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            this.openCellMenu('doc', meta.name, meta.builtin);
+        if (!this.multiSelect) {
+          ImmersiveIconButton({
+            // 26 → 30（同上：右上角按钮整体放大）
+            buttonSize: 30,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.openCellMenu('doc', meta.name, meta.builtin);
+            }
+          }) {
+            Image($r('app.media.more_dots'))
+              // 14 → 18（同上：右上角图标整体放大）
+              .width(18)
+              .height(18)
+              .fillColor(this.palette().textSecondary)
           }
-        }) {
-          Image($r('app.media.more_dots'))
-            // 14 → 18（同上：右上角图标整体放大）
-            .width(18)
-            .height(18)
-            .fillColor(this.palette().textSecondary)
         }
       }
     }
@@ -3794,6 +4436,66 @@ struct Index {
 
   // ══════════════════════ 底部统计栏（含快捷新建 / 导入按钮） ══════════════════════
 
+  /**
+   * 批量操作条（multiSelect 时替换底栏）：已选数 + 全选 + 移入文件夹 + 删除 + 完成。
+   * 移入文件夹用 Select 下拉选目标；删除走确认弹窗（内置文档自动跳过）。
+   */
+  @Builder
+  multiBar() {
+    ImmersiveBar({ palette: this.palette(), barPaddingH: HwSpace.sm, barPaddingV: HwSpace.xs }) {
+      // 统一包一行（带间距）：此前元素直接铺在胶囊里全贴在一起（用户反馈）
+      Row({ space: 6 }) {
+        Text('已选 ' + this.multiNames.length)
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textPrimary)
+          .constraintSize({ maxWidth: 64 })
+          .maxLines(1)
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: this.multiNames.length >= this.docs.length ? '全不选' : '全选',
+          chipOnTap: () => {
+            this.toggleMultiAll();
+          }
+        })
+        // 移入文件夹：**收窄的下拉**（此前按 value 撑宽显得过大，用户反馈）
+        Select(this.folderSelectOptions())
+          .selected(-1)
+          .value('移入')
+          .font({ size: HwType.caption })
+          .fontColor(this.palette().textSecondary)
+          .backgroundColor('#00000000')
+          .height(30)
+          .constraintSize({ minWidth: 62, maxWidth: 96 })
+          .onSelect((index: number) => {
+            if (index >= 0 && index < this.folders.length) {
+              this.multiToFolder(this.folders[index].name);
+              this.exitMultiSelect();
+            }
+          })
+        Blank()
+        ImmersiveChip({
+          palette: this.palette(),
+          chipTint: '#FFD32F2F',
+          chipActive: true,
+          chipLabel: '删除',
+          chipOnTap: () => {
+            this.multiRemove();
+          }
+        })
+        ImmersiveChip({
+          palette: this.palette(),
+          chipActive: true,
+          chipLabel: '完成',
+          chipOnTap: () => {
+            this.exitMultiSelect();
+          }
+        })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+    }
+  }
+
   @Builder
   bottomBar() {
     ImmersiveBar({
@@ -3806,6 +4508,7 @@ struct Index {
       // 智感握姿：左手时新建按钮靠左（"几篇"文本左边），右手/默认靠右（"字数"文本右边）
       if (this.gripSide === -1) {
         this.newDocButton()
+        this.trailButton()
         // 爱心：收藏快速查看（与新建按钮同侧，一起跟随握姿适配）
         this.starButton()
       }
@@ -3826,9 +4529,37 @@ struct Index {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       if (this.gripSide !== -1) {
         this.newDocButton()
+        this.trailButton()
         this.starButton()
       }
     }
+  }
+
+  /**
+   * 胶囊内的「阅读轨迹」按钮：最近打开的文档列表（批 5 之阅读轨迹）。
+   * 与新建 / 收藏同一套：圆形小钮 + 时钟图标，跟随智感握姿换边。
+   */
+  @Builder
+  trailButton() {
+    Stack() {
+      ImmersiveIconButton({
+        buttonSize: NEW_BTN_SIZE,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+            this.openTrail();
+          });
+        }
+      }) {
+        SymbolGlyph($r('sys.symbol.clock'))
+          .fontSize(17)
+          .fontColor([this.palette().accent])
+      }
+    }
+    .width(NEW_BTN_SIZE)
+    .height(NEW_BTN_SIZE)
+    .margin(this.gripSide === -1 ? { right: HwSpace.xs } : { left: HwSpace.xs })
   }
 
   /**
@@ -3955,6 +4686,804 @@ struct Index {
   /** 文档编码在 AppStorage 里的键（按文档名存，与阅读页共用同一份）。 */
   private encodingKeyOf(docName: string): string {
     return 'docEncoding_' + docName;
+  }
+
+  /**
+   * **批注汇总导出为文档**：把全部文档的标注整理成一篇《批注汇总》——
+   * 按文档分组、每组标题用 `[[文档名]]`（点一下就能跳到那篇），
+   * 于是它既是一份复习清单，也被「知识图谱」连进了文档网络。
+   */
+  private exportAnnotationSummary(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const list: DocMeta[] = DocStore.list(c);
+    const lines: string[] = [];
+    lines.push('# 批注汇总');
+    lines.push('');
+    lines.push('> 由「书架封面 ⋯ → 批注汇总导出」自动生成；再导出会新建一篇'
+      + '（同名自动加序号），旧的可以自行删除。');
+    lines.push('');
+    let total: number = 0;
+    let docs: number = 0;
+    for (let k = 0; k < list.length; k++) {
+      const meta: DocMeta = list[k];
+      let arr: MdAnnotation[] = [];
+      try {
+        arr = AnnotationStore.load(c, meta.name);
+      } catch (err) {
+        arr = [];
+      }
+      if (arr.length === 0) {
+        continue;
+      }
+      docs++;
+      lines.push('## [[' + meta.name + ']]');
+      lines.push('');
+      for (let j = 0; j < arr.length; j++) {
+        const a: MdAnnotation = arr[j];
+        const isHand: boolean = a.note.startsWith('hw:');
+        const excerpt: string = a.text.trim().replace(/\s+/g, ' ');
+        total++;
+        lines.push('- ' + (excerpt.length > 60 ? excerpt.substring(0, 60) + '…' : excerpt));
+        if (isHand) {
+          lines.push('  - ✍️ 手写批注');
+        } else if (a.note.length > 0) {
+          lines.push('  - 💬 ' + a.note.replace(/\n/g, ' '));
+        }
+      }
+      lines.push('');
+    }
+    if (total === 0) {
+      this.toast('还没有任何批注');
+      return;
+    }
+    // 在开头说明之后插入一行统计
+    lines.splice(3, 0, '**共 ' + total + ' 处标注 · 涉及 ' + docs + ' 篇文档**', '');
+    const out: DocMeta | null = DocStore.create(c, '批注汇总', lines.join('\n'));
+    this.refresh();
+    if (out === null) {
+      this.toast('导出失败：无法写入文档');
+      return;
+    }
+    this.toast('已导出《' + out.name + '》（' + total + ' 处标注）');
+  }
+
+  /**
+   * 按内置模板新建并**直接打开**（由「新建」面板调用）。
+   * 传空模板名 = 打开空白编辑器。
+   */
+  private createFromTemplate(templateName: string): void {
+    if (templateName.length === 0) {
+      this.openEditorNew();
+      return;
+    }
+    let body: string = '';
+    for (let k = 0; k < DOC_TEMPLATES.length; k++) {
+      if (DOC_TEMPLATES[k].name === templateName) {
+        body = DOC_TEMPLATES[k].body;
+        break;
+      }
+    }
+    if (body.length === 0) {
+      this.toast('模板不存在');
+      return;
+    }
+    this.shelfVisible = false;
+    this.animateNextRefresh = true;
+    // **不再提前落盘**（用户反馈：选「直接离开 / 不保存」却多出一篇文档）：
+    // 模板正文经路由传给编辑器，保存时才真正创建 —— 不保存 = 什么都不留。
+    const route: ReaderRoute = { seed: body };
+    this.pushPage('pages/Editor', route);
+  }
+
+  /**
+   * 复习卡片墙（批 3）：把批注派生成卡片，按间隔重复复习。
+   * 打开时先 sync（把批注新增/删除同步进卡片，保留已有进度），再取今日到期的。
+   */
+  private openReview(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    let due: ReviewCard[] = [];
+    try {
+      const seeds: ReviewSeed[] = this.buildReviewSeeds(c);
+      ReviewCardStore.sync(c, seeds);
+      due = ReviewCardStore.dueToday(ReviewCardStore.load(c));
+    } catch (err) {
+      this.toast('读取复习卡片失败');
+      return;
+    }
+    if (due.length === 0) {
+      const s: ReviewStats = ReviewCardStore.stats(ReviewCardStore.load(c));
+      this.toast(s.total === 0
+        ? '还没有卡片：先在文档里划几处荧光笔或写批注'
+        : '今天没有到期卡片（共 ' + s.total + ' 张，已掌握 ' + s.learned + ' 张）');
+      return;
+    }
+    this.reviewCards = due;
+    this.reviewIndex = 0;
+    this.reviewFlipped = false;
+    this.shelfSheet = 'review';
+    this.shelfVisible = true;
+  }
+
+  /** 从全部文档的批注里收集卡片素材（手写批注跳过：正反面都是图，复习价值低）。 */
+  private buildReviewSeeds(c: common.UIAbilityContext): ReviewSeed[] {
+    const out: ReviewSeed[] = [];
+    const list: DocMeta[] = DocStore.list(c);
+    for (let k = 0; k < list.length; k++) {
+      const arr: MdAnnotation[] = AnnotationStore.load(c, list[k].name);
+      for (let j = 0; j < arr.length; j++) {
+        const a: MdAnnotation = arr[j];
+        if (a.note.startsWith('hw:')) {
+          continue;
+        }
+        const front: string = a.text.trim();
+        if (front.length === 0) {
+          continue;
+        }
+        out.push({
+          docName: list[k].fileName, annId: a.id, front: front, back: a.note
+        } as ReviewSeed);
+      }
+    }
+    return out;
+  }
+
+  /** 给当前卡片评分并推进到下一张。 */
+  private gradeCurrent(grade: number): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null || this.reviewIndex >= this.reviewCards.length) {
+      return;
+    }
+    const all: ReviewCard[] = ReviewCardStore.load(c);
+    const cur: ReviewCard = this.reviewCards[this.reviewIndex];
+    for (let k = 0; k < all.length; k++) {
+      if (all[k].id === cur.id) {
+        ReviewCardStore.grade(all[k], grade);
+        break;
+      }
+    }
+    ReviewCardStore.save(c, all);
+    if (this.reviewIndex + 1 >= this.reviewCards.length) {
+      this.shelfVisible = false;
+      this.toast('今天的卡片复习完了');
+      return;
+    }
+    this.reviewIndex = this.reviewIndex + 1;
+    this.reviewFlipped = false;
+  }
+
+  /**
+   * **知识图谱**（批 3）：把各篇的 `[[文档链接]]` 汇总成关系图。
+   * 本轮以「关系清单」呈现（节点数 / 引用数 / 待补 / 未连接）；
+   * mermaid 图形视图需要渲染通道，下一轮接（`KnowledgeGraph.toMermaid` 已备好）。
+   */
+  private runGraph(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    let r: GraphResult | null = null;
+    try {
+      r = KnowledgeGraph.build(c);
+    } catch (err) {
+      this.toast('构建图谱失败');
+      return;
+    }
+    if (r === null) {
+      return;
+    }
+    const res: GraphResult = r;
+    if (res.nodes.length === 0) {
+      this.toast('还没有文档之间的 [[链接]]');
+      return;
+    }
+    // **图形视图**：生成 mermaid 源码，写进一篇《知识图谱》文档 ——
+    // 打开它就能看到已有渲染通道画出来的图（不必为图谱再造一个 Web 容器）。
+    const src: string = KnowledgeGraph.toMermaid(res);
+    const lines: string[] = [];
+    lines.push('# 知识图谱');
+    lines.push('');
+    lines.push('> 由「书架封面 ⋯ → 知识图谱」自动生成；再生成一次会新建一篇'
+      + '（同名时自动加序号），旧的可以自行删除。');
+    lines.push('');
+    lines.push('**' + KnowledgeGraph.summary(res) + '** · 已扫 ' + res.scanned + ' 篇文档');
+    lines.push('');
+    lines.push('```mermaid');
+    lines.push(src);
+    lines.push('```');
+    if (res.missing.length > 0) {
+      lines.push('');
+      lines.push('## 待补文档');
+      lines.push('');
+      lines.push('> 被 [[链接]] 指向、但文档还不存在的条目。');
+      lines.push('');
+      for (let k = 0; k < res.missing.length; k++) {
+        lines.push('- ' + res.missing[k]);
+      }
+    }
+    if (res.isolated.length > 0) {
+      lines.push('');
+      lines.push('## 未连接');
+      lines.push('');
+      lines.push('> 在书架里、但没有任何引用关系的文档。');
+      lines.push('');
+      for (let k = 0; k < res.isolated.length; k++) {
+        lines.push('- ' + res.isolated[k]);
+      }
+    }
+    const meta: DocMeta | null = DocStore.create(c, '知识图谱', lines.join('\n'));
+    this.refresh();
+    if (meta === null) {
+      this.toast('生成失败：无法写入文档');
+      return;
+    }
+    this.toast('已生成《' + meta.name + '》，打开即可查看图谱');
+  }
+
+  /**
+   * **今日笺**（批 2）：把"今天该干什么"汇总成一页 —— 待办 / 今日修改 / 今日读过 /
+   * 读到一半的书。数据全部来自 `DocMeta`（mtime / lastOpen / progressRatio）与
+   * TaskBoard，不需要任何额外存储，因此永远不会与真实状态脱节。
+   */
+  private runDailyNote(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const day: number = 24 * 60 * 60 * 1000;
+    const now: number = Date.now();
+    const list: DocMeta[] = DocStore.list(c);
+    const changed: string[] = [];
+    const opened: string[] = [];
+    const reading: string[] = [];
+    let chars: number = 0;
+    for (let k = 0; k < list.length; k++) {
+      const m: DocMeta = list[k];
+      chars += m.charCount;
+      if (now - m.mtime <= day && changed.length < 4) {
+        changed.push(m.name);
+      }
+      if (m.lastOpen > 0 && now - m.lastOpen <= day && opened.length < 4) {
+        opened.push(m.name);
+      }
+      if (m.progressRatio > 0.01 && m.progressRatio < 0.99 && reading.length < 4) {
+        reading.push(m.name + '（' + Math.round(m.progressRatio * 100) + '%）');
+      }
+    }
+    let taskLine: string = '';
+    try {
+      const t: TaskBoardResult = TaskBoard.collect(c, true);
+      taskLine = TaskBoard.summary(t);
+      if (t.items.length > 0) {
+        taskLine += '\n最紧的：' + t.items[0].text
+          + '（《' + t.items[0].docName + '》第 ' + t.items[0].line + ' 行）';
+      }
+    } catch (err) {
+      taskLine = '读取失败';
+    }
+    // 【复习】今天到期的卡片数 —— 把"该读"和"该记"放在同一页
+    let reviewLine: string = '';
+    try {
+      const st: ReviewStats = ReviewCardStore.stats(ReviewCardStore.load(c));
+      reviewLine = ReviewCardStore.summary(st);
+    } catch (err) {
+      reviewLine = '读取失败';
+    }
+    const body: string = '书架共 ' + list.length + ' 篇 · ' + chars + ' 字\n\n'
+      + '【待办】' + taskLine + '\n\n'
+      + '【复习】' + reviewLine + '\n\n'
+      + '【今日修改】' + (changed.length > 0 ? changed.join('、') : '无') + '\n\n'
+      + '【今日读过】' + (opened.length > 0 ? opened.join('、') : '无') + '\n\n'
+      + '【读到一半】' + (reading.length > 0 ? reading.join('、') : '无');
+    this.getUIContext().getPromptAction().showDialog({
+      title: '今日笺', message: body,
+      buttons: [{ text: '知道了', color: this.palette().accent }]
+    });
+  }
+
+  /**
+   * **全部待办**（批 2）：跨文档收集未完成任务清单（对话框形式）。
+   * 每条带来源文档与行号，方便回到原文处理。
+   */
+  /**
+   * **拖文件进窗口自动导入并打开**（用户要求）：从文件管理器 / 桌面拖 .md / .txt
+   * 到书架任意位置松手即导入；成功后打开第一篇（阅读页），多文件 toast 汇总。
+   * 拖拽数据走 UDMF：单文件是 File 记录、多文件是 Files 集合，两种都接。
+   */
+  private handleFileDrop(event?: DragEvent): void {
+    if (event === undefined || event === null) {
+      return;
+    }
+    const data = event.getData();
+    if (data === undefined || data === null) {
+      return;
+    }
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const records = data.getRecords();
+    const uris: string[] = [];
+    for (let k = 0; k < records.length; k++) {
+      const rec = records[k];
+      // 拖文件 = FileUri 记录（uniformDataType 固定 'general.file-uri'）。
+      // ⚠️ 本 SDK 的 uniformDataStruct 只导出类型没有枚举值——getType() 直接和
+      // 字符串字面量比较；UnifiedRecord → FileUri 用双跳断言（结构化类型不重叠）。
+      if (rec.getType() !== 'general.file-uri') {
+        continue;
+      }
+      const fr = rec as object as uniformDataStruct.FileUri;
+      // FileUri 的路径字段叫 **oriUri**（不是 uri，查 SDK 定义确认）
+      const uri: string = fr.oriUri;
+      if (uri !== undefined && uri !== null && uri.length > 0) {
+        uris.push(uri);
+      }
+    }
+    if (uris.length === 0) {
+      // 内部拖拽（长按封面合并文件夹等）不含 file-uri 记录：静默返回，
+      // 不打扰原有交互（若 toast 会干扰每次封面拖动合并）
+      return;
+    }
+    let first: DocMeta | null = null;
+    let ok: number = 0;
+    let fail: number = 0;
+    for (let k = 0; k < uris.length; k++) {
+      try {
+        const meta: DocMeta | null = DocStore.importFromUri(c, uris[k]);
+        if (meta !== null) {
+          ok++;
+          if (first === null) {
+            first = meta;
+          }
+        } else {
+          fail++;
+        }
+      } catch (err) {
+        fail++;
+      }
+    }
+    if (ok === 0) {
+      this.toast(fail > 0 ? '导入失败（只支持 md / txt 文件）' : '没有导入任何文件');
+      return;
+    }
+    this.refresh();
+    this.animateNextRefresh = true;
+    if (first !== null) {
+      const route: ReaderRoute = { name: first.name };
+      this.pushPage('pages/Reader', route);
+    }
+    this.toast('已导入 ' + ok + ' 篇' + (fail > 0 ? '，' + fail + ' 篇失败' : ''));
+  }
+
+  /** 打开「阅读轨迹」面板：收集最近打开的文档（按 lastOpen 倒序，最多 20 条）。 */
+  private openTrail(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const list: DocMeta[] = DocStore.list(c);
+    const items: DocMeta[] = [];
+    for (let k = 0; k < list.length; k++) {
+      if (list[k].lastOpen > 0) {
+        items.push(list[k]);
+      }
+    }
+    // 按 lastOpen 倒序（索引选择排序，避开 Set/for...of 类坑），取前 20 条
+    for (let i = 0; i < items.length - 1; i++) {
+      let best: number = i;
+      for (let j = i + 1; j < items.length; j++) {
+        if (items[j].lastOpen > items[best].lastOpen) {
+          best = j;
+        }
+      }
+      if (best !== i) {
+        const tmp: DocMeta = items[i];
+        items[i] = items[best];
+        items[best] = tmp;
+      }
+    }
+    this.trailItems = items.slice(0, 20);
+    this.shelfSheet = 'trail';
+    this.shelfVisible = true;
+  }
+
+  /**
+   * 轨迹用的时间文案：**具体时间**（用户要求"把具体时间写上"）——
+   * 今天 → 「今天 14:22」；昨天 → 「昨天 09:10」；今年更早 → 「09-28 21:05」；跨年 → 「2025-10-28」。
+   */
+  private trailTime(ts: number): string {
+    const d: Date = new Date(ts);
+    const hh: string = (d.getHours() < 10 ? '0' : '') + d.getHours();
+    const mm: string = (d.getMinutes() < 10 ? '0' : '') + d.getMinutes();
+    const now: Date = new Date();
+    const dayMs: number = 86400 * 1000;
+    const todayStart: number = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (ts >= todayStart) {
+      return '今天 ' + hh + ':' + mm;
+    }
+    if (ts >= todayStart - dayMs) {
+      return '昨天 ' + hh + ':' + mm;
+    }
+    const mo: string = (d.getMonth() + 1 < 10 ? '0' : '') + (d.getMonth() + 1);
+    const dd: string = (d.getDate() < 10 ? '0' : '') + d.getDate();
+    if (d.getFullYear() === now.getFullYear()) {
+      return mo + '-' + dd + ' ' + hh + ':' + mm;
+    }
+    return d.getFullYear() + '-' + mo + '-' + dd;
+  }
+
+  /** 「阅读轨迹」面板：**时间轴**（参考用户给的日清单样式）——
+   *  左列具体时间 → 圆点竖线 → 两段式胶囊卡（左段进度标签 / 右段文档名），紧凑排列。 */
+  @Builder
+  trailSheet() {
+    Scroll() {
+      Column({ space: 0 }) {
+        ForEach(this.trailItems, (m: DocMeta, idx: number) => {
+          Row({ space: 6 }) {
+            // 时间列（轴外，右对齐）
+            Text(this.trailTime(m.lastOpen))
+              .fontSize(HwType.caption - 1)
+              .fontColor(this.palette().textTertiary)
+              .width(76)
+              .textAlign(TextAlign.End)
+
+            // 轴列：竖线贯通 + 圆点（首条裁上段、末条裁下段）。
+            // ⚠️ 只用 alignSelf(Stretch) 拉伸——写 height('100%') 会在未定高的行里
+            // 取整个滚动视口的高，把每一行都撑出一屏的间距（实测踩坑）
+            Stack({ alignContent: Alignment.Center }) {
+              Column()
+                .width(2)
+                .backgroundColor(this.palette().divider)
+                .margin({ top: idx === 0 ? 5 : 0,
+                  bottom: idx === this.trailItems.length - 1 ? 5 : 0 })
+              Column()
+                .width(10)
+                .height(10)
+                .borderRadius(5)
+                .backgroundColor(idx === 0 ? this.palette().accent : this.palette().divider)
+            }
+            .width(20)
+            .alignSelf(ItemAlign.Stretch)
+
+            // 两段式胶囊卡：左段进度标签 / 右段文档名（贴紧凑，参考日清单）。
+            // **卡片走沉浸光感承载层**（用户要求）；进度徽章改成圆形独立元素，
+            // 不再是"左段色块"——蓝段的直角裁切观感来自色块拼接（用户反馈）。
+            Stack() {
+              ImmersiveCardLayer({ layerRadius: 12, layerShadow: false })
+              Row({ space: 8 }) {
+                Text(m.progressRatio > 0.005
+                  ? Math.round(m.progressRatio * 100) + '%' : '未读')
+                  .width(30)
+                  .height(30)
+                  .borderRadius(15)
+                  .backgroundColor(m.progressRatio > 0.005
+                    ? this.palette().accent : this.palette().divider)
+                  .fontColor(m.progressRatio > 0.005 ? '#FFFFFFFF' : this.palette().textTertiary)
+                  .fontSize(HwType.caption - 2)
+                  .textAlign(TextAlign.Center)
+                Text(m.name)
+                  .fontSize(HwType.label)
+                  .fontColor(this.palette().textPrimary)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .layoutWeight(1)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+              .padding({ left: 8, right: 10 })
+            }
+            .height(44)
+            .width('100%')
+            .borderRadius(12)
+            .border({ width: 1, color: this.palette().divider })
+            .margin({ top: 2, bottom: 2 })
+            .onClick(() => {
+              this.shelfVisible = false;
+              const route: ReaderRoute = { name: m.name };
+              this.pushPage('pages/Reader', route);
+            })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }, (m: DocMeta, idx: number) => 'trail_' + m.name + '_' + m.lastOpen)
+        if (this.trailItems.length === 0) {
+          Text('还没有阅读记录，打开一篇文档试试')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+            .padding(HwSpace.sm)
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+    .align(Alignment.Top)
+    .scrollBar(BarState.Off)
+    .constraintSize({ maxHeight: 460 })
+    .width('100%')
+    // ⚠️ 半模态内容区不自带内边距（工程铁律）——不加这个，卡片会贴到屏幕边缘
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.sm })
+  }
+
+  // ══════════════════════ 批量操作（批 5） ══════════════════════
+  //
+  // 入口：封面「⋯」菜单 →「批量管理」→ 多选模式（点击封面 = 勾选）。
+  // 底栏换成操作条：全选 / 移入文件夹 / 删除 / 完成。文件夹与内置文档不参与删除
+  //（内置是 rawfile 常驻项），移入文件夹仅对顶层文档生效。
+
+  /** 进入多选（「⋯」菜单入口）：当前这篇默认选中。 */
+  private openMultiSelect(first: string): void {
+    this.shelfVisible = false;
+    this.multiNames = [first];
+    this.multiSelect = true;
+    this.toast('点封面勾选文档，底栏可批量操作');
+  }
+
+  private exitMultiSelect(): void {
+    this.multiSelect = false;
+    this.multiNames = [];
+  }
+
+  /** 勾选 / 取消一篇（多选模式下点封面）。 */
+  private toggleMulti(name: string): void {
+    const at: number = this.multiNames.indexOf(name);
+    if (at >= 0) {
+      const next: string[] = [];
+      for (let k = 0; k < this.multiNames.length; k++) {
+        if (k !== at) {
+          next.push(this.multiNames[k]);
+        }
+      }
+      this.multiNames = next;
+    } else {
+      this.multiNames = this.multiNames.concat([name]);
+    }
+  }
+
+  private isMultiSelected(name: string): boolean {
+    return this.multiNames.indexOf(name) >= 0;
+  }
+
+  /** 全选 / 全不选（只针对当前书架流里的文档）。 */
+  private toggleMultiAll(): void {
+    if (this.multiNames.length >= this.docs.length) {
+      this.multiNames = [];
+      return;
+    }
+    const all: string[] = [];
+    for (let k = 0; k < this.docs.length; k++) {
+      all.push(this.docs[k].name);
+    }
+    this.multiNames = all;
+  }
+
+  /** 批量删除：内置文档跳过并提示；其余逐个 DocStore.remove（连本地文件）。 */
+  private multiRemove(): void {
+    if (this.multiNames.length === 0) {
+      this.toast('先勾选要删除的文档');
+      return;
+    }
+    let builtinHit: boolean = false;
+    const targets: string[] = [];
+    for (let k = 0; k < this.multiNames.length; k++) {
+      let isBuiltin: boolean = false;
+      for (let j = 0; j < this.docs.length; j++) {
+        if (this.docs[j].name === this.multiNames[k]) {
+          isBuiltin = this.docs[j].builtin;
+          break;
+        }
+      }
+      if (isBuiltin) {
+        builtinHit = true;
+      } else {
+        targets.push(this.multiNames[k]);
+      }
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '删除 ' + targets.length + ' 篇文档？',
+      message: builtinHit ? '内置文档不会删除（只能整体移除）；其余的本地文件会一并删除，不可恢复。'
+        : '本地文件会一并删除，删除后不可恢复。',
+      buttons: [
+        { text: '取消', color: this.palette().textSecondary },
+        { text: '删除', color: '#FFD93B3B' }
+      ]
+    }).then((result) => {
+      if (result.index !== 1) {
+        return;
+      }
+      const c = this.ctx();
+      if (c === null) {
+        return;
+      }
+      let ok: number = 0;
+      for (let k = 0; k < targets.length; k++) {
+        try {
+          if (DocStore.remove(c, targets[k])) {
+            ok++;
+          }
+        } catch (err) {
+          // 单篇失败不中断整批
+        }
+      }
+      this.multiNames = [];
+      this.multiSelect = false;
+      this.refresh();
+      this.toast('已删除 ' + ok + ' 篇' + (builtinHit ? '（内置文档已跳过）' : ''));
+    }).catch(() => {
+      this.toast('操作失败');
+    });
+  }
+
+  /** 批量移入文件夹：先从原文件夹脱离，再逐篇加入目标文件夹。 */
+  private multiToFolder(folderName: string): void {
+    const c = this.ctx();
+    if (c === null || this.multiNames.length === 0) {
+      return;
+    }
+    let ok: number = 0;
+    for (let k = 0; k < this.multiNames.length; k++) {
+      try {
+        // addToFolder 内部自带 detachFromFolders（一篇只属一个文件夹）
+        if (DocStore.addToFolder(folderName, this.multiNames[k])) {
+          ok++;
+        }
+      } catch (err) {
+        // 单篇失败不中断
+      }
+    }
+    this.refresh();
+    this.toast('已把 ' + ok + ' 篇移入「' + folderName + '」');
+  }
+
+  /** 移入文件夹的下拉选项。 */
+  private folderSelectOptions(): SelectOption[] {
+    const out: SelectOption[] = [];
+    for (let k = 0; k < this.folders.length; k++) {
+      const opt: SelectOption = { value: this.folders[k].name };
+      out.push(opt);
+    }
+    return out;
+  }
+
+  private runTaskBoard(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    let r: TaskBoardResult | null = null;
+    try {
+      // **收集全部条目**（含已完成的）：勾选后条目**留在列表里**、显示打勾划线，
+      // 而不是直接消失 —— 用户要能看到"勾过了什么"（用户反馈改）。
+      r = TaskBoard.collect(c, false);
+    } catch (err) {
+      this.toast('读取任务清单失败');
+      return;
+    }
+    if (r === null) {
+      return;
+    }
+    const res: TaskBoardResult = r;
+    // 空态：清单里一条任务都没有（open+done 皆为 0）
+    if (res.open + res.done === 0) {
+      this.toast('还没有任务清单');
+      return;
+    }
+    // **改用可滑动的面板**（用户反馈：对话框里说"另有 N 项"却看不到内容，
+    // 等于让人猜）。面板里列出**全部**条目，可滚动、点条目直接进那篇文档。
+    this.taskItems = res.items;
+    this.taskSummary = TaskBoard.summary(res) + ' · ' + res.docs + ' 篇'
+      + (res.truncated ? '（已达上限）' : '');
+    this.shelfSheet = 'tasks';
+    this.shelfVisible = true;
+  }
+
+  /**
+   * **批注汇总**（批 1）：把这篇文档的标注集中列出（对话框形式），
+   * 复习时不必再翻遍全文找标记。手写批注的 `note` 以 `hw:` 开头（存的是手写图路径），
+   * 这里只标注形态、不显示路径。逐条带 ①②③ 与高亮文本摘要。
+   */
+  private runAnnotationSummary(docName: string): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    let items: MdAnnotation[] = [];
+    try {
+      items = AnnotationStore.load(c, docName);
+    } catch (err) {
+      this.toast('读取批注失败');
+      return;
+    }
+    if (items.length === 0) {
+      this.toast('这篇文档还没有批注');
+      return;
+    }
+    // 全量统计（列表只展示前 8 条，但计数要覆盖全部）
+    let withNote: number = 0;
+    let handCount: number = 0;
+    for (let k = 0; k < items.length; k++) {
+      if (items[k].note.startsWith('hw:')) {
+        handCount++;
+      } else if (items[k].note.length > 0) {
+        withNote++;
+      }
+    }
+    let body: string = '共 ' + items.length + ' 处标注';
+    if (withNote > 0) {
+      body += ' · ' + withNote + ' 条文字批注';
+    }
+    if (handCount > 0) {
+      body += ' · ' + handCount + ' 处手写';
+    }
+    const show: number = Math.min(8, items.length);
+    for (let k = 0; k < show; k++) {
+      const a: MdAnnotation = items[k];
+      const isHand: boolean = a.note.startsWith('hw:');
+      const excerpt: string = a.text.trim().replace(/\s+/g, ' ');
+      body += '\n\n' + (k + 1) + '. '
+        + (excerpt.length > 40 ? excerpt.substring(0, 40) + '…' : excerpt);
+      if (isHand) {
+        body += '\n   ✍️ 手写批注';
+      } else if (a.note.length > 0) {
+        body += '\n   💬 ' + (a.note.length > 60 ? a.note.substring(0, 60) + '…' : a.note);
+      }
+    }
+    if (items.length > show) {
+      body += '\n\n…另有 ' + (items.length - show) + ' 处标注';
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '批注汇总 · ' + docName, message: body,
+      buttons: [{ text: '知道了', color: this.palette().accent }]
+    });
+  }
+
+  /**
+   * 文档体检（批 1）：扫描这篇文档的结构性问题，结果用对话框列出（带行号）。
+   * 只对**文档**开放（文件夹没有正文）。
+   */
+  private runLint(docName: string): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const meta: DocMeta | undefined = DocStore.find(c, docName);
+    if (meta === undefined) {
+      this.toast('文档不存在');
+      return;
+    }
+    let report: LintReport | null = null;
+    try {
+      const content: string = DocStore.readText(c, meta, this.encodingOf(docName));
+      report = DocLint.scan(c, docName, content);
+    } catch (err) {
+      this.toast('体检失败：无法读取文档');
+      return;
+    }
+    if (report === null) {
+      return;
+    }
+    const r: LintReport = report;
+    // 组装对话框内容：摘要 + 前 6 条（其余只报数量，避免对话框过长）
+    let body: string = DocLint.summary(r) + '\n'
+      + '共 ' + r.lines + ' 行 · ' + r.chars + ' 字'
+      + (r.todoOpen > 0 || r.todoDone > 0
+        ? '\n任务清单：待办 ' + r.todoOpen + ' · 已完成 ' + r.todoDone : '');
+    const show: number = Math.min(6, r.issues.length);
+    for (let k = 0; k < show; k++) {
+      const it: LintIssue = r.issues[k];
+      body += '\n\n' + (it.line > 0 ? '第 ' + it.line + ' 行 · ' : '') + it.kind + '\n' + it.message;
+    }
+    if (r.issues.length > show) {
+      body += '\n\n…另有 ' + (r.issues.length - show) + ' 条，修完这些再看';
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: '文档体检', message: body, buttons: [{ text: '知道了', color: this.palette().accent }]
+    });
   }
 
   /** 读取某篇文档的编码（没设过 = auto 自动识别）。 */
@@ -4334,17 +5863,23 @@ struct Index {
           .translate({ y: 0 })
 
           // （快捷「新建 / 导入」按钮已经在 bottomBar 的胶囊**内部**，见 bottomBar()）
+          // 批量操作：多选时底栏整体换成操作条（不随滚动收起，操作中必须可见）
           Row() {
-            this.bottomBar()
+            if (this.multiSelect) {
+              this.multiBar()
+            } else {
+              this.bottomBar()
+            }
           }
           .width('100%')
           // **平板放屏幕右下角**：宽屏胶囊靠右
-          .justifyContent(this.isWideShelf() ? FlexAlign.End : FlexAlign.Start)
+          .justifyContent(this.isWideShelf() && !this.multiSelect ? FlexAlign.End : FlexAlign.Start)
           .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: this.padBottom() })
           .position({ x: 0, y: this.rootHeight - this.padBottom() - HwBar.pill })
-          .hitTestBehavior(this.barsVisible ? HitTestMode.Transparent : HitTestMode.None)
-          .opacity(this.barsVisible ? 1 : 0)
-          .translate({ y: this.barsVisible ? 0 : 16 })
+          .hitTestBehavior(this.multiSelect || this.barsVisible
+            ? HitTestMode.Transparent : HitTestMode.None)
+          .opacity(this.multiSelect || this.barsVisible ? 1 : 0)
+          .translate({ y: this.multiSelect || this.barsVisible ? 0 : 16 })
           .animation({ duration: 220, curve: Curve.FastOutSlowIn })
           .enabled(this.barsVisible)
         }
@@ -4494,6 +6029,11 @@ struct Index {
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)
+    // ── 拖文件进窗口导入（用户要求）──
+    // 内部拖拽（封面合并）的记录不含 file-uri，uris 为空时静默返回，不干扰原有交互。
+    .onDrop((event?: DragEvent) => {
+      this.handleFileDrop(event);
+    })
     // ══════════ 半模态面板：官方规范（material/ModalSheet.ets）══════════
     // 模态型 + 固定 MEDIUM 高 + 官方标题栏 / 关闭按钮 / 拖拽条。
     .bindSheet(this.shelfVisible, this.indexSheet(), modalSheetOptions({
@@ -4652,8 +6192,18 @@ struct Index {
       // **Reader 也要刷新**：阅读页退出时已写回阅读进度（封面进度条 / 百分比 / 续读横幅
       // 都读这份数据），不重读列表的话要重启应用才更新（用户实测）。
       if (name === 'pages/Editor' || name === 'pages/Reader') {
+        // 从「全部待办」条目进来的：退出后**重新打开该面板**（用户要求"退出文件时
+        // 返回全部待办页面"）。标志由阅读页隐藏时写入，这里读到即清，避免下次误开。
+        const backTasks: boolean = name === 'pages/Reader'
+          && (AppStorage.get<boolean>('readerExitToTasks') ?? false);
+        if (name === 'pages/Reader' && backTasks) {
+          AppStorage.setOrCreate('readerExitToTasks', false);
+        }
         setTimeout(() => {
           this.refresh();
+          if (backTasks) {
+            this.runTaskBoard();
+          }
         }, 320);
       }
     })

@@ -27,6 +27,11 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onCreate');
 
+    // **跨设备接续**（多设备流转）：冷启动的迁移恢复（热启动走 onNewWant）
+    if (launchParam.launchReason === AbilityConstant.LaunchReason.CONTINUATION) {
+      this.restoreContinueData(want);
+    }
+
     // **关联 .md 文件**：外部"打开方式"拉起时，want.uri 指向待打开的文件
     this.handleOpenFile(want);
 
@@ -58,6 +63,9 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('hlOpacity', 1);
     // 波浪线粗细（thicknessScale 0.5~3，系统波浪装饰线唯一可调项）
     PersistentStorage.persistProp('waveThickness', 1);
+    // 停靠侧边栏宽度记忆（大屏横屏：拖分隔条调过的位置，侧滑再拉开保持不变）
+    PersistentStorage.persistProp('readerTocPanelW', 300);
+    PersistentStorage.persistProp('readerNotesPanelW', 300);
     // 第五轮新增的排版 / 显示设置。键名与默认值必须和 ReadingSettings 里的 @StorageLink 一致
     PersistentStorage.persistProp('readerFontFamily', '');
     PersistentStorage.persistProp('readerParaSpace', 1.0);
@@ -162,8 +170,75 @@ export default class EntryAbility extends UIAbility {
   }
 
   /** 应用已在运行时，再次被"打开方式"拉起（热启动）也要接住新文件 */
-  onNewWant(want: Want): void {
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.handleOpenFile(want);
+    // **跨设备接续**：热启动也要接住迁移数据（冷启动走 onCreate 同名分支）
+    if (launchParam.launchReason === AbilityConstant.LaunchReason.CONTINUATION) {
+      this.restoreContinueData(want);
+    }
+  }
+
+  /**
+   * **多设备流转 · 源端**（用户要求）：跨设备迁移发起时把当前阅读现场
+   * （文档名 / 正文 / 进度行）写进 wantParam——正文 ≤90KB 直接传；
+   * 超长文档只迁移名字与进度（正文不完整，目标端会提示）。
+   */
+  onContinue(wantParam: Record<string, Object>): AbilityConstant.OnContinueResult {
+    const name: string = AppStorage.get<string>('continueDocName') ?? '';
+    if (name.length === 0) {
+      return AbilityConstant.OnContinueResult.AGREE;
+    }
+    const content: string = AppStorage.get<string>('continueDocContent') ?? '';
+    const progress: number = AppStorage.get<number>('continueDocProgress') ?? 0;
+    const oversize: boolean = content.length > 90000;
+    wantParam['continueDocName'] = name;
+    wantParam['continueDocContent'] = oversize ? '' : content;
+    wantParam['continueOversize'] = oversize ? '1' : '0';
+    wantParam['continueProgressRatio'] = progress;
+    return AbilityConstant.OnContinueResult.AGREE;
+  }
+
+  /** **多设备流转 · 目标端**：从迁移参数恢复 → 写 pendingContinue* 交给书架页落盘并打开。 */
+  private restoreContinueData(want: Want): void {
+    const params: Record<string, Object> | undefined =
+      want.parameters === undefined ? undefined : want.parameters as Record<string, Object>;
+    if (params === undefined) {
+      return;
+    }
+    const name: string = (params['continueDocName'] as string) ?? '';
+    if (name.length === 0) {
+      return;
+    }
+    AppStorage.setOrCreate('pendingContinueDocName', name);
+    AppStorage.setOrCreate('pendingContinueDocContent', (params['continueDocContent'] as string) ?? '');
+    AppStorage.setOrCreate('pendingContinueOversize', (params['continueOversize'] as string) ?? '0');
+    AppStorage.setOrCreate('pendingContinueProgress', (params['continueProgressRatio'] as number) ?? 0);
+  }
+
+  /**
+   * **迁移恢复的窗口阶段**：接续启动不会走 onWindowStageCreate——官方要求
+   * 其中的初始化逻辑在这里**同样执行**，否则沉浸窗口没设置 → 背景不全屏、
+   * 顶/底白条、底栏安全区计算全部异常（用户实测）。loadContent 逻辑保持一致。
+   */
+  onWindowStageRestore(windowStage: window.WindowStage): void {
+    // 与 onWindowStageCreate 相同：必须在 loadContent 之前进入沉浸模式
+    setupImmersiveWindow(windowStage);
+
+    windowStage.loadContent('pages/Index', (err: BusinessError) => {
+      if (err.code) {
+        hilog.error(DOMAIN, 'LiteMdReader', 'restore loadContent failed: %{public}s', JSON.stringify(err));
+        return;
+      }
+      hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'restore loadContent succeeded.');
+    });
+
+    try {
+      const themeRaw2: number | undefined = AppStorage.get<number>('readerThemeMode');
+      applyAppColorMode(themeRaw2 !== undefined && themeRaw2 !== null ? themeRaw2 : 0);
+    } catch (err) {
+      hilog.error(DOMAIN, 'LiteMdReader', 'restore colorMode failed: %{public}s',
+        JSON.stringify(err));
+    }
   }
 
   /**

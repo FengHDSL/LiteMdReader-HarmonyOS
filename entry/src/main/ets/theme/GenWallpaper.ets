@@ -153,6 +153,53 @@ export function genWallpaperById(id: string): GenWallpaperDef | null {
   return null;
 }
 
+/** '#RRGGBB'/'#AARRGGBB' 两色按 k∈[0,1] 线性混色，返回 '#AARRGGBB'。 */
+function mixHex(a: string, b: string, k: number): string {
+  const ca: number[] = parseRgb(a, [0, 0, 0]);
+  const cb: number[] = parseRgb(b, [0, 0, 0]);
+  const r: number = ca[0] + (cb[0] - ca[0]) * k;
+  const g: number = ca[1] + (cb[1] - ca[1]) * k;
+  const bl: number = ca[2] + (cb[2] - ca[2]) * k;
+  return '#FF' + hex2(r) + hex2(g) + hex2(bl);
+}
+
+/**
+ * 程序化壁纸在**当前深浅下实际生效那一款**的主底色（渐变上下色的中值）。
+ *
+ * 用途：关闭沉浸光感时的侧边栏 / 面板底色要「与背景同色」。
+ * 只读 `top` 会偏亮、只读 `bottom` 会偏暗，取中值最接近整屏观感。
+ * 深浅必须解析**孪生款**（竹影 → 夜笺），否则深色下会拿到浅色款的亮色
+ * —— 与 `DesignTokens.autoBackdropLuminance()` 同一套口径。
+ *
+ * 自定义函数壁纸（id === 'custom'）没有预设款：它的底色是用户在
+ * 「外观 → 壁纸 → 自定义」里挑的 A（暗端）/ B（亮端），同样取中值。
+ * 这两端色由调用方传入（而不是在这里读 AppStorage）：纯函数里读全局态
+ * **不登记渲染依赖**，改色后已画出的侧边栏不会重算。
+ *
+ * @returns '#AARRGGBB'；返回空串表示找不到该款式（调用方自行回落）。
+ */
+export function genWallpaperFlatColor(id: string, dark: boolean,
+                                      customA: string, customB: string): string {
+  if (id.length === 0) {
+    return '';
+  }
+  if (id === 'custom') {
+    return mixHex(customA, customB, 0.5);
+  }
+  const def: GenWallpaperDef | null = genWallpaperById(id);
+  if (def === null) {
+    return '';
+  }
+  let use: GenWallpaperDef = def;
+  if (dark && def.darkId.length > 0 && def.darkId !== def.id) {
+    const twin: GenWallpaperDef | null = genWallpaperById(def.darkId);
+    if (twin !== null) {
+      use = twin;
+    }
+  }
+  return mixHex(use.top, use.bottom, 0.5);
+}
+
 /**
  * 程序化壁纸本体。铺满父容器，纯绘制、无位图。
  *
@@ -191,29 +238,35 @@ export struct GenWallpaper {
     // 半径 10% + 90s 的组合在 blur(70) 的大光斑下完全看不出来（用户反馈"没看出有动"）。
     // 两团转速不同（36s / 52s）、方向相反 → 永远错开。
     // Linear 无往复：转满 360° 从头再来，无缝循环。
-    this.getUIContext().animateTo({
-      duration: 40000, curve: Curve.Linear, iterations: -1
-    }, () => {
-      this.orbitA = 360;
-    });
-    this.getUIContext().animateTo({
-      duration: 56000, curve: Curve.Linear, iterations: -1
-    }, () => {
-      this.orbitB = -360;
-    });
-    // **光斑呼吸**：亮度 + 尺寸一起往复（13s / 17s 两团错相）。
-    // 周期从 9s/11s 放慢到 13s/17s —— 用户要的是"缓慢的呼吸"，
-    // 太快会像闪烁；幅度同时加大（见 build 里的 opacity / scale）。
-    this.getUIContext().animateTo({
-      duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
-    }, () => {
-      this.glowPulseA = 1;
-    });
-    this.getUIContext().animateTo({
-      duration: 12000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
-    }, () => {
-      this.glowPulseB = 1;
-    });
+    //
+    // ⚠️⚠️ **必须在首帧渲染之后才能启动动画**（用户反复反馈"依旧没有动的效果"的
+    // 真正根因）：原来把 animateTo 直接写在 aboutToAppear 里 —— 那时 build() 还没执行，
+    // 状态从初始值改到目标值发生**在首帧之前**，首帧直接以 orbitA=360 / pulse=1 渲染，
+    // 动画根本没有"从旧值到新值"的过渡，等于没播。这里延迟到挂载后再启动。
+    setTimeout(() => {
+      this.getUIContext().animateTo({
+        duration: 40000, curve: Curve.Linear, iterations: -1
+      }, () => {
+        this.orbitA = 360;
+      });
+      this.getUIContext().animateTo({
+        duration: 56000, curve: Curve.Linear, iterations: -1
+      }, () => {
+        this.orbitB = -360;
+      });
+      // **光斑呼吸**：亮度 + 尺寸一起往复（9s / 12s 两团错相）。
+      // 周期太短像闪烁；幅度太小会被 blur 糊掉（见 build 里的 opacity / scale）。
+      this.getUIContext().animateTo({
+        duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      }, () => {
+        this.glowPulseA = 1;
+      });
+      this.getUIContext().animateTo({
+        duration: 12000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      }, () => {
+        this.glowPulseB = 1;
+      });
+    }, 50);
   }
 
   build() {

@@ -125,8 +125,24 @@ interface ShelfIndex {
  * `query` 可选：全库搜索跳进来时带上搜索词，阅读页自动打开查找并定位首个命中。
  */
 export interface ReaderRoute {
-  name: string;
+  /** 文档名（阅读页 = 要打开的文档；编辑页 = 要编辑的文档）。从模板新建时不传（seed 携带内容）。 */
+  name?: string;
   query?: string;
+  /**
+   * 「全部待办」点条目进来时要定位的**原文行号**（1 起）。
+   * 阅读页首帧布局完成后按行号找块并滚动过去（见 Reader.routeFocusLine）。
+   */
+  focusLine?: number;
+  /**
+   * 是否从「全部待办」面板进来。
+   * true = 退出阅读页后自动回到该面板（用户反馈"退出文件时返回全部待办页面"）。
+   */
+  fromTasks?: boolean;
+  /**
+   * 从模板新建：模板正文经路由传给编辑器（**不提前落盘**）——
+   * 否则编辑页点「直接离开 / 不保存」也会留下一篇已创建的文档（用户反馈修复）。
+   */
+  seed?: string;
 }
 
 /** 全库搜索的一条命中 */
@@ -184,7 +200,10 @@ export class DocStore {
    *  coverColor = 预置封面色（用户要求：教程蓝、示例绿；用户改封面会覆盖此值）。 */
   static readonly BUILTINS: DocBuiltin[] = [
     { name: 'Markdown 语法教程', raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' }
+    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' },
+    // **功能演示素材**（只读，可随时删除）：分别用来演示知识图谱与待办聚合
+    { name: '知识网络 · 功能演示', raw: 'demo-links.md', coverColor: '#7A6FB0' },
+    { name: '任务池 · 功能演示', raw: 'demo-tasks.md', coverColor: '#C08A4E' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
@@ -1115,12 +1134,24 @@ export class DocStore {
    */
   static create(ctx: common.UIAbilityContext, rawName: string, content: string): DocMeta | null {
     DocStore.init(ctx);
-    const name: string = DocStore.sanitizeName(rawName);
+    let name: string = DocStore.sanitizeName(rawName);
     if (name.length === 0 || DocStore.isBuiltinName(name)) {
       return null;
     }
+    // **同名自动编号**（用户要求）：新建 / 从模板创建遇同名不再直接报失败，
+    // 而是自动变成「xx (1)」「xx (2)」……直到找到可用名（上限 100 防呆）。
+    // 编号只发生在 create（新建语义）；rename 的同名冲突仍由用户自己改。
     if (DocStore.exists(ctx, name)) {
-      return null;
+      let seq: number = 1;
+      let candidate: string = name + ' (' + seq + ')';
+      while (DocStore.exists(ctx, candidate) && seq < 100) {
+        seq++;
+        candidate = name + ' (' + seq + ')';
+      }
+      if (DocStore.exists(ctx, candidate)) {
+        return null;
+      }
+      name = candidate;
     }
     const fileName: string = name + '.md';
     const body: string = content.length > 0 ? content : DocStore.NEW_DOC_TEMPLATE;

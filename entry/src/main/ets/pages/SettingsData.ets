@@ -20,7 +20,7 @@ import { DocMeta, DocStore } from '../service/DocStore';
 import { ExportService } from '../service/ExportService';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
-import { fileIo as fs } from '@kit.CoreFileKit';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import {
   HwRadius,
   HwSpace,
@@ -383,6 +383,46 @@ export struct SettingsData {
     }
   }
 
+  /**
+   * **导出文档为原格式**（用户要求）：拉系统「另存为」面板，把正文按
+   * 原样写到用户选的位置（预填磁盘文件名，md 就是 .md、txt 就是 .txt）。
+   */
+  private exportMyDoc(meta: DocMeta): void {
+    const c = this.getUIContext().getHostContext();
+    if (c === undefined || c === null) {
+      this.toast('拿不到应用上下文');
+      return;
+    }
+    const ctx = c as common.UIAbilityContext;
+    let content: string = '';
+    try {
+      content = DocStore.readText(ctx, meta);
+    } catch (err) {
+      this.toast('读取失败：' + DocStore.describeError(err as BusinessError));
+      return;
+    }
+    const docPicker = new picker.DocumentViewPicker(ctx);
+    const opts = new picker.DocumentSaveOptions();
+    // 预填磁盘文件名（含原扩展名 .md / .txt）——"导出为原格式"就落在这里
+    opts.newFileNames = [meta.fileName];
+    docPicker.save(opts).then((uris: string[]) => {
+      if (uris === null || uris === undefined || uris.length === 0) {
+        return;
+      }
+      try {
+        const file: fs.File = fs.openSync(uris[0],
+          fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+        fs.writeSync(file.fd, content);
+        fs.closeSync(file);
+        this.toast('已导出「' + meta.fileName + '」');
+      } catch (writeErr) {
+        this.toast('写入失败：' + DocStore.describeError(writeErr as BusinessError));
+      }
+    }).catch((e: BusinessError) => {
+      this.toast('导出失败：' + e.message);
+    });
+  }
+
   /** 删除自建文档（确认后连本地文件一起删）。 */
   private confirmDeleteMyDoc(name: string): void {
     try {
@@ -740,6 +780,17 @@ export struct SettingsData {
                 .layoutWeight(1)
                 .alignItems(HorizontalAlign.Start)
 
+                // **导出（原格式）**：拉系统"另存为"，写回一份 .md / .txt 原文
+                //（用户要求：删除按钮左边加一个绿色导出按钮）
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipTint: '#FF2E9E4F',
+                  chipActive: true,
+                  chipLabel: '导出',
+                  chipOnTap: () => {
+                    this.exportMyDoc(meta);
+                  }
+                })
                 // 自建文档**可以删除**（与内置不同）：删除连本地文件一起
                 ImmersiveChip({
                   palette: this.palette(),

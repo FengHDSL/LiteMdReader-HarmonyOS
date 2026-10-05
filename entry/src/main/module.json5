@@ -49,6 +49,11 @@
         "name": "EntryAbility",
         "srcEntry": "./ets/entryability/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",
+        // **应用接续（多设备流转）**（用户要求）：跨设备迁移时在 onContinue
+        // 携带当前文档与进度，目标端恢复阅读现场
+        "continuable": true,
+        // **窗口模式**（多屏协同放大到全屏需要）：显式声明支持全屏 / 分屏 / 悬浮窗
+        "supportWindowMode": ["fullscreen", "split", "floating"],
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:starticon_blank",
