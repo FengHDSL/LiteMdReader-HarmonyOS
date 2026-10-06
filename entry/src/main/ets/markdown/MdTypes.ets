@@ -131,6 +131,19 @@ export interface MdBlock {
   srcLine: number;
 }
 
+/**
+ * 一个块在**原文**中占据的行区间（0 起，左闭右开 `[start, end)`）。
+ *
+ * 块级实时编辑与大纲拖拽都靠它定位源文本：块上只记了起始行 `srcLine`，
+ * 结束行用「下一个块的起始行」推断——Markdown 的块在原文里是**连续且有序**的，
+ * 所以这个推断成立；块之间的空行会被算进区间尾部，替换时一并带走，
+ * 再写回时由调用方保证块与块之间留一个空行。
+ */
+export interface MdSrcRange {
+  start: number;
+  end: number;
+}
+
 /** 目录条目 */
 export interface MdHeading {
   level: number;

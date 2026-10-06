@@ -15,6 +15,7 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import {
   ANNOTATION_COLORS,
   HwBar,
@@ -44,6 +45,8 @@ import { getImmersiveMaterial } from '../material/SystemMaterial';
 import { modalSheetOptions } from '../material/ModalSheet';
 import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
+import { AutoScrollTile } from '../components/AutoScrollTile';
+import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
@@ -63,16 +66,43 @@ import { GenWallpaper, genWallpaperFlatColor } from '../theme/GenWallpaper';
 import { HeroInit, HeroRect, HeroTransition } from '../service/HeroTransition';
 import { DocCover, coverColorsOf } from '../components/DocCover';
 import { DiagramWeb } from '../components/DiagramWeb';
-import { MdAnnotation, MdBlock, MdBlockKind, MdHeading, MdMetaItem, MdNote, MdParseResult, MdTaskState } from '../markdown/MdTypes';
+import { MdAnnotation, MdBlock, MdBlockKind, MdHeading, MdInline, MdInlineKind, MdMetaItem, MdNote, MdParseResult, MdTaskState } from '../markdown/MdTypes';
 import { ChartCache } from '../service/ChartCache';
 import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
 import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
+import { ReadingLog } from '../service/ReadingLog';
+import { GraphResult, KnowledgeGraph } from '../service/KnowledgeGraph';
+// 朗读：系统文本转语音（Core Speech Kit，无需权限）
+import { textToSpeech } from '@kit.CoreSpeechKit';
+// 朗读高亮：spanLabel 与正文渲染同一坐标口径
+import { MdViewUtil } from '../markdown/MdView';
 import { MdBlockView } from '../markdown/MdView';
 import { ExportService } from '../service/ExportService';
 import { EpubExport } from '../service/EpubExport';
 
 // ══ 乐谱音频合成（后台线程）：音符事件 → 16bit WAV ══
+/**
+ * 图片管理面板里的一行：正文引用的一张图。
+ *
+ * `raw` 存的是**正文里的完整 Markdown 片段**（`![alt](href)`）——
+ * 删除 / 替换都按它在原文里做字符串替换，不需要重新排版整篇。
+ */
+interface DocImage {
+  /** 完整 Markdown 片段（原样，用于删除与替换） */
+  raw: string;
+  /** 目标地址（相对路径 / http(s) / data:） */
+  href: string;
+  /** Image 组件可直接用的源（本地图解析后的 file:// 或 http 地址；找不到为空） */
+  src: string;
+  /** 显示名（文件名或网络地址末段） */
+  label: string;
+  /** 是否网络图 */
+  net: boolean;
+  /** 本地图是否真实存在 */
+  exists: boolean;
+}
+
 interface ScoreNote {
   /** 起始拍 */
   t: number;
@@ -354,6 +384,10 @@ export struct Reader {
   @StorageProp('appForegroundTick') @Watch('onAppForegroundTick') appFgTick: number = 0;
   /** 旋转后重新自适应请求计数（传给 DiagramWeb） */
   @State enlargeRefitTick: number = 0;
+  /** 本段阅读的起始时间戳（ms）；0 = 未在计时（离场 / 退后台后清零） */
+  private readStartAt: number = 0;
+  /** 当前文档的**原文**（图片管理按 Markdown 片段做精确替换，见 scanDocImages） */
+  private rawContent: string = '';
   /** 手写批注图（手写页以批注模式返回时写入）：此处落成红双下划线批注 */
   @StorageProp('sketchAnnotationImage') @Watch('onSketchAnnotation') sketchAnnotation: string = '';
   /** 系统返回手势关闭浮层的信号（Index 的 onBackPressed 发出） */
@@ -362,6 +396,10 @@ export struct Reader {
   @StorageProp('appBackgroundTick') @Watch('onAppBackgroundTick') appBgTick: number = 0;
   /** 放大内容的原标题（脑图主题等；空串 = 不显示标题） */
   @State enlargeTitle: string = '';
+  /** 反向链接：引用了当前文档的文档名列表 */
+  @State backlinks: string[] = [];
+  /** 本文档引用的图片清单（图片管理面板） */
+  @State docImages: DocImage[] = [];
   /** 放大浮层旋转（横屏）展示 */
   @State rotated: boolean = false;
   /** 放大浮层的 Web 内容缩放（body.style.zoom） */
@@ -415,6 +453,8 @@ export struct Reader {
    * 图表界面）—— 后台被系统回收后 Web 表面状态不可靠，回前台重挂即可。
    */
   onAppBackgroundTick(): void {
+    // 退后台先结算阅读时长：后台停留不该算进"读了多久"
+    this.settleReadTime(false);
     if (this.enlargeMode.length === 0 || !this.enlargeWebMounted) {
       return;
     }
@@ -423,11 +463,37 @@ export struct Reader {
 
   /** 回前台：把卸载掉的 Web 重新挂载（图表重新渲染），浮层保持打开。 */
   onAppForegroundTick(): void {
+    // 从回前台这一刻重新起算这段阅读
+    this.readStartAt = Date.now();
     if (this.enlargeMode.length === 0 || this.enlargeWebMounted) {
       return;
     }
     this.enlargeWebId = 'enlarge_' + Date.now();
     this.enlargeWebMounted = true;
+  }
+
+  // ══════════════════════ 阅读时长统计 ══════════════════════
+  //
+  // 只记**真实停留**：退后台、切走页面都先结算，后台时间不计入；
+  // 短于 5 秒的片段丢弃（切文档、误触进出产生的噪声不算阅读）。
+
+  /**
+   * 结算当前这段阅读时长。
+   * @param restart true = 结算后立刻重新起算（切文档时用），false = 停在原处（离场时用）
+   */
+  private settleReadTime(restart: boolean): void {
+    const now: number = Date.now();
+    if (this.readStartAt > 0 && this.docName.length > 0) {
+      const sec: number = (now - this.readStartAt) / 1000;
+      // 上限 12 小时：开着页面忘了关不该把统计拉爆
+      if (sec >= 5 && sec <= 12 * 3600) {
+        const c = this.ctx();
+        if (c !== null) {
+          ReadingLog.add(c, this.docName, sec);
+        }
+      }
+    }
+    this.readStartAt = restart ? now : 0;
   }
 
   /** 系统返回手势：关闭图表 / 图片放大浮层（而非退出阅读页）。 */
@@ -659,6 +725,55 @@ export struct Reader {
   private firstLoad: boolean = true;
 
   private scroller: Scroller = new Scroller();
+  /**
+   * 自动滚屏：是否正在滚。
+   * **走 AppStorage 而不是 @State**：入口在「更多」面板里的磁贴，
+   * 而 bindSheet 的内容不跟宿主状态重渲染（本工程固定坑），
+   * 共享同一份状态两边才不会打架（详见 components/AutoScrollTile）。
+   */
+  @StorageLink('autoScrollOn') autoScrolling: boolean = false;
+  /** 自动滚屏档位 1–10（换算见 autoVpPerSec） */
+  @StorageLink('autoScrollSpeed') autoSpeed: number = 4;
+  /** 自动滚屏的定时器句柄（-1 = 没有） */
+  private autoTimer: number = -1;
+  /**
+   * 暂停浮钮是否显示。
+   * **与 autoScrolling 分开**：暂停（点钮 / 点正文 / 滚到文末）只停表、
+   * 钮留着并变成「继续」；只有长按钮或离开阅读页才真正收起（用户要求）。
+   */
+  @State autoBarVisible: boolean = false;
+  /** 暂停浮钮位置（translate 状态）；-1 = 尚未初始化（首次开始时按握姿定边） */
+  @State pauseBtnX: number = -1;
+  @State pauseBtnY: number = -1;
+  private pauseDragBaseX: number = 0;
+  private pauseDragBaseY: number = 0;
+  /** 滚动期间握姿兜底核对的节拍计数（见 syncGripSideForAutoScroll） */
+  private autoGripTick: number = 0;
+  // ── 朗读（TTS）──
+  /** 朗读会话是否活跃（含暂停，浮钮据此显示） */
+  @StorageLink('ttsOn') ttsOn: boolean = false;
+  /** 是否正在发声 */
+  @StorageLink('ttsSpeaking') ttsSpeaking: boolean = false;
+  /** TTS 引擎（懒创建；结束会话时 shutdown 并置空） */
+  private ttsEngine: textToSpeech.TextToSpeechEngine | null = null;
+  /** 可朗读的块下标序列 */
+  private ttsQueue: number[] = [];
+  /** 当前读到队列的第几项（-1 = 未开始） */
+  private ttsPos: number = -1;
+  /** 是否处于暂停态（onComplete 靠它区分"读完了"与"被 stop 打断"） */
+  private ttsPaused: boolean = false;
+  /** 当前句在渲染文本中的区间 */
+  private ttsSegStart: number = -1;
+  private ttsSegEnd: number = -1;
+  /** 当前块的句子区间列表与进度 */
+  private ttsSegs: number[][] = [];
+  private ttsSegAt: number = 0;
+  /** 当前块的渲染文本（句子切分基于它） */
+  private ttsRendered: string = '';
+  /** requestId 自增段（每次开始会话 +1，避免旧 request 的回调串台） */
+  private ttsRequest: number = 0;
+  /** 每次发声再自增一次（同一个 requestId 复用会被引擎拒） */
+  private ttsSpeakSeq: number = 0;
   /** 当前方向上累计的滚动位移（vp），超过阈值才收起顶栏，避免轻微滚动就闪 */
   private scrollAccum: number = 0;
   /** 程序化滚动（目录跳转 / 搜索定位 / 恢复进度）期间锁定自动收起，动画帧会误触发 */
@@ -769,6 +884,8 @@ export struct Reader {
       this.loadDoc();
     }
     this.firstLoad = false;
+    // 回到阅读页：开始计这一段阅读时长
+    this.readStartAt = Date.now();
     // 系统深浅同步 + 必要刷新：实机证明 @Watch 不来，这里手动比对，
     // 不一致就重建正文整树（材质 / 壁纸 / 正文色一次到位）。
     syncSystemDarkFromContext();
@@ -795,6 +912,19 @@ export struct Reader {
         if (this.compareSplit && !this.exitBtnDragged) {
           this.exitBtnX = side === -1 ? 10 : this.rootWidth - 44;
         }
+        // 自动滚屏的暂停浮钮**始终跟手**（用户要求：换左手就该到左边去）。
+        // 这颗钮是"随时叫停 / 继续"的临时控件，跟手比保住手动位置更重要，
+        // 所以不像分屏退出钮那样受"用户拖过就不再跟"的限制。
+        // 判据用 floatBtnVisible()（暂停时钮还在，也该跟着手走；朗读会话同理）。
+        // **横向移动带动画**：瞬移太生硬，滑动过去才看得出"它跟着手走了"。
+        if (this.floatBtnVisible()) {
+          const targetX: number = this.sideToX(side, 44);
+          if (targetX !== this.pauseBtnX) {
+            this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+              this.pauseBtnX = targetX;
+            });
+          }
+        }
       }
     };
     const gripCtx = this.ctx();
@@ -815,6 +945,8 @@ export struct Reader {
   /** 原 aboutToDisappear 的内容：由 NavDestination.onHidden 转发进来（被盖住时）。 */
   private onHiddenNow(): void {
     this.flushProgress();
+    // 离开阅读页：结算这段阅读时长（后台停留已在退后台时先停表，不会多算）
+    this.settleReadTime(false);
     // **从「全部待办」进来时给书架留一个"回来"的信号**（用户要求：退出文件后
     // 返回全部待办页面，而不是落回书架）。书架在 NavDestination.onWillDisappear
     // 里读它 —— 那时机在本方法之后，标志一定已经写好。
@@ -838,6 +970,10 @@ export struct Reader {
     ShareKitService.stopListening();
     // 停掉握姿监听：不在阅读页时没必要一直占着传感器
     GripAware.stop();
+    // 停掉自动滚屏：定时器跨页面空转会一直耗电（离开页面必须收干净）
+    this.stopAutoScroll();
+    // 朗读也要收干净：TTS 引擎不释放会一直占着音频通道，回到书架还在念
+    this.stopReadAloud();
     // 停掉深浅探测器：不在本页时不必问系统
     stopThemeWatchdog();
   }
@@ -1128,6 +1264,8 @@ export struct Reader {
   }
 
   private loadDoc(): void {
+    // 换文档：先把上一篇的阅读时长结掉，再为下一篇起算
+    this.settleReadTime(true);
     const ctx = this.ctx();
     if (ctx === null || this.docName.length === 0) {
       return;
@@ -1147,6 +1285,8 @@ export struct Reader {
         this.docEncoding = storedEnc;
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
+      // 原文留一份：图片管理要按 Markdown 片段在正文里做精确替换（改一张图不动别处）
+      this.rawContent = text;
       const result: MdParseResult = MdParser.parse(text);
       this.blocks = result.blocks;
       // 换文档 / 换编码都从首批重新开始（否则上一份文档的加载进度会带过来）
@@ -2572,12 +2712,85 @@ export struct Reader {
       this.getUIContext().animateTo(this.animateParam(), () => {
         this.tocPinned = !this.tocPinned;
       });
+      // 展开后把目录滚到"当前读到的那一节"（用户要求：自动定位到当前所在位置）
+      setTimeout(() => {
+        this.tocFollowCurrent();
+      }, 320);
       return;
     }
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.notesOpen = false;
       this.tocOpen = true;
     });
+    setTimeout(() => {
+      this.tocFollowCurrent();
+    }, 300);
+  }
+
+  // ── 目录自动定位（滚到当前所在章节）──
+  /** 目录滚动控制器 */
+  private tocScroller: Scroller = new Scroller();
+  /** 目录各行的文本 / 纵向偏移（行高不固定，用 onAreaChange 实测最稳） */
+  private tocRowText: string[] = [];
+  private tocRowTop: number[] = [];
+
+  /** 记录目录行位置（滚动定位用）。 */
+  private rememberTocRow(text: string, area: Area): void {
+    // position 在类型上是可选的，先收窄再取（ArkTS 对可选链的检查很严）
+    const pos: Position | undefined = area.position;
+    if (pos === undefined) {
+      return;
+    }
+    // Position 的 x / y 都是可选的，逐个收窄（ArkTS 不接受直接当 Length 用）
+    const raw: Length | undefined = pos.y;
+    if (raw === undefined || typeof raw !== 'number') {
+      return;
+    }
+    for (let k: number = 0; k < this.tocRowText.length; k++) {
+      if (this.tocRowText[k] === text) {
+        this.tocRowTop[k] = raw;
+        return;
+      }
+    }
+    this.tocRowText.push(text);
+    this.tocRowTop.push(raw);
+  }
+
+  /**
+   * 把目录滚到"当前正在读的那一节"。
+   * 目录一打开就定位、之后正文滚动换了章节也跟着走 —— 长文档里翻目录找位置最费劲，
+   * 让它自己跟着走省一半事。
+   */
+  private tocFollowCurrent(): void {
+    if (this.activeHeading.length === 0 || !this.tocVisible()) {
+      return;
+    }
+    let at: number = -1;
+    for (let k: number = 0; k < this.tocRowText.length; k++) {
+      if (this.tocRowText[k] === this.activeHeading) {
+        at = k;
+        break;
+      }
+    }
+    if (at < 0) {
+      return;
+    }
+    const y: number = this.tocRowTop[at];
+    try {
+      this.tocScroller.scrollTo({
+        xOffset: 0,
+        // 上面留一点余量，让人看到"上一节"的上下文
+        yOffset: y > 12 ? y - 12 : 0,
+        animation: { duration: 260, curve: Curve.FastOutSlowIn }
+      });
+    } catch (err) {
+      // 列表尚未布局完：忽略，下次章节变化还会再来一次
+    }
+  }
+
+  /** 目录当前是否可见（浮层抽屉打开，或大屏停靠）。 */
+  private tocVisible(): boolean {
+    return this.tocOpen || (this.isWide() && this.tocPinned);
   }
 
   private openNotes(): void {
@@ -2744,10 +2957,15 @@ export struct Reader {
         break;
       }
     }
+    const before: string = this.activeHeading;
     if (current.length > 0) {
       this.activeHeading = current;
     } else if (this.docOutline.length > 0) {
       this.activeHeading = this.docOutline[0].text;
+    }
+    // 章节变了且目录正开着 → 目录跟着滚到新章节（用户要求：自动滑动到当前所在位置）
+    if (this.activeHeading !== before && this.tocVisible()) {
+      this.tocFollowCurrent();
     }
   }
 
@@ -3159,6 +3377,10 @@ export struct Reader {
       this.moreSheet()
     } else if (this.activeSheet === 'compare') {
       this.compareSheet()
+    } else if (this.activeSheet === 'backlinks') {
+      this.backlinksSheet()
+    } else if (this.activeSheet === 'images') {
+      this.imagesSheet()
     }
   }
 
@@ -3484,38 +3706,40 @@ export struct Reader {
     .id('shMore_' + this.sheetEpoch)
   }
 
+  // ══════════════════════ 自动滚屏 ══════════════════════
+  //
+  // 长文档免手滑匀速下滚。三个刻意的取舍：
+  //  1. **用 scroller.scrollBy 的定时步进**，而不是一次性 animateTo 到结尾 ——
+  //     后者在长文上会一次性重排整列表（掉帧），且中途无法暂停；
+  //  2. **到底自动停**（isAtEnd），否则定时器会一直空转耗电；
+  //  3. **点正文任意处即停**：这是最符合直觉的"叫停"方式，比再去找按钮快。
+
   /** 标签长按菜单（对应桌面版的右键菜单；路径类操作在沙箱手机上无对应物，未列入）。标题栏由 ModalSheet 官方标题区提供。 */
   @Builder
   tabMenuPanel() {
-    Column({ space: HwSpace.xs }) {
-      ImmersiveChip({
-        palette: this.palette(),
-        chipLabel: '关闭此标签',
-        chipOnTap: () => {
+    // **按钮布局**（用户要求）：原来是一列芯片，功能项之间没有轻重差别、
+    // 也不好看清有几个操作。改成与「更多」面板同款的 2×2 等宽按钮磁贴 ——
+    // 四个动作各占一格，图标 + 文字，点哪块一目了然。
+    Column({ space: HwSpace.sm }) {
+      Row({ space: HwSpace.xs }) {
+        this.moreTile('关闭此标签', $r('sys.symbol.xmark'), (): void => {
           this.closeTab(this.tabMenuFor);
-        }
-      })
-      ImmersiveChip({
-        palette: this.palette(),
-        chipLabel: '关闭其他标签',
-        chipOnTap: () => {
+        })
+        this.moreTile('关闭其他', $r('sys.symbol.square_on_square_fill'), (): void => {
           this.closeOtherTabs(this.tabMenuFor);
-        }
-      })
-      ImmersiveChip({
-        palette: this.palette(),
-        chipLabel: '关闭全部标签',
-        chipOnTap: () => {
+        })
+      }
+      .width('100%')
+
+      Row({ space: HwSpace.xs }) {
+        this.moreTile('关闭全部', $r('sys.symbol.trash'), (): void => {
           this.closeAllTabs();
-        }
-      })
-      ImmersiveChip({
-        palette: this.palette(),
-        chipLabel: '重新加载此文档',
-        chipOnTap: () => {
+        })
+        this.moreTile('重新加载', $r('sys.symbol.arrow_counterclockwise'), (): void => {
           this.reloadActiveDoc();
-        }
-      })
+        })
+      }
+      .width('100%')
 
       Text('复制路径 / 打开所在文件夹是桌面端能力，应用沙箱内无对应概念')
         .fontSize(HwType.caption)
@@ -4183,6 +4407,14 @@ export struct Reader {
         this.moreTile('EPUB 电子书', $r('sys.symbol.book'), (): void => {
           this.exportEpub();
         })
+        // 反向链接：哪些文档引用了本篇（知识图谱的单篇视角）
+        this.moreTile('被引用', $r('sys.symbol.arrow_up_left_and_arrow_down_right'), (): void => {
+          this.openBacklinks();
+        })
+        // 图片管理：本文档引用过的图，逐张查看 / 另存 / 替换 / 删除引用
+        this.moreTile('图片管理', $r('sys.symbol.picture'), (): void => {
+          this.openImageManager();
+        })
       }
       .width('100%')
 
@@ -4197,6 +4429,36 @@ export struct Reader {
         })
       }
       .width('100%')
+
+      // ── 朗读全文：系统 TTS 逐段读（自持状态子组件，与自动滚屏互斥）──
+      ReadAloudTile({
+        palette: this.palette(),
+        onPlay: (): void => {
+          this.startReadAloud();
+        },
+        onPause: (): void => {
+          this.pauseReadAloud();
+        },
+        onStop: (): void => {
+          this.stopReadAloud();
+        }
+      })
+
+      // ── 自动滚屏：更多里的小功能（通栏一格，自持状态子组件）──
+      AutoScrollTile({
+        palette: this.palette(),
+        onToggle: (on: boolean): void => {
+          if (on) {
+            this.startAutoScroll();
+          } else {
+            // 面板里的「暂停」= 暂停（浮钮保留、可继续），不是结束会话
+            this.pauseAutoScroll();
+          }
+        },
+        onSpeed: (v: number): void => {
+          this.onAutoSpeedChange(v);
+        }
+      })
 
       // ── 更多操作：与上方同样的**等宽磁贴**（用户要求排版统一）──
       Row({ space: HwSpace.xs }) {
@@ -4360,6 +4622,770 @@ export struct Reader {
     });
   }
 
+  // ══════════════════════ 朗读（系统 TTS） ══════════════════════
+  //
+  // 用 Core Speech Kit 的 textToSpeech 逐段朗读：一段读完在 onComplete 里接着读下一段。
+  // 两个刻意的决定：
+  //  1. **按块推进**（而不是把整篇丢给引擎）：这样"读到哪就滚到哪"，也便于随时停；
+  //  2. **与自动滚屏互斥**：两者都在驱动屏幕位置，同时开必然打架 —— 开始一个就停另一个；
+  //     同时复用同一颗悬浮钮（点一下暂停 / 继续，长按结束）。
+
+  /**
+   * **朗读用的纯文本**：从行内片段拼，而不是用 `block.plain`。
+   *
+   * 为什么不能用 plain：它是**源码文本**（段落工厂里 `plain: text`），
+   * 里面带着 `**粗体**`、`` `代码` ``、`[链接](地址)` 这些记号 ——
+   * 直接念出来就是"星号星号……"，听着很难受（用户反馈）。
+   * 行内片段是**渲染文本**（粗体片段的 text 就是"粗体"两个字），拼起来天然干净。
+   */
+  private spokenTextOf(block: MdBlock): string {
+    let out: string = '';
+    for (let k: number = 0; k < block.inlines.length; k++) {
+      const it: MdInline = block.inlines[k];
+      // 图片地址与脚注序号读出来没有意义，跳过
+      if (it.kind === MdInlineKind.Image || it.kind === MdInlineKind.FootnoteRef) {
+        continue;
+      }
+      let piece: string = it.text;
+      if (it.kind === MdInlineKind.Link && piece.length === 0) {
+        piece = it.href;
+      }
+      out = out + piece;
+    }
+    if (out.trim().length > 0) {
+      return out.trim();
+    }
+    // 兜底（行内片段为空的老数据）：拿源码粗洗一遍，至少别把标记念出来
+    return block.plain
+      .replace(/^[#>\-\s]+/, '')
+      .replace(/[*`~]/g, '')
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .trim();
+  }
+
+  /** 可朗读的块下标序列（跳过代码 / 图表 / 公式 / 表格 / 分割线 / 空文本）。 */
+  private ttsBuildQueue(): void {
+    const q: number[] = [];
+    for (let k: number = 0; k < this.blocks.length; k++) {
+      const b: MdBlock = this.blocks[k];
+      if (b.kind === MdBlockKind.Code || b.kind === MdBlockKind.Chart
+        || b.kind === MdBlockKind.Math || b.kind === MdBlockKind.Table
+        || b.kind === MdBlockKind.Divider) {
+        continue;
+      }
+      if (this.spokenTextOf(b).length > 0) {
+        q.push(k);
+      }
+    }
+    this.ttsQueue = q;
+  }
+
+  /** 开始朗读：创建引擎（幂等）后从当前阅读位置读起。 */
+  private startReadAloud(): void {
+    if (this.ttsOn) {
+      this.resumeReadAloud();
+      return;
+    }
+    if (this.docName.length === 0) {
+      return;
+    }
+    // 互斥：朗读与自动滚屏都在驱动屏幕位置，同时开会打架
+    this.stopAutoScroll();
+    // 浮钮首次出现的位置（与自动滚屏同款：按握姿定边、屏幕中部）
+    if (this.pauseBtnX < 0) {
+      this.pauseBtnX = this.sideToX(this.gripSide, 44);
+    }
+    if (this.pauseBtnY < 0) {
+      this.pauseBtnY = this.rootHeight / 2 - 22;
+    }
+    this.ttsBuildQueue();
+    if (this.ttsQueue.length === 0) {
+      this.toast('这篇没有可朗读的正文');
+      return;
+    }
+    // 起点 = 当前读到的那一段（找不到就从第一段开始）
+    let pos: number = 0;
+    for (let k: number = 0; k < this.ttsQueue.length; k++) {
+      if (this.ttsQueue[k] >= this.progressBlock) {
+        pos = k;
+        break;
+      }
+    }
+    this.ttsPos = pos;
+    this.ttsRequest = this.ttsRequest + 1;
+    if (this.ttsEngine !== null) {
+      this.ttsOn = true;
+      this.ttsPlayCurrent();
+      return;
+    }
+    const mode: string = AppStorage.get<string>('appMode') ?? '';
+    const params: textToSpeech.CreateEngineParams = {
+      language: 'zh-CN',
+      person: 0,
+      // 基础离线模式下只能用离线音色；否则用在线音色（更自然）
+      online: mode === 'offline' ? 0 : 1
+    };
+    textToSpeech.createEngine(params).then((engine: textToSpeech.TextToSpeechEngine) => {
+      this.ttsEngine = engine;
+      engine.setListener({
+        onStart: (requestId: string, response: textToSpeech.StartResponse) => {
+          this.ttsSpeaking = true;
+        },
+        onComplete: (requestId: string, response: textToSpeech.CompleteResponse) => {
+          // 一句读完：接着读下一句 / 下一段。
+          // ⚠️ 必须同时判断"没在暂停中"——`stop()` 也会走到 onComplete，
+          // 只判断 ttsOn 的话，一暂停就会立刻被当成"这句读完了"继续读下一句，
+          // 表现就是**暂停根本停不下来**（用户反馈）。
+          if (this.ttsOn && !this.ttsPaused) {
+            this.ttsAdvance();
+          }
+        },
+        onStop: (requestId: string, response: textToSpeech.StopResponse) => {
+          this.ttsSpeaking = false;
+        },
+        onError: (requestId: string, errorCode: number, errorMessage: string) => {
+          this.ttsSpeaking = false;
+          this.stopReadAloud();
+          this.toast('朗读失败（' + errorCode + '）：' + errorMessage);
+        }
+      });
+      this.ttsOn = true;
+      this.ttsPlayCurrent();
+    }).catch((err: BusinessError) => {
+      this.ttsOn = false;
+      this.ttsSpeaking = false;
+      this.toast('朗读引擎不可用：' + err.message);
+    });
+  }
+
+  /** 读当前这一段：切成句子逐句朗读，并把"正在读的那句"高亮出来。 */
+  private ttsPlayCurrent(): void {
+    if (this.ttsEngine === null || this.ttsPos < 0 || this.ttsPos >= this.ttsQueue.length) {
+      this.stopReadAloud();
+      return;
+    }
+    const blockIndex: number = this.ttsQueue[this.ttsPos];
+    if (blockIndex < 0 || blockIndex >= this.blocks.length) {
+      this.stopReadAloud();
+      return;
+    }
+    // ⚠️ 不再自动滚动（用户要求："不自动滑动正在阅读位置了，不动了"）——
+    // 朗读只出声，屏幕停在用户自己滚到的位置；想跟读就自己翻。
+    // 渲染文本 → 按句切分 → 从第一句读起
+    this.ttsRendered = this.renderedTextOf(this.blocks[blockIndex]);
+    this.ttsSegs = this.splitSentences(this.ttsRendered);
+    this.ttsSegAt = 0;
+    this.ttsSpeakSegment();
+  }
+
+  /** 朗读当前块的第 ttsSegAt 句。 */
+  private ttsSpeakSegment(): void {
+    if (this.ttsEngine === null) {
+      this.stopReadAloud();
+      return;
+    }
+    if (this.ttsSegAt >= this.ttsSegs.length) {
+      this.ttsNext();
+      return;
+    }
+    const seg: number[] = this.ttsSegs[this.ttsSegAt];
+    this.ttsSegStart = seg[0];
+    this.ttsSegEnd = seg[1];
+    // 朗读文本 = 该句的渲染文本；图片路径之类念出来是噪音，读之前清一下
+    let spoken: string = this.ttsRendered.substring(seg[0], seg[1])
+      .replace(/[^\s]*\.(png|jpg|jpeg|gif|webp|svg|bmp)/gi, '').trim();
+    if (spoken.length === 0) {
+      this.ttsSegAt = this.ttsSegAt + 1;
+      this.ttsSpeakSegment();
+      return;
+    }
+    // ⚠️ SpeakParams 只有 requestId（+ 可选 extraParams）：在线/离线是**建引擎**时定的
+    // （CreateEngineParams.online），不是每次朗读的参数。
+    // requestId 每次发声都取新的：恢复朗读时复用同一个 id 可能被引擎当成重复请求拒掉。
+    this.ttsSpeakSeq = this.ttsSpeakSeq + 1;
+    const speakParams: textToSpeech.SpeakParams = {
+      requestId: 'cj_' + this.ttsRequest + '_' + this.ttsSpeakSeq
+    };
+    try {
+      this.ttsEngine.speak(spoken, speakParams);
+      this.ttsSpeaking = true;
+    } catch (err) {
+      this.stopReadAloud();
+      this.toast('朗读失败，已停止');
+    }
+  }
+
+  /** 一句读完：推进到下一句；本段读完推进到下一段。 */
+  private ttsAdvance(): void {
+    this.ttsSegAt = this.ttsSegAt + 1;
+    if (this.ttsSegAt >= this.ttsSegs.length) {
+      this.ttsNext();
+    } else {
+      this.ttsSpeakSegment();
+    }
+  }
+
+  /**
+   * 当前块的**渲染文本**：逐行内片段用 `MdViewUtil.spanLabel` 拼 ——
+   * 这正是正文渲染时每个 Span 的内容，所以句子的字符偏移与批注坐标系**完全一致**，
+   * 高亮才能精确压在正在读的那几个字上。
+   */
+  private renderedTextOf(block: MdBlock): string {
+    let out: string = '';
+    for (let k: number = 0; k < block.inlines.length; k++) {
+      out = out + MdViewUtil.spanLabel(block.inlines[k]);
+    }
+    return out;
+  }
+
+  /**
+   * 把渲染文本按句切分，返回若干 `[start, end)` 区间（**含标点**）。
+   * 断句依据：。！？!?；;\n；超过 120 字的长句再按逗号/顿号二次切分，
+   * 否则一句话读十几秒，暂停和跟读都不灵。
+   */
+  private splitSentences(text: string): number[][] {
+    const segs: number[][] = [];
+    let start: number = 0;
+    let k: number = 0;
+    while (k < text.length) {
+      const ch: string = text.charAt(k);
+      const isBreak: boolean = ch === '。' || ch === '！' || ch === '？' || ch === '!'
+        || ch === '?' || ch === ';' || ch === '；' || ch === '\n';
+      if (!isBreak) {
+        k++;
+        continue;
+      }
+      // 收尾的引号 / 括号跟着句子一起走（"……。" 不能把引号落下）
+      let end: number = k + 1;
+      while (end < text.length && (text.charAt(end) === '”' || text.charAt(end) === '）'
+        || text.charAt(end) === '"')) {
+        end++;
+      }
+      if (text.substring(start, end).trim().length > 0) {
+        segs.push([start, end]);
+      }
+      start = end;
+      k = end;
+    }
+    if (start < text.length && text.substring(start).trim().length > 0) {
+      segs.push([start, text.length]);
+    }
+    // 长句二次切分：在逗号 / 顿号 / 冒号处落刀，每段至少 40 字才切
+    const out: number[][] = [];
+    for (let s: number = 0; s < segs.length; s++) {
+      const from: number = segs[s][0];
+      const to: number = segs[s][1];
+      if (to - from <= 120) {
+        out.push(segs[s]);
+        continue;
+      }
+      let last: number = from;
+      for (let p: number = from; p < to; p++) {
+        const ch2: string = text.charAt(p);
+        if (ch2 === '，' || ch2 === ',' || ch2 === '、' || ch2 === '：' || ch2 === ':') {
+          if (p + 1 - last >= 40) {
+            out.push([last, p + 1]);
+            last = p + 1;
+          }
+        }
+      }
+      if (last < to) {
+        out.push([last, to]);
+      }
+    }
+    return out;
+  }
+
+  /** 推进到下一段（读完整篇则自然结束）。 */
+  private ttsNext(): void {
+    this.ttsPos = this.ttsPos + 1;
+    if (this.ttsPos >= this.ttsQueue.length) {
+      this.toast('已读完这篇');
+      this.stopReadAloud();
+      return;
+    }
+    this.ttsPlayCurrent();
+  }
+
+  /** 暂停（引擎停声，会话保留，可继续）。 */
+  private pauseReadAloud(): void {
+    // 先落"暂停中"标记再 stop：stop 会同步/异步触发 onComplete，
+    // 标记早一步落下，onComplete 才不会把这次中断当成"读完一段"继续往下读
+    this.ttsPaused = true;
+    this.ttsSpeaking = false;
+    if (this.ttsEngine !== null) {
+      try {
+        this.ttsEngine.stop();
+      } catch (err) {
+        // 停声失败不影响状态复位
+      }
+    }
+  }
+
+  /** 继续（从当前这一句重新读 —— 引擎不支持句中续播，停在哪就从哪句开头重来）。 */
+  private resumeReadAloud(): void {
+    if (this.ttsEngine === null) {
+      this.ttsOn = false;
+      this.ttsPaused = false;
+      this.startReadAloud();
+      return;
+    }
+    this.ttsPaused = false;
+    this.ttsSpeakSegment();
+  }
+
+  /** 浮钮点击：朗读中 → 暂停/继续；否则走自动滚屏的暂停/继续。 */
+  private floatTogglePause(): void {
+    if (this.ttsOn) {
+      if (this.ttsSpeaking) {
+        this.pauseReadAloud();
+      } else {
+        this.resumeReadAloud();
+      }
+      return;
+    }
+    this.toggleAutoScrollPause();
+  }
+
+  /** 结束朗读并释放引擎（离开页面 / 长按浮钮 / 读完整篇）。 */
+  private stopReadAloud(): void {
+    this.ttsOn = false;
+    this.ttsSpeaking = false;
+    this.ttsPaused = false;
+    this.ttsPos = -1;
+    this.ttsSegStart = -1;
+    this.ttsSegEnd = -1;
+    this.ttsSegs = [];
+    const engine: textToSpeech.TextToSpeechEngine | null = this.ttsEngine;
+    this.ttsEngine = null;
+    if (engine === null) {
+      return;
+    }
+    try {
+      engine.stop();
+    } catch (err) {
+      // 忽略
+    }
+    try {
+      engine.shutdown();
+    } catch (err) {
+      // 忽略：释放失败也只是占用一点资源
+    }
+  }
+
+  /** 浮钮是否显示（自动滚屏会话 或 朗读会话）。 */
+  private floatBtnVisible(): boolean {
+    return this.autoBarVisible || this.ttsOn;
+  }
+
+  /**
+   * 传给块视图的批注列表：朗读时**注入一条合成高亮**（当前正在读的那句）。
+   *
+   * 复用荧光笔的渲染管道（坐标 / 透明度 / 主题色全部现成），不用给 MdView 加任何新概念。
+   * 缓存以"块 + 句区间 + 批注数"为键：同一句话期间返回同一数组，
+   * 避免正文滚动期间每次重渲染都新建数组造成 @Prop 抖动。
+   */
+  // （逐字高亮已按用户要求取消：只保留"当前正在播放的段落居中展示"）
+
+  /** 浮钮图标：暂停态显示「播放」，运行态显示「暂停」（两种功能共用）。 */
+  private floatBtnRunning(): boolean {
+    return this.ttsOn ? this.ttsSpeaking : this.autoScrolling;
+  }
+
+  // ══════════════════════ 图片管理 ══════════════════════
+  //
+  // 一篇文档里插过的图散落各处：有的来自相册、有的是手写笔记导出的 PNG、
+  // 有的是网络图。想清一张、换一张，靠翻正文找语法太费劲。
+  // 这里把它们汇总成一份清单（缩略图 + 大小 + 是否存在），逐张处理。
+
+  /** 扫出本文引用的图片（按正文出现顺序，去重）。 */
+  private scanDocImages(): void {
+    const out: DocImage[] = [];
+    try {
+      const re: RegExp = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+      let m: RegExpExecArray | null = re.exec(this.rawContent);
+      while (m !== null) {
+        const raw: string = m[0];
+        const href: string = m[2];
+        let dup: boolean = false;
+        for (let k: number = 0; k < out.length; k++) {
+          if (out[k].href === href) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup && href.length > 0) {
+          const net: boolean = href.startsWith('http://') || href.startsWith('https://');
+          const src: string = net ? href : DocStore.resolveImagePath(href);
+          let label: string = href;
+          const slash: number = href.lastIndexOf('/');
+          if (slash >= 0 && slash + 1 < href.length) {
+            label = href.substring(slash + 1);
+          }
+          out.push({
+            raw: raw,
+            href: href,
+            src: src,
+            label: label,
+            net: net,
+            exists: net ? true : src.length > 0
+          } as DocImage);
+        }
+        m = re.exec(this.rawContent);
+      }
+    } catch (err) {
+      // 正则异常不该让面板打不开
+    }
+    this.docImages = out;
+  }
+
+  /** 打开图片管理面板。 */
+  private openImageManager(): void {
+    if (this.docName.length === 0) {
+      return;
+    }
+    this.scanDocImages();
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.activeSheet = 'images';
+      this.sheetVisible = true;
+    });
+  }
+
+  /** 点缩略图：复用阅读页既有的放大浮层。 */
+  private openDocImage(index: number): void {
+    if (index < 0 || index >= this.docImages.length) {
+      return;
+    }
+    const item: DocImage = this.docImages[index];
+    if (item.src.length === 0) {
+      this.toast(item.net ? '网络图片地址不可用' : '本地图片不存在：' + item.href);
+      return;
+    }
+    this.openZoomImage('docimg_' + index, item.src);
+  }
+
+  /** 把图片交给系统分享 / 另存（网络图不支持）。 */
+  private saveDocImage(index: number): void {
+    if (index < 0 || index >= this.docImages.length) {
+      return;
+    }
+    const item: DocImage = this.docImages[index];
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    if (item.net) {
+      this.toast('网络图片请长按图片保存，或先替换成本地图片');
+      return;
+    }
+    if (!item.exists) {
+      this.toast('本地图片不存在，无法另存');
+      return;
+    }
+    ExportService.shareFile(ctx, DocStore.resolveAbsImagePath(item.href), (m: string): void => {
+      this.toast(m);
+    });
+  }
+
+  /**
+   * 用相册里的图替换这一张（只改正文里的地址，不动别处）。
+   * 新图会复制进 docs/images/，与原图共存 —— 原图不删，误操作还能改回来。
+   */
+  private replaceDocImage(index: number): void {
+    if (this.docReadOnly || this.docBuiltin) {
+      this.toast('只读 / 内置文档不能改图片引用');
+      return;
+    }
+    if (index < 0 || index >= this.docImages.length) {
+      return;
+    }
+    const item: DocImage = this.docImages[index];
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const photoPicker: photoAccessHelper.PhotoViewPicker = new photoAccessHelper.PhotoViewPicker();
+      const options: photoAccessHelper.PhotoSelectOptions = new photoAccessHelper.PhotoSelectOptions();
+      options.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+      options.maxSelectNumber = 1;
+      photoPicker.select(options).then((result: photoAccessHelper.PhotoSelectResult) => {
+        if (result === undefined || result === null || result.photoUris === undefined
+          || result.photoUris.length === 0) {
+          return;
+        }
+        const rel: string | null = DocStore.importImageFromUri(ctx, result.photoUris[0]);
+        if (rel === null) {
+          this.toast('图片导入失败：格式不支持或超过 20MB');
+          return;
+        }
+        this.replaceInDoc(item.raw, item.raw.replace(item.href, rel), '已替换为 ' + rel);
+      }).catch((err: BusinessError) => {
+        this.toast('选择图片失败：' + err.message);
+      });
+    } catch (err) {
+      this.toast('无法打开图片选择器');
+    }
+  }
+
+  /** 删除这一张的引用（只动正文里那一处，图片文件保留，可到数据管理清理）。 */
+  private removeDocImage(index: number): void {
+    if (this.docReadOnly || this.docBuiltin) {
+      this.toast('只读 / 内置文档不能修改正文');
+      return;
+    }
+    if (index < 0 || index >= this.docImages.length) {
+      return;
+    }
+    const item: DocImage = this.docImages[index];
+    this.getUIContext().showAlertDialog({
+      title: '删除这张图片的引用？',
+      message: '只从正文里移除 `' + item.label + '` 这一处引用，图片文件仍保留在应用里'
+        + '（可在「设置 → 数据管理 → 图片管理」清理）。',
+      primaryButton: {
+        value: '取消',
+        action: () => {
+          // 什么都不做
+        }
+      },
+      secondaryButton: {
+        value: '删除引用',
+        action: () => {
+          this.replaceInDoc(item.raw, '', '已删除该图片引用');
+        }
+      }
+    });
+  }
+
+  /** 把正文里某段原文替换成新内容并落盘重载（图片管理的统一出口）。 */
+  private replaceInDoc(from: string, to: string, okMsg: string): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+      if (meta === undefined) {
+        this.toast('文档不存在');
+        return;
+      }
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
+      const at: number = text.indexOf(from);
+      if (at < 0) {
+        this.toast('正文里找不到这张图片的原始写法，可能已被编辑过');
+        return;
+      }
+      const next: string = text.substring(0, at) + to + text.substring(at + from.length);
+      if (!DocStore.update(ctx, this.docName, next)) {
+        this.toast('保存失败');
+        return;
+      }
+      this.skipRestoreOnce = true;
+      this.loadDoc();
+      this.scanDocImages();
+      this.toast(okMsg);
+    } catch (err) {
+      this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
+    }
+  }
+
+  /** 图片管理面板：缩略图 + 名称 + 状态，逐张查看 / 另存 / 替换 / 删除引用。 */
+  @Builder
+  imagesSheet() {
+    Column({ space: HwSpace.sm }) {
+      if (this.docImages.length === 0) {
+        Text('这篇文档里还没有图片。')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+        Text('在编辑页用「插图片」从相册选图，或手写笔记导出后插入，都会出现在这里。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      } else {
+        Text('共 ' + this.docImages.length + ' 张 · 点缩略图放大查看')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+
+        ForEach(this.docImages, (item: DocImage, index: number) => {
+          Row({ space: HwSpace.sm }) {
+            // 缩略图（找不到的本地图 / 网络图用占位块表示状态）
+            if (item.src.length > 0) {
+              Image(item.src)
+                .width(46)
+                .height(46)
+                .objectFit(ImageFit.Cover)
+                .borderRadius(HwRadius.inner)
+                .border({ width: 1, color: this.palette().divider })
+                .onClick(() => {
+                  this.openDocImage(index);
+                })
+            } else {
+              Column() {
+                SymbolGlyph($r('sys.symbol.picture'))
+                  .fontSize(16)
+                  .fontColor([this.palette().textTertiary])
+              }
+              .width(46)
+              .height(46)
+              .justifyContent(FlexAlign.Center)
+              .borderRadius(HwRadius.inner)
+              .backgroundColor(this.palette().quoteBg)
+            }
+
+            Column({ space: 2 }) {
+              Text(item.label)
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textPrimary)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+              Text(item.net ? '网络图片' : (item.exists ? '本地图片' : '文件不存在'))
+                .fontSize(HwType.caption)
+                .fontColor(item.exists ? this.palette().textTertiary : '#FFD93B3B')
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            // 配色语义与其他面板一致：绿=安全动作（另存）、蓝=中性动作（替换）、红=破坏性（删除）
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FF2E7D32',
+              chipActive: true,
+              chipLabel: '另存',
+              chipOnTap: () => {
+                this.saveDocImage(index);
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FF2F63E8',
+              chipActive: true,
+              chipLabel: '替换',
+              chipOnTap: () => {
+                this.replaceDocImage(index);
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FFD32F2F',
+              chipActive: true,
+              chipLabel: '删除',
+              chipOnTap: () => {
+                this.removeDocImage(index);
+              }
+            })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ top: HwSpace.xs, bottom: HwSpace.xs })
+          .border({
+            width: { bottom: 1 },
+            color: this.palette().divider,
+            style: BorderStyle.Dashed
+          })
+        }, (item: DocImage) => 'img_' + item.raw)
+      }
+    }
+    .width('100%')
+    .padding(HwSpace.lg)
+    .id('shImages_' + this.sheetEpoch)
+  }
+
+  /** 反向链接面板：列出引用了本篇的文档，点一条直接开标签跳过去。 */
+  @Builder
+  backlinksSheet() {
+    Column({ space: HwSpace.sm }) {
+      if (this.backlinks.length === 0) {
+        Text('还没有别的文档引用《' + this.docName + '》。')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+        Text('在别的文档里写 [[《' + this.docName + '》]] 就能建立连接，连好之后这里会自动列出来。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      } else {
+        Text(this.backlinks.length + ' 篇文档引用了本篇')
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+
+        ForEach(this.backlinks, (name: string) => {
+          Row({ space: HwSpace.xs }) {
+            SymbolGlyph($r('sys.symbol.arrow_up_right'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+            Text(name)
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+              .layoutWeight(1)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+          }
+          .width('100%')
+          .height(44)
+          .padding({ left: HwSpace.md, right: HwSpace.md })
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().quoteBg)
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => {
+            this.openBacklinkDoc(name);
+          })
+        }, (name: string) => name)
+      }
+    }
+    .width('100%')
+    .padding(HwSpace.lg)
+    .id('shBack_' + this.sheetEpoch)
+  }
+
+  // ══════════════════════ 放大浮层存为图片 ══════════════════════
+  //
+  // 代码块 / 图表 / 公式在放大浮层里都是 DiagramWeb 渲染的网页，
+  // 用它的整页快照（webPageSnapshot）抓完整绘制结果 —— 比 componentSnapshot
+  // 对 Web 表面可靠（组件快照对 Web 只抓可视区，长代码块会截不全）。
+  // 抓到的是 PixelMap，打成 PNG 后走系统另存为（与 PDF / 图片导出同一条出路）。
+
+  // ══════════════════════ 反向链接 ══════════════════════
+  //
+  // 知识图谱给出的是「全库关系图」，这里是它的**单篇视角**：
+  // 只筛出指向当前文档的边。数据复用 KnowledgeGraph，不新扫一遍磁盘逻辑。
+
+  /** 打开反向链接面板：先算，再开面板（面板里的列表是静态的，不需要后续刷新）。 */
+  private openBacklinks(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const r: GraphResult = KnowledgeGraph.build(ctx);
+      const from: string[] = [];
+      for (let k = 0; k < r.edges.length; k++) {
+        if (r.edges[k].to === this.docName) {
+          from.push(r.edges[k].from);
+        }
+      }
+      this.backlinks = from;
+    } catch (err) {
+      this.backlinks = [];
+    }
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.activeSheet = 'backlinks';
+      this.sheetVisible = true;
+    });
+  }
+
+  /** 点反向链接里的某篇：关面板 → 在新标签打开它。 */
+  private openBacklinkDoc(name: string): void {
+    this.sheetVisible = false;
+    setTimeout(() => {
+      this.openInTab(name, '');
+    }, 220);
+  }
+
   // ══════════════════════ EPUB 导出（批 5） ══════════════════════
 
   /** EPUB 导出入口：读正文交给 EpubExport（拉系统另存为）。 */
@@ -4401,6 +5427,201 @@ export struct Reader {
       this.activeSheet = 'more';
       this.sheetVisible = true;
     });
+  }
+
+  // ── 自动滚屏 ──
+
+  /** 速度换算：档位 1–10 → 每秒 20–200 vp（上一版 12–120 偏慢，且是硬跳）。 */
+  private autoVpPerSec(): number {
+    return 20 + (this.autoSpeed - 1) * 20;
+  }
+
+  /** 一段动画（segMs 毫秒）应滚过的位移（vp）。 */
+  private autoStepPx(segMs: number): number {
+    return this.autoVpPerSec() * segMs / 1000;
+  }
+
+  /**
+   * 开始自动滚屏。
+   *
+   * **平滑的关键：分段动画接续，而不是定时硬跳。**
+   * 上一版是每 100ms 调一次 `scrollBy` —— 位移是一帧到位的瞬移，看着就是一格一格
+   * 地顿（用户反馈"卡、想吐"）。现在改成：启动一段 `Linear` 动画滚过一小段距离，
+   * 动画结束后立刻接下一段 —— 位移在时间上是连续的，观感就是**匀速滑动**。
+   *
+   * 段长取 320ms：太短（<150ms）动画引擎来不及起停、接缝处会有微小顿挫；
+   * 太长（>600ms）中途暂停会"滑过头"。位移按档位换算，保证任何档位下速度恒定。
+   */
+  /**
+   * 开始自动滚屏（从「更多」面板发起 / 会话起点）：**浮钮一并出现**。
+   */
+  private startAutoScroll(): void {
+    this.stopAutoTimer();
+    // 互斥：开始滚动就停掉朗读（两者都在驱动屏幕位置）
+    this.stopReadAloud();
+    // 暂停浮钮出现的位置：按**当前握姿**定边、屏幕中部（用户要求"屏幕中间位置靠边缘"）。
+    // 每次开始都按握姿重算横向位置（纵向只在首次出现时定一次，用户拖过就尊重它）。
+    // 另外先问一次系统"最近的操作手"再定边 —— 部分机型不派发换手事件，
+    // 只依赖事件回调会出现"换了手还在原来那边"（用户反馈）。
+    let side: number = this.gripSide;
+    try {
+      const recent: number = GripAware.recentSide();
+      if (recent !== 0) {
+        side = recent;
+        this.gripSide = recent;
+      }
+    } catch (err) {
+      // 取不到就用既有值
+    }
+    this.pauseBtnX = this.sideToX(side, 44);
+    if (this.pauseBtnY < 0) {
+      this.pauseBtnY = this.rootHeight / 2 - 22;
+    }
+    this.autoGripTick = 0;
+    this.autoBarVisible = true;
+    this.autoScrolling = true;
+    this.autoScrollSegment();
+  }
+
+  /**
+   * 握持手 → 贴边横坐标。
+   * `side`：-1 左 / 0 未识别 / 1 右；未识别按右手侧处理（与分屏退出钮同一口径）。
+   * `btnW` 是浮钮宽度，右侧位置由此反推。
+   */
+  private sideToX(side: number, btnW: number): number {
+    return side === -1 ? 10 : this.rootWidth - btnW - 10;
+  }
+
+  /**
+   * 滚动期间的握姿兜底核对。
+   *
+   * 为什么要有它：`motion` 的换手事件在部分机型/场景下不派发（本工程此前就踩过
+   * "只挂 holdingHandChanged 导致不跟手"，后来补了 operatingHandChanged 才好），
+   * 而自动滚屏这种"手不动、屏在动"的场景恰好最容易漏事件。这里每 5 段（约 1.6s）
+   * 主动问一次系统最近的操作手 —— 只在识别出方向（非 0）且与当前不同时才动，
+   * 所以不会把按钮误甩到另一边。
+   */
+  private syncGripSideForAutoScroll(): void {
+    let side: number = 0;
+    try {
+      side = GripAware.recentSide();
+    } catch (err) {
+      return;
+    }
+    if (side === 0) {
+      return;
+    }
+    if (side !== this.gripSide) {
+      this.gripSide = side;
+    }
+    if (this.floatBtnVisible()) {
+      const targetX: number = this.sideToX(side, 44);
+      if (targetX !== this.pauseBtnX) {
+        // 与事件路径同一套动画：兜底核对也不该瞬移
+        this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+          this.pauseBtnX = targetX;
+        });
+      }
+    }
+  }
+
+  /** 一段自动滚动：动画滚过 `段长×速度` 的位移，结束后递归接下一段。 */
+  private autoScrollSegment(): void {
+    if (!this.autoScrolling) {
+      return;
+    }
+    const segMs: number = 320;
+    const px: number = this.autoStepPx(segMs);
+    // 到文末就别再排下一段了（否则定时器空转耗电）
+    let atEnd: boolean = false;
+    try {
+      atEnd = this.scroller.isAtEnd();
+    } catch (err) {
+      atEnd = false;
+    }
+    if (atEnd) {
+      // 到底了：停表但**保留浮钮**（用户可能想回看上一段再继续），图标自动变「继续」
+      this.pauseAutoScroll();
+      this.toast('已到文末');
+      return;
+    }
+    try {
+      // 用 scrollTo + **显式 Linear 动画**（而不是 animateTo 里 scrollBy）：
+      // 位移参数与动画参数写在一次调用里，语义明确、不受动画上下文影响。
+      // 目标位移基于当前偏移量，用户中途手动滑动也能自然接下（不会往回跳）。
+      const cur = this.scroller.currentOffset();
+      this.scroller.scrollTo({
+        xOffset: cur.xOffset,
+        yOffset: cur.yOffset + px,
+        animation: { duration: segMs, curve: Curve.Linear }
+      });
+    } catch (err) {
+      // 列表尚未完成布局等异常：暂停并保留浮钮（点一下「继续」即可重试，
+      // 不必再回「更多」面板重新开一次），同时避免定时器空转
+      this.pauseAutoScroll();
+      return;
+    }
+    // 握姿兜底核对：搭在滚动节拍上（每 5 段 ≈ 1.6s 一次），不额外开定时器
+    this.autoGripTick = this.autoGripTick + 1;
+    if (this.autoGripTick % 5 === 0) {
+      this.syncGripSideForAutoScroll();
+    }
+    this.autoTimer = setTimeout(() => {
+      this.autoScrollSegment();
+    }, segMs);
+  }
+
+  private stopAutoTimer(): void {
+    if (this.autoTimer >= 0) {
+      clearTimeout(this.autoTimer);
+      this.autoTimer = -1;
+    }
+  }
+
+  /**
+   * **暂停**：停表但**保留浮钮**——钮上的图标变成「继续」，再点一下接着滚。
+   * 用户要求"点击暂停后保留按钮，可再次点击继续"，所以暂停 ≠ 结束会话。
+   */
+  private pauseAutoScroll(): void {
+    this.stopAutoTimer();
+    this.autoScrolling = false;
+  }
+
+  /** 继续（从暂停态恢复）。必须**先置状态再起第一段**——autoScrollSegment 开头会检查它。 */
+  private resumeAutoScroll(): void {
+    if (this.autoScrolling) {
+      return;
+    }
+    this.autoGripTick = 0;
+    this.autoScrolling = true;
+    this.autoScrollSegment();
+  }
+
+  /** 浮钮点击：滚动中 → 暂停；已暂停 → 继续。 */
+  private toggleAutoScrollPause(): void {
+    if (this.autoScrolling) {
+      this.pauseAutoScroll();
+    } else {
+      this.resumeAutoScroll();
+    }
+  }
+
+  /**
+   * **彻底结束**自动滚屏：停表 + 收起浮钮（长按浮钮 / 离开阅读页 / 重新开始时走这里）。
+   */
+  private stopAutoScroll(): void {
+    this.stopAutoTimer();
+    this.autoScrolling = false;
+    this.autoBarVisible = false;
+  }
+
+  /** 改档位：正在滚就按新速度重启计时器。 */
+  private onAutoSpeedChange(v: number): void {
+    const n: number = Math.round(v);
+    this.autoSpeed = n < 1 ? 1 : (n > 10 ? 10 : n);
+    if (this.autoScrolling) {
+      this.startAutoScroll();
+    }
   }
 
   /** 导出面板：HTML / MD / 分享。 */
@@ -4535,7 +5756,8 @@ export struct Reader {
           .width('100%')
 
           // ── 大纲滚动区：头部固定，只有这里滚动。折叠/展开带动画 ──
-          Scroll() {
+          // 挂 tocScroller：打开目录 / 章节变化时自动滚到当前所在的那一节
+          Scroll(this.tocScroller) {
             if (this.docOutline.length === 0) {
               Text('这份文档没有标题，无法生成目录。')
                 .fontSize(HwType.label)
@@ -4591,6 +5813,10 @@ export struct Reader {
                   .backgroundColor(this.activeHeading === item.text ? this.palette().accentSoft : '#00000000')
                   .onClick(() => {
                     this.jumpTo(item.blockIndex);
+                  })
+                  // 记录本行的纵向位置：目录要按它自动滚到"当前所在的一节"
+                  .onAreaChange((oldValue: Area, newValue: Area) => {
+                    this.rememberTocRow(item.text, newValue);
                   })
                   // 稳定 key（seq 唯一）+ transition：展开时新行淡入、收起时被移除行淡出，
                   // 存活行的位移由 animateTo 带动，整体呈现折叠动画
@@ -5122,6 +6348,14 @@ export struct Reader {
           .onScrollStop(() => {
             this.flushProgress();
           })
+          // 自动滚屏时**点正文任意处即暂停**：比再去找按钮快得多。
+          // 只暂停、不结束：浮钮留着变成「继续」，随时接着看。
+          // 只在滚动中生效，其余时候这个点击什么都不做。
+          .onClick(() => {
+            if (this.autoScrolling) {
+              this.pauseAutoScroll();
+            }
+          })
           // **主题纪元也拼在 List 容器上**（关键修复）：
           // 只改条目的 key 不够——已挂载的 ListItem / 其中的按钮是由列表**复用**的，
           // 换容器的 key 才会把整段正文真正重建一遍（用户反馈：正文前段、部分按钮
@@ -5257,6 +6491,84 @@ export struct Reader {
             .animation({ duration: 260, curve: Curve.FastOutSlowIn }),
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
             .animation({ duration: 200, curve: Curve.FastOutSlowIn })))
+      }
+
+      // ── 自动滚屏的**暂停浮钮**：屏幕中部靠边、沉浸光感，可自由拖拽后吸附最近侧缘。
+      //
+      // 与分屏退出浮钮同一套做法（位置 = 基准 (0,0) + translate 状态；拖动改状态；
+      // 松手吸附；单指 PanGesture 必须写 fingers: 1；握姿换手时跟随，用户拖过就不跟）。
+      // 之所以值得单独做一颗：滚动中用户最想做的就是"停"，此刻手指不该还去够底栏。
+      if (this.floatBtnVisible()) {
+        Stack() {
+          ImmersiveIconButton({
+            buttonSize: 44,
+            buttonMaterialShadow: true,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              // 两种会话共用一颗钮：朗读中管朗读，否则管自动滚屏
+              this.floatTogglePause();
+            }
+          }) {
+            // 图标随状态切换，各挂一层过渡：暂停/继续之间是**淡入淡出**而不是硬闪
+            if (this.floatBtnRunning()) {
+              SymbolGlyph($r('sys.symbol.pause_fill'))
+                .fontSize(18)
+                .fontColor([this.palette().accent])
+                .transition(TransitionEffect.OPACITY.animation({
+                  duration: 160, curve: Curve.FastOutSlowIn
+                }))
+            } else {
+              SymbolGlyph($r('sys.symbol.play_fill'))
+                .fontSize(18)
+                .fontColor([this.palette().accent])
+                .transition(TransitionEffect.OPACITY.animation({
+                  duration: 160, curve: Curve.FastOutSlowIn
+                }))
+            }
+          }
+        }
+        .width(44)
+        .height(44)
+        .translate({ x: this.pauseBtnX, y: this.pauseBtnY })
+        // 手势组：**长按结束会话 + 单指拖动改位置**并行绑定
+        // （并行而非串行：长按判定期间手指往往会有轻微位移，串行会被拖动抢走）
+        .gesture(GestureGroup(GestureMode.Parallel,
+          // 长按浮钮 → 关闭并收起（会话结束）
+          LongPressGesture({ repeat: false, duration: 500 })
+            .onAction(() => {
+              // 长按 = 结束当前会话（朗读与自动滚屏共用这颗钮，两个一起收干净）
+              const wasReading: boolean = this.ttsOn;
+              this.stopReadAloud();
+              this.stopAutoScroll();
+              this.toast(wasReading ? '已停止朗读' : '已退出自动滚屏');
+            }),
+          // ⚠️ 单指拖动必须写 fingers: 1（工程铁律）
+          PanGesture({ fingers: 1 })
+          .onActionStart((_e: GestureEvent) => {
+            // 拖拽位置只作为基准；换手时仍会跟到该手一侧（见 gripCb 的说明）
+            this.pauseDragBaseX = this.pauseBtnX;
+            this.pauseDragBaseY = this.pauseBtnY;
+          })
+          .onActionUpdate((e: GestureEvent) => {
+            this.pauseBtnX = Math.min(Math.max(this.pauseDragBaseX + e.offsetX, 6),
+              this.rootWidth - 50);
+            this.pauseBtnY = Math.min(Math.max(this.pauseDragBaseY + e.offsetY, 60),
+              this.rootHeight - 110);
+          })
+          .onActionEnd(() => {
+            // 吸附：重心在左半 → 贴左缘，否则贴右缘（垂直位置保留用户拖到的位置）
+            const targetX: number = this.pauseBtnX + 22 < this.rootWidth / 2
+              ? 10 : this.rootWidth - 54;
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.pauseBtnX = targetX;
+            });
+          })))
+        // 进出场：缩放 + 淡入淡出（突然冒出来会显得突兀）
+        .transition(TransitionEffect.asymmetric(
+          TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 240, curve: Curve.FastOutSlowIn }),
+          TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
+            .animation({ duration: 180, curve: Curve.FastOutSlowIn })))
       }
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，

@@ -66,6 +66,7 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { SettingsHelp } from './SettingsHelp';
 import { Changelog } from './Changelog';
 import { Sketch } from './Sketch';
 import { HtmlViewer } from './HtmlViewer';
@@ -806,10 +807,13 @@ struct Index {
     return '';
   }
 
-  /** 文档自定义封面底色（空串 = 用名字哈希的默认配色）。 */
+  /**
+   * 文档封面底色（空串 = 用名字哈希的默认配色）。
+   * 优先级：**用户手动设的封面色** → 正文 Front Matter 的 `cover:` —— 两者都没有
+   * 才回落到按文件名哈希出的配色（口径见 DocStore.coverColorOf）。
+   */
   private coverColorOf(meta: DocMeta): string {
-    const c: string | undefined = meta.coverColor;
-    return c === undefined ? '' : c;
+    return DocStore.coverColorOf(meta);
   }
 
   /** 文件夹是否有自定义封面图。 */
@@ -1428,7 +1432,23 @@ struct Index {
     return out;
   }
 
-  /** 某文件夹内的文档元信息列表。 */
+  /**
+   * 树形视图要列的文件夹：**至少有一篇可见文档**才显示。
+   *
+   * 与网格口径保持一致 —— 只装内置文档的「澄笺」在内置被移除后应当一起消失，
+   * 而不是留一个空文件夹挂在列表里（用户反馈）。
+   */
+  private treeFolders(): ShelfFolder[] {
+    const out: ShelfFolder[] = [];
+    for (let k: number = 0; k < this.folders.length; k++) {
+      if (this.folderDocs(this.folders[k].name).length > 0) {
+        out.push(this.folders[k]);
+      }
+    }
+    return out;
+  }
+
+  /** 某文件夹内的文档元信息列表（**只含当前书架可见的文档**）。 */
   private folderDocs(folderName: string): DocMeta[] {
     const out: DocMeta[] = [];
     const ctx = this.ctx();
@@ -2486,7 +2506,9 @@ struct Index {
       Stack({ alignContent: Alignment.TopEnd }) {
         Column() {
           DocCover({
-            title: meta.name,
+            // **显示名优先用 Front Matter 的 `title:`**（封面配色仍按文件名哈希，
+            // 所以改了标题不会连带换色）
+            title: DocStore.displayName(meta),
             builtin: meta.builtin,
             coverTop: coverColorsOf(meta.name, meta.builtin).top,
             coverBottom: coverColorsOf(meta.name, meta.builtin).bottom,
@@ -2495,9 +2517,8 @@ struct Index {
             // 用户自定义：底色 / 封面图 / 是否显示名称
             coverColor: this.coverColorOf(meta),
             coverImage: this.coverImageSrc(meta.coverImage),
-            hideName: meta.hideCoverName === true,
-            // 默认封面上的淡淡格式字：MD / TXT（应用同时支持两种文件）
-            formatLabel: Index.formatLabelOf(meta.fileName)
+            hideName: meta.hideCoverName === true
+            // 封面右上角的格式角标（MD / TXT）已按用户要求移除
           })
         }
         // 跨页共享元素：与阅读页详情头封面同 id，实现「一镜到底」
@@ -2648,7 +2669,8 @@ struct Index {
       // 名称：用户可选择不显示（图片封面常用）——只影响封面格上的名字，
       // 文档本身的名称不变
       if (meta.hideCoverName !== true) {
-        Text(meta.name)
+        // 显示名：Front Matter 里写了 title 就用它（文件名不动）
+        Text(DocStore.displayName(meta))
           .fontSize(HwType.label + 1)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.palette().textPrimary)
@@ -2658,7 +2680,10 @@ struct Index {
           .textAlign(TextAlign.Center)
       }
 
-      Text(meta.builtin ? '内置教程' : DocStore.formatTime(meta.mtime))
+      // 日期行：Front Matter 的 `date:` 优先（作者写死的日期比"最后修改时间"更稳定）
+      Text(meta.builtin ? '内置教程'
+        : (meta.fmDate !== undefined && meta.fmDate.length > 0
+          ? meta.fmDate : DocStore.formatTime(meta.mtime)))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')
@@ -2820,7 +2845,8 @@ struct Index {
           .textAlign(TextAlign.Center)
       }
 
-      Text(folder.docs.length + ' 篇')
+      // 篇数按**当前可见**成员算（隐藏的内置、已删的文档都不算）
+      Text(this.folderDocs(folder.name).length + ' 篇')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')
@@ -2898,7 +2924,7 @@ struct Index {
     const innerW: number = this.rootWidth - HwSpace.lg * 2 - HwSpace.sm * 2;
     const cellW: number = (innerW - HwSpace.sm * (cols - 1)) / cols;
     const rowH: number = cellW / 0.72 + 60;
-    const rows: number = Math.ceil(folder.docs.length / cols);
+    const rows: number = Math.ceil(this.folderDocs(folder.name).length / cols);
     const h: number = 52 + rows * rowH + HwSpace.md;
     return Math.min(Math.max(h, 220), this.rootHeight - 160);
   }
@@ -2916,7 +2942,10 @@ struct Index {
       if (entry.startsWith(DocStore.ORDER_FOLDER)) {
         const name: string = entry.substring(DocStore.ORDER_FOLDER.length);
         const folder: ShelfFolder | null = this.folderByName(name);
-        if (folder !== null) {
+        // ⚠️ **一个可见文档都没有的文件夹不显示**：只装内置文档的「澄笺」在
+        // 内置被"从书架移除"后就该一起消失（用户反馈它孤零零挂在书架上）。
+        // 文件夹记录本身不动 —— 恢复内置时它自然又会出现，成员也还在里面。
+        if (folder !== null && this.folderDocs(name).length > 0) {
           out.push({ kind: 'folder', name: name, folder: folder, meta: null });
         }
       } else if (entry.startsWith(DocStore.ORDER_DOC)) {
@@ -2955,7 +2984,8 @@ struct Index {
     // **主题纪元也要进 key**：深浅切换时卡片整树重建，
     // 封面渐变 / 进度徽标 / 文字颜色一次刷新到位（不用等下次 refresh）。
     if (item.kind === 'folder') {
-      const n: number = item.folder !== null ? item.folder.docs.length : 0;
+      // 篇数用**可见成员数**：隐藏 / 恢复内置时它变化 → 文件夹格才重建刷新
+      const n: number = this.folderDocs(item.name).length;
       return 'F_' + item.name + '_' + n + '_' + tag + '_t' + this.themeEpoch;
     }
     const mtime: number = item.meta !== null ? item.meta.mtime : 0;
@@ -2970,9 +3000,9 @@ struct Index {
    * key 不变 → ArkUI 复用旧组件，颜色永远不更新（用户反馈"无法应用"）。
    */
   private docCoverTag(meta: DocMeta): string {
-    const rawC: string | undefined = meta.coverColor;
+    // 用 DocStore.coverColorOf：Front Matter 的 cover 改了也要让指纹变化 → 封面重建
+    const c: string = DocStore.coverColorOf(meta);
     const rawI: string | undefined = meta.coverImage;
-    const c: string = rawC === undefined ? '' : rawC;
     const i: string = rawI === undefined ? '' : rawI;
     // ⚠️ **阅读进度必须进指纹**：格子 ForEach 的 key 不变时 ArkUI 会复用旧组件，
     // 封面底部的进度条 / 百分比永远停在旧值（用户实测"要重启应用才更新"）。
@@ -2994,14 +3024,14 @@ struct Index {
       // **成员文档的封面指纹也要进 key**（用户反馈：改了文件夹内文件的封面，
       // 文件夹格 2×2 迷你预览不跟着变）—— 预览色取前 4 本的封面色，摘要拼进 key。
       let member: string = '';
-      const ctx = this.ctx();
-      for (let k = 0; k < f.docs.length && k < 4; k++) {
-        const m: DocMeta | undefined = ctx !== null ? DocStore.find(ctx, f.docs[k]) : undefined;
-        if (m !== undefined) {
-          const mc: string = m.coverColor !== undefined ? m.coverColor : '';
-          const mi: string = m.coverImage !== undefined ? m.coverImage : '';
-          member += mc + ',' + mi + ';';
-        }
+      // 只用**可见成员**的封面指纹：隐藏的内置不该再影响文件夹格的观感
+      const visible: DocMeta[] = this.folderDocs(f.name);
+      for (let k: number = 0; k < visible.length && k < 4; k++) {
+        const m: DocMeta = visible[k];
+        // 色用 DocStore.coverColorOf（含 Front Matter 的 cover），指纹才与实拍一致
+        const mc: string = DocStore.coverColorOf(m);
+        const mi: string = m.coverImage !== undefined ? m.coverImage : '';
+        member += mc + ',' + mi + ';';
       }
       return c + '|' + i + '|' + (f.hideCoverName === true ? '1' : '0') + '|' + member;
     }
@@ -3215,22 +3245,13 @@ struct Index {
   /** 文件夹预览里最多 4 篇文档的封面主色。 */
   private folderPreviewColors(folder: ShelfFolder): string[] {
     const out: string[] = [];
-    const ctx = this.ctx();
-    for (let k = 0; k < folder.docs.length && k < 4; k++) {
-      let name: string = folder.docs[k];
-      // 默认取文档名哈希色；**用户自定义过封面色则优先**（与文档封面观感一致）
-      let custom: string = '';
-      if (ctx !== null) {
-        const meta: DocMeta | undefined = DocStore.find(ctx, folder.docs[k]);
-        if (meta !== undefined) {
-          name = meta.name;
-          const c: string | undefined = meta.coverColor;
-          if (c !== undefined && c.length > 0) {
-            custom = c;
-          }
-        }
-      }
-      out.push(custom.length > 0 ? custom : coverColorsOf(name, false).bottom);
+    // 预览色只取**可见成员**：隐藏的内置不参与（否则"空文件夹"还显示着它们的颜色）
+    const visible: DocMeta[] = this.folderDocs(folder.name);
+    for (let k: number = 0; k < visible.length && k < 4; k++) {
+      const meta: DocMeta = visible[k];
+      // 默认取文档名哈希色；**用户自定义色 / Front Matter 的 cover 优先**（与文档封面一致）
+      const custom: string = DocStore.coverColorOf(meta);
+      out.push(custom.length > 0 ? custom : coverColorsOf(meta.name, false).bottom);
     }
     while (out.length < 4) {
       out.push(this.palette().divider);
@@ -3242,6 +3263,11 @@ struct Index {
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
   /** 书架顶部「继续阅读」卡片是否显示（外观设置里的开关，默认显示） */
   @StorageProp('shelfResumeBanner') showResumeBanner: boolean = true;
+  /**
+   * 「回头看看」卡片（随机一篇 / 那年今天）：**默认关闭**，
+   * 开关在「写作日志」页（用户指定位置）。
+   */
+  @StorageProp('shelfMemoryCard') showMemoryCard: boolean = false;
   /**
    * 编辑页的未保存标记（Editor 通过 @StorageLink 写入）。
    * **系统返回手势的拦截判据**：dirty 时 onBackPressed 拦截并让 Editor 弹"保存 / 不保存"窗，
@@ -3350,6 +3376,9 @@ struct Index {
    */
   @Builder
   resumeBanner() {
+    // ⚠️ 外层必须有**唯一根容器**：@Builder 里平级的两个 if 会渲染成多根（白屏踩过）。
+    // 两个横幅都关掉时这里是空 Column，GridItem 的壳与首屏留白照旧在流里。
+    Column({ space: HwSpace.sm }) {
     if (this.resumeName.length > 0 && this.showResumeBanner) {
       ImmersiveCard({
         cardRadius: HwRadius.card,
@@ -3399,6 +3428,145 @@ struct Index {
         .alignItems(VerticalAlign.Center)
       }
     }
+
+      // 随机回顾 / 那年今天：给书架一个"回头翻旧文"的理由（默认关闭，见 shelfMemoryCard）
+      if (this.showMemoryCard) {
+        this.memoryCard()
+      }
+    }
+    .width('100%')
+  }
+
+  /**
+   * 随机回顾卡。
+   *
+   * 两颗按钮两种口味：**随机一篇**（从书架里随便挑，排除"继续阅读"那篇）
+   * 与 **那年今天**（往年同一天动过的文档）。写笔记的人最容易"只进不出"——
+   * 存了几百篇却再没翻开过，这张卡就是给旧文一个再被看见的机会。
+   */
+  @Builder
+  memoryCard() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.md,
+      cardMaterialShadow: false,
+      palette: this.palette(),
+      cardClickable: false
+    }) {
+      Row({ space: HwSpace.sm }) {
+        SymbolGlyph($r('sys.symbol.clock'))
+          .fontSize(20)
+          .fontColor([this.palette().accent])
+
+        Column({ space: 2 }) {
+          Text('回头看看')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().accent)
+          // **溢出时自动滚动播放**（用户要求）：这颗卡片里图标 + 两个芯片占位，
+          // 窄屏上这行提示会被挤得只剩几个字，省略号看不出内容 ——
+          // 改成 MARQUEE（跑马灯），长了就自己滚一遍。
+          Text('书架共 ' + this.docs.length + ' 篇 · 挑一篇旧文重读')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.MARQUEE })
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '随机',
+          chipOnTap: () => {
+            this.openRandomDoc();
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.square_grid_2x2'))
+            .fontSize(13)
+            .fontColor([this.palette().accent])
+        }
+
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: '那年今天',
+          chipOnTap: () => {
+            this.openOnThisDay();
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+            .fontSize(13)
+            .fontColor([this.palette().accent])
+        }
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+    }
+  }
+
+  /** 随机打开一篇（排除"继续阅读"那篇，免得点了跟没点一样）。 */
+  private openRandomDoc(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    DocStore.init(c);
+    const list: DocMeta[] = DocStore.list(c);
+    const picks: string[] = [];
+    for (let k: number = 0; k < list.length; k++) {
+      const n: string = list[k].name;
+      if (n.length > 0 && n !== this.resumeName) {
+        picks.push(n);
+      }
+    }
+    if (picks.length === 0) {
+      this.toast('书架里还没有可以重读的文档');
+      return;
+    }
+    const idx: number = Math.floor(Math.random() * picks.length);
+    const name: string = picks[idx >= picks.length ? picks.length - 1 : idx];
+    const route: ReaderRoute = { name: name };
+    this.pushPage('pages/Reader', route);
+  }
+
+  /** 打开「往年的今天」动过的文档（没有就提示）。 */
+  private openOnThisDay(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    if (c === null) {
+      return;
+    }
+    DocStore.init(c);
+    const list: DocMeta[] = DocStore.list(c);
+    const now: Date = new Date();
+    const mm: number = now.getMonth() + 1;
+    const dd: number = now.getDate();
+    const year: number = now.getFullYear();
+    const hits: string[] = [];
+    let newest: number = 0;
+    let pick: string = '';
+    for (let k: number = 0; k < list.length; k++) {
+      const meta: DocMeta = list[k];
+      const ts: number = meta.mtime > 0 ? meta.mtime : 0;
+      if (ts <= 0) {
+        continue;
+      }
+      const d: Date = new Date(ts);
+      // 必须是**往年**的同一天：今天刚改过的不算"那年今天"
+      if (d.getFullYear() >= year || (d.getMonth() + 1) !== mm || d.getDate() !== dd) {
+        continue;
+      }
+      hits.push(meta.name);
+      if (ts > newest) {
+        newest = ts;
+        pick = meta.name;
+      }
+    }
+    if (pick.length === 0) {
+      this.toast('往年的今天没有留下文档');
+      return;
+    }
+    const route: ReaderRoute = { name: pick };
+    this.pushPage('pages/Reader', route);
+    this.toast('那年今天 · ' + (year - new Date(newest).getFullYear()) + ' 年前');
   }
 
   // ══════════════════════ 格子菜单 / 重命名 ══════════════════════
@@ -4268,7 +4436,7 @@ struct Index {
    * 图标颜色对不上（用户反馈"颜色没有跟随封面颜色"）。
    */
   private treeDocColors(meta: DocMeta): CoverStyle {
-    const custom: string = meta.coverColor !== undefined ? meta.coverColor : '';
+    const custom: string = DocStore.coverColorOf(meta);
     if (custom.length > 0) {
       return coverStyleFromColor(custom);
     }
@@ -4379,7 +4547,7 @@ struct Index {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      Text(folder.docs.length + ' 篇')
+      Text(this.folderDocs(folder.name).length + ' 篇')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
       Column() {
@@ -4435,7 +4603,7 @@ struct Index {
         }
       }, (meta: DocMeta) => 'tb_' + meta.name)
 
-      ForEach(this.folders, (folder: ShelfFolder) => {
+      ForEach(this.treeFolders(), (folder: ShelfFolder) => {
         ListItem() {
           this.treeFolderRow(folder)
         }
@@ -4446,7 +4614,7 @@ struct Index {
             }
           }, (meta: DocMeta) => 'fd_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch)
         }
-      }, (folder: ShelfFolder) => 'f_' + folder.name + '_' + folder.docs.length)
+      }, (folder: ShelfFolder) => 'f_' + folder.name + '_' + this.folderDocs(folder.name).length)
 
       ForEach(this.looseDocs(), (meta: DocMeta) => {
         ListItem() {
@@ -6152,6 +6320,8 @@ struct Index {
         SettingsExplore({ stack: this.pathStack })
       } else if (name === 'pages/Changelog') {
         Changelog({ stack: this.pathStack })
+      } else if (name === 'pages/SettingsHelp') {
+        SettingsHelp({ stack: this.pathStack })
       } else if (name === 'pages/Sketch') {
         Sketch({ stack: this.pathStack })
       } else if (name === 'pages/HtmlViewer') {
@@ -6195,11 +6365,15 @@ struct Index {
         }
       }
     })
-    // **系统返回手势拦截（编辑页）**：有未保存修改时拦截侧滑 / 返回键，
-    // 通过 editorGoBackTick 信号让 Editor 弹"保存 / 不保存"窗（与顶栏返回按钮同逻辑），
-    // 避免误触退出丢内容。返回 true = 本次返回已被消费。
+    // **系统返回手势拦截（编辑页）**：拦截侧滑 / 返回键，把决定权交给 Editor
+    // （通过 editorGoBackTick 信号）：它自己持有最准确的未保存状态 ——
+    // 没有改动就直接返回，有改动才弹「保存 / 不保存」。
+    //
+    // ⚠️ 这里**不能**再用 AppStorage 里的 editorDirty 做判据：隐藏页的
+    // `@StorageProp` 在真机上不保证随 Editor 的写入回刷，于是"已经点过保存、
+    // 退出时仍被拦下弹窗"（用户反馈）。判据下沉到状态真正的主人身上才可靠。
     .onBackPressed(() => {
-      if (name === 'pages/Editor' && this.editorDirty) {
+      if (name === 'pages/Editor') {
         AppStorage.setOrCreate('editorGoBackTick', Date.now());
         return true;
       }
@@ -6235,7 +6409,12 @@ struct Index {
     .onWillDisappear(() => {
       // **Reader 也要刷新**：阅读页退出时已写回阅读进度（封面进度条 / 百分比 / 续读横幅
       // 都读这份数据），不重读列表的话要重启应用才更新（用户实测）。
-      if (name === 'pages/Editor' || name === 'pages/Reader') {
+      // **设置页同样要刷新**：数据管理里"从书架中移除 / 恢复内置""导入备份"等
+      // 都会改书架内容 —— 之前只认编辑页与阅读页，导致恢复内置后回到书架看不到，
+      // 必须重启应用才出现（用户反馈）。设置类页面统一按前缀匹配。
+      const fromSettings: boolean = name === 'pages/Settings'
+        || name.indexOf('pages/Settings') === 0;
+      if (name === 'pages/Editor' || name === 'pages/Reader' || fromSettings) {
         // 从「全部待办」条目进来的：退出后**重新打开该面板**（用户要求"退出文件时
         // 返回全部待办页面"）。标志由阅读页隐藏时写入，这里读到即清，避免下次误开。
         const backTasks: boolean = name === 'pages/Reader'

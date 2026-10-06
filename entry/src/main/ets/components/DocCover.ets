@@ -96,6 +96,14 @@ export struct DocCover {
     return this.coverColor.length > 0 ? coverStyleFromColor(this.coverColor).ink : this.coverInk;
   }
 
+  /**
+   * 格式徽标配色：MD 用偏蓝的「标记语言」色，TXT 用偏灰的「纯文本」色。
+   * 与代码块的语言徽标同一套心思（色块 + 缩写，不引图片资源）。
+   */
+  private formatColor(): string {
+    return this.formatLabel === 'TXT' ? '#FF5B6B7C' : '#FF2F63E8';
+  }
+
   build() {
     Stack({ alignContent: Alignment.Start }) {
       // 底：渐变纸面。**圆角要自己带一份**——
@@ -145,6 +153,31 @@ export struct DocCover {
         layerRadiusBR: 13,
         layerShadow: false
       })
+
+      // ── 文件格式徽标（MD / TXT）：右上角一枚小色牌 ──
+      // 应用同时吃 .md 与 .txt 两种文件，来源不同、可编辑性也不同
+      //（txt 没有 Markdown 语法，标题与样式不会有渲染效果），
+      // 封面角上标一下，一眼能分清这是哪一类。
+      if (this.formatLabel.length > 0) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Row({ space: 2 }) {
+            Text(this.formatLabel)
+              .fontSize(9)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFFFF')
+              .letterSpacing(0.5)
+          }
+          .padding({ left: 5, right: 5, top: 2, bottom: 2 })
+          .borderRadius(5)
+          .backgroundColor(this.formatColor())
+          // 半透明白描边：压在深浅任意的纸面上都有个清晰的边
+          .border({ width: 0.8, color: '#59FFFFFF' })
+        }
+        .width('100%')
+        .height('100%')
+        .padding({ right: 7, top: 7 })
+        .hitTestBehavior(HitTestMode.None)
+      }
 
       if (!this.hideName) {
         Column({ space: 5 }) {

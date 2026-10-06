@@ -49,9 +49,12 @@ import {
 } from '../material/ImmersiveCard';
 import { DocMeta, DocStore, ReaderRoute } from '../service/DocStore';
 import { NavLifecycle } from '../service/NavLifecycle';
-import { MdBlock, MdParseResult } from '../markdown/MdTypes';
+import { MdBlock, MdBlockKind, MdHeading, MdParseResult, MdSrcRange, emptyBlock } from '../markdown/MdTypes';
 import { MdParser } from '../markdown/MdParser';
 import { MdBlockView } from '../markdown/MdView';
+import { MdTable, TableAlign, TableTool } from '../service/TableTool';
+import { TableEditorDialog } from '../components/TableEditorDialog';
+import { LiveBlockEditor } from '../components/LiveBlockEditor';
 
 /** 可一键插入的 Markdown 片段 */
 interface MdSnippet {
@@ -161,7 +164,7 @@ export struct Editor {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** 键盘是否弹出（AppWindow 的 TYPE_KEYBOARD 避让区广播）；
    *  RESIZE 模式下页面底 = 键盘顶，此时底部只留 6vp，别再叠 padBottom */
-  @StorageProp('keyboardPx') keyboardPx: number = 0;
+  @StorageProp('keyboardPx') @Watch('onKeyboardTick') keyboardPx: number = 0;
   /** 背景光斑缓慢漂移 */
   @State blobAX: number = 0;
   @State blobAY: number = 0;
@@ -221,6 +224,58 @@ export struct Editor {
   });
   @State preview: boolean = false;
   /**
+   * **实时预览编辑**（块级所见即所得，用户要求）。
+   *
+   * 与 `preview`（只读预览）的区别：这里显示的是**渲染结果**，但点任意一块
+   * 就展开该块的 Markdown 源码直接改，改完原地变回渲染态 —— 不用来回切
+   * 「源码 / 预览」，也不用左右分屏挤占版面。
+   *
+   * 实现要点：**一切改动都落在原文行区间上**。块的 srcLine 由 MdParser 给出
+   * （已是原文行号，见 MdParser.lineMap），结束行用「下一个块的起始行」推断
+   * （`MdParser.blockSrcRange`）。所以编辑一个块不会动到别的块，
+   * 工具条插入的元素也能立刻以渲染态出现在正确位置。
+   */
+  @State liveMode: boolean = false;
+  /** 正在编辑的块下标（-1 = 没有块处于编辑态） */
+  @State liveEditing: number = -1;
+  /** 编辑态里那块的源码草稿（提交时整段替换回原文） */
+  @State liveDraft: string = '';
+  /** 实时预览的滚动条：提交 / 插入后把相关块滚回视野 */
+  private liveScroller: Scroller = new Scroller();
+  /** 用法提示只说一次（本次进页面内） */
+  private liveTipShown: boolean = false;
+  // ── 双链补全（`[[` 候选）──
+  /** 候选浮窗是否显示 */
+  @State linkPickOpen: boolean = false;
+  /** 候选文档名（最多 8 条） */
+  @State linkItems: string[] = [];
+  /** 最近一次"从一段切到另一段"的时刻（见 onKeyboardTick 的抑制逻辑） */
+  private lastEditSwitchAt: number = 0;
+  /** 实时预览里正在网格编辑的表格块下标（-1 = 没有） */
+  @State liveTableIndex: number = -1;
+  /**
+   * 「块内部刚消费过这次点击」的标记。
+   * ArkUI 的 ClickEvent 没有 stopPropagation，父子 onClick 都会跑（子先父后），
+   * 靠它避免点图片 / 表格 / 放大按钮时又顺带进了整块的编辑态。
+   */
+  private liveChildTap: boolean = false;
+  /** 插入锚点：最近点过 / 编辑过的块下标，工具条插入的元素落在它后面 */
+  @State liveAnchor: number = -1;
+  /** 编辑态下方「这块渲染出来什么样」的预览块（只解析草稿，块很小，开销可忽略） */
+  @State livePreviewBlocks: MdBlock[] = [];
+  /** 编辑页的表格网格编辑器（与阅读页同组件，保存时写回 content 而非直接落盘） */
+  @State editTable: MdTable = { header: [''], rows: [['']], align: ['none'] } as MdTable;
+  tableDialog: CustomDialogController = new CustomDialogController({
+    builder: TableEditorDialog({
+      tbl: $editTable,
+      onSave: (): void => {
+        this.saveLiveTable();
+      }
+    }),
+    autoCancel: true,
+    customStyle: true
+  });
+  /**
    * 焦点写作（批 5 之一）：隐藏顶栏与底部工具层，只留正文与右上角退出钮。
    * 正文区随隐藏自动扩大，排版设置照常生效；再点退出钮（或保存/返回）恢复。
    */
@@ -265,6 +320,8 @@ export struct Editor {
    * 用它会出现在某个 SDK 上编不过的问题。onTextSelectionChange 的回调签名则长期稳定。
    */
   @State caret: number = -1;
+  /** 选区末端（与 caret 一起由 onTextSelectionChange 给出）：快捷键加粗 / 斜体要用 */
+  @State caretEnd: number = -1;
 
   private controller: TextAreaController = new TextAreaController();
 
@@ -584,6 +641,12 @@ export struct Editor {
   // ══════════════════════ 片段插入 ══════════════════════
 
   private insertSnippet(snippet: MdSnippet): void {
+    // 实时预览：插进去就**立刻是渲染好的样子**（表格即表格、代码即高亮卡片），
+    // 位置落在锚点块之后，点它就能改 —— 不再插入一坨看不懂的源码
+    if (this.liveMode) {
+      this.insertRawLive(snippet.before + snippet.holder + snippet.after);
+      return;
+    }
     let offset: number = this.content.length;
     if (this.caret >= 0 && this.caret <= this.content.length) {
       offset = this.caret;
@@ -608,6 +671,10 @@ export struct Editor {
 
   /** 在光标处插入一段原文（图片插入用，无占位文字可选中）。 */
   private insertRaw(text: string): void {
+    if (this.liveMode) {
+      this.insertRawLive(text);
+      return;
+    }
     let offset: number = this.content.length;
     if (this.caret >= 0 && this.caret <= this.content.length) {
       offset = this.caret;
@@ -615,6 +682,113 @@ export struct Editor {
     this.content = this.content.substring(0, offset) + text + this.content.substring(offset);
     this.dirty = true;
     this.caret = offset + text.length;
+  }
+
+  // ══════════════════════ 一键插入目录 ══════════════════════
+
+  /**
+   * 目录行判定：`- [标题](#锚点)`。
+   * 用于识别「上一次生成的目录」—— 再点一次就替换它，而不是叠第二份。
+   * 只在文首区域做这个判定，正文里同形态的链接列表不会被误认。
+   */
+  private isTocLine(s: string): boolean {
+    const t: string = s.trim();
+    if (!t.startsWith('- ')) {
+      return false;
+    }
+    const lb: number = t.indexOf('[');
+    const rb: number = t.indexOf('](');
+    return lb === 2 && rb > lb && t.endsWith(')');
+  }
+
+  /**
+   * 一键插入 / 刷新目录。
+   *
+   * 位置：**文首**（front matter 之后）—— 目录放在正文开头是通行做法，
+   * 也避开了「光标在哪」的不确定性。已有目录则整段替换，重复点不会叠加。
+   * 锚点用标题原文：阅读页的 `normalizeAnchor` 会忽略空格与常见标点后比对，
+   * 所以带空格、带标点的中文标题也能跳得到。
+   */
+  private insertToc(): void {
+    const lines: string[] = this.content.split('\n');
+    // ① 跳过 YAML front matter（口径与 MdParser.parse 一致）
+    let at: number = 0;
+    if (lines.length > 1 && lines[0].trim() === '---') {
+      for (let k: number = 1; k < lines.length; k++) {
+        const t: string = lines[k].trim();
+        if (t === '---' || t === '...') {
+          at = k + 1;
+          break;
+        }
+      }
+    }
+    while (at < lines.length && lines[at].trim().length === 0) {
+      at++;
+    }
+
+    // ② 扫描标题（**跳过围栏代码块内的 #**，否则教程文档里的示例会被当成真标题）
+    const items: string[] = [];
+    let inFence: boolean = false;
+    for (let k: number = 0; k < lines.length; k++) {
+      const t: string = lines[k].trim();
+      if (inFence) {
+        if (t.startsWith('```') || t.startsWith('~~~')) {
+          inFence = false;
+        }
+        continue;
+      }
+      if (t.startsWith('```') || t.startsWith('~~~')) {
+        inFence = true;
+        continue;
+      }
+      if (this.isTocLine(lines[k])) {
+        continue;
+      }
+      let p: number = 0;
+      let level: number = 0;
+      while (p < t.length && t.charAt(p) === '#') {
+        level++;
+        p++;
+      }
+      if (level < 1 || level > 6 || p >= t.length || t.charAt(p) !== ' ') {
+        continue;
+      }
+      const text: string = t.substring(p + 1).trim();
+      if (text.length === 0) {
+        continue;
+      }
+      let indent: string = '';
+      for (let n: number = 1; n < level; n++) {
+        indent = indent + '  ';
+      }
+      // 标题里的方括号会破坏链接语法，去掉（渲染不受影响）
+      const safe: string = text.replace(/[[\]]/g, '');
+      items.push(indent + '- [' + safe + '](#' + safe + ')');
+    }
+    if (items.length === 0) {
+      this.toast('文档里还没有标题，先写几个 ## 再插目录');
+      return;
+    }
+
+    // ③ 定位旧目录（文首连续的目录行）并整体替换
+    let end: number = at;
+    if (at < lines.length && this.isTocLine(lines[at])) {
+      while (end < lines.length && this.isTocLine(lines[end])) {
+        end++;
+      }
+    }
+    const head: string[] = lines.slice(0, at);
+    const tail: string[] = lines.slice(end);
+    const out: string[] = head.concat(items);
+    if (tail.length > 0 && tail[0].trim().length > 0) {
+      out.push('');
+    }
+    this.content = out.concat(tail).join('\n');
+    this.dirty = true;
+    if (this.liveMode || this.splitMode > 0) {
+      this.refreshPreviewBlocks();
+    }
+    this.toast(end > at ? '已刷新目录（' + items.length + ' 条）' : '已插入目录（' + items.length + ' 条）');
   }
 
   // ══════════════════════ 插入图片 ══════════════════════
@@ -1119,6 +1293,20 @@ export struct Editor {
             .fontColor([this.palette().textPrimary])
         }
 
+        // **实时预览编辑**（用户要求）：渲染态直接编辑，点哪块改哪块
+        ImmersiveIconButton({
+          buttonSize: 34,
+          buttonMaterialShadow: false,
+          palette: this.palette(),
+          buttonOnTap: () => {
+            this.toggleLive();
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.square_and_pencil'))
+            .fontSize(16)
+            .fontColor([this.liveMode ? this.palette().accent : this.palette().textPrimary])
+        }
+
         ImmersiveIconButton({
           buttonSize: 34,
           buttonMaterialShadow: false,
@@ -1129,7 +1317,7 @@ export struct Editor {
         }) {
           SymbolGlyph(this.preview ? $r('sys.symbol.highlighter_line') : $r('sys.symbol.eye'))
             .fontSize(17)
-            .fontColor([this.palette().textPrimary])
+            .fontColor([this.preview ? this.palette().accent : this.palette().textPrimary])
         }
 
         ImmersiveIconButton({
@@ -1365,6 +1553,30 @@ export struct Editor {
               this.cycleSplit();
             }
           })
+
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '目录',
+            chipOnTap: () => {
+              this.insertToc();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.list_bullet'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+          }
+
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '大纲',
+            chipOnTap: () => {
+              this.openOutline();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.list_bullet'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+          }
 
           ImmersiveChip({
             palette: this.palette(),
@@ -1772,9 +1984,15 @@ export struct Editor {
             if (this.splitMode > 0) {
               this.refreshPreviewBlocks();
             }
+            // 双链补全：刚敲下 `[[` 或继续打字时重算候选
+            this.refreshLinkPick();
           })
           .onTextSelectionChange((selectionStart: number, selectionEnd: number) => {
             this.caret = selectionStart;
+            // 选区末端也记下来：Ctrl+B / Ctrl+I 要给"选中的那段"加标记
+            this.caretEnd = selectionEnd;
+            // 光标移动也可能进/出 `[[` 语境（比如用方向键退回去）
+            this.refreshLinkPick();
           })
           .onPaste((value: string, event: PasteEvent) => {
             this.onEditorPaste();
@@ -1863,6 +2081,274 @@ export struct Editor {
     .padding({ left: this.editorHPad(), right: this.editorHPad() })
   }
 
+  /**
+   * **实时预览区**（块级所见即所得）。
+   *
+   * 每一块都包一层可点击外壳：点它 → 该块就地展开成源码编辑，改完立刻变回渲染态。
+   * 表格由 MdBlockView 内部的点击事件接管（走网格编辑器），不会被外层抢走。
+   */
+  @Builder
+  liveArea() {
+    List({ space: 0, scroller: this.liveScroller }) {
+      ListItem() {
+        Column()
+          .width('100%')
+          .height(this.contentTopInset())
+      }
+
+      // 常驻用法提示（编辑态时不显示，免得跟着滚动干扰）：正文明明是渲染态，
+      // 不写清楚"可以点"，很容易以为只能看
+      if (this.liveEditing < 0 && this.previewBlocks.length > 0) {
+        ListItem() {
+          Row({ space: 6 }) {
+            SymbolGlyph($r('sys.symbol.square_and_pencil'))
+              .fontSize(12)
+              .fontColor([this.palette().textTertiary])
+            Text('点任意一块即可就地编辑 · 表格点开是网格 · 代码块带实时预览')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+              .layoutWeight(1)
+              .maxLines(2)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ bottom: HwSpace.sm })
+        }
+      }
+
+      ForEach(this.previewBlocks, (block: MdBlock, index: number) => {
+        ListItem() {
+          if (index === this.liveEditing) {
+            // 包一层壳：① 让编辑区有明确的"卡片"边界（与渲染态一眼区分）
+            //          ② 挂进出场过渡（编辑态展开 / 收起不能是硬切）
+            Column() {
+              LiveBlockEditor({
+                block: block,
+                index: index,
+                palette: this.palette(),
+                bodySize: this.fontSize,
+                lineMul: this.lineMul,
+                renderEpoch: this.renderEpoch,
+                previewBlocks: this.livePreviewBlocks,
+                draft: $liveDraft,
+                onDelete: (i: number): void => {
+                  this.deleteBlockAt(i);
+                },
+                onCommit: (): void => {
+                  this.commitBlockEdit();
+                },
+                onDraftChange: (value: string): void => {
+                  this.dirty = true;
+                  // **所有块都刷新预览**（段落 / 标题 / 列表 / 引用同样要即时反馈）
+                  this.refreshLivePreview();
+                }
+              })
+            }
+            .width('100%')
+            .borderRadius(HwRadius.card)
+            // 编辑态用**实线**描边 + 底色：与渲染态的虚线区分开
+            .border({ width: 1, color: this.palette().accentSoft })
+            .backgroundColor(this.palette().surface)
+            .padding({ left: HwSpace.sm, right: HwSpace.sm })
+            // **与上下相邻段落留出空隙**（用户反馈：引用这类带底色的卡片会与
+            // 编辑框贴在一起，两块糊成一坨）—— 编辑框是"卡片"，
+            // 相邻块也多是卡片（引用 / 提示块 / 代码块），必须有外边距才分得开
+            .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
+            .transition(TransitionEffect.asymmetric(
+              TransitionEffect.scale({ x: 0.985, y: 0.985 }).combine(TransitionEffect.OPACITY)
+                .animation({ duration: 220, curve: Curve.FastOutSlowIn }),
+              TransitionEffect.OPACITY.animation({ duration: 140, curve: Curve.FastOutSlowIn })))
+          } else {
+            Column() {
+              MdBlockView({
+                block: block,
+                palette: this.palette(),
+                bodySize: this.fontSize,
+                lineMul: this.lineMul,
+                tableEditHandler: (blockId: string): void => {
+                  this.liveChildTap = true;
+                  this.openLiveTable(index);
+                },
+                enlargeHandler: (mode: string, payload: string, geoKey: string, title: string): void => {
+                  this.liveChildTap = true;
+                  if (mode === 'image') {
+                    this.previewImgScale = 1;
+                    this.previewImgDx = 0;
+                    this.previewImgDy = 0;
+                    this.previewImage = payload;
+                  }
+                },
+                imageTapHandler: (key: string, src: string): void => {
+                  this.liveChildTap = true;
+                  this.previewImgScale = 1;
+                  this.previewImgDx = 0;
+                  this.previewImgDy = 0;
+                  this.previewImage = src;
+                }
+              })
+              // 每块末尾的编辑图标：**明确告诉用户"这一块能改"** ——
+              // 只靠"点正文"太隐晦（渲染出来的字看着就像只读的）。
+              // 它与外层整块点击是两条路径，都会走到 editBlock（同一块、幂等），
+              // 用 liveChildTap 标记避免重复触发。
+              Row() {
+                Blank()
+                Row({ space: 4 }) {
+                  SymbolGlyph($r('sys.symbol.square_and_pencil'))
+                    .fontSize(12)
+                    .fontColor([this.palette().textTertiary])
+                  Text('编辑')
+                    .fontSize(HwType.caption - 1)
+                    .fontColor(this.palette().textTertiary)
+                }
+                .padding({ left: 8, right: 4, top: 3, bottom: 3 })
+                .opacity(0.6)
+                .onClick(() => {
+                  this.liveChildTap = true;
+                  this.editBlock(index);
+                })
+              }
+              .width('100%')
+            }
+            .width('100%')
+            // **每段的虚线边界**（用户要求）：正文渲染出来是连续一片，
+            // 分不清"这一段的编辑按钮管的是上面还是下面"——
+            // 虚线画在**包含编辑图标的整段容器**底部，图标归属一眼可见。
+            .border({
+              width: { bottom: 1 },
+              color: this.palette().divider,
+              style: BorderStyle.Dashed
+            })
+            .padding({ bottom: HwSpace.xs })
+            // 点整块 → 进这一块的编辑态。
+            // ⚠️ ArkUI 的 onClick **没有 stopPropagation**（子先父后都会执行）：
+            // 块内部的图片 / 表格 / 放大按钮、以及上面的编辑图标点过后会置
+            // `liveChildTap`，这里读到就复位并跳过，避免一次点击进两次编辑态。
+            .onClick(() => {
+              if (this.liveChildTap) {
+                this.liveChildTap = false;
+                return;
+              }
+              this.editBlock(index);
+            })
+            // 退出编辑态后本段重新挂载：淡入，避免"啪"地一下换回来
+            .transition(TransitionEffect.OPACITY.animation({
+              duration: 180, curve: Curve.FastOutSlowIn
+            }))
+          }
+        }
+      }, (block: MdBlock, index: number) => 'L_' + index + '_' + block.id + '_' + this.renderEpoch)
+
+      // 文末**正在新建的那一块**：还没写进正文（也没有对应的渲染块），
+      // 属于内存态的编辑项 —— 用户输入完成才落到原文，空着就丢弃。
+      // 索引用 `previewBlocks.length` 表示"新块"，是这套机制的唯一约定。
+      if (this.liveEditing >= this.previewBlocks.length && this.liveEditing >= 0) {
+        ListItem() {
+          Column() {
+            LiveBlockEditor({
+              block: emptyBlock(),
+              index: this.liveEditing,
+              palette: this.palette(),
+              bodySize: this.fontSize,
+              lineMul: this.lineMul,
+              renderEpoch: this.renderEpoch,
+              previewBlocks: this.livePreviewBlocks,
+              draft: $liveDraft,
+              onDelete: (i: number): void => {
+                this.cancelBlockEdit();
+              },
+              onCommit: (): void => {
+                this.commitBlockEdit();
+              },
+              onDraftChange: (value: string): void => {
+                this.dirty = true;
+                // 新建段落也实时预览（写 `## 标题` 立刻看到标题样式）
+                this.refreshLivePreview();
+              }
+            })
+          }
+          .width('100%')
+          // 与上方最后一段留出空隙（同正文里的编辑器外壳，避免卡片贴住）
+          .margin({ top: HwSpace.sm, bottom: HwSpace.xs })
+          // 编辑器内部的点击（输入框、完成、删除）都属于"已消费"，
+          // 不要让外层再当成"点空白新建一段"
+          .onClick(() => {
+            this.liveChildTap = true;
+          })
+        }
+      }
+
+      // 文末「新建段落」：**一大片可点的空白区**（点空白就是新建，符合直觉），
+      // 点一下就在末尾出现一块带输入框的编辑项
+      ListItem() {
+        Column({ space: 6 }) {
+          Row({ space: 6 }) {
+            SymbolGlyph($r('sys.symbol.plus'))
+              .fontSize(14)
+              .fontColor([this.palette().textTertiary])
+            Text('点这里新建段落')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+          }
+          .alignItems(VerticalAlign.Center)
+          .padding({ top: 14, bottom: 14 })
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .borderRadius(HwRadius.inner)
+          .border({ width: 1, color: this.palette().divider, style: BorderStyle.Dashed })
+        }
+        .width('100%')
+        // 热区高度给足：正文末尾的"空白处"就是要能点
+        .constraintSize({ minHeight: 96 })
+        .justifyContent(FlexAlign.Start)
+        .padding({ top: HwSpace.sm, bottom: this.contentBottomInset() })
+        .onClick(() => {
+          this.appendLiveParagraph();
+        })
+      }
+    }
+    .width('100%')
+    .layoutWeight(1)
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .height('100%')
+    .alignListItem(ListItemAlign.Start)
+    .padding({ left: this.editorHPad(), right: this.editorHPad() })
+  }
+
+  /**
+   * 在文末新建一段并进入编辑（实时预览下的「写下去」入口）。
+   *
+   * ⚠️ 上一版这里插一个空行再"打开最后一块"，结果是**点了没反应**：
+   * 空行不构成新块，`previewBlocks` 长度没变，于是打开的还是原来最后那一块
+   * （用户看到的就是"点了没动静"）。现在改成**虚拟新块**：直接把编辑态挂到
+   * `previewBlocks.length` 这个越界下标上，界面上立刻出现一个空输入框并自动聚焦，
+   * 写完提交时才真正落到原文 —— 没写就什么都不留下。
+   */
+  private appendLiveParagraph(): void {
+    if (this.liveEditing >= 0 && this.liveEditing < this.previewBlocks.length) {
+      // 先把手头这块提交掉，避免草稿悬空
+      this.commitBlockEdit();
+    }
+    this.liveAnchor = -1;
+    this.liveChildTap = false;
+    this.liveDraft = '';
+    this.livePreviewBlocks = [];
+    this.liveEditing = this.previewBlocks.length;
+    // 新块在末尾：等它挂载完再带进可视区（与进编辑态同一条路径）
+    setTimeout(() => {
+      this.scrollLiveToEditing();
+    }, 160);
+  }
+
+  /**
+   * 列表里正文块之前有几个占位项（顶部空白 + 用法提示）。
+   * 用 scrollToIndex 时必须加上，否则会滚到错位的块上（差一两条）。
+   */
+  private liveListOffset(): number {
+    const tip: number = (this.liveEditing < 0 && this.previewBlocks.length > 0) ? 1 : 0;
+    return 1 + tip;
+  }
+
   /** 解析当前内容供预览区渲染 */
   private refreshPreviewBlocks(): void {
     try {
@@ -1871,6 +2357,687 @@ export struct Editor {
     } catch (err) {
       this.previewBlocks = [];
     }
+  }
+
+  // ══════════════════════ 实时预览编辑（块级所见即所得）══════════════════════
+  //
+  // 与分屏预览的区别：这里是**单栏**，正文始终以渲染结果呈现，点哪块就编辑哪块。
+  // 三类块有专属编辑方式：
+  //   · 表格 → 网格编辑器（TableEditorDialog，已有组件）；
+  //   · 代码 / 图表 / 公式 → 源码编辑，编辑态下方同步显示这块渲染出来什么样；
+  //   · 其余（标题、段落、列表、引用…）→ 直接改 Markdown 源码。
+  // 改动一律写回**原文行区间**，不重建整篇，所以不会打乱别处的内容与行号。
+
+  /** 切换实时预览：进入时解析一次，退出时收起编辑态。 */
+  private toggleLive(): void {
+    this.liveEditing = -1;
+    this.liveDraft = '';
+    this.liveMode = !this.liveMode;
+    if (this.liveMode) {
+      // 分屏优先于实时预览（build 的分支顺序），进实时预览必须先退回单栏，
+      // 否则点了按钮界面没变化 —— 这类"点了没反应"最难自查
+      this.splitMode = 0;
+      this.preview = false;
+      this.refreshPreviewBlocks();
+      // 首次进入给一次用法提示：功能是"点块编辑"，不说明很容易以为点了没反应
+      if (!this.liveTipShown) {
+        this.liveTipShown = true;
+        this.toast('点正文任意一块即可编辑 · 表格点开是网格 · 代码块带实时预览');
+      }
+    }
+  }
+
+  // ══════════════════════ 大纲重排（整节拖动换序） ══════════════════════
+  //
+  // 写长文最常见的整理动作是"把某一节挪到别处"。整节 = 标题 + 它的**全部子树**
+  // （直到遇到同级或更高级的标题为止），这样拖一个二级标题不会把它下面的三级标题落下。
+  // 移动只改**源码行区间**，不重建整篇 —— 与块级编辑同一套地基（MdParser.blockSrcRange）。
+
+  /** 大纲面板是否打开 */
+  @State outlineOpen: boolean = false;
+  /** 大纲重建纪元：移动一节后 ++，列表按新顺序重排 */
+  @State outlineEpoch: number = 0;
+  /** 当前解析出的大纲（打开面板 / 移动后重算） */
+  @State outlineItems: MdHeading[] = [];
+  /** 拖拽起点（List 的 onItemDragStart 记下，drop 时用来算移动） */
+  private outlineDragFrom: number = -1;
+
+  /** 重算大纲（基于当前正文）。 */
+  private refreshOutline(): void {
+    try {
+      const parsed: MdParseResult = MdParser.parse(this.content);
+      this.outlineItems = parsed.outline;
+    } catch (err) {
+      this.outlineItems = [];
+    }
+    // 内容变了，块缓存也失效（移动要用最新块与行号）
+    this.refreshPreviewBlocks();
+  }
+
+  private openOutline(): void {
+    this.refreshOutline();
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+      this.outlineOpen = true;
+    });
+  }
+
+  private closeOutline(): void {
+    this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+      this.outlineOpen = false;
+    });
+  }
+
+  /**
+   * 第 `i` 个标题的**整节**在原文里占的行区间 `[start, end)`。
+   * 结束边界 = 第一个"层级不比我深"的后续标题；没有就是文末。
+   */
+  private sectionRange(outline: MdHeading[], blocks: MdBlock[], lineCount: number,
+    i: number): MdSrcRange {
+    const res: MdSrcRange = { start: 0, end: 0 };
+    if (i < 0 || i >= outline.length) {
+      return res;
+    }
+    res.start = MdParser.blockSrcRange(blocks, outline[i].blockIndex, lineCount).start;
+    const lvl: number = outline[i].level;
+    let to: number = i + 1;
+    while (to < outline.length && outline[to].level > lvl) {
+      to++;
+    }
+    res.end = to < outline.length
+      ? MdParser.blockSrcRange(blocks, outline[to].blockIndex, lineCount).start
+      : lineCount;
+    if (res.end < res.start) {
+      res.end = res.start;
+    }
+    return res;
+  }
+
+  /**
+   * 把第 `from` 个标题的整节移动到"第 `to` 个标题之前"。
+   *
+   * 实现是纯行数组搬运：剪出这一段 → 在剩余行里算出落点 → 插回去。
+   * 落点要按"剪掉之后的行号"折一次（目标在本节之后时前移 S 行），否则会错位。
+   */
+  private moveSectionTo(from: number, to: number): void {
+    if (from < 0 || to < 0 || from >= this.outlineItems.length
+      || to > this.outlineItems.length || from === to) {
+      return;
+    }
+    try {
+      const parsed: MdParseResult = MdParser.parse(this.content);
+      const outline: MdHeading[] = parsed.outline;
+      const blocks: MdBlock[] = parsed.blocks;
+      const lines: string[] = this.content.split('\n');
+      const lineCount: number = lines.length;
+      if (from >= outline.length || to > outline.length) {
+        return;
+      }
+      const sec: MdSrcRange = this.sectionRange(outline, blocks, lineCount, from);
+      if (sec.end <= sec.start) {
+        return;
+      }
+      const moved: string[] = lines.slice(sec.start, sec.end);
+      const rest: string[] = lines.slice(0, sec.start).concat(lines.slice(sec.end));
+      // 落点：目标标题原本的起始行；它在被剪掉的段之后时要往前挪
+      const rawTarget: number = to < outline.length
+        ? MdParser.blockSrcRange(blocks, outline[to].blockIndex, lineCount).start
+        : lineCount;
+      let at: number = rawTarget;
+      if (rawTarget > sec.start) {
+        at = rawTarget - moved.length;
+      }
+      if (at < 0) {
+        at = 0;
+      }
+      if (at > rest.length) {
+        at = rest.length;
+      }
+      const out: string[] = rest.slice(0, at).concat(moved, rest.slice(at));
+      this.content = out.join('\n');
+      this.dirty = true;
+      this.refreshOutline();
+      this.outlineEpoch = this.outlineEpoch + 1;
+      this.toast('已移动《' + outline[from].text + '》这一节');
+    } catch (err) {
+      this.toast('移动失败：正文结构异常');
+    }
+  }
+
+  /** 上移 / 下移一位（同级或更高级的相邻标题之间换位）。 */
+  private moveSectionStep(index: number, dir: number): void {
+    if (index < 0 || index >= this.outlineItems.length) {
+      return;
+    }
+    const lvl: number = this.outlineItems[index].level;
+    if (dir < 0) {
+      // 往前找最近的"层级不比我深"的标题
+      let p: number = index - 1;
+      while (p >= 0 && this.outlineItems[p].level > lvl) {
+        p--;
+      }
+      if (p < 0) {
+        this.toast('已经是第一节了');
+        return;
+      }
+      this.moveSectionTo(index, p);
+    } else {
+      // 往后找本节的结束边界（= 下一个同/更高层级标题）
+      let n: number = index + 1;
+      while (n < this.outlineItems.length && this.outlineItems[n].level > lvl) {
+        n++;
+      }
+      if (n >= this.outlineItems.length) {
+        this.toast('已经是最后一节了');
+        return;
+      }
+      // 移动到"下一节的下一节"之前 = 与下一节交换
+      let after: number = n + 1;
+      while (after < this.outlineItems.length && this.outlineItems[after].level > this.outlineItems[n].level) {
+        after++;
+      }
+      this.moveSectionTo(index, after);
+    }
+  }
+
+  /** 拖拽时跟随手指的小卡片（ArkUI 的 List 拖拽要求返回一个 CustomBuilder）。 */
+  @Builder
+  outlineDragPreview(index: number) {
+    Row({ space: 6 }) {
+      SymbolGlyph($r('sys.symbol.list_bullet'))
+        .fontSize(13)
+        .fontColor([this.palette().accent])
+      Text(index >= 0 && index < this.outlineItems.length ? this.outlineItems[index].text : '')
+        .fontSize(HwType.label)
+        .fontColor(this.palette().textPrimary)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+    .borderRadius(HwRadius.inner)
+    .backgroundColor(this.palette().surface)
+    .border({ width: 1, color: this.palette().accentSoft })
+  }
+
+  /** 拖拽用的落点：把 from 那一节插到 insertIndex 位置之前。 */
+  private onOutlineDrop(insertIndex: number): void {
+    const from: number = this.outlineDragFrom;
+    this.outlineDragFrom = -1;
+    if (from < 0 || insertIndex < 0) {
+      return;
+    }
+    // 落点在自己之后时，位置要减一（剪掉自己后索引整体前移）
+    let to: number = insertIndex > from ? insertIndex - 1 : insertIndex;
+    if (to === from) {
+      return;
+    }
+    this.moveSectionTo(from, to);
+  }
+
+  // ══════════════════════ 外接键盘快捷键 ══════════════════════
+  //
+  // 平板 / 折叠屏接键盘的场景下，用鼠标去点片段工具条很别扭。
+  // 用 ArkUI 的 keyboardShortcut 绑定（走焦点链，输入框获焦时也生效）：
+  //   Ctrl+S 保存 · Ctrl+B 粗体 · Ctrl+I 斜体 · Ctrl+F 查找
+  //   Ctrl+↑ / Ctrl+↓ 调正文字号
+
+  /**
+   * 给选中文字套一层标记（Ctrl+B / Ctrl+I）。
+   * 没有选中内容时插入一对空标记并把光标放中间，直接往里写即可。
+   */
+  private wrapSelection(mark: string): void {
+    const a: number = this.caret >= 0 && this.caret <= this.content.length
+      ? this.caret : this.content.length;
+    const e: number = this.caretEnd >= 0 && this.caretEnd <= this.content.length
+      ? this.caretEnd : a;
+    const from: number = Math.min(a, e);
+    const to: number = Math.max(a, e);
+    const picked: string = this.content.substring(from, to);
+    const inserted: string = mark + picked + mark;
+    this.content = this.content.substring(0, from) + inserted + this.content.substring(to);
+    this.dirty = true;
+    // 选中刚插入的整段（含标记），方便继续改或再按一次取消
+    this.caret = from;
+    this.caretEnd = from + inserted.length;
+    setTimeout(() => {
+      try {
+        this.controller.setTextSelection(from, from + inserted.length);
+      } catch (err) {
+        // 定位失败不影响内容
+      }
+    }, 40);
+  }
+
+  /** 快捷键调字号（Ctrl+↑ / Ctrl+↓）：与捏合、设置里的滑块共用同一个全局值。 */
+  private bumpFontSize(delta: number): void {
+    const next: number = Math.max(HwType.bodyMin,
+      Math.min(HwType.bodyMax, Math.round(this.fontSize) + delta));
+    if (next === this.fontSize) {
+      return;
+    }
+    this.fontSize = next;
+    this.toast('正文字号 ' + next);
+  }
+
+  // ══════════════════════ 双链自动补全（[[文档名]]） ══════════════════════
+  //
+  // 写 `[[` 就弹候选：知识网络靠 `[[名称]]` 连起来，而名称打错一个字就变成
+  // 指向"不存在文档"的悬空链接（知识图谱里会落进「待补文档」）。
+  // 这里把"记得住名字"这件事交给候选列表，顺手把锚点也算成一条候选。
+
+  /**
+   * 光标前是否正处在一个**未闭合的 `[[`** 里。
+   * 是 → 返回 `[[` 之后、光标之前的查询串；否 → 返回空串（浮窗不显示）。
+   */
+  private linkQuery(): string {
+    if (!this.linkPickAllowed()) {
+      return '';
+    }
+    const pos: number = this.caret >= 0 && this.caret <= this.content.length
+      ? this.caret : this.content.length;
+    const before: string = this.content.substring(0, pos);
+    const open: number = before.lastIndexOf('[[');
+    if (open < 0) {
+      return '';
+    }
+    const seg: string = before.substring(open + 2);
+    // 已经闭合、跨行、或又出现新的方括号 → 不算在补全场景里
+    if (seg.indexOf(']') >= 0 || seg.indexOf('\n') >= 0 || seg.indexOf('[') >= 0) {
+      return '';
+    }
+    if (seg.length > 40) {
+      return '';
+    }
+    return seg;
+  }
+
+  /** 只在纯编辑 / 分屏编辑态补全（预览、实时预览里没有源码输入框）。 */
+  private linkPickAllowed(): boolean {
+    return !this.preview && !this.liveMode;
+  }
+
+  /** 重算候选（输入 / 光标移动时调用）。 */
+  private refreshLinkPick(): void {
+    const q: string = this.linkQuery();
+    if (q === '' && !this.linkPickContextOpen()) {
+      this.linkPickOpen = false;
+      return;
+    }
+    if (!this.linkPickContextOpen()) {
+      this.linkPickOpen = false;
+      return;
+    }
+    const ctx = this.ctx();
+    if (ctx === null) {
+      this.linkPickOpen = false;
+      return;
+    }
+    const key: string = q.toLowerCase();
+    const starts: string[] = [];
+    const contains: string[] = [];
+    try {
+      DocStore.init(ctx);
+      const list: DocMeta[] = DocStore.list(ctx);
+      for (let k: number = 0; k < list.length; k++) {
+        const name: string = list[k].name;
+        const lower: string = name.toLowerCase();
+        if (key.length === 0) {
+          starts.push(name);
+        } else if (lower.indexOf(key) === 0) {
+          starts.push(name);
+        } else if (lower.indexOf(key) > 0) {
+          contains.push(name);
+        }
+        if (starts.length >= 8) {
+          break;
+        }
+      }
+    } catch (err) {
+      // 取不到列表就不补全
+    }
+    const out: string[] = [];
+    for (let k: number = 0; k < starts.length && out.length < 8; k++) {
+      out.push(starts[k]);
+    }
+    for (let k: number = 0; k < contains.length && out.length < 8; k++) {
+      out.push(contains[k]);
+    }
+    this.linkItems = out;
+    this.linkPickOpen = out.length > 0;
+  }
+
+  /** 是否处于"刚才打了 `[[`"的语境里（哪怕查询串为空也要把候选弹出来）。 */
+  private linkPickContextOpen(): boolean {
+    if (!this.linkPickAllowed()) {
+      return false;
+    }
+    const pos: number = this.caret >= 0 && this.caret <= this.content.length
+      ? this.caret : this.content.length;
+    const before: string = this.content.substring(0, pos);
+    // 以 `[[` 结尾 = 刚敲完两个方括号，此时查询串为空
+    return before.endsWith('[[') || this.linkQuery().length > 0;
+  }
+
+  private closeLinkPick(): void {
+    this.linkPickOpen = false;
+    this.linkItems = [];
+  }
+
+  /** 选中候选项：把 `[[查询串` 替换成 `[[名称]]`，光标落到后面。 */
+  private applyLinkPick(name: string): void {
+    const pos: number = this.caret >= 0 && this.caret <= this.content.length
+      ? this.caret : this.content.length;
+    const before: string = this.content.substring(0, pos);
+    const open: number = before.lastIndexOf('[[');
+    if (open < 0) {
+      this.closeLinkPick();
+      return;
+    }
+    const head: string = this.content.substring(0, open) + '[[' + name + ']]';
+    const tail: string = this.content.substring(pos);
+    this.content = head + tail;
+    this.dirty = true;
+    this.closeLinkPick();
+    const at: number = head.length;
+    this.caret = at;
+    setTimeout(() => {
+      try {
+        this.controller.setTextSelection(at, at);
+      } catch (err) {
+        // 光标定位失败不影响插入结果
+      }
+    }, 40);
+  }
+
+  /** 行号夹取：块区间来自解析结果，极端情况下可能越界，统一夹到 [0, 行数]。 */
+  private clampLine(v: number, lineCount: number): number {
+    if (v < 0) {
+      return 0;
+    }
+    return v > lineCount ? lineCount : v;
+  }
+
+  /** 取第 index 块的源码（去掉首尾空行——块与块之间的分隔行不属于块本身）。 */
+  private blockSourceAt(index: number): string {
+    // 虚拟新块：还没有源文本
+    if (index >= this.previewBlocks.length) {
+      return '';
+    }
+    const lines: string[] = this.content.split('\n');
+    const r: MdSrcRange = MdParser.blockSrcRange(this.previewBlocks, index, lines.length);
+    const out: string[] = [];
+    const end: number = this.clampLine(r.end, lines.length);
+    for (let k: number = this.clampLine(r.start, lines.length); k < end; k++) {
+      out.push(lines[k]);
+    }
+    while (out.length > 0 && out[0].trim().length === 0) {
+      out.shift();
+    }
+    while (out.length > 0 && out[out.length - 1].trim().length === 0) {
+      out.pop();
+    }
+    return out.join('\n');
+  }
+
+  /** 点一块 → 进入它的编辑态（表格走网格编辑器）。 */
+  private editBlock(index: number): void {
+    if (index < 0 || index >= this.previewBlocks.length) {
+      return;
+    }
+    this.liveAnchor = index;
+    if (this.previewBlocks[index].kind === MdBlockKind.Table) {
+      this.openLiveTable(index);
+      return;
+    }
+    // 已经处于编辑态 = **从一段切到另一段**
+    const switching: boolean = this.liveEditing >= 0;
+    this.liveDraft = this.blockSourceAt(index);
+    this.liveEditing = index;
+    this.refreshLivePreview();
+    // ⚠️ **切块时不滚动**（用户反馈"键盘收起又重新打开"的关键一环）：
+    // 用户是**点屏幕上看得见的那一段**进来的，它本来就在可视区里，根本不需要滚；
+    // 而滚动会让输入框在替换过程中被搬动，系统很容易判定为"失去焦点场景"而收起输入法。
+    // 只有从"没有编辑态"首次进入时（键盘马上要弹起来、可能遮挡目标段）才滚到可见区中部。
+    if (!switching) {
+      setTimeout(() => {
+        this.scrollLiveToEditing();
+      }, 160);
+    } else {
+      // 记下切换时刻：这之后短时间内输入法若因交接抖动一下，
+      // 不要再用滚动去"补偿"，否则画面来回位移
+      this.lastEditSwitchAt = Date.now();
+    }
+  }
+
+  /**
+   * 把当前编辑块滚到**可视区中间**。
+   *
+   * 为什么必须做：页面走系统键盘避让（键盘弹起时整页收缩），但**列表不会自动
+   * 滚动** —— 编辑靠底部的段落时，输入框落在键盘底下，底部还压着工具条，
+   * 用户得先手动滑一下才能看见自己在打什么（用户反馈"太麻烦了"）。
+   *
+   * 用 `ScrollAlign.CENTER` 而不是 START：居中于**当前可见区**，无论键盘在不在、
+   * 编辑的是哪一块，输入框都落在键盘与工具条上方；也不会把用户点的那一块
+   * 猛地拽到屏幕顶端。
+   */
+  private scrollLiveToEditing(): void {
+    if (!this.liveMode || this.liveEditing < 0) {
+      return;
+    }
+    try {
+      this.liveScroller.scrollToIndex(this.liveListOffset() + this.liveEditing, true,
+        ScrollAlign.CENTER);
+    } catch (err) {
+      // 列表尚未重建完等：忽略，键盘变化时还会再滚一次
+    }
+  }
+
+  /** 键盘弹起 / 收起：重新把编辑块带进可视区（见 scrollLiveToEditing）。 */
+  onKeyboardTick(): void {
+    if (!this.liveMode || this.liveEditing < 0) {
+      return;
+    }
+    // 刚切过块：这段时间内的键盘变化是焦点交接的余波，别再滚一次（否则来回位移）
+    if (Date.now() - this.lastEditSwitchAt < 600) {
+      return;
+    }
+    setTimeout(() => {
+      this.scrollLiveToEditing();
+    }, 140);
+  }
+
+  /** 编辑态下方的「这块渲染成什么样」：只解析草稿本身。 */
+  private refreshLivePreview(): void {
+    try {
+      this.livePreviewBlocks = MdParser.parse(this.liveDraft).blocks;
+    } catch (err) {
+      this.livePreviewBlocks = [];
+    }
+  }
+
+  /** 提交块编辑：把草稿整段替换回原文对应行区间。 */
+  private commitBlockEdit(): void {
+    const index: number = this.liveEditing;
+    if (index < 0) {
+      return;
+    }
+    // ① 虚拟新块：追加到文末（空内容直接丢弃，不往正文里塞空行）
+    if (index >= this.previewBlocks.length) {
+      const text: string = this.liveDraft;
+      if (text.trim().length > 0) {
+        const head: string[] = this.content.split('\n');
+        if (head.length > 0 && head[head.length - 1].trim().length > 0) {
+          head.push('');
+        }
+        this.content = head.concat(text.split('\n')).join('\n');
+        this.dirty = true;
+      }
+      this.liveEditing = -1;
+      this.liveDraft = '';
+      this.livePreviewBlocks = [];
+      this.refreshPreviewBlocks();
+      return;
+    }
+    const lines: string[] = this.content.split('\n');
+    const r: MdSrcRange = MdParser.blockSrcRange(this.previewBlocks, index, lines.length);
+    const start: number = this.clampLine(r.start, lines.length);
+    const end: number = this.clampLine(r.end < start ? start : r.end, lines.length);
+    const out: string[] = lines.slice(0, start)
+      .concat(this.liveDraft.split('\n'), lines.slice(end));
+    this.content = out.join('\n');
+    this.dirty = true;
+    this.liveEditing = -1;
+    this.liveDraft = '';
+    this.livePreviewBlocks = [];
+    this.refreshPreviewBlocks();
+  }
+
+  /** 放弃这次块编辑（不改原文）。 */
+  private cancelBlockEdit(): void {
+    this.liveEditing = -1;
+    this.liveDraft = '';
+    this.livePreviewBlocks = [];
+  }
+
+  /** 删除某块：清空它的行区间，必要时补一个空行避免与相邻块粘连。 */
+  private deleteBlockAt(index: number): void {
+    const lines: string[] = this.content.split('\n');
+    const r: MdSrcRange = MdParser.blockSrcRange(this.previewBlocks, index, lines.length);
+    const start: number = this.clampLine(r.start, lines.length);
+    const end: number = this.clampLine(r.end < start ? start : r.end, lines.length);
+    const head: string[] = lines.slice(0, start);
+    const tail: string[] = lines.slice(end);
+    if (head.length > 0 && tail.length > 0
+      && head[head.length - 1].trim().length > 0 && tail[0].trim().length > 0) {
+      head.push('');
+    }
+    this.content = head.concat(tail).join('\n');
+    this.dirty = true;
+    this.liveEditing = -1;
+    this.liveDraft = '';
+    this.livePreviewBlocks = [];
+    this.liveAnchor = -1;
+    this.refreshPreviewBlocks();
+  }
+
+  /**
+   * 实时预览下的插入（工具条 / 插图片 / 手写都走这里）。
+   *
+   * 位置：插到「插入锚点」那块之后；没有锚点就追加到文末。
+   * 前后各补一个空行 —— Markdown 靠空行断块，粘连会让新元素被并进相邻块
+   * （表格尤其明显：贴着上一段会被当成段落的一部分）。
+   */
+  private insertRawLive(text: string): void {
+    if (this.liveEditing >= 0) {
+      this.commitBlockEdit();
+    }
+    const lines: string[] = this.content.split('\n');
+    let at: number = lines.length;
+    const anchor: number = this.liveAnchor;
+    if (anchor >= 0 && anchor < this.previewBlocks.length) {
+      const r: MdSrcRange = MdParser.blockSrcRange(this.previewBlocks, anchor, lines.length);
+      if (r.end > r.start) {
+        at = this.clampLine(r.end, lines.length);
+      }
+    }
+    const head: string[] = lines.slice(0, at);
+    const tail: string[] = lines.slice(at);
+    // 前后补空行时记下"新块第一行"的真实行号（下面用它把光标交回新块）
+    let firstNewLine: number = at;
+    if (head.length > 0 && head[head.length - 1].trim().length > 0) {
+      head.push('');
+      firstNewLine = at + 1;
+    }
+    const out: string[] = head.concat(text.split('\n'));
+    if (tail.length > 0 && tail[0].trim().length > 0) {
+      out.push('');
+    }
+    this.content = out.concat(tail).join('\n');
+    this.dirty = true;
+    this.refreshPreviewBlocks();
+
+    // ── **插入后不丢键盘**（用户反馈：插完片段键盘收起，还得再点一下，很麻烦）──
+    // 做法：把编辑态接到"刚插进去的那一块"上。editBlock 会重新挂载编辑组件并
+    // 自动聚焦 → 键盘一直在；表格则直接打开网格编辑器（正好就是"插入即可编辑"）。
+    let target: number = -1;
+    for (let k: number = 0; k < this.previewBlocks.length; k++) {
+      if (this.previewBlocks[k].srcLine >= firstNewLine) {
+        target = k;
+        break;
+      }
+    }
+    if (target < 0) {
+      target = this.previewBlocks.length - 1;
+    }
+    if (target >= 0) {
+      const targetIndex: number = target;
+      // 列表要等这一帧重建完才能按新下标定位
+      setTimeout(() => {
+        this.editBlock(targetIndex);
+      }, 90);
+    }
+  }
+
+  /** 打开表格网格编辑器（实时预览里点表格）。 */
+  private openLiveTable(index: number): void {
+    if (index < 0 || index >= this.previewBlocks.length) {
+      return;
+    }
+    const block: MdBlock = this.previewBlocks[index];
+    if (block.rows.length < 1) {
+      return;
+    }
+    const header: string[] = [];
+    const headerRaw: string[] = block.rows[0].raw;
+    for (let k: number = 0; k < headerRaw.length; k++) {
+      header.push(headerRaw[k]);
+    }
+    const rows: string[][] = [];
+    for (let i: number = 1; i < block.rows.length; i++) {
+      const r: string[] = [];
+      const raw: string[] = block.rows[i].raw;
+      for (let k: number = 0; k < header.length; k++) {
+        r.push(k < raw.length ? raw[k] : '');
+      }
+      rows.push(r);
+    }
+    const align: TableAlign[] = [];
+    for (let k: number = 0; k < header.length; k++) {
+      const a: number = k < block.aligns.length ? block.aligns[k] : 0;
+      align.push(a === 1 ? 'center' : (a === 2 ? 'right' : 'left'));
+    }
+    this.editTable = { header: header, rows: rows, align: align } as MdTable;
+    this.liveTableIndex = index;
+    this.tableDialog.open();
+  }
+
+  /** 保存表格：按块的行区间写回 content（编辑页不直接落盘，保存时统一写）。 */
+  private saveLiveTable(): void {
+    this.tableDialog.close();
+    const index: number = this.liveTableIndex;
+    if (index < 0) {
+      return;
+    }
+    const lines: string[] = this.content.split('\n');
+    const start: number = this.clampLine(this.previewBlocks[index].srcLine, lines.length);
+    // 定位校验：表头行 + 分隔行必须就位（引用内的表格行号不可靠，直接拦下）
+    if (start + 1 >= lines.length
+      || !TableTool.isTableRow(lines[start])
+      || !TableTool.isDelimiterRow(lines[start + 1])) {
+      this.toast('这个表格暂不支持网格编辑（可能嵌在引用里）');
+      this.liveTableIndex = -1;
+      return;
+    }
+    let end: number = start + 2;
+    while (end < lines.length && TableTool.isTableRow(lines[end])) {
+      end++;
+    }
+    const out: string[] = lines.slice(0, start)
+      .concat(TableTool.toLines(this.editTable), lines.slice(end));
+    this.content = out.join('\n');
+    this.dirty = true;
+    this.liveTableIndex = -1;
+    this.refreshPreviewBlocks();
+    this.toast('表格已更新');
   }
 
   /** 分屏模式：0 纯编辑/预览 1 上下 2 左右。进入分屏时立即解析一次。 */
@@ -2014,6 +3181,9 @@ export struct Editor {
             }
             .width('100%')
             .layoutWeight(1)
+          } else if (this.liveMode) {
+            // 实时预览编辑：渲染态直接改，块级就地编辑
+            this.liveArea()
           } else if (this.preview) {
             this.previewArea()
           } else {
@@ -2271,6 +3441,206 @@ export struct Editor {
         })
       }
 
+      // ── **大纲重排面板**：把某一节整段挪到别处（拖动排序，或用 ↑↓ 微调）──
+      if (this.outlineOpen) {
+        Stack({ alignContent: Alignment.Center }) {
+          // 遮罩：点空白关闭
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor('#66000000')
+            .onClick(() => {
+              this.closeOutline();
+            })
+
+          Column({ space: HwSpace.sm }) {
+            Row({ space: HwSpace.xs }) {
+              SymbolGlyph($r('sys.symbol.list_bullet'))
+                .fontSize(16)
+                .fontColor([this.palette().accent])
+              Text('大纲重排')
+                .fontSize(HwType.label + 2)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+              Blank()
+              ImmersiveIconButton({
+                buttonSize: 30,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => {
+                  this.closeOutline();
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.xmark'))
+                  .fontSize(14)
+                  .fontColor([this.palette().textPrimary])
+              }
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+            Text('长按拖动可整节换序（连同它的子标题一起搬）· 也可用 ↑↓ 微调')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+
+            if (this.outlineItems.length === 0) {
+              Text('这篇还没有标题。先写几个 `##` 小节，再回来整理顺序。')
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textSecondary)
+                .width('100%')
+                .padding({ top: HwSpace.md, bottom: HwSpace.md })
+            } else {
+              List({ space: 2 }) {
+                ForEach(this.outlineItems, (h: MdHeading, index: number) => {
+                  ListItem() {
+                    Row({ space: HwSpace.xs }) {
+                      Text('H' + h.level)
+                        .fontSize(HwType.caption - 1)
+                        .fontColor(this.palette().textTertiary)
+                        .width(20)
+                      Text(h.text)
+                        .fontSize(h.level <= 2 ? HwType.label + 1 : HwType.label)
+                        .fontColor(this.palette().textPrimary)
+                        .layoutWeight(1)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      ImmersiveIconButton({
+                        buttonSize: 28,
+                        buttonMaterialShadow: false,
+                        palette: this.palette(),
+                        buttonOnTap: () => {
+                          this.moveSectionStep(index, -1);
+                        }
+                      }) {
+                        SymbolGlyph($r('sys.symbol.chevron_up'))
+                          .fontSize(13)
+                          .fontColor([this.palette().textSecondary])
+                      }
+                      ImmersiveIconButton({
+                        buttonSize: 28,
+                        buttonMaterialShadow: false,
+                        palette: this.palette(),
+                        buttonOnTap: () => {
+                          this.moveSectionStep(index, 1);
+                        }
+                      }) {
+                        SymbolGlyph($r('sys.symbol.chevron_down'))
+                          .fontSize(13)
+                          .fontColor([this.palette().textSecondary])
+                      }
+                    }
+                    .width('100%')
+                    .height(44)
+                    .padding({ left: HwSpace.xs + (h.level - 1) * 12, right: HwSpace.xs })
+                    .borderRadius(HwRadius.inner)
+                    .backgroundColor(this.palette().quoteBg)
+                    .alignItems(VerticalAlign.Center)
+                  }
+                }, (h: MdHeading) => 'ol_' + h.seq + '_' + this.outlineEpoch)
+              }
+              .width('100%')
+              // 限高内滚（工程铁律：可变长内容必须限高）
+              .constraintSize({ maxHeight: this.rootHeight * 0.62 })
+              .scrollBar(BarState.Off)
+              .edgeEffect(EdgeEffect.Spring)
+              // 拖拽换序：ArkUI List 内建（记下起点，落点里算出"插到谁之前"）
+              .onItemDragStart((event: ItemDragInfo, itemIndex: number): CustomBuilder => {
+                this.outlineDragFrom = itemIndex;
+                return this.outlineDragPreview(itemIndex);
+              })
+              .onItemDrop((event: ItemDragInfo, itemIndex: number, insertIndex: number,
+                isSuccess: boolean): void => {
+                if (isSuccess) {
+                  this.onOutlineDrop(insertIndex);
+                }
+              })
+            }
+          }
+          .width('86%')
+          .padding(HwSpace.lg)
+          .borderRadius(HwRadius.card)
+          .backgroundColor(this.palette().surface)
+          .border({ width: 1, color: this.palette().divider })
+          .shadow({ radius: 24, color: this.palette().shadow, offsetY: 6 })
+          .alignItems(HorizontalAlign.Start)
+        }
+        .width('100%')
+        .height('100%')
+      }
+
+      // ── **双链补全浮窗**：写 `[[` 后从底部工具层上方浮出候选 ──
+      // 位置钉在工具层之上（不遮输入行），候选最多 8 条、超出可滚动
+      if (this.linkPickOpen && this.linkItems.length > 0) {
+        Stack({ alignContent: Alignment.BottomStart }) {
+          Column({ space: 6 }) {
+            Row({ space: 6 }) {
+              SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                .fontSize(13)
+                .fontColor([this.palette().accent])
+              Text('链接到文档')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().accent)
+              Blank()
+              Text('点一条插入 [[名称]]')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+            List({ space: 2 }) {
+              ForEach(this.linkItems, (name: string) => {
+                ListItem() {
+                  Row({ space: HwSpace.xs }) {
+                    SymbolGlyph($r('sys.symbol.arrow_up_right'))
+                      .fontSize(12)
+                      .fontColor([this.palette().textTertiary])
+                    // 显示文件名本身：`[[ ]]` 里要写的就是它（写显示名会变成悬空链接）
+                    Text(name)
+                      .fontSize(HwType.label)
+                      .fontColor(this.palette().textPrimary)
+                      .layoutWeight(1)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  }
+                  .width('100%')
+                  .height(38)
+                  .padding({ left: HwSpace.sm, right: HwSpace.sm })
+                  .borderRadius(HwRadius.inner)
+                  .backgroundColor(this.palette().quoteBg)
+                  .alignItems(VerticalAlign.Center)
+                  .onClick(() => {
+                    this.applyLinkPick(name);
+                  })
+                }
+              }, (name: string) => 'lp_' + name)
+            }
+            .width('100%')
+            // 候选多了限高内滚（工程铁律：可变长内容必须限高）
+            .constraintSize({ maxHeight: 190 })
+            .scrollBar(BarState.Off)
+            .edgeEffect(EdgeEffect.Spring)
+          }
+          .width('100%')
+          .padding(HwSpace.sm)
+          .borderRadius(HwRadius.card)
+          .backgroundColor(this.palette().surface)
+          .border({ width: 1, color: this.palette().divider })
+          .shadow({ radius: 16, color: this.palette().shadow, offsetY: 4 })
+        }
+        .width('100%')
+        .height('100%')
+        .padding({
+          left: HwSpace.lg,
+          right: HwSpace.lg,
+          // 浮在片段条 + 底栏之上（两者合计约 100vp），再加键盘避让
+          bottom: (this.keyboardPx > 0 ? 6 : this.padBottom()) + 104
+        })
+        // 只让卡片本身吃掉点击，其余区域穿透（否则会挡住正文点击）
+        .hitTestBehavior(HitTestMode.Transparent)
+      }
+
       // ── **预览图片放大浮层**（用户要求：实时预览支持放大查看图片）──
       // 原生 Image（沙箱 file:// URI）+ 双指捏合缩放 + 点空白关闭
       if (this.previewImage.length > 0) {
@@ -2348,6 +3718,27 @@ export struct Editor {
         this.showSyntax = false;
       }
     }))
+    // ── 外接键盘快捷键 ──
+    // 绑在**根节点**上：keyboardShortcut 沿焦点链匹配，输入框获焦时也会命中祖先上的绑定。
+    // 常用四件套 + 字号两档：写长文时手不用离开键盘。
+    .keyboardShortcut('s', [ModifierKey.CTRL], () => {
+      this.save();
+    })
+    .keyboardShortcut('b', [ModifierKey.CTRL], () => {
+      this.wrapSelection('**');
+    })
+    .keyboardShortcut('i', [ModifierKey.CTRL], () => {
+      this.wrapSelection('*');
+    })
+    .keyboardShortcut('f', [ModifierKey.CTRL], () => {
+      this.openFind();
+    })
+    .keyboardShortcut(FunctionKey.DPAD_UP, [ModifierKey.CTRL], () => {
+      this.bumpFontSize(1);
+    })
+    .keyboardShortcut(FunctionKey.DPAD_DOWN, [ModifierKey.CTRL], () => {
+      this.bumpFontSize(-1);
+    })
     // 根节点铺满整个窗口（含状态栏与手势条区域），避让由 padTop / padBottom 统一负责
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)

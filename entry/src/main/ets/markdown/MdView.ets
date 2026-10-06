@@ -768,6 +768,13 @@ export struct MdBlockView {
     if (l === 'sql' || l === 'mysql' || l === 'postgresql') {
       return 'SQL';
     }
+    // ── 文档类：纯文本与 Markdown（用户要求：这两种也要有自己的徽标）──
+    if (l === 'markdown' || l === 'md' || l === 'gfm') {
+      return 'MD';
+    }
+    if (l === 'txt' || l === 'text' || l === 'plain' || l === 'plaintext') {
+      return 'TXT';
+    }
     return '';
   }
 
@@ -842,6 +849,13 @@ export struct MdBlockView {
     }
     if (l === 'sql' || l === 'mysql' || l === 'postgresql') {
       return '#FF00758F';
+    }
+    // 文档类：Markdown 用其品牌蓝，纯文本用中性青灰（与封面格式角标同一套配色）
+    if (l === 'markdown' || l === 'md' || l === 'gfm') {
+      return '#FF083FA1';
+    }
+    if (l === 'txt' || l === 'text' || l === 'plain' || l === 'plaintext') {
+      return '#FF5B6B7C';
     }
     return '#FF6B7280';
   }

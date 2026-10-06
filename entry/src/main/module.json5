@@ -95,6 +95,25 @@
                 "linkFeature": "FileOpen"
               }
             ]
+          },
+          // ── 接收其他应用的「分享」（用户要求：分享到澄笺）──
+          // actions 必须是 ohos.want.action.sendData，否则系统不会把分享请求路由过来；
+          // uris 里声明能接收的类型 —— 文本（含链接）与 markdown/txt 文件。
+          // 被拉起后在 onCreate / onNewWant 里用 systemShare.getSharedData(want) 解析。
+          {
+            "actions": [
+              "ohos.want.action.sendData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "type": "text/plain"
+              },
+              {
+                "scheme": "file",
+                "type": "text/markdown"
+              }
+            ]
           }
         ]
       }

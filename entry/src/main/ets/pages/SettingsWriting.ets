@@ -28,6 +28,7 @@ import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
 import { DocCover, coverColorsOf, coverStyleFromColor } from '../components/DocCover';
 import { DocMeta, DocStore } from '../service/DocStore';
 import { DayRecord, LogRange, WritingLog, dayKeyOf } from '../service/WritingLog';
+import { ReadDoc, ReadRange, ReadingLog, readDayKey } from '../service/ReadingLog';
 import {
   CoverStyle,
   HwRadius,
@@ -128,6 +129,19 @@ export struct SettingsWriting {
   private heatScroller: Scroller = new Scroller();
   /** 最新文档（封面墙） */
   @State latestDocs: LatestDoc[] = [];
+  // ── 阅读统计（ReadingLog）：与写作对称的另一半 ──
+  /** 今日阅读秒数 */
+  @State readToday: number = 0;
+  /** 近 7 天阅读秒数 */
+  @State readWeek: number = 0;
+  /** 近 7 天有阅读的天数 */
+  @State readWeekDays: number = 0;
+  /** 累计阅读秒数 */
+  @State readTotal: number = 0;
+  /** 读得最多的前 5 篇 */
+  @State readTop: ReadDoc[] = [];
+  /** 书架「回头看看」卡片是否显示（默认关，本页开关） */
+  @StorageLink('shelfMemoryCard') memoryCard: boolean = false;
 
   aboutToAppear(): void {
     this.life.onShow = () => {
@@ -157,6 +171,7 @@ export struct SettingsWriting {
       this.calcToday();
       this.calcMonth();
       this.calcLatestDocs(c);
+      this.loadReading(c);
       this.loadError = '';
       // 热力图默认滚到"最新有数据"的列：内容要等一帧布局完成，延迟触发
       setTimeout(() => {
@@ -172,6 +187,25 @@ export struct SettingsWriting {
       const e = err as BusinessError;
       this.loadError = '数据加载失败：' + (e.message && e.message.length > 0
         ? e.message : (e.code !== undefined ? 'code ' + e.code : '未知错误'));
+    }
+  }
+
+  /** 阅读统计：今日 / 近 7 天 / 累计 + 读得最多的几篇。 */
+  private loadReading(c: common.UIAbilityContext): void {
+    try {
+      ReadingLog.init(c);
+      this.readToday = ReadingLog.secondsOn(readDayKey(Date.now()));
+      const week: ReadRange = ReadingLog.lastDays(c, 7);
+      this.readWeek = week.seconds;
+      this.readWeekDays = week.activeDays;
+      this.readTotal = ReadingLog.totalSeconds(c);
+      this.readTop = ReadingLog.topDocs(c, 5);
+    } catch (err) {
+      this.readToday = 0;
+      this.readWeek = 0;
+      this.readWeekDays = 0;
+      this.readTotal = 0;
+      this.readTop = [];
     }
   }
 
@@ -390,6 +424,61 @@ export struct SettingsWriting {
         .fontColor(this.palette().textTertiary)
     }
     .layoutWeight(1)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  /**
+   * 阅读统计卡：**与写作对称的另一半**。
+   *
+   * 写作日志回答"写了多少"，这里回答"读了多少"—— 时长是进度条给不出的信息
+   * （同一篇读 5 分钟和读 50 分钟，进度都是"已读 30%"）。
+   */
+  @Builder
+  readingCard() {
+    Column({ space: HwSpace.sm }) {
+      Row({ space: HwSpace.sm }) {
+        this.statCell(ReadingLog.human(this.readToday), '今日阅读')
+        this.statCell(ReadingLog.human(this.readWeek), '近 7 天')
+        this.statCell(ReadingLog.human(this.readTotal), '累计阅读')
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+
+      if (this.readTop.length === 0) {
+        Text('还没有阅读记录 —— 打开一篇文档读一会儿，这里就会开始累计。')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      } else {
+        Text('读得最多的几篇')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+
+        ForEach(this.readTop, (d: ReadDoc) => {
+          Row({ space: HwSpace.xs }) {
+            Text(d.name)
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+              .layoutWeight(1)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            Text(ReadingLog.human(d.seconds))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+          .height(36)
+          .alignItems(VerticalAlign.Center)
+        }, (d: ReadDoc) => d.name)
+      }
+
+      Text('近 7 天有 ' + this.readWeekDays + ' 天在读 · 只统计停留在本页的时间（退后台不计）')
+        .fontSize(HwType.caption)
+        .fontColor(this.palette().textTertiary)
+        .width('100%')
+    }
+    .width('100%')
     .alignItems(HorizontalAlign.Start)
   }
 
@@ -815,7 +904,7 @@ export struct SettingsWriting {
   build() {
     SettingsShell({
       shellTitle: '写作日志',
-      shellSubtitle: '热力图 · 字数 · 本地计算',
+      shellSubtitle: '热力图 · 字数 · 阅读时长 · 本地计算',
       stack: this.stack,
       life: this.life
     }) {
@@ -827,6 +916,21 @@ export struct SettingsWriting {
           palette: this.palette()
         }) {
           this.overviewRow()
+        }
+
+        // ①之二 阅读统计（与写作对称）
+        Text('阅读')
+          .fontSize(HwType.label + 4)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+
+        ImmersiveCard({
+          cardRadius: HwRadius.card,
+          cardPadding: HwSpace.lg,
+          palette: this.palette()
+        }) {
+          this.readingCard()
         }
 
         // 数据加载失败的可见提示（排障：不再静默吞掉）
@@ -868,6 +972,39 @@ export struct SettingsWriting {
           palette: this.palette()
         }) {
           this.latestDocsCard()
+        }
+
+        // ⑥ 书架显示：把「回头看看」卡片的开关放在这里（用户指定位置）
+        Text('书架显示')
+          .fontSize(HwType.label + 4)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+
+        ImmersiveCard({
+          cardRadius: HwRadius.card,
+          cardPadding: HwSpace.lg,
+          palette: this.palette()
+        }) {
+          Row() {
+            Column({ space: 2 }) {
+              Text('「回头看看」卡片')
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text('在书架顶部显示一张回顾卡：随机挑一篇旧文 / 打开往年的今天')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+
+            Toggle({ type: ToggleType.Switch, isOn: this.memoryCard })
+              .onChange((isOn: boolean) => {
+                this.memoryCard = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
         }
 
         Text('数据来自本机写作记录，卸载应用或清除数据后不可恢复。')

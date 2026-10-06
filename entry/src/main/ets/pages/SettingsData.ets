@@ -448,16 +448,19 @@ export struct SettingsData {
   }
 
   /**
-   * 「全部移除」的**确认弹窗**（用户要求）：说明内置文档不支持删除、
-   * 全部移除后重启会自动重新生成。
+   * 「从书架中移除」的**确认弹窗**。
+   *
+   * 语义（用户要求）：只是**不在书架上显示**，正文仍在应用内，
+   * 随时可以在本页「已移除的内置教程」里恢复回书架 —— 所以按钮文案与说明
+   * 都按"移除显示"来说，不再说"删除"。
    */
   private confirmResetBuiltins(): void {
     try {
       this.getUIContext().showAlertDialog({
-        title: '全部移除内置文档？',
-        message: '内置文档**不支持单独删除**（只能整体移除）。'
-          + '移除后书架上看不到，但正文仍在应用内，重启应用会自动重新生成，' +
-          '也可以在本页「已移除的内置教程」里一键恢复。',
+        title: '从书架中移除内置文档？',
+        message: '内置文档**不能删除**，只能从书架上移除显示。'
+          + '移除后书架上看不到它们，但正文仍在应用内，'
+          + '随时可以在本页「已移除的内置教程」里恢复回书架。',
         primaryButton: {
           value: '取消',
           action: () => {
@@ -465,7 +468,7 @@ export struct SettingsData {
           }
         },
         secondaryButton: {
-          value: '全部移除',
+          value: '从书架中移除',
           action: () => {
             this.resetBuiltins();
           }
@@ -476,16 +479,22 @@ export struct SettingsData {
     }
   }
 
-  /** 全部移除：内置教程会在下次启动时重新写入沙箱 */
+  /**
+   * 把内置文档从书架移除（登记进隐藏名单）。
+   *
+   * ⚠️ 上一版走的是 `DocStore.remove()` —— 它对内置文档**直接返回 false**
+   * （内置不落盘、不该删），于是按钮点了等于没反应。正确入口是 `hideBuiltin()`：
+   * 只登记"不在书架显示"，正文与记录都留着，恢复回书架时不丢封面与进度。
+   */
   private resetBuiltins(): void {
     const ctx = this.ctx();
     if (ctx === null) {
       return;
     }
     let n: number = 0;
-    for (let k = 0; k < this.builtinList.length; k++) {
+    for (let k: number = 0; k < this.builtinList.length; k++) {
       try {
-        if (DocStore.remove(ctx, this.builtinList[k].name)) {
+        if (DocStore.hideBuiltin(ctx, this.builtinList[k].name)) {
           n++;
         }
       } catch (err) {
@@ -494,7 +503,9 @@ export struct SettingsData {
     }
     this.pendingDeleteDoc = '';
     this.loadBuiltins();
-    this.toast('已移除 ' + n + ' 篇内置文档，重启应用会重新生成');
+    this.toast(n > 0
+      ? '已从书架移除 ' + n + ' 篇内置文档，可在本页恢复'
+      : '内置文档本来就已全部移除');
   }
 
   // ══════════════════════ ① zip 备份 / 恢复 / 清缓存 ══════════════════════
@@ -701,8 +712,8 @@ export struct SettingsData {
           Text('书架数据')
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
-          Text('内置文档共 ' + this.builtinList.length + ' 篇 —— **内置文档不支持删除**'
-            + '（可整体移除，重启后自动重新生成）。下方「我的文档」是你的自建内容。')
+          Text('内置文档共 ' + this.builtinList.length + ' 篇 —— **内置文档不能删除**，'
+            + '只能从书架上移除显示（移除后可在本页恢复）。下方「我的文档」是你的自建内容。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -744,7 +755,7 @@ export struct SettingsData {
               palette: this.palette(),
               chipTint: '#FFD32F2F',
               chipActive: true,
-              chipLabel: '全部移除（重启后重新生成）',
+              chipLabel: '从书架中移除',
               chipOnTap: () => {
                 this.confirmResetBuiltins();
               }

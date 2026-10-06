@@ -196,6 +196,21 @@ export struct SettingsExplore {
   }
 
   /** 打开外部链接：失败时提示，别让点击毫无反馈 */
+  /**
+   * 打开「功能帮助」。
+   * 平板分栏嵌入时**不进新页**，回设置中心右栏展示（与「更新日志」同一套做法）。
+   */
+  private openHelp(): void {
+    if (this.embedded) {
+      AppStorage.setOrCreate('settingsInlineSection', 'pages/SettingsHelp');
+      return;
+    }
+    if (this.stack === null) {
+      return;
+    }
+    this.stack.pushPath({ name: 'pages/SettingsHelp' });
+  }
+
   private openLink(url: string): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
@@ -345,11 +360,11 @@ export struct SettingsExplore {
     Column() {
       SettingsShell({
         shellTitle: '探索中心',
-        shellSubtitle: '关于应用 · 参考与致谢',
+        shellSubtitle: '功能帮助 · 关于应用 · 参考与致谢',
         stack: this.stack,
         life: this.life
       }) {
-      // ── 关于应用 ──
+      // ── 关于应用（用户要求：与功能帮助交换位置，介绍放最前）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
           Row({ space: HwSpace.md }) {
@@ -429,6 +444,51 @@ export struct SettingsExplore {
                   return;
                 }
                 this.stack.pushPath({ name: 'pages/Changelog' });
+              }
+            })
+          }
+          .width('100%')
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── 功能帮助（用户要求：放在应用介绍之后）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.sm }) {
+          Row({ space: HwSpace.sm }) {
+            SymbolGlyph($r('sys.symbol.info_circle'))
+              .fontSize(20)
+              .fontColor([this.palette().accent])
+            Column({ space: 2 }) {
+              Text('功能帮助')
+                .fontSize(HwType.label + 3)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+              Text('全部功能 · 使用方法 · 常见问题')
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Text('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、'
+            + '「点了段落为什么改不了」这类。支持关键词搜索。')
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textSecondary)
+            .lineHeight(HwType.label * 1.7)
+            .width('100%')
+
+          Row({ space: HwSpace.xs }) {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: true,
+              chipLabel: '打开功能帮助',
+              chipOnTap: () => {
+                this.openHelp();
               }
             })
           }

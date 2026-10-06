@@ -28,6 +28,7 @@ import {
   MdMetaItem,
   MdNote,
   MdParseResult,
+  MdSrcRange,
   MdTableRow,
   MdTaskState
 } from './MdTypes';
@@ -424,6 +425,19 @@ export class MdParser {
   /** 链接引用表（[标识]: 地址），parse() 预收集、scan() 查询 */
   private static refLabels: string[] = [];
   private static refHrefs: string[] = [];
+  /**
+   * 本次 parse 的「kept 下标 → 原文行号」映射（见 parse 里的注释）。
+   * 只在 parse 开头整体替换，块级行号一律经 `MdParser.orig()` 翻译后再落到块上。
+   */
+  private static lineMap: number[] = [];
+
+  /** 把解析用的 kept 下标翻译成**原文行号**（越界时原样返回，不制造负行号）。 */
+  private static orig(k: number): number {
+    if (k < 0 || k >= MdParser.lineMap.length) {
+      return k;
+    }
+    return MdParser.lineMap[k];
+  }
 
   /** 查引用地址（标识忽略大小写）；未命中返回空串。 */
   private static lookupRef(id: string): string {
@@ -444,6 +458,15 @@ export class MdParser {
     MdParser.refHrefs = [];
     const rawLines: string[] = normalized.split('\n');
     const kept: string[] = [];
+    /**
+     * **原文行号映射**：`srcIndex[k]` = kept 的第 k 行在原文中的行号（0 起）。
+     *
+     * 为什么必须有它：块上记的 `srcLine` 是**解析用的 kept 下标**，而 kept 把
+     * `[标识]: 地址` 这类链接引用定义行剔掉并重排了 —— 直接拿它去改原文就会
+     * 整体前移错位（表格可视化编辑写回、块级实时编辑、大纲拖拽都依赖这个行号）。
+     * 有了映射，块的 srcLine 一律翻译成**原文行号**，行区间才可靠。
+     */
+    const srcIndex: number[] = [];
     for (let k = 0; k < rawLines.length; k++) {
       const t: string = rawLines[k].trim();
       let consumed: boolean = false;
@@ -462,9 +485,11 @@ export class MdParser {
       }
       if (!consumed) {
         kept.push(rawLines[k]);
+        srcIndex.push(k);
       }
     }
     const lines: string[] = kept;
+    MdParser.lineMap = srcIndex;
     const blocks: MdBlock[] = [];
 
     const noteLabels: string[] = [];
@@ -557,9 +582,12 @@ export class MdParser {
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'html') {
-          blocks.push(MdBlockFactory.chart(lang, body, blocks.length, fenceLine));
+          blocks.push(MdBlockFactory.chart(lang, body, blocks.length, MdParser.orig(fenceLine)));
         } else {
-          blocks.push(MdBlockFactory.code(lang, body, blocks.length));
+          // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
+          const cb: MdBlock = MdBlockFactory.code(lang, body, blocks.length);
+          cb.srcLine = MdParser.orig(fenceLine);
+          blocks.push(cb);
         }
         continue;
       }
@@ -585,7 +613,8 @@ export class MdParser {
           }
           i++;
         }
-        blocks.push(MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length, detailsStart));
+        blocks.push(MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length,
+          MdParser.orig(detailsStart)));
         continue;
       }
 
@@ -616,7 +645,7 @@ export class MdParser {
         }
         const latexBracket: string = latexLines.join('\n').trim();
         if (latexBracket.length > 0) {
-          blocks.push(MdBlockFactory.math(latexBracket, blocks.length, mathStart));
+          blocks.push(MdBlockFactory.math(latexBracket, blocks.length, MdParser.orig(mathStart)));
         }
         continue;
       }
@@ -647,7 +676,7 @@ export class MdParser {
         }
         const latex: string = latexLines.join('\n').trim();
         if (latex.length > 0) {
-          blocks.push(MdBlockFactory.math(latex, blocks.length, mathStart));
+          blocks.push(MdBlockFactory.math(latex, blocks.length, MdParser.orig(mathStart)));
         }
         continue;
       }
@@ -667,7 +696,9 @@ export class MdParser {
 
       // ── 分割线 ────────────────────────────────────────────────────
       if (MdParser.isDivider(t)) {
-        blocks.push(MdBlockFactory.divider(blocks.length));
+        const dv: MdBlock = MdBlockFactory.divider(blocks.length);
+        dv.srcLine = MdParser.orig(i);
+        blocks.push(dv);
         i++;
         continue;
       }
@@ -676,14 +707,17 @@ export class MdParser {
       const head: HeadingHit = MdParser.headingInfo(t);
       if (head.hit) {
         headingSeq++;
-        blocks.push(MdBlockFactory.heading(head.level, head.text, headingSeq,
-          MdParser.parseInline(head.text), blocks.length));
+        const hb: MdBlock = MdBlockFactory.heading(head.level, head.text, headingSeq,
+          MdParser.parseInline(head.text), blocks.length);
+        hb.srcLine = MdParser.orig(i);
+        blocks.push(hb);
         i++;
         continue;
       }
 
       // ── 引用 / 提示块 ─────────────────────────────────────────────
       if (t.startsWith('>')) {
+        const quoteStart: number = i;
         let depth: number = 0;
         const body: string[] = [];
         let first: boolean = true;
@@ -704,7 +738,7 @@ export class MdParser {
           body.push(s);
           i++;
         }
-        MdParser.pushQuoteOrCallout(blocks, body, depth);
+        MdParser.pushQuoteOrCallout(blocks, body, depth, MdParser.orig(quoteStart));
         continue;
       }
 
@@ -727,7 +761,7 @@ export class MdParser {
           i++;
         }
         const tb: MdBlock = MdBlockFactory.table(rows, aligns, blocks.length);
-        tb.srcLine = tableStart;
+        tb.srcLine = MdParser.orig(tableStart);
         blocks.push(tb);
         continue;
       }
@@ -762,7 +796,7 @@ export class MdParser {
             }
           }
           blocks.push(MdBlockFactory.listItem(text, cur.ordered, cur.marker, cur.task, cur.indent,
-            MdParser.parseInline(text), blocks.length, itemLine));
+            MdParser.parseInline(text), blocks.length, MdParser.orig(itemLine)));
         }
         continue;
       }
@@ -773,13 +807,17 @@ export class MdParser {
         const level: number = MdParser.setextLevel(underline);
         if (level > 0) {
           headingSeq++;
-          blocks.push(MdBlockFactory.heading(level, t, headingSeq, MdParser.parseInline(t), blocks.length));
+          const sh: MdBlock = MdBlockFactory.heading(level, t, headingSeq,
+            MdParser.parseInline(t), blocks.length);
+          sh.srcLine = MdParser.orig(i);
+          blocks.push(sh);
           i += 2;
           continue;
         }
       }
 
       // ── 段落 ──────────────────────────────────────────────────────
+      const paraStart: number = i;
       const para: string[] = [t];
       i++;
       while (i < lines.length) {
@@ -791,7 +829,18 @@ export class MdParser {
         i++;
       }
       const paraText: string = para.join(' ');
-      blocks.push(MdBlockFactory.paragraph(paraText, MdParser.parseInline(paraText), blocks.length));
+      const pb: MdBlock = MdBlockFactory.paragraph(paraText, MdParser.parseInline(paraText), blocks.length);
+      pb.srcLine = MdParser.orig(paraStart);
+      blocks.push(pb);
+    }
+
+    // 正文最后一行之后的行号（**原文行号**）：文末合成的「注释区」块没有对应的源文本，
+    // srcLine 不能留 0（会让块区间推断出负长度），统一指到正文末尾。
+    let bodyEnd: number = rawLines.length;
+    for (let k = 0; k < blocks.length; k++) {
+      if (blocks[k].srcLine > bodyEnd) {
+        bodyEnd = blocks[k].srcLine;
+      }
     }
 
     // ── 脚注引用回填 + 文末注释区 ──────────────────────────────────
@@ -805,14 +854,20 @@ export class MdParser {
 
     const notes: MdNote[] = [];
     if (noteLabels.length > 0) {
-      blocks.push(MdBlockFactory.divider(blocks.length));
+      const nd: MdBlock = MdBlockFactory.divider(blocks.length);
+      nd.srcLine = bodyEnd;
+      blocks.push(nd);
       headingSeq++;
-      blocks.push(MdBlockFactory.heading(2, '注释', headingSeq,
-        MdParser.parseInline('注释'), blocks.length));
+      const nh: MdBlock = MdBlockFactory.heading(2, '注释', headingSeq,
+        MdParser.parseInline('注释'), blocks.length);
+      nh.srcLine = bodyEnd;
+      blocks.push(nh);
       for (let k = 0; k < noteLabels.length; k++) {
         const inlines: MdInline[] = MdParser.parseInline(noteBodies[k]);
         const noteBlockIndex: number = blocks.length;
-        blocks.push(MdBlockFactory.noteItem(noteBodies[k], k + 1, inlines, noteBlockIndex));
+        const nb: MdBlock = MdBlockFactory.noteItem(noteBodies[k], k + 1, inlines, noteBlockIndex);
+        nb.srcLine = bodyEnd;
+        blocks.push(nb);
         const note: MdNote = {
           no: k + 1,
           label: noteLabels[k],
@@ -853,6 +908,38 @@ export class MdParser {
       wordCount: stat.wordCount
     };
     return result;
+  }
+
+  /**
+   * 取第 `index` 个块在**原文**中的行区间（左闭右开）。
+   *
+   * 结束行的推断规则：取「下一个起始行大于本块起始行的块」的起始行；
+   * 若后面没有更大的（例如文末合成的注释区块统一指向正文末尾），则取全文行数。
+   * 这样即使某类块没记 srcLine，区间也不会退化成负长度。
+   */
+  static blockSrcRange(blocks: MdBlock[], index: number, lineCount: number): MdSrcRange {
+    const res: MdSrcRange = { start: 0, end: 0 };
+    if (blocks.length === 0 || index < 0 || index >= blocks.length) {
+      return res;
+    }
+    let start: number = blocks[index].srcLine;
+    if (start < 0) {
+      start = 0;
+    }
+    let end: number = lineCount;
+    for (let k = index + 1; k < blocks.length; k++) {
+      const nx: number = blocks[k].srcLine;
+      if (nx > start) {
+        end = nx;
+        break;
+      }
+    }
+    if (end < start) {
+      end = start;
+    }
+    res.start = start;
+    res.end = end;
+    return res;
   }
 
   // ────────────────────────── 行内解析 ──────────────────────────
@@ -1182,7 +1269,8 @@ export class MdParser {
 
   // ────────────────────────── 块级匹配 ──────────────────────────
 
-  private static pushQuoteOrCallout(blocks: MdBlock[], body: string[], depth: number): void {
+  private static pushQuoteOrCallout(blocks: MdBlock[], body: string[], depth: number,
+    srcLine: number): void {
     let kind: MdCalloutKind = MdCalloutKind.None;
     let texts: string[] = body;
     if (body.length > 0) {
@@ -1208,9 +1296,13 @@ export class MdParser {
       return;
     }
     if (kind === MdCalloutKind.None) {
-      blocks.push(MdBlockFactory.quote(depth, text, MdParser.parseInline(text), blocks.length));
+      const qb: MdBlock = MdBlockFactory.quote(depth, text, MdParser.parseInline(text), blocks.length);
+      qb.srcLine = srcLine;
+      blocks.push(qb);
     } else {
-      blocks.push(MdBlockFactory.callout(kind, text, MdParser.parseInline(text), blocks.length));
+      const cb: MdBlock = MdBlockFactory.callout(kind, text, MdParser.parseInline(text), blocks.length);
+      cb.srcLine = srcLine;
+      blocks.push(cb);
     }
   }
 

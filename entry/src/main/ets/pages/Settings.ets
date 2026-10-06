@@ -22,6 +22,7 @@ import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
 import { Changelog } from './Changelog';
+import { SettingsHelp } from './SettingsHelp';
 import { DocStore } from '../service/DocStore';
 import { bundleManager, common } from '@kit.AbilityKit';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -47,7 +48,7 @@ const SECTIONS: SectionItem[] = [
   {
     name: '写作日志',
     route: 'pages/SettingsWriting',
-    note: '每天写了多少字 · 一年热力图'
+    note: '热力图 · 字数 · 阅读时长'
   },
   {
     name: '外观设置',
@@ -361,6 +362,8 @@ export struct Settings {
         SettingsExplore({ stack: this.stack, embedded: true })
       } else if (route === 'pages/Changelog') {
         Changelog({ stack: this.stack, embedded: true })
+      } else if (route === 'pages/SettingsHelp') {
+        SettingsHelp({ stack: this.stack })
       }
     }, (route: string) => route)
   }

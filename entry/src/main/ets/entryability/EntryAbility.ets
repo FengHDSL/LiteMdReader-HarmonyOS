@@ -5,6 +5,8 @@ import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { fileIo } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
+// 接收其他应用分享的数据（分享面板 → 澄笺）
+import { systemShare } from '@kit.ShareKit';
 import { setupImmersiveWindow, applyAppColorMode, syncSystemDarkFromContext } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
@@ -32,8 +34,10 @@ export default class EntryAbility extends UIAbility {
       this.restoreContinueData(want);
     }
 
-    // **关联 .md 文件**：外部"打开方式"拉起时，want.uri 指向待打开的文件
-    this.handleOpenFile(want);
+    // **外部内容落地**：既可能是"打开方式"关联的 .md 文件（want.uri），
+    // 也可能是其他应用「分享」过来的文本 / 文件（Share Kit 的 sendData）——
+    // 统一交给 handleSharedData：它先试分享数据，失败再退回 want.uri
+    this.handleSharedData(want);
 
     // 全局上下文：手写组件等需要 UIAbilityContext 的能力从这里取
     GlobalUIAbilityContext.setContext(this.context);
@@ -138,6 +142,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('cardFallback', 'mica');
     // 书架顶部「继续阅读」卡片是否显示（外观设置里的开关）
     PersistentStorage.persistProp('shelfResumeBanner', true);
+    // 书架「回头看看」卡片：**默认关闭**（用户要求），在「写作日志」页里开启
+    PersistentStorage.persistProp('shelfMemoryCard', false);
     // 手写画布背景：底色（空 = 跟随主题）+ 底纹（none / grid / lines / dots）+ 线条粗细
     PersistentStorage.persistProp('sketchBgColor', '');
     PersistentStorage.persistProp('sketchBgPattern', 'none');
@@ -169,9 +175,9 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onDestroy');
   }
 
-  /** 应用已在运行时，再次被"打开方式"拉起（热启动）也要接住新文件 */
+  /** 应用已在运行时，再次被"打开方式" / 分享拉起（热启动）也要接住新内容 */
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    this.handleOpenFile(want);
+    this.handleSharedData(want);
     // **跨设备接续**：热启动也要接住迁移数据（冷启动走 onCreate 同名分支）
     if (launchParam.launchReason === AbilityConstant.LaunchReason.CONTINUATION) {
       this.restoreContinueData(want);
@@ -246,6 +252,153 @@ export default class EntryAbility extends UIAbility {
    * （在 onCreate / onNewWant 阶段读，此时持有 uri 的临时授权；稍后读会失效）。
    * 导入结果写进 AppStorage（pendingOpenDocName），书架页 onShow 时检测并刷新 + 提示。
    */
+  /**
+   * **接收其他应用分享的内容**（用户要求：分享到澄笺）。
+   *
+   * 两条来源：
+   *  1. Share Kit 的标准分享（`systemShare.getSharedData`）—— 文本在 `content`、
+   *     文件在 `uri`，标题在 `title`，这是「分享面板 → 澄笺」的主路径；
+   *  2. 老式的 `want.uri`（部分入口如"用其他应用打开"也走 sendData）。
+   * 解析失败（不是分享数据 / 能力不可用）时退回第 2 条，保证不空跑。
+   *
+   * 导入完成后写 `pendingOpenDocName`，书架页 onShow 时读它刷新并提示 ——
+   * 与「打开方式关联」共用同一条落地链路。
+   */
+  private handleSharedData(want: Want): void {
+    systemShare.getSharedData(want).then((data: systemShare.SharedData) => {
+      let handled: boolean = false;
+      try {
+        const records: systemShare.SharedRecord[] = data.getRecords();
+        for (let k: number = 0; k < records.length; k++) {
+          const rec: systemShare.SharedRecord = records[k];
+          const title: string = rec.title !== undefined ? rec.title : '';
+          // 文件型记录优先按文件导入（uri → 沙箱副本）
+          if (rec.uri !== undefined && rec.uri.length > 0) {
+            if (this.importFileFromUri(rec.uri, title)) {
+              handled = true;
+              break;
+            }
+          } else if (rec.content !== undefined && rec.content.length > 0) {
+            if (this.importTextContent(rec.content, title)) {
+              handled = true;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        hilog.warn(DOMAIN, 'LiteMdReader', 'read shared records failed: %{public}s',
+          JSON.stringify(err));
+      }
+      if (!handled) {
+        this.handleOpenFile(want);
+      }
+    }).catch((err: BusinessError) => {
+      // 不是分享数据（普通 viewData 启动等）：走老路径
+      hilog.info(DOMAIN, 'LiteMdReader', 'not shared data: %{public}s', err.message);
+      this.handleOpenFile(want);
+    });
+  }
+
+  /** 分享来的**文本**：直接建一篇文档，标题取分享标题，取不到就用首行 / 时间。 */
+  private importTextContent(content: string, title: string): boolean {
+    try {
+      let name: string = title.trim();
+      if (name.length === 0) {
+        const firstLine: string = content.split('\n')[0].trim().replace(/^#+\s*/, '');
+        name = firstLine.length > 0 ? firstLine.substring(0, 20) : '分享内容';
+      }
+      name = DocStore.sanitizeName(name);
+      if (name.length === 0) {
+        name = '分享内容';
+      }
+      let finalName: string = name;
+      if (DocStore.exists(this.context, finalName)) {
+        finalName = name + ' ' + new Date().getHours().toString()
+          + new Date().getMinutes().toString() + new Date().getSeconds().toString();
+      }
+      const meta = DocStore.create(this.context, finalName, content);
+      if (meta === null) {
+        return false;
+      }
+      AppStorage.setOrCreate('pendingOpenDocName', meta.name);
+      hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'shared text imported: ' + meta.name);
+      return true;
+    } catch (err) {
+      hilog.error(DOMAIN, 'LiteMdReader', 'import shared text failed: %{public}s',
+        JSON.stringify(err));
+      return false;
+    }
+  }
+
+  /**
+   * 读取外部 uri 指向的文件并导入为一篇文档。
+   * `nameHint` 非空时优先当标题（分享记录里带的 title 比 uri 尾段更准）。
+   */
+  private importFileFromUri(uri: string, nameHint: string): boolean {
+    try {
+      const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(file.fd);
+      // 上限 2MB：Markdown 文本远小于此，防异常超大文件拖垮启动
+      const size: number = stat.size > 2 * 1024 * 1024 ? 2 * 1024 * 1024 : stat.size;
+      const buffer = new ArrayBuffer(size);
+      const bytesRead: number = fileIo.readSync(file.fd, buffer);
+      const textDecoder = util.TextDecoder.create('utf-8', { ignoreBOM: true });
+      const content: string =
+        textDecoder.decodeToString(new Uint8Array(buffer.slice(0, bytesRead)));
+      fileIo.closeSync(file.fd);
+      let name: string = nameHint.trim().length > 0
+        ? nameHint.trim() : this.nameFromUri(uri);
+      name = this.stripMdExt(name);
+      let finalName: string = name;
+      if (DocStore.exists(this.context, finalName)) {
+        finalName = name + ' ' + new Date().getHours().toString()
+          + new Date().getMinutes().toString() + new Date().getSeconds().toString();
+      }
+      const meta = DocStore.create(this.context, finalName, content);
+      if (meta === null) {
+        return false;
+      }
+      AppStorage.setOrCreate('pendingOpenDocName', meta.name);
+      hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'shared file imported: ' + meta.name);
+      return true;
+    } catch (err) {
+      hilog.error(DOMAIN, 'LiteMdReader', 'import shared file failed: %{public}s',
+        JSON.stringify(err));
+      return false;
+    }
+  }
+
+  /** uri 尾段当文件名（去查询串）。 */
+  private nameFromUri(uri: string): string {
+    let s: string = uri;
+    const q: number = s.indexOf('?');
+    if (q >= 0) {
+      s = s.substring(0, q);
+    }
+    const cut: number = s.lastIndexOf('/');
+    if (cut >= 0 && cut + 1 < s.length) {
+      return decodeURIComponent(s.substring(cut + 1));
+    }
+    return '外部文档';
+  }
+
+  /** 去掉 .md / .markdown / .txt 扩展名（含双扩展 xxx.md.txt）。 */
+  private stripMdExt(name: string): string {
+    let out: string = name;
+    for (let round: number = 0; round < 2; round++) {
+      const lower: string = out.toLowerCase();
+      if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt')) {
+        const dot: number = out.lastIndexOf('.');
+        if (dot > 0) {
+          out = out.substring(0, dot);
+          continue;
+        }
+      }
+      break;
+    }
+    return out.length > 0 ? out : '外部文档';
+  }
+
   private handleOpenFile(want: Want): void {
     const uri: string | undefined = want.uri;
     if (uri === undefined || uri === null || uri.length === 0) {

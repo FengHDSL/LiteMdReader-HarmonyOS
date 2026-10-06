@@ -70,6 +70,23 @@ export interface DocMeta {
   starred?: boolean;
   /** 收藏时间（毫秒；列表按它倒序，还能显示「收藏日期」） */
   starredAt?: number;
+  /**
+   * ── Front Matter 提取结果（文首 `---` 之间的元数据）──
+   *
+   * 存在这里的理由：封面显示名 / 封面色 / 日期都靠它，而**每次渲染书架都去读正文
+   * 文件是不可接受的**（几百篇文档 = 几百次磁盘读）。所以解析一次就缓存在索引里，
+   * 用 `fmAt`（= 解析时的 mtime）判断是否过期，正文一改动自然重算。
+   */
+  /** `title:` 指定的显示名（空 = 用文件名） */
+  fmTitle?: string;
+  /** `cover:` / `color:` 指定的封面色（#RRGGBB） */
+  fmColor?: string;
+  /** `date:` 指定的日期文案（原样显示，如 2026-10-06） */
+  fmDate?: string;
+  /** `tags:` 指定的标签（已按逗号 / 顿号拆开） */
+  fmTags?: string[];
+  /** 上次提取 Front Matter 时的 mtime（等于当前 mtime 说明缓存有效） */
+  fmAt?: number;
 }
 
 /** 文件实况信息（信息卡展示用）：磁盘字节数 + 正文 MD5。 */
@@ -867,7 +884,7 @@ export class DocStore {
     for (let k = 0; k < DocStore.docs.length; k++) {
       const d: DocMeta = DocStore.docs[k];
       if (d.builtin) {
-        // ⚠️ **builtin 必须保留在 docs 里**：这段过滤的本意是清掉"md 文件已删"的
+        // ⚠️ **builtin 必须保留在索引里**：这段过滤的本意是清掉"md 文件已删"的
         // 用户文档，但之前 builtin 被 continue 排除后，alive.length 永远 ≠ docs.length
         // → 每次 list() 都把 builtin 从索引剔除并落盘 → **预置文档的封面色 / 只读标记 /
         // 阅读进度在下次 list 时全部丢失重置**（用户反馈：改封面色退出就重置）。
@@ -885,14 +902,229 @@ export class DocStore {
       return b.mtime - a.mtime;
     });
     for (let k = 0; k < alive.length; k++) {
-      out.push(alive[k]);
+      // ⚠️ **内置文档在这里不能再输出一次**：它上面已经由 BUILTINS 循环出过一遍，
+      // 而索引里也存着同一篇（ensureBuiltin 会把它 push 进 docs），两边都推就会翻倍——
+      // 表现为"只内置 2 篇却说共 4 篇"（用户反馈）。索引里留着它是为了存封面色 /
+      // 只读标记 / 阅读进度，与"出现在书架上"是两件事。
+      if (!alive[k].builtin) {
+        out.push(alive[k]);
+      }
     }
 
     if (alive.length !== DocStore.docs.length) {
       DocStore.docs = alive;
       DocStore.persist();
     }
+    // 文件夹名单自愈（见 pruneFolders 的说明）：顺手清掉不存在的文档名，
+    // 否则「澄笺」文件夹会一直显示 4 篇，而实际只有 2 篇
+    DocStore.pruneFolders();
+    // Front Matter 缓存补齐（只在缺失 / 正文改动过时读文件，见 ensureFrontMatter）
+    DocStore.syncFrontMatter(ctx);
     return out;
+  }
+
+  /**
+   * 补齐 Front Matter 缓存。
+   *
+   * 只处理**自建文档**：内置文档正文在应用包里、也不该被元数据改封面。
+   * 过期判据是 `fmAt !== mtime` —— 正文一改就重算，没改过一个字节都不读。
+   */
+  private static syncFrontMatter(ctx: common.UIAbilityContext): void {
+    let changed: boolean = false;
+    for (let k: number = 0; k < DocStore.docs.length; k++) {
+      const meta: DocMeta = DocStore.docs[k];
+      if (meta.builtin) {
+        continue;
+      }
+      if (meta.fmAt !== undefined && meta.fmAt === meta.mtime) {
+        continue;
+      }
+      try {
+        const text: string = DocStore.readText(ctx, meta);
+        DocStore.applyFrontMatter(meta, text);
+      } catch (err) {
+        // 读不到（文件被外部删了等）：标记为已处理，别每次都重试
+        // ArkTS 不鼓励 delete：可选字段一律赋 undefined（判空口径不变）
+        meta.fmAt = meta.mtime;
+        meta.fmTitle = undefined;
+        meta.fmColor = undefined;
+        meta.fmDate = undefined;
+        meta.fmTags = undefined;
+      }
+      changed = true;
+    }
+    if (changed) {
+      DocStore.persist();
+    }
+  }
+
+  /**
+   * 把一段正文里的 Front Matter 写进 文档记录（**只认文首**的 `---` 区块）。
+   *
+   * 认的键：`title`（显示名）、`cover` / `color`（封面色）、`date`（日期文案）、
+   * `tags`（标签，逗号 / 顿号分隔，也支持 YAML 的 `- xxx` 列表）。
+   */
+  private static applyFrontMatter(meta: DocMeta, text: string): void {
+    meta.fmAt = meta.mtime;
+    meta.fmTitle = undefined;
+    meta.fmColor = undefined;
+    meta.fmDate = undefined;
+    meta.fmTags = undefined;
+    const lines: string[] = text.replace(/\r\n?/g, '\n').split('\n');
+    if (lines.length < 3 || lines[0].trim() !== '---') {
+      return;
+    }
+    let end: number = -1;
+    for (let k: number = 1; k < lines.length && k < 60; k++) {
+      const t: string = lines[k].trim();
+      if (t === '---' || t === '...') {
+        end = k;
+        break;
+      }
+    }
+    if (end < 0) {
+      return;
+    }
+    const tags: string[] = [];
+    let lastKey: string = '';
+    for (let k: number = 1; k < end; k++) {
+      const t: string = lines[k].trim();
+      if (t.length === 0 || t.startsWith('#')) {
+        continue;
+      }
+      // YAML 列表项：`- xxx` 归给上一个键（tags 常用这种写法）
+      if (t.startsWith('- ') && lastKey === 'tags') {
+        const piece: string = t.substring(2).trim().replace(/^["']|["']$/g, '');
+        if (piece.length > 0) {
+          tags.push(piece);
+        }
+        continue;
+      }
+      const colon: number = t.indexOf(':');
+      if (colon <= 0) {
+        continue;
+      }
+      const key: string = t.substring(0, colon).trim().toLowerCase();
+      let value: string = t.substring(colon + 1).trim();
+      if (value.length >= 2
+        && ((value.startsWith('"') && value.endsWith('"'))
+          || (value.startsWith('\'') && value.endsWith('\'')))) {
+        value = value.substring(1, value.length - 1);
+      }
+      lastKey = key;
+      if (key === 'title' && value.length > 0) {
+        meta.fmTitle = value;
+      } else if ((key === 'cover' || key === 'color') && DocStore.isHexColor(value)) {
+        meta.fmColor = value;
+      } else if (key === 'date' && value.length > 0) {
+        meta.fmDate = value;
+      } else if (key === 'tags') {
+        const parts: string[] = value.split(/[,，、]/);
+        for (let p: number = 0; p < parts.length; p++) {
+          const one: string = parts[p].trim();
+          if (one.length > 0) {
+            tags.push(one);
+          }
+        }
+      }
+    }
+    if (tags.length > 0) {
+      meta.fmTags = tags;
+    }
+  }
+
+  /** `#RRGGBB` / `#RGB` 校验（只接受以 # 开头的颜色，避免把 "red" 之类塞进调色板）。 */
+  private static isHexColor(v: string): boolean {
+    if (!v.startsWith('#')) {
+      return false;
+    }
+    const body: string = v.substring(1);
+    if (body.length !== 3 && body.length !== 6) {
+      return false;
+    }
+    for (let k: number = 0; k < body.length; k++) {
+      const c: string = body.charAt(k).toLowerCase();
+      const isNum: boolean = c >= '0' && c <= '9';
+      const isHex: boolean = c >= 'a' && c <= 'f';
+      if (!isNum && !isHex) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** 文档的**显示名**：Front Matter 里有 `title:` 就用它，否则用文件名。 */
+  static displayName(meta: DocMeta): string {
+    if (meta.fmTitle !== undefined && meta.fmTitle.length > 0) {
+      return meta.fmTitle;
+    }
+    return meta.name;
+  }
+
+  /** 文档的**封面色**：用户手动设的优先，其次是 Front Matter 的 `cover:`。 */
+  static coverColorOf(meta: DocMeta): string {
+    if (meta.coverColor !== undefined && meta.coverColor.length > 0) {
+      return meta.coverColor;
+    }
+    if (meta.fmColor !== undefined && meta.fmColor.length > 0) {
+      return meta.fmColor;
+    }
+    return '';
+  }
+
+  /**
+   * **文件夹名单自愈**：清掉文件夹里"已经不存在的文档名"并去重。
+   *
+   * 为什么需要：文件夹只记文档名。内置文档曾从 4 篇减到 2 篇、示例文档也删过，
+   * 那些名字会一直留在文件夹里，于是「澄笺」文件夹明明只有 2 篇却显示 4 篇（用户反馈）。
+   * 判据：内置名单里的名字一律保留（**即使当前被隐藏**，恢复回书架时还要回到文件夹里），
+   * 自建文档必须在索引中且文件仍在。
+   */
+  private static pruneFolders(): void {
+    let changed: boolean = false;
+    for (let f = 0; f < DocStore.folders.length; f++) {
+      const folder: ShelfFolder = DocStore.folders[f];
+      const keep: string[] = [];
+      for (let k = 0; k < folder.docs.length; k++) {
+        const n: string = folder.docs[k];
+        let ok: boolean = false;
+        for (let b = 0; b < DocStore.BUILTINS.length; b++) {
+          if (DocStore.BUILTINS[b].name === n) {
+            ok = true;
+            break;
+          }
+        }
+        if (!ok) {
+          for (let d = 0; d < DocStore.docs.length; d++) {
+            const m: DocMeta = DocStore.docs[d];
+            if (!m.builtin && m.name === n && DocStore.fileExists(DocStore.pathOf(m.fileName))) {
+              ok = true;
+              break;
+            }
+          }
+        }
+        if (!ok) {
+          continue;
+        }
+        let dup: boolean = false;
+        for (let q = 0; q < keep.length; q++) {
+          if (keep[q] === n) {
+            dup = true;
+            break;
+          }
+        }
+        if (!dup) {
+          keep.push(n);
+        }
+      }
+      if (keep.length !== folder.docs.length) {
+        folder.docs = keep;
+        changed = true;
+      }
+    }
+    if (changed) {
+      DocStore.persist();
+    }
   }
 
   /** 按名字取文档记录。 */
@@ -1467,6 +1699,20 @@ export class DocStore {
    *   相对路径                  依次尝试 <docs>/<src> 与 <docs>/images/<文件名>
    * 解析不到返回空串，渲染层显示占位卡。
    */
+  /**
+   * 图片地址 → **磁盘绝对路径**（拿不到就返回空串）。
+   *
+   * 与 `resolveImagePath` 的区别：那个返回 `file://` 前缀给 Image 组件用，
+   * 而分享 / 另存为需要真实文件路径（ShareKit 只认路径）。
+   */
+  static resolveAbsImagePath(src: string): string {
+    const uri: string = DocStore.resolveImagePath(src);
+    if (uri.length === 0 || !uri.startsWith('file://')) {
+      return '';
+    }
+    return uri.substring('file://'.length);
+  }
+
   static resolveImagePath(src: string): string {
     const s: string = src.trim();
     if (s.length === 0) {
