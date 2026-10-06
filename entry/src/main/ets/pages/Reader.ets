@@ -2324,8 +2324,9 @@ export struct Reader {
    * **用户要求（2026-09-30）：仅竖屏与手机端界面一致**——
    * 竖屏（含平板竖屏）恒为侧滑抽屉；横屏且根宽 ≥700vp 才启用停靠三栏。
    */
+  /** 多屏协同：窗口宽 ≥700vp 即启用大屏三栏布局（不再要求横屏） */
   private isWide(): boolean {
-    return this.rootWidth >= 700 && this.rootWidth > this.rootHeight;
+    return this.rootWidth >= 700;
   }
 
   /** 停靠列开启后，悬浮顶/底栏要让开的左侧宽度。 */

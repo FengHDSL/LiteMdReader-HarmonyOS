@@ -8,6 +8,10 @@
  * 全程无网络请求。提示语用「正在导入」。
  *
  * 库版本与 tools/runtimes/ 实测一致（Playwright 验证过渲染）。
+ *
+ * **勿与 rawfile/render/lib 混淆**：render/lib（12MB 库源）是 DiagramWeb 内联
+ * 模板的**历史构建原料**，html 内联后与代码零引用，已于体积清理时剔除——
+ * 恢复它只会白白增大 hap，不会影响任何功能。
  */
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';

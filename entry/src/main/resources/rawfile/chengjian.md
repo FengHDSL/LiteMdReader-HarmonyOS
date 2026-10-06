@@ -636,29 +636,80 @@ public class WordCount {
 
 **Python**
 ```python
-def greet(name: str) -> str:
-    return f"你好，{name}"
+from dataclasses import dataclass
 
-print(greet("澄笺"))
+
+@dataclass
+class Doc:
+    name: str
+    words: int
+    starred: bool = False
+
+
+def summary(docs):
+    total = sum(d.words for d in docs)
+    starred = sum(1 for d in docs if d.starred)
+    return f"共 {len(docs)} 篇 · {total} 字 · 星标 {starred}"
+
+
+docs = [Doc("读书笔记", 1200, True), Doc("周报", 800)]
+print(summary(docs))
 ```
 
 **JavaScript**
 ```js
-const sum = (xs) => xs.reduce((a, b) => a + b, 0);
-console.log(sum([1, 2, 3, 4]));
+// 文档集合的简单统计
+const docs = [
+  { name: '读书笔记', words: 1200, starred: true },
+  { name: '周报', words: 800, starred: false },
+  { name: '会议记录', words: 640, starred: true },
+];
+
+const totalWords = (xs) => xs.reduce((sum, d) => sum + d.words, 0);
+const starredCount = (xs) => xs.filter((d) => d.starred).length;
+
+console.log(`共 ${docs.length} 篇`);
+console.log(`总字数 ${totalWords(docs)}`);
+console.log(`星标 ${starredCount(docs)} 篇`);
 ```
 
 **TypeScript**
 ```ts
-interface Doc { name: string; words: number }
-const d: Doc = { name: '澄笺', words: 1200 };
+interface Doc {
+  name: string;
+  words: number;
+  starred?: boolean;
+}
+
+function summary(docs: Doc[]): string {
+  const total = docs.reduce((sum, d) => sum + d.words, 0);
+  const starred = docs.filter((d) => d.starred).length;
+  return `共 ${docs.length} 篇 · ${total} 字 · 星标 ${starred}`;
+}
+
+const docs: Doc[] = [
+  { name: '读书笔记', words: 1200, starred: true },
+  { name: '周报', words: 800 },
+];
+
+console.log(summary(docs));
 ```
 
 **Java**
 ```java
+import java.util.List;
+
 public class Main {
+    record Doc(String name, int words, boolean starred) {}
+
     public static void main(String[] args) {
-        System.out.println("你好，澄笺");
+        List<Doc> docs = List.of(
+            new Doc("读书笔记", 1200, true),
+            new Doc("周报", 800, false)
+        );
+        int total = docs.stream().mapToInt(Doc::words).sum();
+        System.out.println("共 " + docs.size() + " 篇 · " + total + " 字");
+        docs.forEach(d -> System.out.println(d.name()));
     }
 }
 ```
@@ -666,9 +717,25 @@ public class Main {
 **C**
 ```c
 #include <stdio.h>
+#include <string.h>
+
+typedef struct {
+    char name[32];
+    int words;
+} Doc;
 
 int main(void) {
-    printf("hello, chengjian\n");
+    Doc docs[2] = {
+        {"读书笔记", 1200},
+        {"周报", 800}
+    };
+    int total = 0;
+    for (int i = 0; i < 2; i++) {
+        total += docs[i].words;
+        printf("%s · %d 字\n", docs[i].name, docs[i].words);
+    }
+    printf("合计 %d 字\n", total);
+    printf("长度校验 %zu\n", strlen(docs[0].name));
     return 0;
 }
 ```
@@ -676,16 +743,52 @@ int main(void) {
 **C++**
 ```cpp
 #include <iostream>
+#include <string>
+#include <vector>
+
+struct Doc {
+    std::string name;
+    int words;
+};
+
 int main() {
-    std::cout << "hello" << std::endl;
+    std::vector<Doc> docs = {
+        {"读书笔记", 1200},
+        {"周报", 800}
+    };
+    int total = 0;
+    for (const auto& d : docs) {
+        std::cout << d.name << " · " << d.words << " 字" << std::endl;
+        total += d.words;
+    }
+    std::cout << "合计 " << total << " 字" << std::endl;
+    return 0;
 }
 ```
 
 **C#**
 ```cs
 using System;
-class P {
-    static void Main() => Console.WriteLine("hi");
+using System.Collections.Generic;
+using System.Linq;
+
+class Doc
+{
+    public string Name { get; set; }
+    public int Words { get; set; }
+}
+
+class Program
+{
+    static void Main()
+    {
+        var docs = new List<Doc>
+        {
+            new Doc { Name = "读书笔记", Words = 1200 },
+            new Doc { Name = "周报", Words = 800 }
+        };
+        Console.WriteLine($"共 {docs.Count} 篇 · {docs.Sum(d => d.Words)} 字");
+    }
 }
 ```
 
@@ -695,62 +798,188 @@ package main
 
 import "fmt"
 
+type Doc struct {
+	Name    string
+	Words   int
+	Starred bool
+}
+
 func main() {
-    fmt.Println("hi")
+	docs := []Doc{
+		{"读书笔记", 1200, true},
+		{"周报", 800, false},
+	}
+	total := 0
+	for _, d := range docs {
+		total += d.Words
+		fmt.Printf("%s · %d 字\n", d.Name, d.Words)
+	}
+	fmt.Println("合计", total, "字")
 }
 ```
 
 **Rust**
 ```rust
+struct Doc {
+    name: String,
+    words: u32,
+    starred: bool,
+}
+
+fn summary(docs: &[Doc]) -> String {
+    let total: u32 = docs.iter().map(|d| d.words).sum();
+    let starred = docs.iter().filter(|d| d.starred).count();
+    format!("共 {} 篇 · {} 字 · 星标 {}", docs.len(), total, starred)
+}
+
 fn main() {
-    println!("hi");
+    let docs = vec![
+        Doc { name: "读书笔记".into(), words: 1200, starred: true },
+        Doc { name: "周报".into(), words: 800, starred: false },
+    ];
+    println!("{}", summary(&docs));
 }
 ```
 
 **Swift**
 ```swift
-print("hi")
+struct Doc {
+    let name: String
+    var words: Int
+    var starred: Bool
+}
+
+func summary(_ docs: [Doc]) -> String {
+    let total = docs.reduce(0) { $0 + $1.words }
+    let starred = docs.filter { $0.starred }.count
+    return "共 \(docs.count) 篇 · \(total) 字 · 星标 \(starred)"
+}
+
+let docs = [
+    Doc(name: "读书笔记", words: 1200, starred: true),
+    Doc(name: "周报", words: 800, starred: false)
+]
+print(summary(docs))
 ```
 
 **Kotlin**
 ```kotlin
-fun main() = println("hi")
+data class Doc(val name: String, val words: Int, val starred: Boolean = false)
+
+fun summary(docs: List<Doc>): String {
+    val total = docs.sumOf { it.words }
+    val starred = docs.count { it.starred }
+    return "共 ${docs.size} 篇 · $total 字 · 星标 $starred"
+}
+
+fun main() {
+    val docs = listOf(
+        Doc("读书笔记", 1200, true),
+        Doc("周报", 800)
+    )
+    println(summary(docs))
+    docs.forEach { println("· ${it.name}") }
+}
 ```
 
 **Shell**
 ```sh
+#!/bin/sh
+# 统计目录下所有 Markdown 的字数（示意）
+total=0
+count=0
 for f in *.md; do
-  echo "处理 $f"
+  words=$(wc -m < "$f")
+  echo "$f · $words 字"
+  total=$((total + words))
+  count=$((count + 1))
 done
+echo "共 $count 篇 · $total 字"
+if [ "$total" -gt 10000 ]; then
+  echo "产出很稳定，继续保持"
+fi
 ```
 
 **SQL**
 ```sql
-SELECT name, words FROM docs
-WHERE words > 1000
-ORDER BY words DESC;
+SELECT
+    d.name    AS 文档名,
+    d.words   AS 字数,
+    f.name    AS 所在文件夹,
+    d.starred AS 是否星标
+FROM docs AS d
+LEFT JOIN folders AS f ON f.id = d.folder_id
+WHERE d.words > 500
+ORDER BY d.words DESC, d.name ASC
+LIMIT 10;
+
+-- 星标文档的字数合计
+SELECT SUM(words) FROM docs WHERE starred = 1;
 ```
 
 **JSON**
 ```json
-{ "name": "澄笺", "version": "1.0.8" }
+{
+  "app": "澄笺",
+  "version": "1.0.8",
+  "docs": [
+    { "name": "读书笔记", "words": 1200, "starred": true },
+    { "name": "周报", "words": 800, "starred": false }
+  ],
+  "settings": {
+    "fontSize": 18,
+    "lineHeight": 1.75,
+    "theme": "纸色"
+  },
+  "features": ["表格编辑", "对照阅读", "多设备流转"]
+}
 ```
 
 **YAML**
 ```yaml
-name: 澄笺
+app: 澄笺
 version: 1.0.8
+settings:
+  fontSize: 18
+  lineHeight: 1.75
+  themeMode: 跟随系统
+docs:
+  - name: 读书笔记
+    words: 1200
+    starred: true
+  - name: 周报
+    words: 800
+    starred: false
+features:
+  - 表格编辑
+  - 对照阅读
 ```
 
 **HTML / CSS** —— 注意：`html` 围栏会**渲染成预览**，想展示源码请用 `markdown` 或 `text`
 ```markdown
-<p>一段 <b>HTML</b> 也可以直接写在围栏里。</p>
+# 一份 HTML 样式示例
+
+<div class="card">
+  <p>一段 <b>HTML</b> 也可以直接写在围栏里。</p>
+  <p>想看渲染效果：把语言名改成 <code>html</code>（见下一节）。</p>
+</div>
 ```
 
 ```css
 .card {
+  max-width: 640px;
+  margin: 16px auto;
+  padding: 16px 20px;
   border-radius: 16px;
-  background: #fff;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(18, 50, 79, 0.08);
+  font-family: HarmonyOS Sans, system-ui, sans-serif;
+  color: #2a3f5f;
+  line-height: 1.7;
+}
+
+.card b {
+  color: #1f8a70;
 }
 ```
 

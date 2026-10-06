@@ -303,8 +303,9 @@ export struct Settings {
    * **用户要求（2026-09-30）：仅横屏启用分栏**——竖屏（含平板竖屏）与手机端
    * 界面完全一致（单页）；横屏且 >760vp 才分栏。
    */
+  /** 多屏协同：窗口宽 >760vp 即启用大屏分栏（不再要求横屏） */
   private isWide(): boolean {
-    return this.rootW > 760 && this.rootW > this.rootH;
+    return this.rootW > 760;
   }
 
   /**

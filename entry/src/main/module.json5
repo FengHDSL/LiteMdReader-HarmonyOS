@@ -54,6 +54,13 @@
         "continuable": true,
         // **窗口模式**（多屏协同放大到全屏需要）：显式声明支持全屏 / 分屏 / 悬浮窗
         "supportWindowMode": ["fullscreen", "split", "floating"],
+        // **多窗布局方向**（官方对阅读类竖向应用的建议值）：手机分屏走上下分屏、
+        // 悬浮窗为竖向——配合全屏协同放大（系统调度）的大屏自适应布局
+        "preferMultiWindowOrientation": "portrait",
+        // **自由窗口尺寸限制**（应用适配自由窗口）：限制用户可缩放的最小窗口，
+        // 防止缩到布局崩坏；320vp 宽以内走手机单列布局（isWide 断点 700），均能正常显示
+        "minWindowWidth": 320,
+        "minWindowHeight": 240,
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:starticon_blank",
@@ -104,6 +111,19 @@
             "resource": "$profile:backup_config"
           }
         ],
+      },
+      // ── 协同阅读扩展（用户指令：强行接入 UI 扩展组件）──
+      // type 用 **embeddedUI**（schema 允许的三方 UI 扩展类型；`uiExtension`
+      // 不在枚举里会被编译期 schema 拒绝——实测确认）。提供可被
+      // EmbeddedComponent / 协同框架拉起的只读阅读界面，内容来自流转链路。
+      {
+        "name": "ReaderExtAbility",
+        "srcEntry": "./ets/uiextability/ReaderExtAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "type": "embeddedUI",
+        "exported": true
       },
       // ── 桌面卡片（2×4 书架卡片）：**暂时停用**（用户要求，卡片存在 bug，以后再修）──
       // 停用方式 = 不再注册 form 扩展（卡片因此不出现在「服务卡片」列表里，

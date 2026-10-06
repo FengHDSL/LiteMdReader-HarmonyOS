@@ -261,6 +261,8 @@ struct Index {
   /** 批量操作（批 5）：多选模式开关与已选文档名集合 */
   @State multiSelect: boolean = false;
   @State multiNames: string[] = [];
+  /** 文件夹面板展开前的滚动偏移：收回时滑回原位（-1 = 未记录） */
+  private folderRestoreY: number = -1;
   /** 当前格子菜单对象的文档编码（与阅读页共用 AppStorage 键 `docEncoding_<文档名>`） */
   @State cellMenuEncoding: string = 'auto';
   /** 半模态面板重建纪元：深浅切换时换容器 key，避免面板"切换不完全" */
@@ -351,6 +353,8 @@ struct Index {
   @State hoverDropAt: string = '';
   /** 被"吸入"的格子（收进文件夹 / 换位 / 解散时缩小淡出） */
   @State absorbAt: string = '';
+  /** 外部文件拖到新建卡片上时，显示"释放导入"提示 */
+  @State dragOverNewCard: boolean = false;
   /** 函数绘制壁纸的 id（空 = 不用）；见 theme/GenWallpaper.ets */
   @StorageProp('wallpaperGenId') genWallId: string = '';
   /** 导航栈：书架是首页，阅读 / 设置 / 编辑都压在这条栈上 */
@@ -891,6 +895,16 @@ struct Index {
     if (this.openFolderName.length > 0) {
       return;
     }
+    // **记录展开前的滚动位置**（用户要求：收回时自动滑回原位）——
+    // 在任何展开滚动发生之前取当前偏移；-1 = 取不到，收回时不滚
+    try {
+      const off: OffsetResult | undefined = this.gridScroller.currentOffset();
+      if (off !== undefined && off !== null) {
+        this.folderRestoreY = off.yOffset;
+      }
+    } catch (err) {
+      this.folderRestoreY = -1;
+    }
     // 挂载包在 animateTo 里：其他格子的模糊 / 透明度**渐入**（不再瞬间变糊）。
     // 先挂载（高度 0），下一拍再撑高——同一拍里改两个状态就没有「推开下面图标」的过程
     this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
@@ -1071,6 +1085,22 @@ struct Index {
   }
 
   private closeFolderPanel(): void {
+    // **收回时自动滑回展开前的位置**（用户要求）：与展开滚动对称——
+    // 用 openFolderPanel 记录的原偏移，同一条 300ms 曲线一次滚回。
+    // 未记录（-1）时静默跳过；滚动失败的 try 兜底不影响收起本身。
+    if (this.folderRestoreY >= 0) {
+      const restoreY: number = this.folderRestoreY;
+      this.folderRestoreY = -1;
+      try {
+        this.gridScroller.scrollTo({
+          xOffset: 0,
+          yOffset: restoreY,
+          animation: { duration: 300, curve: Curve.FastOutSlowIn }
+        });
+      } catch (scrollErr) {
+        // 滚动失败不影响收起
+      }
+    }
     // 收起动画放慢（用户反馈太快）：300ms 标准曲线，与展开观感对称。
     // **摘节点与收高度放在同一拍**：之前是「高度收到 0 → 340ms 后再摘 GridItem」，
     // 摘的那一刻网格要再量一次布局，底部那行提示文本会**第二次上移**
@@ -1894,8 +1924,9 @@ struct Index {
    * 竖屏（含平板竖屏）恒 false；横屏且 >760vp 才启用宽屏形态。
    */
   /** 平板放屏幕右下角、手机整行 */
+  /** 多屏协同：窗口宽 ≥760vp 即启用大屏布局（不再要求横屏） */
   private isWideShelf(): boolean {
-    return this.rootWidth > 760 && this.rootWidth > this.rootHeight;
+    return this.rootWidth > 760;
   }
 
   // ══════════════════════ 底栏（统计 + 快捷新建 / 导入） ══════════════════════
@@ -3265,7 +3296,10 @@ struct Index {
         .aspectRatio(0.72)
         // 边框画在最外层，形状与其它封面一致
         .borderRadius({ topLeft: 5, bottomLeft: 5, topRight: 13, bottomRight: 13 })
-        .border({ width: 1.2, color: this.palette().divider })
+        .border({
+          width: this.dragOverNewCard ? 2 : 1.2,
+          color: this.dragOverNewCard ? this.palette().accent : this.palette().divider
+        })
         .clip(true)
         .onClick(() => {
           // **文件夹面板展开期间不允许新建**（用户要求）：面板盖住部分格子，
@@ -3278,9 +3312,10 @@ struct Index {
       }
       .width('100%')
 
-      Text('或长按导入')
+      Text(this.dragOverNewCard ? '释放导入 .md/.txt' : '或长按导入')
         .fontSize(HwType.caption)
-        .fontColor(this.palette().textTertiary)
+        .fontColor(this.dragOverNewCard ? this.palette().accent : this.palette().textTertiary)
+        .fontWeight(this.dragOverNewCard ? FontWeight.Medium : FontWeight.Regular)
         .width('100%')
         .textAlign(TextAlign.Center)
     }
@@ -3292,6 +3327,17 @@ struct Index {
           this.importDoc();
         })
     )
+    // ── 外部文件拖入（只支持 .md / .txt）──
+    .onDragEnter(() => {
+      this.dragOverNewCard = true;
+    })
+    .onDragLeave(() => {
+      this.dragOverNewCard = false;
+    })
+    .onDrop((event?: DragEvent) => {
+      this.dragOverNewCard = false;
+      this.handleFileDrop(event);
+    })
   }
 
   /**
@@ -4991,9 +5037,9 @@ struct Index {
    * 每条带来源文档与行号，方便回到原文处理。
    */
   /**
-   * **拖文件进窗口自动导入并打开**（用户要求）：从文件管理器 / 桌面拖 .md / .txt
-   * 到书架任意位置松手即导入；成功后打开第一篇（阅读页），多文件 toast 汇总。
-   * 拖拽数据走 UDMF：单文件是 File 记录、多文件是 Files 集合，两种都接。
+   * **拖文件到新建卡片上导入**：从文件管理器 / 桌面拖 .md / .txt
+   * 到书架新建卡片松手即导入；成功后打开第一篇（阅读页），多文件 toast 汇总。
+   * 拖拽数据走 UDMF；外部拖入兼容不同记录类型和 URI 格式。
    */
   private handleFileDrop(event?: DragEvent): void {
     if (event === undefined || event === null) {
@@ -5001,6 +5047,7 @@ struct Index {
     }
     const data = event.getData();
     if (data === undefined || data === null) {
+      this.toast('请将 .md / .txt 文件拖到新建卡片上');
       return;
     }
     const c = this.ctx();
@@ -5011,22 +5058,22 @@ struct Index {
     const uris: string[] = [];
     for (let k = 0; k < records.length; k++) {
       const rec = records[k];
-      // 拖文件 = FileUri 记录（uniformDataType 固定 'general.file-uri'）。
-      // ⚠️ 本 SDK 的 uniformDataStruct 只导出类型没有枚举值——getType() 直接和
-      // 字符串字面量比较；UnifiedRecord → FileUri 用双跳断言（结构化类型不重叠）。
-      if (rec.getType() !== 'general.file-uri') {
-        continue;
-      }
-      const fr = rec as object as uniformDataStruct.FileUri;
-      // FileUri 的路径字段叫 **oriUri**（不是 uri，查 SDK 定义确认）
-      const uri: string = fr.oriUri;
-      if (uri !== undefined && uri !== null && uri.length > 0) {
-        uris.push(uri);
+      let found: string = '';
+      try {
+        const types: string[] = rec.getTypes();
+        if (types.includes(uniformTypeDescriptor.UniformDataType.FILE_URI)) {
+          const fileUriUds = rec.getEntry(uniformTypeDescriptor.UniformDataType.FILE_URI) as uniformDataStruct.FileUri;
+          if (fileUriUds.oriUri !== undefined && fileUriUds.oriUri !== null && fileUriUds.oriUri.length > 0) {
+            found = fileUriUds.oriUri;
+          }
+        }
+      } catch (_) { /* 忽略 */ }
+      if (found.length > 0) {
+        uris.push(found);
       }
     }
     if (uris.length === 0) {
-      // 内部拖拽（长按封面合并文件夹等）不含 file-uri 记录：静默返回，
-      // 不打扰原有交互（若 toast 会干扰每次封面拖动合并）
+      this.toast('请拖入 .md 或 .txt 文件到新建卡片');
       return;
     }
     let first: DocMeta | null = null;
@@ -5178,7 +5225,9 @@ struct Index {
               .padding({ left: 8, right: 10 })
             }
             .height(44)
-            .width('100%')
+            // ⚠️ 占位必须用 layoutWeight（外层 Row 里还有时间列 + 轴列两个固定宽兄弟）——
+            // 写 width('100%') 会按整行宽测量、卡片撑出屏幕（此前已踩过两次）
+            .layoutWeight(1)
             .borderRadius(12)
             .border({ width: 1, color: this.palette().divider })
             .margin({ top: 2, bottom: 2 })
@@ -6029,11 +6078,6 @@ struct Index {
     .height('100%')
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)
-    // ── 拖文件进窗口导入（用户要求）──
-    // 内部拖拽（封面合并）的记录不含 file-uri，uris 为空时静默返回，不干扰原有交互。
-    .onDrop((event?: DragEvent) => {
-      this.handleFileDrop(event);
-    })
     // ══════════ 半模态面板：官方规范（material/ModalSheet.ets）══════════
     // 模态型 + 固定 MEDIUM 高 + 官方标题栏 / 关闭按钮 / 拖拽条。
     .bindSheet(this.shelfVisible, this.indexSheet(), modalSheetOptions({

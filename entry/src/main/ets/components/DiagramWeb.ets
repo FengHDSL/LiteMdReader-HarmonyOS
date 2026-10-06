@@ -7,6 +7,13 @@
  * javaScriptProxy(arkHost.postHeight) 把真实高度回传，组件高度自适应。
  *
  * mode: katex | mermaid | echarts | abc | graphviz | flowchart
+ *
+ * **rawfile 资源分区说明**（体积敏感，勿混放）：
+ *   · render/        —— 离屏渲染模板（库**已内联**进 html，整目录只被本组件加载；
+ *                       原 render/lib/ 12MB 源库文件与模板零引用，已剔除瘦身）
+ *   · runtimes/      —— 导出 HTML 时的**外部库拷贝**（ChartRuntimeService 打包进
+ *                       导出产物，与 render/ 内联副本互不替代，两套都要保留）
+ *   · builtin/       —— 预置文档与示例（DocStore 启动拷贝）
  */
 
 import { webview } from '@kit.ArkWeb';

@@ -197,13 +197,12 @@ export interface DocTimes {
 
 export class DocStore {
   /** 内置文档清单（展示名 + rawfile），常驻书架最前。
-   *  coverColor = 预置封面色（用户要求：教程蓝、示例绿；用户改封面会覆盖此值）。 */
+   *  coverColor = 预置封面色（用户要求：教程蓝、示例绿；用户改封面会覆盖此值）。
+   *  **只保留两份**（用户指令）：教程 + 全功能演示；知识图谱 / 待办的演示文档
+   *  已删除——两个功能用自建文档即可体验，无内置依赖。 */
   static readonly BUILTINS: DocBuiltin[] = [
     { name: 'Markdown 语法教程', raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' },
-    // **功能演示素材**（只读，可随时删除）：分别用来演示知识图谱与待办聚合
-    { name: '知识网络 · 功能演示', raw: 'demo-links.md', coverColor: '#7A6FB0' },
-    { name: '任务池 · 功能演示', raw: 'demo-tasks.md', coverColor: '#C08A4E' }
+    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
