@@ -22,7 +22,6 @@
  * 这条限制。（这一点也符合华为开发者论坛的官方示例写法。）
  */
 
-import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import {
@@ -572,8 +571,6 @@ export struct MdBlockView {
   @Prop searchQuery: string = '';
   /** 加载失败的图表缓存 key（Image onError 记入 → 回落 DiagramWeb 实时渲染） */
   @State brokenCharts: string[] = [];
-  /** 脑图专用实时卡片的 Web 控制器（每个块视图独立；onPageEnd 注入渲染载荷） */
-  private mmCardCtrl: webview.WebviewController = new webview.WebviewController();
   /** 行内公式图的坏缓存（加载失败 → 回落线性化文本；与 brokenCharts 同思路） */
   @State inlineBroken: string[] = [];
   @State copied: boolean = false;
@@ -2384,18 +2381,7 @@ export struct MdBlockView {
           Column() {
             this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
               'mdchart_' + this.block.id, this.chartTitle(), true)
-            Web({ src: $rawfile('render/markmap-card.html'), controller: this.mmCardCtrl })
-              .width('100%')
-              .aspectRatio(0.82)
-              .onPageEnd(() => {
-                try {
-                  this.mmCardCtrl.runJavaScript('window.renderPayload(' + JSON.stringify({
-                    src: this.block.code, dark: this.dark, fit: false, bg: this.cardBgKey()
-                  }) + ');');
-                } catch (err) {
-                  // 注入失败：页面保持空白，不影响正文
-                }
-              })
+            DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
         }
