@@ -1687,6 +1687,16 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     // 卡片画布高度**自适应设备屏幕**（用户要求：定死 440 不可接受）——
     // 约 72% 视口高（下限 440），脑图 autoFit 铺满画布；postHeight 跟随卡片高度。
     app.style.height=fit?'100vh':Math.max(440,Math.round(window.innerHeight*0.72))+'px';
+    if(!fit){
+      // ⚠️ **卡片模式把整页高度钉死为画布高度**：webPageSnapshot 抓的是整页
+      // 可滚动区域——svg 内部尺寸会把 scrollHeight 撑到远超画布，快照拍成
+      // "上方一条脑图 + 下方空白"、卡片按虚高拉满（用户实测脑图只剩窄条）。
+      // 钉死后整页高度=画布高度，快照恰好是完整脑图。
+      document.documentElement.style.height=app.style.height;
+      document.body.style.height=app.style.height;
+      document.documentElement.style.overflow='hidden';
+      document.body.style.overflow='hidden';
+    }
     var root=new markmap.Transformer().transform(src).root;
     window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{autoFit:true,duration:200,initialExpandLevel:-1},root);
     // 延迟再 fit 一次：布局/旋转后首帧 fit 可能过时，导致部分分支超出可视区

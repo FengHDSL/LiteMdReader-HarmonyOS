@@ -1,0 +1,28 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#F7F3EC}iframe{border:0;width:360px;display:block}</style></head>
+<body>
+<iframe id="f" style="height:100px" src="markmap-current.html"></iframe>
+<script>
+const src = '# 澄笺\n\n## 写作\n\n- 分屏实时预览\n- 版本历史与对比\n- 查找替换\n\n## 表达\n\n- 公式与九类图表\n- 手写笔记与手写批注';
+const f = document.getElementById('f');
+f.addEventListener('load', () => {
+  setTimeout(() => {
+    f.contentWindow.renderPayload({src: src, dark: false, fit: false, bg: '#F7F3EC', vw: 0, inline: false});
+    // 模拟池子时序：渲染完成后 postHeight → 卡片从 100px 长到 440px
+    setTimeout(() => { f.style.height = '440px'; }, 900);
+    setTimeout(() => {
+      try {
+        var w = f.contentWindow, app = w.document.getElementById('app');
+        var sv = w.document.querySelector('#app svg');
+        var bb = sv && sv.getBBox ? sv.getBBox() : null;
+        var g = sv ? sv.querySelector('g') : null;
+        document.title = 'DIAG scrollH=' + w.document.documentElement.scrollHeight + ' app=' + app.offsetWidth + 'x' + app.clientHeight +
+          ' svgClient=' + (sv ? sv.clientWidth + 'x' + sv.clientHeight : 'none') +
+          ' bbox=' + (bb ? Math.round(bb.width) + 'x' + Math.round(bb.height) : 'none') +
+          ' transform=' + (g ? g.getAttribute('transform') : 'none') +
+          ' fo=' + w.document.querySelectorAll('#app foreignObject').length;
+      } catch (e) { document.title = 'ERR ' + e.message; }
+    }, 1800);
+  }, 120);
+});
+</script>
+</body></html>

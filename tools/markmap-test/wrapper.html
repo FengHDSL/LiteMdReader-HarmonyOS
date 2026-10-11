@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;background:#F7F3EC}iframe{border:0;width:360px;height:590px;display:block}</style></head>
+<body>
+<iframe id="f" src=""></iframe>
+<script>
+const target = new URLSearchParams(location.search).get('t') || 'markmap-current.html';
+document.getElementById('f').src = target;
+const src = '# 澄笺\n\n## 写作\n\n- 分屏实时预览\n- 版本历史与对比\n- 查找替换\n\n## 表达\n\n- 公式与九类图表\n- 手写笔记与手写批注\n- 荧光底 / 波浪线批注\n\n## 阅读\n\n- 批注与复习\n- 主题与壁纸';
+document.getElementById('f').addEventListener('load', () => {
+  setTimeout(() => {
+    document.getElementById('f').contentWindow.renderPayload({src: src, dark: false, fit: false, bg: '#F7F3EC', vw: 0, inline: false});
+  }, 120);
+});
+</script>
+</body></html>
