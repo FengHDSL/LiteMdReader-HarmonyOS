@@ -2065,11 +2065,22 @@ Expecting `+Ze.join(", ")+", got '"+(this.terminals_[Pe]||Pe)+"'":At="Parse erro
   function report(){
     try{
       var app=document.getElementById('app');
-      // 整页内容高度：撑满模式（导出抓图用）下 body 高度只是视口高，
-      // 溢出内容的高度要靠 documentElement/滚动高度反映
-      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
-                     document.documentElement.scrollHeight, document.documentElement.offsetHeight);
-      if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      if(window.__fit){
+        // 撑满模式（放大 / 导出抓图）：整页高度按滚动高度反映（抓全图）
+        var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                       document.documentElement.scrollHeight, document.documentElement.offsetHeight);
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      } else {
+        // 卡片模式：高度 = 内容实际布局高度（app.offsetHeight）——scrollHeight 会被
+        // svg 内部溢出虚高（快照成"图 + 下方空白"、卡片被拉长——用户实测），
+        // 同时把整页高度钉死为该值，杜绝虚高。
+        var h2=Math.max(app.offsetHeight,40);
+        document.documentElement.style.height=h2+'px';
+        document.body.style.height=h2+'px';
+        document.documentElement.style.overflow='hidden';
+        document.body.style.overflow='hidden';
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h2);}
+      }
     }catch(e){}
   }
   window.renderPayload=function(json){

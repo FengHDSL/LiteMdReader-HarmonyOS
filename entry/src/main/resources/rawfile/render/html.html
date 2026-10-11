@@ -30,12 +30,22 @@
   // 上报高度：让宿主按内容自适应卡片高度
   function report(){
     try{
-      // 三处取最大：高度回传不准（偏小）时卡片会偏矮，与下一张卡片视觉上**叠在一起**
-      // （用户实测）；documentElement 兜底 img / table 延迟撑开的情况。
-      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
-                     document.documentElement.scrollHeight);
-      if(!(h>0)){h=1;}
-      if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      if(window.__fit){
+        // 撑满模式（放大 / 导出抓图）：整页高度按滚动高度反映（抓全图）
+        var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                       document.documentElement.scrollHeight);
+        if(!(h>0)){h=1;}
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      } else {
+        // 卡片模式：高度 = 内容实际布局高度——scrollHeight 会被内部溢出虚高
+        // （快照成"图 + 下方空白"、卡片被拉长），同时钉死整页高度杜绝虚高。
+        var h2=Math.max(app.offsetHeight,40);
+        document.documentElement.style.height=h2+'px';
+        document.body.style.height=h2+'px';
+        document.documentElement.style.overflow='hidden';
+        document.body.style.overflow='hidden';
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h2);}
+      }
     }catch(e){}
   }
 
