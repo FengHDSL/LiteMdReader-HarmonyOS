@@ -54,7 +54,7 @@ export class ChartCache {
    *    卡片按虚高拉满（用户实测"显示面积异常"）。键升盐作废虚高期脑图缓存。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v10|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v11|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

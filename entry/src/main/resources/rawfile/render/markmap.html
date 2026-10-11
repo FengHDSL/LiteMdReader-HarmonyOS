@@ -1697,12 +1697,13 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
       document.documentElement.style.overflow='hidden';
       document.body.style.overflow='hidden';
     }
-    // **自然尺寸大字渲染**（用户要求"放大可以铺满卡片和画布"）：不再 autoFit
-    // 缩小整图——脑图按基础字号自然铺排，超出画布的部分裁掉（卡片）/可拖动
-    // 浏览（放大视图，markmap 自带拖拽 + 滚轮缩放）。
-    if(!fit){ document.getElementById('app').style.fontSize='22px'; }
+    // **autoFit 铺满画布**（用户要求"铺满卡片和画布"）——脑图缩放至填满整个
+    // 画布（画布高度自适应设备屏幕）；必须与"整页高度钉死"配合：
+    // 只有 autoFit → svg 溢出虚高坑（快照窄条）；只有钉死 → 地图不满留白。
     var root=new markmap.Transformer().transform(src).root;
-    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{duration:200,initialExpandLevel:-1},root);
+    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{autoFit:true,duration:200,initialExpandLevel:-1},root);
+    // 延迟再 fit 一次：布局/旋转后首帧 fit 可能过时
+    setTimeout(function(){ try{ if(window.__mm){ window.__mm.fit(); } }catch(e){} },350);
     setTimeout(report,100); setTimeout(report,400);
   };
   </script>
@@ -1766,7 +1767,7 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     }catch(e){}
   };
   window.refit=function(){
-    // 自然尺寸渲染无 fit 概念（用户要求大字铺排），仅回报高度
+    try{ if(window.__mm){ window.__mm.fit(); } }catch(e){}
     report();
   };
   if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){report();}).observe(document.getElementById('app'));}
