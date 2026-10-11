@@ -2330,10 +2330,41 @@ export struct MdBlockView {
   @Builder
   mathView() {
     Column() {
-      Text('mathview-test')
+      if (this.chartImagePath('katex').length > 0) {
+        ImmersiveCard({
+          cardRadius: HwRadius.inner,
+          cardPadding: 0,
+          cardMaterialShadow: false,
+          cardBackground: this.palette.codeBlockBg,
+          palette: this.palette
+        }) {
+          Column() {
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            // 超宽公式：按自然尺寸 + 横向滚动展示（用户要求），不再压扁
+            this.blockImage('katex')
+          }
+          .width('100%')
+        }
+      } else {
+        ImmersiveCard({
+          cardRadius: HwRadius.inner,
+          cardPadding: 0,
+          cardMaterialShadow: false,
+          cardBackground: this.palette.codeBlockBg,
+          palette: this.palette
+        }) {
+          Column() {
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+          }
+          .width('100%')
+        }
+      }
     }
+    .width('100%')
+    .geometryTransition('mdchart_' + this.block.id, { follow: true })
+    .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
   }
-
   @Builder
   chartView() {
     Column() {
