@@ -30,22 +30,12 @@
   // 上报高度：让宿主按内容自适应卡片高度
   function report(){
     try{
-      if(window.__fit){
-        // 撑满模式（放大 / 导出抓图）：整页高度按滚动高度反映（抓全图）
-        var h=Math.max(app.scrollHeight, document.body.scrollHeight,
-                       document.documentElement.scrollHeight);
-        if(!(h>0)){h=1;}
-        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
-      } else {
-        // 卡片模式：高度 = 内容实际布局高度——scrollHeight 会被内部溢出虚高
-        // （快照成"图 + 下方空白"、卡片被拉长），同时钉死整页高度杜绝虚高。
-        var h2=Math.max(app.offsetHeight,40);
-        document.documentElement.style.height=h2+'px';
-        document.body.style.height=h2+'px';
-        document.documentElement.style.overflow='hidden';
-        document.body.style.overflow='hidden';
-        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h2);}
-      }
+      // 高度回传：三处取最大（img / table 延迟撑开由 documentElement 兜底；
+      // 1.0.9 起一直如此且正常——html 预览不做高度钉死，避免裁掉延迟加载的内容）
+      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                     document.documentElement.scrollHeight);
+      if(!(h>0)){h=1;}
+      if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
     }catch(e){}
   }
 

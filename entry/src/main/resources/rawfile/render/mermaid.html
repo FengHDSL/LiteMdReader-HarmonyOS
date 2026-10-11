@@ -2074,6 +2074,10 @@ Expecting `+Ze.join(", ")+", got '"+(this.terminals_[Pe]||Pe)+"'":At="Parse erro
         // 卡片模式：高度 = 内容实际布局高度（app.offsetHeight）——scrollHeight 会被
         // svg 内部溢出虚高（快照成"图 + 下方空白"、卡片被拉长——用户实测），
         // 同时把整页高度钉死为该值，杜绝虚高。
+        // ⚠️ **内容未渲染完成时（app 还空着）不 pin、不上报小高度**——否则首轮回传
+        // 40px 会触发宿主立刻截图，稍后渲染完成的图表被裁成一条（用户实测"只剩
+        // 一点点"）。直接返回，等渲染完成的那次 report 再回传真实高度。
+        if(app.offsetHeight<=60){return;}
         var h2=Math.max(app.offsetHeight,40);
         document.documentElement.style.height=h2+'px';
         document.body.style.height=h2+'px';
