@@ -1264,12 +1264,6 @@ export struct Reader {
       if (EngineRegistry.isOff(EngineRegistry.langId(mode), this.disabledEngineList)) {
         continue;
       }
-      // **脑图走专用实时卡片**（用户拍板）：markmap 卡片始终实时渲染（自带拖拽 /
-      // 缩放可浏览整图），不经过后台池截图——拍摄管线对脑图的适配成本远高于
-      // 实时渲染收益（此前多轮"卡片只剩窄条"均源于此）。
-      if (mode === 'markmap') {
-        continue;
-      }
       // 键含卡片底色（v4）：五档主题的深浅孪生款 codeBlockBg 不同，
       // 不区分会复用别主题烘焙的图（"深色下背景发红/发绿"——用户实测）
       out.push({

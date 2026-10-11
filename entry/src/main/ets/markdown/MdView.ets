@@ -2282,7 +2282,7 @@ export struct MdBlockView {
    * 左侧类型徽标 + 右侧（源码切换）+ 放大按钮。
    */
   @Builder
-  cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string, showCodeToggle: boolean) {
+  cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string, showCodeToggle: boolean, imgEnlarge: boolean, imgSrc: string) {
     Row() {
       Text(label)
         .fontSize(HwType.caption - 1)
@@ -2314,6 +2314,13 @@ export struct MdBlockView {
         buttonMaterialShadow: false,
         palette: this.palette,
         buttonOnTap: () => {
+          // **脑图放大 = 图片查看器**（用户要求"当成图片，随便放大随便拖动"）：
+          // 缓存图就绪时走图片缩放查看器（双指缩放 / 拖动，与文档图片同交互）；
+          // 未就绪（imgSrc 空）回落 DiagramWeb 实时放大。
+          if (imgEnlarge && imgSrc.length > 0 && this.imageTapHandler) {
+            this.imageTapHandler(geoKey, imgSrc);
+            return;
+          }
           this.enlargeHandler(mode, payload, geoKey, title);
         }
       }) {
@@ -2339,7 +2346,7 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, false, '')
             // 超宽公式：按自然尺寸 + 横向滚动展示（用户要求），不再压扁
             this.blockImage('katex')
           }
@@ -2354,7 +2361,7 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, false, '')
             DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
@@ -2380,7 +2387,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, true, this.chartImagePath('markmap'))
             DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
@@ -2395,7 +2402,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false, '')
             this.blockImage(this.block.lang.toLowerCase())
           }
           .width('100%')
@@ -2410,7 +2417,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false, '')
             Stack({ alignContent: Alignment.TopEnd }) {
               Column() {
                 if (this.chartShowCode) {
