@@ -273,6 +273,12 @@ export struct DiagramWeb {
    */
   private applyZoomJs(): void {
     try {
+      if (this.mode === 'markmap') {
+        // 脑图：缩放走 svg transform（横纵同步等比）——applyZoom 的宽度百分比
+        // 只会拉伸横向（用户实测"只增加横向长度，纵向没变化"）
+        this.ctrl.runJavaScript('(function(){var f=window.__mmZoom;if(f){f(' + this.webZoom + ');}})()');
+        return;
+      }
       this.ctrl.runJavaScript(
         '(function(){var f=window.applyZoom;if(f){f(' + this.webZoom + ');}' +
         'else{document.body.style.zoom=' + this.webZoom + ';}})()');

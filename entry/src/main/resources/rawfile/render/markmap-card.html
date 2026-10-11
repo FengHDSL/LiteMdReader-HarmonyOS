@@ -1702,17 +1702,30 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     // 只有 autoFit → svg 溢出虚高坑（快照窄条）；只有钉死 → 地图不满留白。
     var root=new markmap.Transformer().transform(src).root;
     window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{duration:200,initialExpandLevel:-1},root);
-    // **固定 1.4 倍缩放**（用户要求"铺满卡片和画布"）：脑图按原生 16px 布局后
-    // 整体等比放大——文字变大、宽度超出卡片（裁切）、高度超出画布（markmap
-    // 自带拖拽上下浏览）。不用 getBBox 量宽：foreignObject 的布局时机不稳，
-    // 量到偏小值会把图放大数倍（实测 scale(4.77) 布局崩坏）。
-    setTimeout(function(){
+    // **cover 铺满**（用户要求"初始横纵长度就是屏幕画布大小"）：量脑图自然
+    // 宽高，等比放大到横纵都铺满画布（cover）——超出维度用 markmap 自带拖拽
+    // 浏览。延迟 800ms 等 foreignObject 布局完成，2.2s 再校准一次；比例钳制
+    // 0.8~3 防布局期误量爆表。
+    window.__mmBase=1;
+    window.__mmZoom=function(z){
       try{
         var sv=document.getElementById('mmsvg');
-        sv.style.transformOrigin='0 0';
-        sv.style.transform='scale(1.4)';
+        if(sv){ sv.style.transformOrigin='0 0'; sv.style.transform='scale('+(__mmBase*z)+')'; }
       }catch(e){}
-    },420);
+    };
+    function applyCover(){
+      try{
+        var sv=document.getElementById('mmsvg');
+        var bb=sv.getBBox?sv.getBBox():null;
+        if(bb&&bb.width>10&&bb.height>10){
+          var cw=sv.clientWidth||360, ch=sv.clientHeight||440;
+          __mmBase=Math.min(3,Math.max(0.8,Math.max(cw/bb.width, ch/bb.height)));
+          sv.style.transformOrigin='0 0';
+          sv.style.transform='scale('+__mmBase+')';
+        }
+      }catch(e){}
+    }
+    setTimeout(applyCover,800); setTimeout(applyCover,2200);
     setTimeout(report,100); setTimeout(report,400);
   };
   </script>
@@ -1734,9 +1747,20 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
   };
     // 缩放变化后的重新自适应（放大浮层的 ± / 旋转用）
   window.refit=function(){
-    try{ if(window.__mm){ window.__mm.fit(); } }catch(e){}
+    applyCover();
   };
 
+  var __cvLastW=0,__cvLastH=0;
+  if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){
+    try{
+      var app=document.getElementById('app');
+      if(Math.abs(app.clientWidth-__cvLastW)>2||Math.abs(app.clientHeight-__cvLastH)>2){
+        __cvLastW=app.clientWidth;__cvLastH=app.clientHeight;
+        applyCover();
+      }
+    }catch(e){}
+    report();
+  }).observe(document.getElementById('app'));}
   window.addEventListener('load',report);
 </script>
 </body></html>
