@@ -1698,10 +1698,14 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
   function report(){
     try{
       var app=document.getElementById('app');
-      // 整页内容高度：撑满模式（导出抓图用）下 body 高度只是视口高，
-      // 溢出内容的高度要靠 documentElement/滚动高度反映
-      var h=Math.max(app.scrollHeight, document.body.scrollHeight,
-                     document.documentElement.scrollHeight, document.documentElement.offsetHeight);
+      // 卡片模式：容器高度即画布高度——用 scrollHeight 会被 svg 内部尺寸虚高，
+      // 快照拍成"上方一条脑图 + 下方空白"、显示端再按虚高拉满卡片
+      // （用户实测"显示面积异常，只显示一点点范围"）。
+      // 撑满模式（放大/导出抓图）：整页高度按滚动高度反映。
+      var h=window.__fit
+        ?Math.max(app.scrollHeight, document.body.scrollHeight,
+                  document.documentElement.scrollHeight, document.documentElement.offsetHeight)
+        :Math.max(app.offsetHeight,440);
       if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
     }catch(e){}
   }

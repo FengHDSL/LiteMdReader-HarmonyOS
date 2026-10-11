@@ -49,10 +49,12 @@ export class ChartCache {
    *    （o.bg，修浅色图表卡黑背景）。
    *  · v9（2026-10-11 八度升级）：**公式键控透明方案整体回退**——真机上透明 PNG
    *    在 Image 组件里渲染不可靠（卡片全黑），公式恢复烘焙卡片底色不透明图。
-   *    键升盐让键控期的透明图全部作废重生成。
+   *  · v10（2026-10-11 九度升级）：markmap 高度回传改**画布实际高度**——此前
+   *    scrollHeight 被 svg 内部尺寸虚高，脑图快照成"上方一条 + 下方空白"、
+   *    卡片按虚高拉满（用户实测"显示面积异常"）。键升盐作废虚高期脑图缓存。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v9|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v10|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
