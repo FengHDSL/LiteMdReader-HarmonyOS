@@ -111,7 +111,9 @@ export struct DiagramWeb {
   private lastPostH: number = 0;
 
   build() {
-    Web({ src: $rawfile('render/' + this.mode + '.html'), controller: this.ctrl })
+    // **markmap 放大视图专用页**：自然尺寸渲染 + markmap 自带拖拽/缩放（用户要求
+    // "放大铺满画布"）——markmap.html 的 autoFit/回传管线仅剩导出用途。
+    Web({ src: $rawfile('render/' + (this.mode === 'markmap' ? 'markmap-card' : this.mode) + '.html'), controller: this.ctrl })
       .id(this.webId.length > 0 ? this.webId : 'diagram_web')
       .width(this.inlineMode && this.wVp > 0 ? this.wVp : (this.virtualWidth > 0 ? this.virtualWidth : '100%'))
       .height(this.fillHeight ? '100%' : this.hVp)
