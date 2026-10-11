@@ -37,6 +37,16 @@ export struct DiagramWeb {
    * （模板各页面的 renderPayload 都是幂等的：清空容器 → 重新渲染 → 重新回传）。
    */
   @Prop @Watch('onPayloadChanged') payload: string = '';
+  /**
+   * **宿主排好版的富文本**（目前只有「代码块放大」用）。
+   *
+   * 为什么把 HTML 传进来、而不是把语言 id 丢给页面自己高亮：正文卡片的代码颜色
+   * 是 ArkUI `Span` + `CodeHighlighter` 分的词（`MdView.codeView`），渲染模板里
+   * 再写一份分词器必然与卡片走偏（同一份代码两处颜色不同）。这里复用
+   * `MdViewUtil.highlightToHtml` 生成带色 HTML，浮层与卡片**逐 token 一致**。
+   * 留空 = 模板按纯文本渲染（图表源码、无高亮语言的情况）。
+   */
+  @Prop @Watch('onPayloadChanged') richHtml: string = '';
   /** 暗色模式（传给页面切主题） */
   @Prop dark: boolean = false;
   /** 允许双指缩放（放大浮层用；行内卡片关闭以免劫持页面滚动） */
@@ -53,8 +63,14 @@ export struct DiagramWeb {
    */
   @Prop fillHeight: boolean = false;
   /**
-   * 页面内容缩放（0.5~3，body.style.zoom）：放大浮层的 ± 按钮用。
-   * @Prop 变化时通过 @Watch 应用到已加载的页面。
+   * 页面缩放倍率（放大浮层的 ± 按钮用）。
+   *
+   * ⚠️ 落地方式是**引擎级页面缩放** `WebviewController.zoom()`，不是往页面里
+   * 塞 CSS：此前用「把 SVG 宽度改成 100*z%」的写法，对 `width:100%` 的图表
+   * 只会横向拉伸（用户实测"点放大内容变成左右移动"），而引擎缩放对 SVG /
+   * canvas / 代码 / 网页预览一律横纵等比，并且和双指捏合是同一套比例，
+   * 两种操作可以叠加而不会互相打架。
+   * zoom() 收的是**相对**增量，所以内部记着上次下发的倍率来换算增量。
    */
   @Prop @Watch('applyWebZoom') webZoom: number = 1;
   /** 渲染高度（vp），由页面回传 */
@@ -109,11 +125,26 @@ export struct DiagramWeb {
    */
   private lastPostW: number = 0;
   private lastPostH: number = 0;
+  /** 已下发给引擎的缩放倍率（zoom() 是相对增量，用它换算下一步的 factor） */
+  private zoomApplied: number = 1;
+
+  /**
+   * 实际加载的模板名。脑图走 **markmap-card**（一份模板同时管正文卡片与放大浮层
+   * 两种画布形态，由 renderPayload 的 fit 标志区分）。
+   * ⚠️ 首载与热切换必须走同一个函数：此前 build 用 markmap-card、
+   * onModeChanged 却 loadUrl('render/' + mode + '.html') 拼出 markmap.html，
+   * 脑图「源码 ↔ 预览」来回切一次就落到另一份模板上，放大行为整个变样。
+   */
+  private renderTemplate(): string {
+    return this.mode === 'markmap' ? 'markmap-card' : this.mode;
+  }
 
   build() {
-    // **markmap 放大视图专用页**：自然尺寸渲染 + markmap 自带拖拽/缩放（用户要求
-    // "放大铺满画布"）——markmap.html 的 autoFit/回传管线仅剩导出用途。
-    Web({ src: $rawfile('render/' + (this.mode === 'markmap' ? 'markmap-card' : this.mode) + '.html'), controller: this.ctrl })
+    // 脑图走 **markmap-card** 一份模板：正文卡片（fit=false，高度随脑图自然高度回传）
+    // 与放大浮层（fit=true，整页撑满画布 + autoFit 铺满）由 renderPayload 的 fit
+    // 标志分流；两种形态共用一个模板，才不会像此前那样在浮层里沿用卡片的
+    // "按内容定高"，把脑图挤成画布顶部的一条（用户实测只剩四分之一）。
+    Web({ src: $rawfile('render/' + this.renderTemplate() + '.html'), controller: this.ctrl })
       .id(this.webId.length > 0 ? this.webId : 'diagram_web')
       .width(this.inlineMode && this.wVp > 0 ? this.wVp : (this.virtualWidth > 0 ? this.virtualWidth : '100%'))
       .height(this.fillHeight ? '100%' : this.hVp)
@@ -161,7 +192,10 @@ export struct DiagramWeb {
       })
       .onPageEnd(() => {
         this.webReady = true;
-        this.injectZoomHelper();
+        // 重新加载会把引擎页面比例打回 1：同步内部记账，再按当前 webZoom 补回去，
+        // 否则「刷新 / 旋转」之后 ± 的档位与实际显示就对不上了
+        this.zoomApplied = 1;
+        this.applyWebZoom();
         this.injectPayload();
       })
       .onTouch((event: TouchEvent) => {
@@ -193,39 +227,13 @@ export struct DiagramWeb {
   private injectPayload(): void {
     const json: string = JSON.stringify({
       src: this.payload, dark: this.dark, fit: this.fit, bg: this.cssColor(this.cardBg),
-      vw: this.inlineMode ? 0 : this.virtualWidth, inline: this.inlineMode
+      vw: this.inlineMode ? 0 : this.virtualWidth, inline: this.inlineMode,
+      html: this.richHtml
     });
     try {
       this.ctrl.runJavaScript('window.renderPayload(' + json + ');');
-      // 渲染注入后立刻应用一次缩放（之后由 @Watch 跟随 ± 按钮变化）
-      this.applyZoomJs();
     } catch (err) {
       // 注入失败时页面保持空白高度，不影响正文
-    }
-  }
-
-  /**
-   * 注入**通用缩放助手** `window.applyZoom(z)`（每次页面加载后注入一次）。
-   *
-   * ⚠️ 为什么不用 `document.body.style.zoom` 一刀切：**`width:100%` 的 SVG**
-   * （mermaid/graphviz 等 fit 模式）在 body.zoom 下方向不可控——桌面实测
-   * zoom 1.25 时 SVG 视觉宽度 385→380 **反而变小**（真机用户实测"加号减号
-   * 功能反了"）。fit 场景改为直接把 SVG 宽度设为 `100*z%`（纯宽度缩放，
-   * 任何内核方向都可预期：>100% 溢出可平移，<100% 完整显示）；
-   * 非 SVG 模板（代码 / 网页预览 / katex 文本）退回 body.zoom（方向正确）。
-   * 选择器覆盖 `#app > svg` 与 `#app > div > svg`（markmap 的 svg 包在 div 里）；
-   * katex 的装饰 svg 深嵌套不会命中 → 走 body.zoom（文本方向正确）。
-   */
-  private injectZoomHelper(): void {
-    try {
-      this.ctrl.runJavaScript(
-        'window.applyZoom=function(z){try{var app=document.getElementById("app");' +
-        'if(app){app.style.overflow="auto";}' +
-        'var sv=app?(app.querySelector(":scope > svg")||app.querySelector(":scope > div > svg")):null;' +
-        'if(sv){sv.style.width=(100*z)+"%";sv.style.maxWidth="none";sv.style.height="auto";}' +
-        'else{document.body.style.zoom=z;}}catch(e){document.body.style.zoom=z;}};');
-    } catch (err) {
-      // 页面未就绪：忽略（onPageEnd 会再注入）
     }
   }
 
@@ -253,37 +261,30 @@ export struct DiagramWeb {
     return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
   }
 
-  /** webZoom 变化时把缩放应用到页面（body.style.zoom），并让页面重新自适应。 */
-  private applyWebZoom(): void {
-    if (!this.fillHeight) {
-      return;
-    }
-    this.applyZoomJs();
-  }
-
   /**
-   * 把缩放应用到页面：走 `window.applyZoom(z)` 助手（onPageEnd 注入）——
-   * **SVG(width:100%) 模板直接缩放 SVG 宽度**（body.zoom 方向在真机不可控，
-   * 用户实测"加号减号功能反了"），非 SVG 模板退回 body.zoom（方向正确）。
+   * 把 webZoom 落到**引擎页面缩放**上。
    *
-   * **这里刻意不调用 refit()**：refit 走的是"让图表铺满可用宽度"的自适应，
+   * `WebviewController.zoom(factor)` 只收**相对**增量（1 = 不变，(0,100]），
+   * 所以拿"目标倍率 ÷ 已应用倍率"换算；增量式还有个好处：与双指捏合共用同一
+   * 个页面比例，捏合过之后再按 ± 是在当前基础上继续加减，不会跳回自己记的值。
+   *
+   * ⚠️ **这里刻意不调用 refit()**：refit 走的是"让图表铺满可用宽度"的自适应，
    * 缩放后可用空间相对变大 → fit 会把内容重新拉满 → 缩放效果被抵消，用户看到
    * 的正好相反（点减号反而变大、点加号反而变小 —— 用户实测反馈）。
    * 需要 refit 的场合（旋转、打开、恢复）另走 refitRequest。
    */
-  private applyZoomJs(): void {
+  private applyWebZoom(): void {
+    const z: number = this.webZoom > 0 ? this.webZoom : 1;
+    if (Math.abs(z / this.zoomApplied - 1) < 1e-6) {
+      return;
+    }
+    const factor: number = z / this.zoomApplied;
     try {
-      if (this.mode === 'markmap') {
-        // 脑图：缩放走 svg transform（横纵同步等比）——applyZoom 的宽度百分比
-        // 只会拉伸横向（用户实测"只增加横向长度，纵向没变化"）
-        this.ctrl.runJavaScript('(function(){var f=window.__mmZoom;if(f){f(' + this.webZoom + ');}})()');
-        return;
-      }
-      this.ctrl.runJavaScript(
-        '(function(){var f=window.applyZoom;if(f){f(' + this.webZoom + ');}' +
-        'else{document.body.style.zoom=' + this.webZoom + ';}})()');
+      // zoomAccess 必须为 true，否则引擎直接忽略（17100004 Function not enabled）
+      this.ctrl.zoom(factor);
+      this.zoomApplied = z;
     } catch (err) {
-      // 页面未就绪时忽略（onPageEnd 后会再应用一次）
+      // 页面未就绪 / 组件尚未挂载：**记账保持不动**，下次变化会重试同一个增量
     }
   }
 
@@ -306,7 +307,7 @@ export struct DiagramWeb {
     try {
       // 重载期间不接受 payload 热注入（等新页面 onPageEnd 后统一首注）
       this.webReady = false;
-      this.ctrl.loadUrl('resource://rawfile/render/' + this.mode + '.html');
+      this.ctrl.loadUrl('resource://rawfile/render/' + this.renderTemplate() + '.html');
     } catch (err) {
       // 页面未就绪：忽略
     }

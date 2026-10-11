@@ -785,6 +785,25 @@ export function codeBlockHeight(lineCount: number, body: number): number {
   return h > 460 ? 460 : h;
 }
 
+/**
+ * 正文里**图表卡片的显示高度上限**（vp），按窗口宽等比而不是写死定值：
+ *
+ * 图表按卡片宽等比铺开时，纵向长的图（类图 / 大流程图）能长到两屏高，把正文
+ * 冲得七零八落（用户实测："类图太长了，缩到一半就挺好"）。给显示层一个
+ * **一屏宽**的上限：手机上那张类图正好缩到六成上下，平板 / 折叠屏展开后
+ * 按比例放宽，不会把大屏的图也一并缩到看不清。
+ *
+ * 图片走 `ImageFit.Contain` → **等比缩小**到框内、不裁切，完整内容仍在，
+ * 要看细节点开放大浮层。
+ *
+ * ⚠️ 只能加在**显示**上，别去压 DiagramWeb 的 hVp 上限：那是后台池烘焙快照时的
+ * **页面高度**，压小它等于把类图下半截直接截掉（旧版 1200 上限就是这么丢内容的）。
+ */
+export function chartCardMaxHeight(winVp: number): number {
+  const w: number = winVp > 0 ? winVp : 361;
+  return w > 600 ? 600 : (w < 340 ? 340 : w);
+}
+
 /** 沉浸光感材质档位 → 可读文案，用于诊断行。 */
 export function materialLevelLabel(level: number): string {
   if (level === 0) {

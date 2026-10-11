@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>指尖烟花 · 预览</title>
+<style>
+  body { margin:0; padding:22px 16px 40px; background:#EDF1F8; color:#1B1F27;
+         font:14px/1.7 "HarmonyOS Sans SC","PingFang SC",system-ui,sans-serif; }
+  h1 { font-size:17px; margin:0 0 4px; }
+  .sub { color:#5B7396; font-size:12.5px; margin-bottom:16px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  .bar span { font-size:12.5px; color:#5B7396; }
+  .bar button { font:12.5px inherit; padding:5px 11px; border-radius:999px; cursor:pointer;
+                border:1px solid rgba(18,50,79,.16); background:#fff; color:#2A3F5F; }
+  .bar button[aria-pressed="true"] { background:#2A3F5F; color:#fff; border-color:#2A3F5F; }
+  /* 卡片宽度决定画布宽度 —— 用外框模拟手机正文里的卡片，验证自适应不拉伸 */
+  #frame { width:380px; max-width:100%; margin:0 auto; transition:width .18s ease; }
+  #frame.wide { width:100%; }
+  @media (prefers-color-scheme: dark) { body { background:#171B24; color:#ECEFF4; }
+    .sub,.bar span { color:#93A3BF; } .bar button { background:#232A38; color:#D6E0F2; border-color:#38445C; } }
+</style>
+</head><body>
+<h1>✦ 指尖烟花 · 演示文档同款</h1>
+<div class="sub">下面这块就是 chengjian.md 里那段 html 代码块的内容，一字未改。
+换宽度是看它在不同卡片宽下会不会被拉伸。</div>
+<div class="bar">
+  <span>卡片宽度</span>
+  <button data-w="300">300</button>
+  <button data-w="360">360</button>
+  <button data-w="380" aria-pressed="true">380</button>
+  <button data-w="480">480</button>
+  <button data-w="700">700</button>
+  <button data-w="full" class="wide">铺满</button>
+</div>
+<div id="frame">
+  <style>
+    .fx {
+      font-family: HarmonyOS Sans, system-ui, sans-serif;
+      padding: 12px 14px 14px; border-radius: 16px; user-select: none;
+      background: radial-gradient(120% 90% at 50% 0%, #1B2340 0%, #0B0E1D 62%, #06070F 100%);
+      border: 1px solid rgba(150,180,255,0.16);
+      box-shadow: 0 10px 30px rgba(6,8,18,0.55);
+    }
+    .fx .hud {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 12.5px; color: #9FB2DC; margin-bottom: 8px;
+      font-variant-numeric: tabular-nums; letter-spacing: .02em;
+    }
+    .fx .hud .t { color:#EAF0FF; font-size:13.5px; text-shadow:0 0 12px rgba(120,180,255,.55); }
+    .fx .hud b { color:#fff; }
+    .fx .combo { margin-left:8px; color:#FFD37A; text-shadow:0 0 10px rgba(255,190,80,.55); }
+    .fx .shape { margin-left:8px; color:#8FE3C8; text-shadow:0 0 10px rgba(120,230,190,.5); }
+    /* 画布按容器宽自适应；位图尺寸由 JS 按 devicePixelRatio 对齐，不会拉伸 */
+    .fx canvas {
+      display:block; width:100%; aspect-ratio:4/3; min-height:150px;
+      border-radius:12px; background:#070A16; touch-action:none;
+    }
+    .fx .tip { margin-top:8px; font-size:11.5px; color:#7286B4; text-align:center; }
+  </style>
+  <div class="fx" id="fxRoot">
+    <div class="hud">
+      <span class="t">✦ 指尖烟花</span>
+      <span>发射 <b id="fxShots">0</b> · 粒子 <b id="fxParts">0</b><span class="shape" id="fxShape"></span><span class="combo" id="fxCombo"></span></span>
+    </div>
+    <canvas id="fxCanvas"></canvas>
+    <div class="tip">点一下炸一朵（爱心 / 星星 / 笑脸 / 菊花…）· 按住拖动拉出光带 · 连点触发二次连爆 · 停手 3 秒自动表演</div>
+  </div>
+  <script>
+  (function () {
+    var cv = document.getElementById('fxCanvas');
+    if (!cv || cv.__fx) { return; }
+    cv.__fx = true;
+    var ctx = cv.getContext('2d');
+    var elShots = document.getElementById('fxShots');
+    var elParts = document.getElementById('fxParts');
+    var elCombo = document.getElementById('fxCombo');
+    var elShape = document.getElementById('fxShape');
+
+    var W = 320, H = 240, u = 1, dpr = 1;
+    var parts = [], rock = [], trail = [], stars = [], fuse = [], flashes = [];
+    var shots = 0, combo = 0, comboT = 0, lastTouch = 0, frame = 0, hueSeed = Math.random() * 360;
+    var MAX = 700, GRAV = 0.055;
+    // 圆壳类 + 造型类（造型用高阻尼"停"在轮廓上，才看得清形状）+ 二次起爆类
+    var KINDS = ['peony', 'ring', 'willow', 'chrys', 'palm', 'crackle',
+      'star', 'heart', 'smiley', 'diamond', 'crossette', 'double'];
+    var CN = {
+      peony: '牡丹', ring: '圆环', willow: '垂柳', chrys: '菊花', palm: '棕榈', crackle: '碎金',
+      star: '五角星', heart: '爱心', smiley: '笑脸', diamond: '菱形', crossette: '二次爆', double: '双响'
+    };
+    var SHAPE_KIND = { star: 1, heart: 1, smiley: 1, diamond: 1 };
+
+    function fit() {
+      var cw = cv.clientWidth || 320, ch = cv.clientHeight || Math.round(cw * 3 / 4);
+      dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+      cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      W = cw; H = ch; u = Math.max(0.7, H / 240);
+      stars = [];
+      for (var i = 0; i < 78; i++) {
+        stars.push({ x: Math.random() * W, y: Math.random() * H * 0.94, r: Math.random() * 1.4 * u + 0.4, p: Math.random() * 6.3 });
+      }
+    }
+
+    function push(p) { if (parts.length < MAX) { parts.push(p); } }
+    function flash(x, y, hue, a) { flashes.push({ x: x, y: y, hue: hue, life: 12, a: a || 1 }); }
+
+    // 沿多边形周长均匀取 n 个点（五角星 / 菱形用）
+    function walkPoly(v, n) {
+      var seg = [], total = 0, i, j, a, b, d;
+      for (i = 0; i < v.length; i++) {
+        a = v[i]; b = v[(i + 1) % v.length];
+        d = Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+        seg.push(d); total += d;
+      }
+      var out = [], step = total / n, acc = 0, si = 0, sl = 0;
+      for (j = 0; j < n; j++) {
+        var want = step * j;
+        while (si < seg.length - 1 && want > acc + seg[si]) { acc += seg[si]; si++; }
+        var t = seg[si] > 0 ? (want - acc) / seg[si] : 0;
+        a = v[si]; b = v[(si + 1) % v.length];
+        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      }
+      return out;
+    }
+
+    // 造型轮廓上的单位方向（长度即相对速度）
+    function shapePts(kind, n) {
+      var out = [], i, a, t, m;
+      if (kind === 'star') {
+        var v = [];
+        for (i = 0; i < 10; i++) {
+          a = Math.PI / 5 * i - Math.PI / 2;
+          var r = (i % 2 === 0) ? 1 : 0.42;
+          v.push([Math.cos(a) * r, Math.sin(a) * r]);
+        }
+        return walkPoly(v, n);
+      }
+      if (kind === 'diamond') { return walkPoly([[0, -1], [0.6, 0], [0, 1], [-0.6, 0]], n); }
+      if (kind === 'heart') {
+        for (i = 0; i < n; i++) {
+          t = Math.PI * 2 * i / n;
+          var hx = 16 * Math.pow(Math.sin(t), 3);
+          var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+          out.push([hx / 15, -hy / 15]);
+        }
+        return out;
+      }
+      if (kind === 'smiley') {
+        m = Math.floor(n * 0.55);
+        for (i = 0; i < m; i++) { a = Math.PI * 2 * i / m; out.push([Math.cos(a), Math.sin(a)]); }
+        var eyes = [[-0.38, -0.3], [0.38, -0.3]], e, k, mm = Math.floor(n * 0.08);
+        for (e = 0; e < 2; e++) {
+          for (k = 0; k < mm; k++) {
+            a = Math.PI * 2 * k / mm;
+            out.push([eyes[e][0] + Math.cos(a) * 0.13, eyes[e][1] + Math.sin(a) * 0.18]);
+          }
+        }
+        m = Math.floor(n * 0.22);
+        for (i = 0; i < m; i++) {
+          a = Math.PI * (0.18 + 0.64 * i / m);
+          out.push([Math.cos(a) * 0.62, 0.2 + Math.sin(a) * 0.42]);
+        }
+        return out;
+      }
+      return out;
+    }
+
+    function shell(x, y, hue, kind, n) {
+      var i, a, sp, life, p;
+      if (SHAPE_KIND[kind]) {
+        var pts = shapePts(kind, n);
+        var R = Math.min(W, H) * 0.29;
+        var dr = 0.885, V = R * (1 - dr);
+        for (i = 0; i < pts.length; i++) {
+          life = 74 + Math.random() * 30;
+          push({
+            x: x, y: y, vx: pts[i][0] * V, vy: pts[i][1] * V,
+            life: life, max: life, hue: hue + (i % 9) * 2.2, s: 2.1 * u,
+            dr: dr, g: 0.012 * u, tw: Math.random() * 6.3, st: false, k: kind
+          });
+        }
+        flash(x, y, hue, 0.7);
+        return;
+      }
+      for (i = 0; i < n; i++) {
+        a = (Math.PI * 2 * i) / n + Math.random() * 0.08;
+        if (kind === 'palm' && i % 3) { continue; }
+        sp = (1.5 + Math.random() * 2.4) * u;
+        if (kind === 'ring') { sp = 2.9 * u; }
+        if (kind === 'willow') { sp = 1.7 * u; }
+        life = 64 + Math.random() * 44;
+        p = {
+          x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+          life: life, max: life, hue: hue + (kind === 'willow' ? 0 : Math.random() * 26 - 13),
+          s: (kind === 'chrys' ? 2.1 : 2.7) * u, dr: kind === 'willow' ? 0.985 : 0.962,
+          g: kind === 'willow' ? GRAV * 0.55 : (kind === 'ring' ? GRAV * 1.4 : GRAV),
+          tw: Math.random() * 6.3, st: kind === 'chrys' || kind === 'palm', k: kind
+        };
+        // 二次起爆：一部分粒子飞到一半再各自炸一小朵
+        if (kind === 'crossette' && i % 7 === 0) { p.split = Math.floor(life * 0.52); }
+        push(p);
+      }
+      if (kind === 'crackle') {
+        for (i = 0; i < 14; i++) {
+          a = Math.random() * 6.3; sp = Math.random() * 1.3 * u;
+          push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 22 + Math.random() * 26,
+            max: 48, hue: hue + 30, s: 1.2 * u, dr: 0.97, g: GRAV * 0.8, tw: Math.random() * 6.3, st: false, k: 'sp' });
+        }
+      }
+      flash(x, y, hue, 1);
+    }
+
+    function launch(tx, ty) {
+      // 贴着边点会把整个造型甩出画布（爱心被裁掉半朵很难看），先把炸点收进安全区。
+      // 0.32 而不是 shell 里的 0.29：爱心的横向外扩是标称半径的 ~1.07 倍
+      var R = Math.min(W, H) * 0.32;
+      tx = Math.min(W - R, Math.max(R, tx));
+      ty = Math.min(H - R * 0.75, Math.max(R * 0.8, ty));
+      var sx = tx + (Math.random() * 2 - 1) * W * 0.14;
+      var dx = tx - sx, dy = ty - (H + 6 * u), d = Math.sqrt(dx * dx + dy * dy) || 1;
+      var sp = 6.4 * u + Math.random() * 1.4 * u;
+      rock.push({ x: sx, y: H + 6 * u, vx: dx / d * sp, vy: dy / d * sp, tx: tx, ty: ty,
+        hue: (hueSeed + Math.random() * 160) % 360, k: KINDS[(Math.random() * KINDS.length) | 0], n: 0 });
+      shots++;
+      var now = Date.now();
+      combo = (now - comboT < 900) ? combo + 1 : 1;
+      comboT = now;
+    }
+
+    function spark(x, y, vx, vy, hue) {
+      if (trail.length > 240) { trail.shift(); }
+      trail.push({ x: x, y: y, vx: vx * 0.25 + (Math.random() - 0.5) * 0.7 * u,
+        vy: vy * 0.25 + (Math.random() - 0.5) * 0.7 * u, life: 18, max: 18, hue: hue, s: 1.15 * u });
+    }
+
+    function step() {
+      frame++;
+      var i, j, p, r, q;
+      for (i = rock.length - 1; i >= 0; i--) {
+        r = rock[i]; r.n++;
+        r.x += r.vx; r.y += r.vy; r.vy += 0.05 * u;
+        if (r.n % 3 === 0) { spark(r.x, r.y, r.vx, r.vy, r.hue); }
+        if (r.n > 3 && (r.y <= r.ty || Math.abs(r.x - r.tx) < 3 * u)) {
+          var n = 84 + ((Math.random() * 48) | 0) + (combo > 2 ? 24 : 0);
+          if (SHAPE_KIND[r.k]) { n = Math.floor(n * 0.9); }
+          shell(r.tx, r.ty, r.hue, r.k, n);
+          showShape(r.k);
+          // 双响：主炸之后隔一拍再补一炸；连点够快还会多朵齐放
+          if (r.k === 'double') { fuse.push({ x: r.tx, y: r.ty, t: 26, hue: (r.hue + 150) % 360, k: 'chrys' }); }
+          if (combo >= 3) {
+            shell(r.tx + (Math.random() * 2 - 1) * 44 * u, r.ty + (Math.random() * 2 - 1) * 28 * u,
+              (r.hue + 40) % 360, KINDS[(Math.random() * KINDS.length) | 0], 46);
+          }
+          if (combo >= 6) {
+            for (q = 0; q < 3; q++) {
+              fuse.push({ x: r.tx + (Math.random() * 2 - 1) * 80 * u, y: r.ty + (Math.random() * 2 - 1) * 40 * u,
+                t: 10 + q * 12, hue: (r.hue + 90 + q * 34) % 360, k: KINDS[(Math.random() * KINDS.length) | 0] });
+            }
+          }
+          rock.splice(i, 1);
+        } else if (r.y > H + 12 * u || r.n > 140) { rock.splice(i, 1); }
+      }
+      for (i = fuse.length - 1; i >= 0; i--) {
+        fuse[i].t--;
+        if (fuse[i].t <= 0) {
+          shell(fuse[i].x, fuse[i].y, fuse[i].hue, fuse[i].k, 56);
+          if (fuse[i].k === 'double') { fuse.push({ x: fuse[i].x, y: fuse[i].y, t: 20, hue: (fuse[i].hue + 120) % 360, k: 'ring' }); }
+          fuse.splice(i, 1);
+        }
+      }
+      for (i = parts.length - 1; i >= 0; i--) {
+        p = parts[i];
+        p.vx *= p.dr; p.vy = p.vy * p.dr + p.g * u;
+        p.x += p.vx; p.y += p.vy; p.life--;
+        if (p.split && p.life === p.split) {
+          shell(p.x, p.y, (p.hue + 60) % 360, 'ring', 14);
+          p.split = 0;
+        }
+        if (p.life <= 0 || p.y > H + 8 * u) { parts.splice(i, 1); }
+      }
+      for (i = trail.length - 1; i >= 0; i--) {
+        p = trail[i];
+        p.x += p.vx; p.y += p.vy; p.vy += 0.03 * u; p.life--;
+        if (p.life <= 0) { trail.splice(i, 1); }
+      }
+      for (i = flashes.length - 1; i >= 0; i--) { flashes[i].life--; if (flashes[i].life <= 0) { flashes.splice(i, 1); } }
+
+      if (Date.now() - lastTouch > 3000 && frame % 46 === 0) {
+        launch(W * (0.14 + Math.random() * 0.72), H * (0.12 + Math.random() * 0.4));
+        lastTouch = Date.now() - 2200;
+      }
+      if (combo && Date.now() - comboT > 900) { combo = 0; }
+    }
+
+    var shapeT = 0;
+    function showShape(k) {
+      if (!elShape) { return; }
+      elShape.innerText = '· ' + (CN[k] || k);
+      shapeT = frame + 72;
+    }
+
+    function draw() {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(7,10,22,0.25)';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.globalCompositeOperation = 'lighter';
+      var i, p, a, g;
+      for (i = 0; i < stars.length; i++) {
+        p = stars[i];
+        a = 0.26 + 0.26 * Math.sin(frame * 0.02 + p.p);
+        ctx.fillStyle = 'rgba(200,218,255,' + a.toFixed(3) + ')';
+        ctx.fillRect(p.x, p.y, p.r, p.r);
+      }
+      for (i = 0; i < flashes.length; i++) {
+        p = flashes[i]; a = (p.life / 12) * p.a;
+        g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 30 * u);
+        g.addColorStop(0, 'hsla(' + p.hue + ',100%,74%,' + (0.14 * a).toFixed(3) + ')');
+        g.addColorStop(1, 'hsla(' + p.hue + ',100%,60%,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 30 * u, 0, 6.3); ctx.fill();
+      }
+      for (i = 0; i < trail.length; i++) {
+        p = trail[i]; a = p.life / p.max;
+        ctx.fillStyle = 'hsla(' + p.hue + ',100%,' + (62 + 22 * a) + '%,' + (a * 0.8).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * a + 0.3, 0, 6.3); ctx.fill();
+      }
+      for (i = 0; i < parts.length; i++) {
+        p = parts[i]; a = p.life / p.max;
+        var tw = 0.74 + 0.26 * Math.sin(frame * 0.5 + p.tw);
+        var al = (a > 0.86 ? 1 : a) * tw;
+        ctx.strokeStyle = 'hsla(' + p.hue + ',94%,' + (52 + 16 * a) + '%,' + (al * 0.92).toFixed(3) + ')';
+        ctx.lineWidth = p.s;
+        // 先铺一层大而淡的光晕再画亮核：叠加混合下才有"发光"而不是"点"
+        ctx.fillStyle = 'hsla(' + p.hue + ',94%,60%,' + (al * 0.05).toFixed(3) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * 2.3, 0, 6.3); ctx.fill();
+        if (p.st) {
+          ctx.beginPath(); ctx.moveTo(p.x - p.vx * 2.4, p.y - p.vy * 2.4); ctx.lineTo(p.x, p.y); ctx.stroke();
+        } else {
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (0.5 + a * 0.6), 0, 6.3); ctx.fill();
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      if (frame % 8 === 0) {
+        if (elShots) { elShots.innerText = String(shots); }
+        if (elParts) { elParts.innerText = String(parts.length + trail.length); }
+        if (elCombo) { elCombo.innerText = combo >= 2 ? '连锁 x' + combo : ''; }
+        if (elShape && frame > shapeT) { elShape.innerText = ''; }
+      }
+    }
+
+    function loop() {
+      if (!document.body.contains(cv)) { return; }
+      step(); draw();
+      requestAnimationFrame(loop);
+    }
+
+    var down = false, px = 0, py = 0;
+    function xy(e) {
+      var r = cv.getBoundingClientRect();
+      var t = (e.touches && e.touches[0]) || e;
+      return { x: (t.clientX - r.left), y: (t.clientY - r.top) };
+    }
+    function onDown(e) {
+      e.preventDefault();
+      var p = xy(e); down = true; px = p.x; py = p.y; lastTouch = Date.now();
+      launch(p.x, Math.max(H * 0.12, p.y));
+    }
+    function onMove(e) {
+      if (!down) { return; }
+      e.preventDefault();
+      var p = xy(e), hue = (hueSeed + frame) % 360;
+      for (var k = 0; k < 3; k++) {
+        spark(px + (p.x - px) * (k / 3), py + (p.y - py) * (k / 3), p.x - px, p.y - py, hue);
+      }
+      px = p.x; py = p.y; lastTouch = Date.now();
+    }
+    function onUp() { down = false; }
+
+    fit();
+    if (typeof ResizeObserver !== 'undefined') { new ResizeObserver(function () { fit(); }).observe(cv); }
+    window.addEventListener('resize', fit);
+    cv.addEventListener('pointerdown', onDown);
+    cv.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    cv.addEventListener('pointercancel', onUp);
+    cv.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+    document.addEventListener('keydown', function (e) {
+      if (e.code === 'Space') { e.preventDefault(); launch(W * (0.2 + Math.random() * 0.6), H * (0.15 + Math.random() * 0.35)); lastTouch = Date.now(); }
+    });
+
+    launch(W * 0.5, H * 0.3);
+    requestAnimationFrame(loop);
+  })();
+  </script>
+
+</div>
+<script>
+(function () {
+  var frame = document.getElementById('frame');
+  var btns = document.querySelectorAll('.bar button');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].addEventListener('click', function () {
+      for (var k = 0; k < btns.length; k++) { btns[k].setAttribute('aria-pressed', 'false'); }
+      this.setAttribute('aria-pressed', 'true');
+      frame.classList.toggle('wide', this.dataset.w === 'full');
+      if (this.dataset.w !== 'full') { frame.style.width = this.dataset.w + 'px'; }
+    });
+  }
+})();
+</script>
+</body></html>

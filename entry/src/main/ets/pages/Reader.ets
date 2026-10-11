@@ -384,8 +384,13 @@ export struct Reader {
   @State blobAY: number = 0;
   @State blobBX: number = 0;
   @State blobBY: number = 0;
-  // （旧的原生捏合/平移状态已删：缩放改由 DiagramWeb 的 webZoom + Web 原生双指完成）
+  // 浮层缩放：± 按钮写 webZoom，由 DiagramWeb 换算成引擎的相对缩放
+  // （WebviewController.zoom）；双指捏合走引擎自带的页面缩放，两者是同一个
+  // 页面比例，可以叠加。⚠️ 不要改成自己接 ArkUI 手势：Web 组件在原生层就吃掉
+  // 了触摸序列，外层手势收不到双指，实测反而把捏合彻底弄没了。
   @State enlargePayload: string = '';
+  /** 代码块放大时的**已高亮 HTML**（与正文卡片同一套分词配色；空=纯文本） */
+  @State enlargeRichHtml: string = '';
   /** 放大浮层的一镜到底共享 id（与正文里那张卡片同 id） */
   @State enlargeGeo: string = '';
   /** 放大浮层的 Web 组件 id（导出图片快照按 id 抓） */
@@ -446,8 +451,9 @@ export struct Reader {
   }
 
   /**
-   * 缩放倍率步进（±25%）。范围 **0.25~4**（用户反馈：原 0.5~3 默认有时太大
+   * 缩放倍率步进（±25%）。范围 **0.05~4**（用户反馈：原 0.5~3 默认有时太大
    * 又不能再缩小）——放大时需要更小的下限才能把大图整体收进视野。
+   * 与双指捏合不冲突：两者作用在同一个引擎页面比例上，可叠加。
    */
   private zoomBy(factor: number): void {
     // **图片模式**：缩放作用在原生 Image 上（不走 Web）
@@ -459,13 +465,22 @@ export struct Reader {
       this.imgScale = Math.min(8, Math.max(0.05, next));
       return;
     }
-    // **手动无限缩小**（用户要求）：不设实际下限 —— 只挡 0 / 异常值（1% 以下
-    // 图形已不可辨，再小没有意义且容易触发除零类问题）；放大上限仍为 4 倍。
-    const next: number = this.webZoom * factor;
-    if (!(next > 0)) {
+    this.setWebZoom(this.webZoom * factor);
+  }
+
+  /**
+   * **唯一的 webZoom 写入出口**（± 按钮用）。
+   *
+   * ⚠️ 下限 **0.05 必须与渲染模板 viewport 的 `minimum-scale=0.05` 对齐**：
+   * DiagramWeb 是按「目标倍率 ÷ 已应用倍率」给引擎发相对增量的，如果这里允许
+   * 记到 0.01 而引擎只肯到 0.05，两边就会错位 —— 表现为往回放大时前几下一点
+   * 反应没有（要先"吃掉"那段虚假的差额）。上限同理留在 maximum-scale=10 之内。
+   */
+  private setWebZoom(v: number): void {
+    if (!(v > 0)) {
       return;
     }
-    this.webZoom = Math.min(4, Math.max(0.01, next));
+    this.webZoom = Math.min(4, Math.max(0.05, v));
   }
 
   /**
@@ -1349,6 +1364,8 @@ export struct Reader {
     }
     this.enlargePrevMode = this.enlargeMode;
     this.enlargeMode = 'code';
+    // 图表源码不是任何编程语言，必须清掉高亮 HTML（否则会拿上一次的配色乱染一屏）
+    this.enlargeRichHtml = '';
   }
 
   /** 切换沉浸阅读：进入即收起顶栏 / 底栏，退出即恢复。 */
@@ -5105,6 +5122,12 @@ export struct Reader {
       // 用于隐藏「查看源码」开关（见 enlargeHasCode）
       this.enlargePrevMode = '';
       this.enlargePayload = pl;
+      // **代码块放大补上语法颜色**：正文卡片是 ArkUI Span 逐 token 上色，浮层走 Web，
+      // 此前只喂纯文本 → 一放大颜色全丢（用户实测）。用**同一套**分词与配色生成
+      // 带色 HTML 随 payload 注入，两处逐 token 一致；代码块的 title 就是围栏语言 id。
+      this.enlargeRichHtml = mode === 'code'
+        ? MdViewUtil.highlightToHtml(pl, title, this.palette())
+        : '';
       this.enlargeGeo = geoKey;
       this.enlargeTitle = title;
       // 每次打开生成唯一 Web id：导出图片快照按它定位；
@@ -7597,16 +7620,19 @@ export struct Reader {
                   .fontSize(15)
                   .fontColor([this.isDark() ? '#FFFFFFFF' : '#E6222226'])
               }
-              // **刷新**（用户要求）：图表内容挤在一起时，按当前的缩放比例与容器尺寸
-              // 让页面重新自适应（refit）—— mermaid / markmap / graphviz / svg 会按
-              // 新宽度重新排布，不用退出重进。图片模式没有 refit 概念，不显示此按钮。
+              // **刷新**（用户要求）：图表内容挤在一起时，按当前容器尺寸重新排布
+              // （refit）—— mermaid / markmap / graphviz / svg 会按新宽度重画，
+              // 不用退出重进；缩放同时归 1。图片模式没有 refit 概念，不显示此按钮。
               if (this.enlargeMode !== 'image') {
                 ImmersiveIconButton({
                   buttonSize: 34,
                   buttonMaterialShadow: false,
                   palette: this.palette(),
                   buttonOnTap: () => {
-                    // 递增触发 DiagramWeb 的 @Watch('doRefit') → 重载页面按当前容器重渲染
+                    // 递增触发 DiagramWeb 的 @Watch('doRefit') → 重载页面按当前容器重渲染。
+                    // 重载会把引擎页面比例打回 1 倍，所以这里同步把 webZoom 也归 1，
+                    // 否则记账与实际显示错位，之后按 ± 会先"空转"几档
+                    this.webZoom = 1;
                     this.enlargeRefitTick = this.enlargeRefitTick + 1;
                   }
                 }) {
@@ -7695,10 +7721,16 @@ export struct Reader {
                   DiagramWeb({
                     mode: this.enlargeMode,
                     payload: this.enlargePayload,
+                    // 代码放大的高亮 HTML（其它模式为空，模板按纯文本渲染）
+                    richHtml: this.enlargeRichHtml,
                     dark: this.isDark(),
                     // ⚠️ **页面底色必须不透明**：透明 Web 表面在「一镜到底」退场的
                     // geometryTransition 快照里被系统合成成垃圾色（真机：卡片发红）
                     cardBg: withAlpha(this.palette().codeBlockBg, 'FF'),
+                    // ⚠️ 双指捏合**必须留给引擎**（zoomAccess=true）：DiagramWeb 是
+                    // Web 组件，它在原生层就吞掉触摸序列，外层套 ArkUI 手势收不到
+                    // 双指（实测：套了 priorityGesture 反而彻底不能捏合）。而且
+                    // ctrl.zoom() 与捏合是同一个页面比例，± 与双指天然叠加。
                     zoom: true,
                     fit: true,
                     fillHeight: true,

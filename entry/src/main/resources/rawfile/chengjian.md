@@ -45,6 +45,9 @@
 - [MrCashmere/miha_hm](https://github.com/MrCashmere/miha_hm)：沉浸光感承载层（Toggle + attributeModifier）方案
 - [skadjhljhas/zhumo-reader](https://github.com/skadjhljhas/zhumo-reader)：注释卡片式的阅读形态
 - [younghz/Markdown](https://github.com/younghz/Markdown)：《Markdown 语法教程》的语法口径与分类参考
+- [Vditor](https://b3log.org/vditor/)：浏览器端 Markdown 编辑器（b3log / 88250 团队）；该团队的
+  [链滴](https://ld246.com) 社区所著《Markdown 使用指南》系列是本文档第三节语法教程的分节与
+  覆盖面参考（详见文末「参考与声明」）
 - [luvi/lv-markdown-in](https://gitee.com/luvi/lv-markdown-in)：代码块行号 / 折叠 / 操作区、HTML 常用标签与 **font 快速样式**、懒渲染与预渲染块数的实现思路
 
 **内置的渲染组件**（随应用打包、全部离线可用，各自遵循其原始开源许可，许可全文见各自仓库）：
@@ -103,61 +106,339 @@
 
 ---
 
-## 三、排版示例：这篇文档本身就是样张
+## 三、Markdown 语法教程
 
-### 强调与标记
+> [!NOTE]
+> 这一节**既是教程也是样张**：下面每一条示例都在这篇文档里真实渲染，看到的排版就是它自己的效果。
+> 语法的分类与讲解顺序参考了链滴 Vanessa 的《Markdown 使用指南》系列（见文末**参考与声明**），
+> 但内容**按澄笺的实际支持情况逐条重写**了 —— 标准写法很多，澄笺只实现了一部分，
+> 不支持的会在 3.16 明确列出，免得你照着写完发现没反应。
 
-**粗体**、*斜体*、***粗斜体***、~~删除线~~、==高亮==、`行内代码`。
+### 3.1 标题
 
-### 列表与任务
+两种写法都认。ATX 用 `#` 的个数定层级（1~6 级），Setext 用下一行的 `===` / `---`：
 
-- 无序列表第一项
-- 第二项
+```
+# 一级标题        ←  本文档的大节用 ##，所以正文里你看不到 H1
+## 二级标题         ←  就是「三、Markdown 语法教程」这一行
+### 三级标题        ←  就是「3.1 标题」这一行
+…… 一直到 ######  六级
+
+Setext 一级标题
+===============
+
+Setext 二级标题
+---------------
+```
+
+**最佳实践**：一篇文档只放一个 H1；别跳级（H2 下面直接 H4）—— 澄笺的目录面板按层级缩进，跳级会看起来错位。
+
+### 3.2 段落与折行
+
+空一行就是新段落。这是第一段。
+
+这是第二段，中间隔了一个空行。
+
+> [!WARNING]
+> **澄笺没有"硬换行"**：段落内部的单次换行会被并成一个空格（上面这两段就是靠空行分开的）。
+> 常见的"行尾加两个空格"或"行尾加 `\`"在澄笺里都不产生换行。要断行就空行分段，
+> 或者改用列表、表格、引用。
+
+### 3.3 强调与标记
+
+**粗体**、*斜体*、***粗斜体***、~~删除线~~、==高亮==、`行内代码`、上标 x^2^、下标 H~2~O。
+
+同一个词可以叠加：***又粗又斜***、**粗体里有 `代码` 和 ==高亮==**。
+
+### 3.4 块引用与提示块
+
+> 单层引用。
+>
+> > 嵌套一层，适合"引用里再引用"。
+> >
+> > > 还能更深，但手机上三层已经很挤了。
+
+提示块是 GFM 风格，一共五类，颜色各不相同 —— NOTE 蓝、TIP 绿、IMPORTANT 紫、WARNING 黄、CAUTION 红：
+
+> [!TIP]
+> 提示块要在 `> [!类型]` 之后**换行**写正文，写在同一行不会被识别。
+
+> [!CAUTION]
+> 类型名不区分大小写，`> [!tip]` 和 `> [!TIP]` 一样；但必须是这五种之一，写错会退化成普通引用。
+
+### 3.5 列表
+
+无序列表的 `-` `*` `+` 三种标记等价（**建议统一用 `-`**，混用时源码不好读）：
+
+- 第一项
+- 第二项里可以有 **粗体**、`代码`、[链接](#3-5-列表) 和 ==高亮==
   - 缩进两格就是嵌套
-  - 嵌套也能有自己的行内标记，比如 **加粗**
-- 第三项结束了
+  - 嵌套层里再来一层：
+    - 第三层
+    - 还是第三层
+- 收尾项
 
-1. 有序列表按数字自增
-2. 中间插入别的编号不打断顺序
-3. 第三项
+有序列表按数字自增，中间换编号不打断顺序：
+
+1. 第一步
+2. 第二步
+3. 第三步
+
+列表项可以有**续行**：比标记缩进更深、又不算新块起始的行，会接进同一个列表项 ——
+
+- 这是第一项的第一行，
+  这是它的续行，两行都属于第一项。
+- 第二项。
+
+> [!WARNING]
+> **列表项里嵌不了代码块和引用**。围栏、`>` 开头、标题、分隔线、脚注定义、另一个列表标记，
+> 在澄笺里都算"新的块起始"，遇到它们当前列表就地断开，那些内容会作为**独立的块**显示在下面。
+> 空一行同样会结束当前列表。想要"代码块紧跟在列表后面"，直接写在列表下面即可，只是它不属于那一项。
+
+任务列表（GFM）：
 
 - [x] 已完成：把这篇文档读完
 - [ ] 待办：长按一段文字试试批注
 - [ ] 待办：把标签栏切到底部看看
 
-### 引用与提示块
+### 3.6 代码
 
-> 单层引用
->> 嵌套一层，用来做"引用里再引用"
->>> 还能再深一层，但三层已经很挤了
+行内代码用一对反引号包住：`npm run build`、`SELECT * FROM docs`。
 
-> [!NOTE]
-> 五类提示块的颜色各不相同：NOTE 蓝、TIP 绿、IMPORTANT 紫、WARNING 黄、CAUTION 红。
+> [!WARNING]
+> 澄笺的行内代码**只认单对反引号**：内容里不能再出现反引号，标准里"外面用两个反引号来包住
+> 含反引号的内容"这种写法在澄笺不生效（会被当成一对空代码块）。要写反引号本身，只能放进围栏代码块。
+
+围栏代码块：单独一行写三个反引号起始，后面可以跟语言名以获得语法高亮；再以单独一行同样的标记结束。
+另一种起始标记是三个波浪号。
+
+```js
+const greet = function (name) { return '你好，' + name; };
+```
+
+~~~python
+def fib(n):
+    return n if n < 2 else fib(n - 1) + fib(n - 2)
+~~~
+
+语言名写成 `mermaid` / `echarts` / `markmap` / `graphviz` / `flowchart` / `abc` / `html`
+时不再是"高亮代码"，而是**直接渲染成图表或可交互预览** —— 见第五节和第九节。
+
+### 3.7 分隔线
+
+下面这条就是 `---`（`***`、`___` 等价）：
+
+---
+
+### 3.8 超链接
+
+三种写法（**这一节里的网址都是 `example.com` 占位域名**，专门留给文档示例用，
+不是真实站点；本文档只有「开源与致谢」和文末「参考与声明」里放真链接）：
+
+- 行内式：[带标题的链接](https://example.com "示例站点")（URL 后面空格加引号写标题，标题只在悬停/提示里出现）
+- 引用式：正文写 [引用式链接][ref-1]，文末（任意位置）写定义 —— 适合同一个链接出现很多次
+- 自动链接：裸写 https://example.com 就会自己变成链接
+
+引用式定义长这样（上面那个"引用式链接"就是靠它生效的，点开是占位页）：
+
+[ref-1]: https://example.com/guide "引用式链接的定义"
+
+**不想让某个 URL 变成链接**？把它写成行内代码就不会自动识别：`https://example.com`。
+（别指望反斜杠 —— 可转义字符集合里没有冒号，`https\://…` 会把那个反斜杠原样显示出来。）
+
+**站内跳转**：`#` 后面写**目标标题的文字**，例如 [← 跳回 3.5 列表](#3-5-列表)。
+匹配时会忽略空格、大小写和常见标点（`-` `_` `.` `/` `·` `。` `，` `、` `：` `:`），
+所以 `#3.5 列表`、`#3-5-列表`、`#35列表` 都能命中同一个标题。找不到时会提示"找不到锚点"。
+
+> [!WARNING]
+> 澄笺**不认尖括号写法** `<https://example.com>` —— 那不是自动链接，会照原样显示字符。
+> 另外站内锚点用的是"标题文字"，**不是** GitHub 那种 `#my-section-id` 片段。
+
+### 3.9 图片
+
+```
+![替代文字](images/cover.png "标题，可省略")
+[![点我打开首页](小图.png)](https://example.com)
+```
+
+链接套图片是合法的，整张图会变成可点的链接。图片的实际显示效果与点击放大见第二节。
+
+### 3.10 转义字符
+
+在符号前加反斜杠即可让它失去语法含义，澄笺认这一批：
+
+```
+\  `  *  _  {  }  [  ]  (  )  #  +  -  .  !  ~  =  |  >
+```
+
+例如想写出字面的 \*\*不是粗体\*\*，或者 1990\. 不想被当成有序列表。
+
+### 3.11 表格
+
+冒号控制列对齐：`:---` 左、`:---:` 中、`---:` 右。单元格里**可以写行内标记**：
+
+| 能力 | 入口 | 说明 |
+| --- | :---: | ---: |
+| 全文搜索 | 书架顶栏 | 正文与文件名都搜 |
+| 文档内查找 | 阅读页 | 命中**全部高亮** |
+| 跳转行 | 编辑页 → 更多 | 输入行号直达 |
+| 版本对比 | 编辑页 → 版本历史 | 左右分屏，支持 `==高亮==` |
+
+表格过宽时内部横向滚动；点表格会打开可视化编辑器。
+
+### 3.12 脚注
+
+正文里放一个引用[^1]，另一处再来一个[^2]。
+
+[^1]: 脚注定义写在文档任意位置（`[^标签]: 内容`），澄笺会把它们收集起来统一展示。
+[^2]: 标签可以是中文，比如 `[^注]` 配 `[^注]: 内容`，只要两边一致。
+
+### 3.13 Emoji
+
+短代码 `:名字:` 会渲染成表情：:smile: :grin: :joy: :rofl:。
+中文标点、emoji 直接打进正文也完全正常，不必都走短代码。
+
+### 3.14 折叠块
+
+块级的 `<details>` / `<summary>` 会被识别成可展开的折叠块（正文里的其他 HTML 标签不算）：
+
+<details>
+<summary>点我展开：一段不想常驻屏幕的补充说明</summary>
+
+折叠起来的内容支持完整的行内标记 —— **粗体**、`代码`、列表都行。
+
+- 比如这样一个列表项
+
+</details>
+
+### 3.15 正文里的 HTML
 
 > [!IMPORTANT]
-> 提示块要在 `> [!类型]` 之后**换行**写内容，同一行写正文不会被识别。
+> **行内 HTML 标签不渲染**，会按纯文本显示（例如 `<b>粗</b>` 会原样看到尖括号）。
+> 但把语言写成 `html` 的**围栏代码块**例外：它会渲染成可交互的预览卡片，`<script>` 照常执行
+> —— 见第九节那个能用手指点着放的烟花。
 
-### 表格
+### 3.16 澄笺不支持的写法
 
-| 能力 | 快捷键 / 入口 | 备注 |
-| --- | :---: | ---: |
-| 全文搜索 | 书架顶栏放大镜 | 正文与文件名都搜 |
-| 文档内查找 | 阅读页放大镜 | 高亮全部命中 |
-| 跳转行 | 编辑页更多 | 输入行号直达 |
-| 版本对比 | 编辑页更多 → 版本历史 | 左右分屏 |
+照着标准写之前，先排除这几样 —— 它们**不会报错**，只会"没有效果"，最容易让人困惑：
+
+> [!CAUTION]
+> - **4 空格缩进代码块**：缩进只当列表/引用层级处理，代码请用围栏代码块（见 3.6）
+> - **尖括号自动链接** `<https://…>`：照原样显示，见 3.8
+> - **标题自定义 ID** `### 标题 {#my-id}`：花括号部分不会被识别
+> - **行内 HTML**：见 3.15
+> - **硬换行**（行尾两空格 / 行尾 `\`）：见 3.2
+> - **跨文件引用**：澄笺是单文档模型，没有 `{% include %}` 之类的机制
 
 ---
 
 ## 四、数学公式
 
-行内公式直接写在句子里：质能方程 $E = mc^2$，勾股定理 $a^2 + b^2 = c^2$，
-圆面积 $S = \pi r^2$。
+公式由 **KaTeX** 排版，行内与块级四种写法都支持：`$…$`、`\(…\)`、`$$…$$`、`\[…\]`。
+下面按类别给出**可直接复制走**的写法，全部是真实渲染结果（不是截图），逐条对照即可
+判断某类语法是否受支持。
 
-块级公式单独成段，适合展示推导：
+### 4.1 行内：混在句子里
+
+质能方程 $E = mc^2$，勾股定理 $a^2 + b^2 = c^2$，圆面积 $S = \pi r^2$，欧拉恒等式
+$e^{i\pi} + 1 = 0$，标准差 $\sigma = \sqrt{\frac{1}{N}\sum_{i=1}^{N}(x_i-\mu)^2}$。
+
+> [!WARNING]
+> 开头的 `$` 后面**不能紧跟空格**：`$ a+b $` 会被当成普通美元符号，要写 `$a+b$`。
+
+### 4.2 希腊字母
+
+$\alpha,\ \beta,\ \gamma,\ \theta,\ \lambda,\ \mu,\ \pi,\ \sigma,\ \phi,\ \omega$
+
+$\Gamma,\ \Delta,\ \Theta,\ \Lambda,\ \Sigma,\ \Phi,\ \Omega$
+
+### 4.3 上下标
+
+普通上标 $x^2,\ e^{i\pi},\ a^{b^c}$；普通下标 $x_1,\ a_{ij},\ H_2O$；
+同排上下标 $x_1^2,\ A_{ij}^{k}$。
+
+### 4.4 分式与根式
+
+行内有 $\frac{a}{b},\ \frac{n!}{k!},\ \tfrac{1}{2},\ \dfrac{x+1}{x-1}$，根式有
+$\sqrt{x},\ \sqrt[3]{8},\ \sqrt[n]{x^2}$。嵌套分式单独成块更清楚：
 
 $$
-\frac{d}{dx}\left( \int_{a}^{x} f(t)\,dt \right) = f(x)
+\frac{1}{1 + \frac{1}{1 + \frac{1}{x}}}
 $$
+
+### 4.5 运算符、关系与逻辑
+
+$+,\ -, \times,\ \div,\ \pm,\ \mp,\ \cdot,\ \ast,\ \star,\ \circ$
+
+$\oplus,\ \otimes,\ \odot,\ \bullet,\ \cap,\ \cup$
+
+$=,\ \neq,\ <,\ >,\ \leq,\ \geq,\ \ll,\ \gg,\ \approx,\ \equiv,\ \propto,\ \sim$
+
+$\forall,\ \exists,\ \neg,\ \wedge,\ \vee,\ \therefore,\ \because$
+
+### 4.6 箭头
+
+$\to,\ \rightarrow,\ \leftarrow,\ \uparrow,\ \downarrow,\ \mapsto,\ \longmapsto$
+
+$\Rightarrow,\ \Leftarrow,\ \Leftrightarrow,\ \implies,\ \iff,\ \longrightarrow$
+
+### 4.7 集合论
+
+$\subset,\ \subseteq,\ \supset,\ \in,\ \notin,\ \setminus,\ \emptyset,\ \varnothing$
+
+数集记号 $\mathbb{N},\ \mathbb{Z},\ \mathbb{Q},\ \mathbb{R},\ \mathbb{C}$，
+描述法 $\{x \in \mathbb{R} \mid x^2 < 2\}$。
+
+### 4.8 括号与定界符
+
+自动缩放会跟着内容长：
+
+$$
+\left( \frac{a}{b} \right),\quad \left[ \frac{a}{b} \right],\quad \left\{ \frac{a}{b} \right\},\quad \left| \frac{a}{b} \right|,\quad \left\| \frac{a}{b} \right\|
+$$
+
+手动四档 $\big( x \big),\ \Big( x \Big),\ \bigg( x \bigg),\ \Bigg( x \Bigg)$，
+嵌套也没问题 $\left( \left[ \left\{ \frac{a}{b} \right\} \right] \right)$。
+取整与内积：$\lfloor x \rfloor,\ \lceil x \rceil,\ \langle u, v \rangle$。
+
+### 4.9 矩阵与行列式
+
+五种括号样式一次给全，外加可自定义对齐与分隔线的 `array`：
+
+$$
+\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}
+\qquad
+\begin{bmatrix} a & b \\ c & d \end{bmatrix}
+\qquad
+\begin{Bmatrix} p & q \\ r & s \end{Bmatrix}
+$$
+
+$$
+\begin{vmatrix} x & y \\ z & w \end{vmatrix} = xw - yz
+\qquad
+\begin{Vmatrix} a & b \\ c & d \end{Vmatrix}
+$$
+
+$$
+\begin{array}{c|c}
+a & b \\
+\hline
+c & d
+\end{array}
+\qquad
+\begin{matrix} 1 & 0 \\ 0 & 1 \end{matrix}
+$$
+
+分块矩阵（矩阵套矩阵）：
+
+$$
+\begin{pmatrix}
+\begin{matrix} 1 & 0 \\ 0 & 1 \end{matrix} & 0 \\
+0 & \begin{matrix} 1 & 0 \\ 0 & 1 \end{matrix}
+\end{pmatrix}
+$$
+
+矩阵乘向量：
 
 $$
 \begin{pmatrix} a & b \\ c & d \end{pmatrix}
@@ -165,13 +446,127 @@ $$
 = \begin{pmatrix} ax + by \\ cx + dy \end{pmatrix}
 $$
 
+### 4.10 分段函数与多行对齐
+
 $$
-\sum_{i=1}^{n} i = \frac{n(n+1)}{2}, \qquad
-\lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n = e
+f(x) =
+\begin{cases}
+1, & x = 0 \\
+\dfrac{\sin x}{x}, & x \neq 0
+\end{cases}
 $$
 
-> [!WARNING]
-> 开头的 `$` 后面**不能紧跟空格**：`$ a+b $` 会被当成普通美元符号，要写 `$a+b$`。
+$$
+\begin{aligned}
+(a + b)^2 &= a^2 + 2ab + b^2 \\
+(a - b)^2 &= a^2 - 2ab + b^2
+\end{aligned}
+$$
+
+$$
+\begin{aligned}
+\sin x &= x - \frac{x^3}{3!} + \frac{x^5}{5!} - \cdots \\
+&= \sum_{n=0}^{\infty} \frac{(-1)^n}{(2n+1)!}\,x^{2n+1}
+\end{aligned}
+$$
+
+居中堆叠用 `gathered`，只在一侧加括号用 `\right.`：
+
+$$
+\begin{gathered}
+a^2 + b^2 = c^2 \\
+e^{i\pi} + 1 = 0
+\end{gathered}
+\qquad
+\left\{ \begin{array}{ll} 1 & \text{if } x > 0 \\ 0 & \text{if } x \le 0 \end{array} \right.
+$$
+
+### 4.11 微积分
+
+极限：
+
+$$
+\lim_{x \to 0} \frac{\sin x}{x} = 1
+\qquad
+\lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n = e
+\qquad
+\underset{x \to 0}{\lim} f(x)
+$$
+
+导数与偏导 $\frac{dy}{dx},\ f'(x),\ y'',\ \frac{\partial f}{\partial x},\ \frac{\partial^2 f}{\partial x \partial y}$，
+梯度 $\nabla f = \left( \frac{\partial f}{\partial x}, \frac{\partial f}{\partial y} \right)$。
+微积分基本定理：
+
+$$
+\frac{d}{dx}\left( \int_{a}^{x} f(t)\,dt \right) = f(x)
+$$
+
+四种积分：定积分 $\int_{a}^{b} f(x)\,dx$、二重 $\iint_{D} f(x,y)\,dx\,dy$、
+三重 $\iiint_{V} f(x,y,z)\,dV$、曲线 $\oint_{\gamma} f\,ds$。高斯积分：
+
+$$
+\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
+$$
+
+### 4.12 求和、乘积与组合数
+
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}, \qquad
+\sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^2}{6}
+$$
+
+$$
+\prod_{k=1}^{n} k = n!
+\qquad
+\sum_{i=0}^{n} \binom{n}{i} = 2^n
+\qquad
+\binom{n}{k} = \frac{n!}{k!(n-k)!}
+$$
+
+### 4.13 装饰符号
+
+上划线 $\overline{z},\ \overline{AB}$，下划线 $\underline{x}$；
+帽子 $\hat{a},\ \widehat{ABC}$；波浪线 $\tilde{x},\ \widetilde{ABC}$；
+向量 $\vec{v},\ \overrightarrow{AB}$；时间导数 $\dot{x},\ \ddot{x},\ \dddot{x}$；
+上下标注 $\overset{\text{def}}{=}$，括号说明
+$\underbrace{1 + 1 + \cdots + 1}_{n\ \text{个}} = n$，
+$\overbrace{a + b + c}^{\text{三项}}$。
+
+### 4.14 字体
+
+空心体 $\mathbb{R},\ \mathbb{N},\ \mathbb{Z}$；花体 $\mathcal{F},\ \mathcal{L},\ \mathcal{O},\ \mathcal{P}$；
+粗体 $\mathbf{A},\ \mathbf{v},\ \mathbf{x}_1$；粗体希腊字母
+$\boldsymbol{\alpha},\ \boldsymbol{\beta},\ \boldsymbol{\theta}$；
+正体（微分号与虚数单位）$\mathrm{d}x,\ \mathrm{e},\ \mathrm{i}$。
+
+中文直接写进 `\text{}` 里就行：$\text{如果 } a = b \text{，则 } c = d$，
+$\text{当 } x > 0 \text{ 时，} f(x) = x^2$。
+
+### 4.15 框注、编号与颜色
+
+$$
+\boxed{E = mc^2}
+\qquad
+f(x) = x^2 \tag{1}
+$$
+
+$\color{red}{\text{红色}}\quad \color{blue}{\text{蓝色}}\quad \color{#2F63E8}{\text{十六进制}}$
+
+### 4.16 自定义宏
+
+`\newcommand` 在同一条公式内定义并使用（带参数用 `[1]`）：
+
+$$
+\newcommand{\vctr}[1]{\mathbf{#1}} \lvert \vctr{a} \rvert^2 = \vctr{a} \cdot \vctr{a}
+$$
+
+### 4.17 函数名与余波
+
+$\gcd(a, b)\bmod m,\quad \log_2 n,\quad \ln x,\quad \arctan t,\quad \zeta(s) = \sum_{n=1}^{\infty} \frac{1}{n^s}$
+
+> [!TIP]
+> 公式太长时**单独成块**（`$$…$$`）比塞进行内更好看：块级公式居中、上下标会
+> 展开成分式形式；行内公式为了不打断行高，会把分式压小。
 
 ---
 
@@ -533,7 +928,7 @@ V:LH
 
 ---
 
-## 十、代码块与 HTML 预览（v1.0.8）
+## 九、代码块与 HTML 预览
 
 ### 代码块：行号 + 长代码折叠
 
@@ -631,8 +1026,8 @@ public class WordCount {
 
 ### 支持高亮的常用语言（一览）
 
-语言名写在围栏后面（如 ```` ```python ````），它决定左上角的**语言徽标**与**语法高亮**。
-下面每种给一个短例子，方便对照：
+语言名写在起始围栏的后面（三个反引号或三个波浪号紧跟语言名，例如波浪号写法 `~~~python`），
+它决定左上角的**语言徽标**与**语法高亮**。下面每种给一个短例子，方便对照：
 
 **Python**
 ```python
@@ -990,115 +1385,395 @@ features:
 
 ```html
 <style>
-  .dino-game {
+  .fx {
     font-family: HarmonyOS Sans, system-ui, sans-serif;
-    padding: 14px; border-radius: 16px; user-select: none;
-    background: linear-gradient(180deg, #EEF3FF, #DCE7FF);
-    border: 1px solid rgba(18, 50, 79, 0.10);
+    padding: 12px 14px 14px; border-radius: 16px; user-select: none;
+    background: radial-gradient(120% 90% at 50% 0%, #1B2340 0%, #0B0E1D 62%, #06070F 100%);
+    border: 1px solid rgba(150,180,255,0.16);
+    box-shadow: 0 10px 30px rgba(6,8,18,0.55);
   }
-  .dino-game .hud {
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: 13px; color: #2A3F5F; margin-bottom: 8px;
+  .fx .hud {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 12.5px; color: #9FB2DC; margin-bottom: 8px;
+    font-variant-numeric: tabular-nums; letter-spacing: .02em;
   }
-  .dino-game canvas {
-    width: 100%; height: 130px; display: block;
-    border-radius: 10px; background: rgba(255, 255, 255, 0.75);
+  .fx .hud .t { color:#EAF0FF; font-size:13.5px; text-shadow:0 0 12px rgba(120,180,255,.55); }
+  .fx .hud b { color:#fff; }
+  .fx .combo { margin-left:8px; color:#FFD37A; text-shadow:0 0 10px rgba(255,190,80,.55); }
+  .fx .shape { margin-left:8px; color:#8FE3C8; text-shadow:0 0 10px rgba(120,230,190,.5); }
+  /* 画布按容器宽自适应；位图尺寸由 JS 按 devicePixelRatio 对齐，不会拉伸 */
+  .fx canvas {
+    display:block; width:100%; aspect-ratio:4/3; min-height:150px;
+    border-radius:12px; background:#070A16; touch-action:none;
   }
-  .dino-game .tip { margin-top: 8px; font-size: 12px; color: #5B7396; text-align: center; }
+  .fx .tip { margin-top:8px; font-size:11.5px; color:#7286B4; text-align:center; }
 </style>
-<div class="dino-game">
-  <div class="hud"><span>🦕 小恐龙跳一跳</span><span>得分 <b id="dgScore">0</b></span></div>
-  <canvas id="dgCanvas" width="640" height="260"></canvas>
-  <div class="tip">点一下画面（或按空格）让它跳起来，撞到障碍就结束</div>
+<div class="fx" id="fxRoot">
+  <div class="hud">
+    <span class="t">✦ 指尖烟花</span>
+    <span>发射 <b id="fxShots">0</b> · 粒子 <b id="fxParts">0</b><span class="shape" id="fxShape"></span><span class="combo" id="fxCombo"></span></span>
+  </div>
+  <canvas id="fxCanvas"></canvas>
+  <div class="tip">点一下炸一朵（爱心 / 星星 / 笑脸 / 菊花…）· 按住拖动拉出光带 · 连点触发二次连爆 · 停手 3 秒自动表演</div>
 </div>
 <script>
 (function () {
-  var cv = document.getElementById('dgCanvas');
+  var cv = document.getElementById('fxCanvas');
+  if (!cv || cv.__fx) { return; }
+  cv.__fx = true;
   var ctx = cv.getContext('2d');
-  var scoreNode = document.getElementById('dgScore');
-  var W = cv.width, H = cv.height, ground = H - 46;
-  var dino = { x: 46, y: ground, w: 34, h: 38, vy: 0, onGround: true };
-  var rock = { x: W + 60, w: 20, h: 34 };
-  var speed = 3.4, score = 0, dead = false, raf = 0;
+  var elShots = document.getElementById('fxShots');
+  var elParts = document.getElementById('fxParts');
+  var elCombo = document.getElementById('fxCombo');
+  var elShape = document.getElementById('fxShape');
 
-  function jump() {
-    if (dead) { reset(); return; }
-    if (dino.onGround) { dino.vy = -9.6; dino.onGround = false; }
-  }
-  function reset() {
-    dino.y = ground; dino.vy = 0; dino.onGround = true;
-    rock.x = W + 60; speed = 3.4; score = 0; dead = false;
-    scoreNode.innerText = '0';
-    loop();
-  }
-  function drawDino() {
-    ctx.fillStyle = '#1F8A70';
-    ctx.fillRect(dino.x, dino.y - dino.h, dino.w, dino.h);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(dino.x + dino.w - 12, dino.y - dino.h + 8, 6, 6);
-    ctx.fillStyle = '#166B57';
-    ctx.fillRect(dino.x + 4, dino.y - 7, 6, 7);
-    ctx.fillRect(dino.x + dino.w - 12, dino.y - 7, 6, 7);
-  }
-  function drawRock() {
-    ctx.fillStyle = '#2A3F5F';
-    ctx.fillRect(rock.x, ground - rock.h, rock.w, rock.h);
-    ctx.fillRect(rock.x + 5, ground - rock.h - 9, 7, 9);
-  }
-  function loop() {
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(42, 63, 95, 0.28)';
-    ctx.fillRect(0, ground, W, 2);
+  var W = 320, H = 240, u = 1, dpr = 1;
+  var parts = [], rock = [], trail = [], stars = [], fuse = [], flashes = [];
+  var shots = 0, combo = 0, comboT = 0, lastTouch = 0, frame = 0, hueSeed = Math.random() * 360;
+  var MAX = 700, GRAV = 0.055;
+  // 圆壳类 + 造型类（造型用高阻尼"停"在轮廓上，才看得清形状）+ 二次起爆类
+  var KINDS = ['peony', 'ring', 'willow', 'chrys', 'palm', 'crackle',
+    'star', 'heart', 'smiley', 'diamond', 'crossette', 'double'];
+  var CN = {
+    peony: '牡丹', ring: '圆环', willow: '垂柳', chrys: '菊花', palm: '棕榈', crackle: '碎金',
+    star: '五角星', heart: '爱心', smiley: '笑脸', diamond: '菱形', crossette: '二次爆', double: '双响'
+  };
+  var SHAPE_KIND = { star: 1, heart: 1, smiley: 1, diamond: 1 };
 
-    dino.vy += 0.52;
-    dino.y += dino.vy;
-    if (dino.y >= ground) { dino.y = ground; dino.vy = 0; dino.onGround = true; }
-
-    rock.x -= speed;
-    if (rock.x + rock.w < 0) {
-      rock.x = W + 40 + Math.random() * 120;
-      score++;
-      scoreNode.innerText = String(score);
-      speed = Math.min(7.2, speed + 0.12);
+  function fit() {
+    var cw = cv.clientWidth || 320, ch = cv.clientHeight || Math.round(cw * 3 / 4);
+    dpr = Math.min(2.5, Math.max(1, window.devicePixelRatio || 1));
+    cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    W = cw; H = ch; u = Math.max(0.7, H / 240);
+    stars = [];
+    for (var i = 0; i < 78; i++) {
+      stars.push({ x: Math.random() * W, y: Math.random() * H * 0.94, r: Math.random() * 1.4 * u + 0.4, p: Math.random() * 6.3 });
     }
-    if (dino.x + dino.w - 6 > rock.x && dino.x + 6 < rock.x + rock.w
-      && dino.y > ground - rock.h) {
-      dead = true;
+  }
+
+  function push(p) { if (parts.length < MAX) { parts.push(p); } }
+  function flash(x, y, hue, a) { flashes.push({ x: x, y: y, hue: hue, life: 12, a: a || 1 }); }
+
+  // 沿多边形周长均匀取 n 个点（五角星 / 菱形用）
+  function walkPoly(v, n) {
+    var seg = [], total = 0, i, j, a, b, d;
+    for (i = 0; i < v.length; i++) {
+      a = v[i]; b = v[(i + 1) % v.length];
+      d = Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+      seg.push(d); total += d;
     }
+    var out = [], step = total / n, acc = 0, si = 0, sl = 0;
+    for (j = 0; j < n; j++) {
+      var want = step * j;
+      while (si < seg.length - 1 && want > acc + seg[si]) { acc += seg[si]; si++; }
+      var t = seg[si] > 0 ? (want - acc) / seg[si] : 0;
+      a = v[si]; b = v[(si + 1) % v.length];
+      out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    }
+    return out;
+  }
 
-    drawRock();
-    drawDino();
+  // 造型轮廓上的单位方向（长度即相对速度）
+  function shapePts(kind, n) {
+    var out = [], i, a, t, m;
+    if (kind === 'star') {
+      var v = [];
+      for (i = 0; i < 10; i++) {
+        a = Math.PI / 5 * i - Math.PI / 2;
+        var r = (i % 2 === 0) ? 1 : 0.42;
+        v.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      return walkPoly(v, n);
+    }
+    if (kind === 'diamond') { return walkPoly([[0, -1], [0.6, 0], [0, 1], [-0.6, 0]], n); }
+    if (kind === 'heart') {
+      for (i = 0; i < n; i++) {
+        t = Math.PI * 2 * i / n;
+        var hx = 16 * Math.pow(Math.sin(t), 3);
+        var hy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+        out.push([hx / 15, -hy / 15]);
+      }
+      return out;
+    }
+    if (kind === 'smiley') {
+      m = Math.floor(n * 0.55);
+      for (i = 0; i < m; i++) { a = Math.PI * 2 * i / m; out.push([Math.cos(a), Math.sin(a)]); }
+      var eyes = [[-0.38, -0.3], [0.38, -0.3]], e, k, mm = Math.floor(n * 0.08);
+      for (e = 0; e < 2; e++) {
+        for (k = 0; k < mm; k++) {
+          a = Math.PI * 2 * k / mm;
+          out.push([eyes[e][0] + Math.cos(a) * 0.13, eyes[e][1] + Math.sin(a) * 0.18]);
+        }
+      }
+      m = Math.floor(n * 0.22);
+      for (i = 0; i < m; i++) {
+        a = Math.PI * (0.18 + 0.64 * i / m);
+        out.push([Math.cos(a) * 0.62, 0.2 + Math.sin(a) * 0.42]);
+      }
+      return out;
+    }
+    return out;
+  }
 
-    if (dead) {
-      ctx.fillStyle = 'rgba(42, 63, 95, 0.86)';
-      ctx.font = 'bold 22px HarmonyOS Sans, sans-serif';
-      ctx.fillText('结束 · 点一下重来', 92, H / 2 - 4);
+  function shell(x, y, hue, kind, n) {
+    var i, a, sp, life, p;
+    if (SHAPE_KIND[kind]) {
+      var pts = shapePts(kind, n);
+      var R = Math.min(W, H) * 0.29;
+      var dr = 0.885, V = R * (1 - dr);
+      for (i = 0; i < pts.length; i++) {
+        life = 74 + Math.random() * 30;
+        push({
+          x: x, y: y, vx: pts[i][0] * V, vy: pts[i][1] * V,
+          life: life, max: life, hue: hue + (i % 9) * 2.2, s: 2.1 * u,
+          dr: dr, g: 0.012 * u, tw: Math.random() * 6.3, st: false, k: kind
+        });
+      }
+      flash(x, y, hue, 0.7);
       return;
     }
-    raf = requestAnimationFrame(loop);
+    for (i = 0; i < n; i++) {
+      a = (Math.PI * 2 * i) / n + Math.random() * 0.08;
+      if (kind === 'palm' && i % 3) { continue; }
+      sp = (1.5 + Math.random() * 2.4) * u;
+      if (kind === 'ring') { sp = 2.9 * u; }
+      if (kind === 'willow') { sp = 1.7 * u; }
+      life = 64 + Math.random() * 44;
+      p = {
+        x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: life, max: life, hue: hue + (kind === 'willow' ? 0 : Math.random() * 26 - 13),
+        s: (kind === 'chrys' ? 2.1 : 2.7) * u, dr: kind === 'willow' ? 0.985 : 0.962,
+        g: kind === 'willow' ? GRAV * 0.55 : (kind === 'ring' ? GRAV * 1.4 : GRAV),
+        tw: Math.random() * 6.3, st: kind === 'chrys' || kind === 'palm', k: kind
+      };
+      // 二次起爆：一部分粒子飞到一半再各自炸一小朵
+      if (kind === 'crossette' && i % 7 === 0) { p.split = Math.floor(life * 0.52); }
+      push(p);
+    }
+    if (kind === 'crackle') {
+      for (i = 0; i < 14; i++) {
+        a = Math.random() * 6.3; sp = Math.random() * 1.3 * u;
+        push({ x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 22 + Math.random() * 26,
+          max: 48, hue: hue + 30, s: 1.2 * u, dr: 0.97, g: GRAV * 0.8, tw: Math.random() * 6.3, st: false, k: 'sp' });
+      }
+    }
+    flash(x, y, hue, 1);
   }
 
-  cv.addEventListener('click', jump);
-  cv.addEventListener('touchstart', function (e) { e.preventDefault(); jump(); }, { passive: false });
+  function launch(tx, ty) {
+    // 贴着边点会把整个造型甩出画布（爱心被裁掉半朵很难看），先把炸点收进安全区。
+    // 0.32 而不是 shell 里的 0.29：爱心的横向外扩是标称半径的 ~1.07 倍
+    var R = Math.min(W, H) * 0.32;
+    tx = Math.min(W - R, Math.max(R, tx));
+    ty = Math.min(H - R * 0.75, Math.max(R * 0.8, ty));
+    var sx = tx + (Math.random() * 2 - 1) * W * 0.14;
+    var dx = tx - sx, dy = ty - (H + 6 * u), d = Math.sqrt(dx * dx + dy * dy) || 1;
+    var sp = 6.4 * u + Math.random() * 1.4 * u;
+    rock.push({ x: sx, y: H + 6 * u, vx: dx / d * sp, vy: dy / d * sp, tx: tx, ty: ty,
+      hue: (hueSeed + Math.random() * 160) % 360, k: KINDS[(Math.random() * KINDS.length) | 0], n: 0 });
+    shots++;
+    var now = Date.now();
+    combo = (now - comboT < 900) ? combo + 1 : 1;
+    comboT = now;
+  }
+
+  function spark(x, y, vx, vy, hue) {
+    if (trail.length > 240) { trail.shift(); }
+    trail.push({ x: x, y: y, vx: vx * 0.25 + (Math.random() - 0.5) * 0.7 * u,
+      vy: vy * 0.25 + (Math.random() - 0.5) * 0.7 * u, life: 18, max: 18, hue: hue, s: 1.15 * u });
+  }
+
+  function step() {
+    frame++;
+    var i, j, p, r, q;
+    for (i = rock.length - 1; i >= 0; i--) {
+      r = rock[i]; r.n++;
+      r.x += r.vx; r.y += r.vy; r.vy += 0.05 * u;
+      if (r.n % 3 === 0) { spark(r.x, r.y, r.vx, r.vy, r.hue); }
+      if (r.n > 3 && (r.y <= r.ty || Math.abs(r.x - r.tx) < 3 * u)) {
+        var n = 84 + ((Math.random() * 48) | 0) + (combo > 2 ? 24 : 0);
+        if (SHAPE_KIND[r.k]) { n = Math.floor(n * 0.9); }
+        shell(r.tx, r.ty, r.hue, r.k, n);
+        showShape(r.k);
+        // 双响：主炸之后隔一拍再补一炸；连点够快还会多朵齐放
+        if (r.k === 'double') { fuse.push({ x: r.tx, y: r.ty, t: 26, hue: (r.hue + 150) % 360, k: 'chrys' }); }
+        if (combo >= 3) {
+          shell(r.tx + (Math.random() * 2 - 1) * 44 * u, r.ty + (Math.random() * 2 - 1) * 28 * u,
+            (r.hue + 40) % 360, KINDS[(Math.random() * KINDS.length) | 0], 46);
+        }
+        if (combo >= 6) {
+          for (q = 0; q < 3; q++) {
+            fuse.push({ x: r.tx + (Math.random() * 2 - 1) * 80 * u, y: r.ty + (Math.random() * 2 - 1) * 40 * u,
+              t: 10 + q * 12, hue: (r.hue + 90 + q * 34) % 360, k: KINDS[(Math.random() * KINDS.length) | 0] });
+          }
+        }
+        rock.splice(i, 1);
+      } else if (r.y > H + 12 * u || r.n > 140) { rock.splice(i, 1); }
+    }
+    for (i = fuse.length - 1; i >= 0; i--) {
+      fuse[i].t--;
+      if (fuse[i].t <= 0) {
+        shell(fuse[i].x, fuse[i].y, fuse[i].hue, fuse[i].k, 56);
+        if (fuse[i].k === 'double') { fuse.push({ x: fuse[i].x, y: fuse[i].y, t: 20, hue: (fuse[i].hue + 120) % 360, k: 'ring' }); }
+        fuse.splice(i, 1);
+      }
+    }
+    for (i = parts.length - 1; i >= 0; i--) {
+      p = parts[i];
+      p.vx *= p.dr; p.vy = p.vy * p.dr + p.g * u;
+      p.x += p.vx; p.y += p.vy; p.life--;
+      if (p.split && p.life === p.split) {
+        shell(p.x, p.y, (p.hue + 60) % 360, 'ring', 14);
+        p.split = 0;
+      }
+      if (p.life <= 0 || p.y > H + 8 * u) { parts.splice(i, 1); }
+    }
+    for (i = trail.length - 1; i >= 0; i--) {
+      p = trail[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.03 * u; p.life--;
+      if (p.life <= 0) { trail.splice(i, 1); }
+    }
+    for (i = flashes.length - 1; i >= 0; i--) { flashes[i].life--; if (flashes[i].life <= 0) { flashes.splice(i, 1); } }
+
+    if (Date.now() - lastTouch > 3000 && frame % 46 === 0) {
+      launch(W * (0.14 + Math.random() * 0.72), H * (0.12 + Math.random() * 0.4));
+      lastTouch = Date.now() - 2200;
+    }
+    if (combo && Date.now() - comboT > 900) { combo = 0; }
+  }
+
+  var shapeT = 0;
+  function showShape(k) {
+    if (!elShape) { return; }
+    elShape.innerText = '· ' + (CN[k] || k);
+    shapeT = frame + 72;
+  }
+
+  function draw() {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = 'rgba(7,10,22,0.25)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.globalCompositeOperation = 'lighter';
+    var i, p, a, g;
+    for (i = 0; i < stars.length; i++) {
+      p = stars[i];
+      a = 0.26 + 0.26 * Math.sin(frame * 0.02 + p.p);
+      ctx.fillStyle = 'rgba(200,218,255,' + a.toFixed(3) + ')';
+      ctx.fillRect(p.x, p.y, p.r, p.r);
+    }
+    for (i = 0; i < flashes.length; i++) {
+      p = flashes[i]; a = (p.life / 12) * p.a;
+      g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 30 * u);
+      g.addColorStop(0, 'hsla(' + p.hue + ',100%,74%,' + (0.14 * a).toFixed(3) + ')');
+      g.addColorStop(1, 'hsla(' + p.hue + ',100%,60%,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, 30 * u, 0, 6.3); ctx.fill();
+    }
+    for (i = 0; i < trail.length; i++) {
+      p = trail[i]; a = p.life / p.max;
+      ctx.fillStyle = 'hsla(' + p.hue + ',100%,' + (62 + 22 * a) + '%,' + (a * 0.8).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * a + 0.3, 0, 6.3); ctx.fill();
+    }
+    for (i = 0; i < parts.length; i++) {
+      p = parts[i]; a = p.life / p.max;
+      var tw = 0.74 + 0.26 * Math.sin(frame * 0.5 + p.tw);
+      var al = (a > 0.86 ? 1 : a) * tw;
+      ctx.strokeStyle = 'hsla(' + p.hue + ',94%,' + (52 + 16 * a) + '%,' + (al * 0.92).toFixed(3) + ')';
+      ctx.lineWidth = p.s;
+      // 先铺一层大而淡的光晕再画亮核：叠加混合下才有"发光"而不是"点"
+      ctx.fillStyle = 'hsla(' + p.hue + ',94%,60%,' + (al * 0.05).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s * 2.3, 0, 6.3); ctx.fill();
+      if (p.st) {
+        ctx.beginPath(); ctx.moveTo(p.x - p.vx * 2.4, p.y - p.vy * 2.4); ctx.lineTo(p.x, p.y); ctx.stroke();
+      } else {
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (0.5 + a * 0.6), 0, 6.3); ctx.fill();
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    if (frame % 8 === 0) {
+      if (elShots) { elShots.innerText = String(shots); }
+      if (elParts) { elParts.innerText = String(parts.length + trail.length); }
+      if (elCombo) { elCombo.innerText = combo >= 2 ? '连锁 x' + combo : ''; }
+      if (elShape && frame > shapeT) { elShape.innerText = ''; }
+    }
+  }
+
+  function loop() {
+    if (!document.body.contains(cv)) { return; }
+    step(); draw();
+    requestAnimationFrame(loop);
+  }
+
+  var down = false, px = 0, py = 0;
+  function xy(e) {
+    var r = cv.getBoundingClientRect();
+    var t = (e.touches && e.touches[0]) || e;
+    return { x: (t.clientX - r.left), y: (t.clientY - r.top) };
+  }
+  function onDown(e) {
+    e.preventDefault();
+    var p = xy(e); down = true; px = p.x; py = p.y; lastTouch = Date.now();
+    launch(p.x, Math.max(H * 0.12, p.y));
+  }
+  function onMove(e) {
+    if (!down) { return; }
+    e.preventDefault();
+    var p = xy(e), hue = (hueSeed + frame) % 360;
+    for (var k = 0; k < 3; k++) {
+      spark(px + (p.x - px) * (k / 3), py + (p.y - py) * (k / 3), p.x - px, p.y - py, hue);
+    }
+    px = p.x; py = p.y; lastTouch = Date.now();
+  }
+  function onUp() { down = false; }
+
+  fit();
+  if (typeof ResizeObserver !== 'undefined') { new ResizeObserver(function () { fit(); }).observe(cv); }
+  window.addEventListener('resize', fit);
+  cv.addEventListener('pointerdown', onDown);
+  cv.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  cv.addEventListener('pointercancel', onUp);
+  cv.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
   document.addEventListener('keydown', function (e) {
-    if (e.code === 'Space') { e.preventDefault(); jump(); }
+    if (e.code === 'Space') { e.preventDefault(); launch(W * (0.2 + Math.random() * 0.6), H * (0.15 + Math.random() * 0.35)); lastTouch = Date.now(); }
   });
-  loop();
+
+  launch(W * 0.5, H * 0.3);
+  requestAnimationFrame(loop);
 })();
 </script>
+
 ```
 
-预览区可以点开放大查看。`<script>` 标签会被自动剥离 —— 文档里的 HTML 只作为内容渲染，
-不会作为代码执行。
+预览区可以点开放大查看。预览运行在**离线沙箱 Web** 里，`<script>` 会照常执行（所以上面
+这片烟花真的能用手指点着放）—— 内容来自你自己的本地文档，不加载任何远程脚本，外链脚本与网络请求
+都不会发生。
 
-### 公式：四种写法都支持
+### 参考与声明
 
-| 形态 | 写法 |
-| --- | --- |
-| 行内 | `$E=mc^2$` 或 `\(E=mc^2\)` |
-| 块级 | `$$…$$` 或 `\[…\]` |
+第三节这份 Markdown 语法教程的**分类方式与讲解顺序**，参考了链滴（ld246.com）作者 **Vanessa**
+的《Markdown 使用指南》系列三篇，特此声明并致谢：
+
+- [Markdown 使用指南 - 基础语法](https://ld246.com/article/1583129520165)
+- [Markdown 使用指南 - 扩展语法](https://ld246.com/article/1583305480675)
+- [Markdown 使用指南 - 语法速查手册](https://ld246.com/article/1583308420519)
+
+链滴是 [Vditor](https://b3log.org/vditor/) 同一团队（b3log / 88250）旗下的社区，
+Vditor 是一款浏览器端的 Markdown 编辑器 —— 一并列入本文档开头「开源与致谢 → 参考的项目」。
+
+需要说清楚的一点：**这三篇的原文没有被复制进本文档**。每一条语法都按澄笺解析器的实际实现
+重写并逐条核对过，因此覆盖面与措辞和原文不同；3.16 那份"不支持清单"也是据澄笺自己的实现补充的，
+与原作者无关 —— 若本文档某处与实际渲染效果不符，责任在本文档，请以上文"实测为准"。
+
+**关于示例里的网址**：正文中所有演示用的链接一律使用 `example.com`（IANA 保留给文档示例的
+占位域名），不指向任何真实站点；本文档只有本节的参考链接与「开源与致谢」里的项目仓库是真实链接。
+文中出现的其它名称与商标归各自所有者。数学公式由 KaTeX 渲染，
+各类图表由 D3 / markmap / Mermaid / ECharts / Graphviz / ABCjs 等开源库离线渲染，
+版本与许可证见本文档开头「开源与致谢」。
 
 ---
 
-*本文档（含其中展示的示例乐谱小曲）由 AI 辅助生成，并经人工校对；示例内容仅供参考，
-准确性由使用者自行判断。*
+*本文档（含其中展示的示例乐谱小曲，以及那段可以用手指点着放的烟花）由 AI 辅助生成，
+并经人工校对；示例内容仅供参考，准确性由使用者自行判断。*

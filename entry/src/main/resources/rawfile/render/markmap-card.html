@@ -1682,15 +1682,37 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
 <script>
   window.__render=function(src,dark,fit){
     var app=document.getElementById('app');
+    var de=document.documentElement;
+    window.__mmFitMode=!!fit;
+    // **两种画布形态**（宿主 renderPayload 的 fit 标志区分）：
+    //  · fit=false 正文卡片：整页高度 = 脑图自然高度，svg 跟着长高，宿主按
+    //    postHeight 回传定卡高（脑图完整可见、不裁切）。
+    //  · fit=true  放大浮层：整页**撑满 Web 视口**（html/body/#app 全部给高），
+    //    svg 保持 100%×100% **不覆写**。
+    // ⚠️ 此前两种形态共用"量自然高度定 svg 高"那一条：浮层里 svg 只有内容那么高
+    // （约视口 1/4），脑图挤在画布顶部、下面四分之三全空，且 fit() 按这个矮盒子
+    // 算变换 → 看起来"定死了放大不了"（用户实测）。
+    if(fit){
+      de.style.height='100%';de.style.overflow='hidden';
+      document.body.style.height='100%';document.body.style.overflow='hidden';
+      app.style.height='100vh';
+    }else{
+      de.style.height='';de.style.overflow='';
+      document.body.style.height='';document.body.style.overflow='';
+      app.style.height='';
+    }
     app.innerHTML='<svg id="mmsvg" style="width:100%;height:100%"></svg>';
-    // fit（放大浮层）：**撑满整个画布**（此前 80vh 底部留空，看起来"画布不是全屏"）
-    // 专用卡片：高度随内容（svg 自然高度），由宿主按回传值定卡高
-    // **autoFit 铺满画布**（用户要求"铺满卡片和画布"）——脑图缩放至填满整个
-    // 画布（画布高度自适应设备屏幕）；必须与"整页高度钉死"配合：
-    // 只有 autoFit → svg 溢出虚高坑（快照窄条）；只有钉死 → 地图不满留白。
     var root=new markmap.Transformer().transform(src).root;
-    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{duration:200,initialExpandLevel:-1},root);
-    // 渲染后量脑图自然高度 → 定 svg 高度（宽度铺满、高度等比完整）→ 回传宿主定卡高
+    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),
+      {autoFit:!!fit,duration:200,initialExpandLevel:-1},root);
+    if(fit){
+      // create/autoFit 的首帧 fit 是 200ms 异步过渡，且可能在容器尺寸落定之前
+      // 就按小盒子算好了变换；等一拍再按**当前画布**重铺一次（避免两次过渡互相打断）
+      setTimeout(refitCanvas,320);
+      setTimeout(report,100);
+      return;
+    }
+    // 卡片：渲染后量脑图自然高度 → 定 svg 高度（宽度铺满、高度等比完整）→ 回传宿主定卡高
     setTimeout(function(){
       try{
         var sv=document.getElementById('mmsvg');
@@ -1712,6 +1734,16 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
       if(!(h>0)){h=1;}
       if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
     }catch(e){}
+  }
+  // ── 重铺画布 ─────────────────────────────────────────────────
+  // ⚠️ 缩放**不在这里做**：浮层的 ± 与双指捏合都走引擎级页面缩放
+  // （WebviewController.zoom），对整张页面等比放大，横纵同步、也不会把
+  // width:100% 的 SVG 拉成"只有横向变长"。页面这边只需要在容器尺寸变了
+  // （打开、旋转、刷新）之后重新 fit 一次。
+  function refitCanvas(){
+    var mm=window.__mm;
+    if(!mm){return;}
+    try{Promise.resolve(mm.fit()).catch(function(){});}catch(e){}
   }
   window.renderPayload=function(json){
     try{
@@ -1758,6 +1790,12 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     }catch(e){}
   };
   window.refit=function(){
+    if(window.__mmFitMode){
+      // 放大浮层：svg 已撑满画布，只需按新画布重铺 + 补回用户缩放
+      refitCanvas();
+      report();
+      return;
+    }
     try{
       var sv=document.getElementById('mmsvg');
       var bb=sv.getBBox?sv.getBBox():null;
@@ -1775,7 +1813,8 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
       var app=document.getElementById('app');
       if(Math.abs(app.clientWidth-__mmLastW)>2||Math.abs(app.clientHeight-__mmLastH)>2){
         __mmLastW=app.clientWidth;__mmLastH=app.clientHeight;
-        if(window.__mm){window.__mm.fit();}
+        // 卡片与浮层同一处理：按新容器重铺（缩放是引擎级页面缩放，不受这里影响）
+        refitCanvas();
       }
     }catch(e){}
     report();

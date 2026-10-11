@@ -35,6 +35,7 @@ import {
   ReaderPalette,
   annotationColor,
   barFrostColor,
+  chartCardMaxHeight,
   codeBlockHeight,
   headingFontSize,
   headingSpaceTop,
@@ -305,6 +306,82 @@ export class MdViewUtil {
       return palette.codeAttr;
     }
     return palette.textPrimary;
+  }
+
+  /**
+   * 项目色值 **#AARRGGBB → CSS 颜色**（进 Web 的色值必须转）。
+   * CSS 的 8 位 hex 是 #RRGGBBAA：'#FFCF222E' 若原样交给 CSS，会被读成
+   * "红 255 绿 207 蓝 34、不透明度 0x2E≈18%"的半透明橙黄 —— 与项目本意
+   * （不透明的红）完全两回事（与 DiagramWeb.cssColor 同一约定）。
+   */
+  static cssColor(hex: string): string {
+    const s: string = hex.trim();
+    if (s.length !== 9 || s.charAt(0) !== '#') {
+      return s;
+    }
+    const a: number = parseInt(s.substring(1, 3), 16);
+    if (isNaN(a) || a >= 255) {
+      return '#' + s.substring(3, 9);
+    }
+    const r: number = parseInt(s.substring(3, 5), 16);
+    const g: number = parseInt(s.substring(5, 7), 16);
+    const b: number = parseInt(s.substring(7, 9), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + Math.round(a / 255 * 100) / 100 + ')';
+  }
+
+  /** HTML 转义（富文本注入前必须做，代码里的 < > & 不能当标签解析）。 */
+  static escapeHtml(s: string): string {
+    let out: string = '';
+    for (let k = 0; k < s.length; k++) {
+      const ch: string = s.charAt(k);
+      if (ch === '&') {
+        out = out + '&amp;';
+      } else if (ch === '<') {
+        out = out + '&lt;';
+      } else if (ch === '>') {
+        out = out + '&gt;';
+      } else if (ch === '"') {
+        out = out + '&quot;';
+      } else {
+        out = out + ch;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 代码原文 → **带高亮颜色的 HTML**（代码块放大浮层用）。
+   *
+   * 分词与配色直接复用正文卡片那一套（`CodeHighlighter.highlightLine` +
+   * `tokenColor`），所以浮层里的颜色和卡片里逐 token 一致；跨行的块注释
+   * 靠同一个 `CodeState` 往下传递续上。返回**按行切分**的纯行内容（不含
+   * <pre>/换行符），模板端 split('\n') 后逐行填进行号表格。
+   */
+  static highlightToHtml(code: string, lang: string, palette: ReaderPalette): string {
+    const family: CodeFamily = resolveFamily(lang);
+    const state: CodeState = newCodeState();
+    const lines: string[] = code.replace(/\r\n?/g, '\n').split('\n');
+    let out: string = '';
+    for (let k = 0; k < lines.length; k++) {
+      if (k > 0) {
+        out = out + '\n';
+      }
+      const toks: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state);
+      for (let i = 0; i < toks.length; i++) {
+        const t: CodeToken = toks[i];
+        const txt: string = MdViewUtil.escapeHtml(t.text);
+        if (txt.length === 0) {
+          continue;
+        }
+        if (t.kind === CodeTokenKind.Plain) {
+          out = out + txt;
+        } else {
+          out = out + '<span style="color:' + MdViewUtil.cssColor(MdViewUtil.tokenColor(t.kind, palette))
+            + '">' + txt + '</span>';
+        }
+      }
+    }
+    return out;
   }
 
   /** 脚注引用做成上标。 */
@@ -1985,10 +2062,20 @@ export struct MdBlockView {
         .objectFit(ImageFit.Contain)
         .borderRadius(HwRadius.inner)
         .width('100%')
+        // **图表卡片限高**：纵向长的图（类图 / 大流程图）等比缩到框内，不再
+        // 按原比例把正文顶到两屏外（用户实测"类图太长了"）。Contain 只缩小
+        // 不裁切，完整内容仍在，看细节点开放大浮层。
+        .constraintSize({ maxHeight: this.chartCapH() })
         .onError(() => {
           this.markChartBroken(mode);
         })
     }
+  }
+
+  /** 图表卡片显示高度上限（vp，随窗口宽等比；见 chartCardMaxHeight） */
+  private chartCapH(): number {
+    const winVp: number = this.winWpx > 0 ? this.getUIContext().px2vp(this.winWpx) : 0;
+    return chartCardMaxHeight(winVp);
   }
 
   /** 块级图自然宽（vp；无尺寸记录回退满宽） */

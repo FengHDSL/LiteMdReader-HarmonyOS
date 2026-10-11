@@ -32,17 +32,23 @@
   }
 
   /**
-   * 宿主注入入口（与其它模板同一约定）：p = {src, dark, fit, vw}
-   * src = 代码原文。放大浮层里展示**带行号的等宽代码**，可缩放 / 旋转 / 滚动
+   * 宿主注入入口（与其它模板同一约定）：p = {src, dark, fit, vw, html}
+   * src = 代码原文；**html = 宿主排好版的逐行高亮结果**（代码块放大时由
+   * ArkTS 用正文卡片同一套分词与配色生成，行与行用 \n 分隔，已转义）。
+   * ⚠️ 有 html 就必须用它：模板里不再另写一份高亮器，否则浮层与卡片
+   * 两处颜色会走偏（同一份代码两种配色的 bug 就是这么来的）。
+   * 放大浮层里展示**带行号的等宽代码**，可缩放 / 旋转 / 滚动
    * （缩放与旋转由放大浮层统一提供，这里只负责排版）。
    */
   window.renderPayload=function(p){
     try{
       document.body.className=(p&&p.dark)?'dark':'';
       var lines=String((p&&p.src)||'').replace(/\r\n?/g,'\n').split('\n');
+      var rich=(p&&typeof p.html==='string'&&p.html.length>0)?p.html.split('\n'):null;
       var rows=[];
       for(var k=0;k<lines.length;k++){
-        rows.push('<tr><td class="ln">'+(k+1)+'</td><td class="lc">'+(esc(lines[k])||'&nbsp;')+'</td></tr>');
+        var cell=rich?(rich[k]||''):esc(lines[k]);
+        rows.push('<tr><td class="ln">'+(k+1)+'</td><td class="lc">'+(cell||'&nbsp;')+'</td></tr>');
       }
       app.innerHTML='<table>'+rows.join('')+'</table>';
       report();
