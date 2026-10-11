@@ -1770,7 +1770,21 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     try{ if(window.__mm){ window.__mm.fit(); } }catch(e){}
     report();
   };
-  if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){report();}).observe(document.getElementById('app'));}
+  // ⚠️ **容器尺寸变化必须重新 fit**：脑图创建时宿主 Web 视口还是初始小高度
+  // （池子/卡片高度由 postHeight 回传后才长到位），fit 按错误尺寸算出坏变换 →
+  // 地图保持自然尺寸被画布裁成一条（用户实测"依旧没解决"）。
+  // 尺寸显著变化（>2px）时重 fit，让脑图重新铺满真实画布。
+  var __mmLastW=0,__mmLastH=0;
+  if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){
+    try{
+      var app=document.getElementById('app');
+      if(Math.abs(app.clientWidth-__mmLastW)>2||Math.abs(app.clientHeight-__mmLastH)>2){
+        __mmLastW=app.clientWidth;__mmLastH=app.clientHeight;
+        if(window.__mm){window.__mm.fit();}
+      }
+    }catch(e){}
+    report();
+  }).observe(document.getElementById('app'));}
   window.addEventListener('load',report);
 </script>
 </body></html>
