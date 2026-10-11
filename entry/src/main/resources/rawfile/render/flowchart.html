@@ -46,6 +46,7 @@ h(s,n),t.exports=s},function(t,i,e){function s(t,i){i=i||{},n.call(this,t,i),thi
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
+      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);

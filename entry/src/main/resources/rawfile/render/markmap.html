@@ -1687,25 +1687,6 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     app.style.height=fit?'100vh':'440px';
     var root=new markmap.Transformer().transform(src).root;
     window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{autoFit:true,duration:200,initialExpandLevel:-1},root);
-    if(!fit){
-      // **卡片模式：按脑图实际宽高比撑容器**（用户实测"显示范围被定死了"）——
-      // autoFit 会把整图缩进容器，容器固定 440px 高，大图就被压扁+范围定死。
-      // 先给工作高度让布局成形，量内容 bbox 反推"宽度铺满时的高"，
-      // 容器贴合后整图以最大比例完整显示；卡片高度由 postHeight 跟随。
-      setTimeout(function(){
-        try{
-          var sv=document.getElementById('mmsvg');
-          var bb=sv.getBBox?sv.getBBox():null;
-          if(bb&&bb.width>0&&bb.height>0){
-            var wCss=app.clientWidth||360;
-            var target=Math.round(wCss*bb.height/bb.width)+20;
-            app.style.height=Math.max(240,Math.min(4000,target))+'px';
-          }
-        }catch(e){}
-        try{ if(window.__mm){ window.__mm.fit(); } }catch(e){}
-        setTimeout(report,80); setTimeout(report,260);
-      },380);
-    }
     // 延迟再 fit 一次：布局/旋转后首帧 fit 可能过时，导致部分分支超出可视区
     setTimeout(function(){ try{ if(window.__mm){ window.__mm.fit(); } }catch(e){} },350);
     setTimeout(report,100); setTimeout(report,400);
@@ -1727,6 +1708,7 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
+      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);

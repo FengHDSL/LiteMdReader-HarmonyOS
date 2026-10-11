@@ -59,11 +59,6 @@ const CREDITS: CreditItem[] = [
     note: '注释卡片式阅读形态参考'
   },
   {
-    name: 'HarmonyOS Samples · transitions-collection',
-    url: 'https://gitcode.com/HarmonyOS_Samples/transitions-collection',
-    note: '一镜到底 / 多模态转场动效参考'
-  },
-  {
     name: 'Vanessa219 / vditor',
     url: 'https://github.com/Vanessa219/vditor',
     note: 'Markdown 编辑器三种模式（所见即所得 / 即时渲染 / 分屏预览）与编辑功能设计参考'

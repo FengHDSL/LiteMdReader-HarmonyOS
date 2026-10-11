@@ -50,6 +50,7 @@
   window.renderPayload=function(p){
     try{
       document.body.className = p && p.dark ? 'dark' : '';
+      if(p&&p.bg){document.documentElement.style.background=p.bg;document.body.style.background=p.bg;}
       var html=(p&&p.src)?String(p.src):'';
       // **不剥离 <script>**（用户要求：预览要像真的网页 —— 示例里的按钮计数要能点）。
       // 内容来自用户自己的本地文档，运行在离线沙箱 Web 内，不加载任何远程脚本。

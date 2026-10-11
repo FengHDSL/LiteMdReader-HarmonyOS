@@ -7423,8 +7423,9 @@ export struct Reader {
           .padding({ left: 10, right: 6, top: 4, bottom: 4 })
         }
         .borderRadius(HwRadius.pill)
-        // 左上角：避开系统状态栏（与顶栏同档留白）
-        .position({ x: HwSpace.lg, y: 52 })
+        // 左上角：避开系统状态栏（与顶栏同档留白）；**大屏横屏要给停靠目录栏让位**，
+        // 否则胶囊落在目录面板上（用户实测：三栏时"专注中"跑到目录区域）
+        .position({ x: HwSpace.lg + this.barInsetLeft(), y: 52 })
       }
 
       // **系统选择模式的退出胶囊**（用户要求）：屏幕右缘中部（智感握姿拇指可及），
