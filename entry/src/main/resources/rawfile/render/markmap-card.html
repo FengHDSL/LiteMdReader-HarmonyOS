@@ -1702,6 +1702,17 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     // 只有 autoFit → svg 溢出虚高坑（快照窄条）；只有钉死 → 地图不满留白。
     var root=new markmap.Transformer().transform(src).root;
     window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{duration:200,initialExpandLevel:-1},root);
+    // **固定 1.4 倍缩放**（用户要求"铺满卡片和画布"）：脑图按原生 16px 布局后
+    // 整体等比放大——文字变大、宽度超出卡片（裁切）、高度超出画布（markmap
+    // 自带拖拽上下浏览）。不用 getBBox 量宽：foreignObject 的布局时机不稳，
+    // 量到偏小值会把图放大数倍（实测 scale(4.77) 布局崩坏）。
+    setTimeout(function(){
+      try{
+        var sv=document.getElementById('mmsvg');
+        sv.style.transformOrigin='0 0';
+        sv.style.transform='scale(1.4)';
+      }catch(e){}
+    },420);
     setTimeout(report,100); setTimeout(report,400);
   };
   </script>
