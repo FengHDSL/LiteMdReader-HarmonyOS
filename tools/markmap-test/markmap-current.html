@@ -1691,16 +1691,18 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
       // ⚠️ **卡片模式把整页高度钉死为画布高度**：webPageSnapshot 抓的是整页
       // 可滚动区域——svg 内部尺寸会把 scrollHeight 撑到远超画布，快照拍成
       // "上方一条脑图 + 下方空白"、卡片按虚高拉满（用户实测脑图只剩窄条）。
-      // 钉死后整页高度=画布高度，快照恰好是完整脑图。
+      // 钉死后整页高度=画布高度，快照恰好是画布内容。
       document.documentElement.style.height=app.style.height;
       document.body.style.height=app.style.height;
       document.documentElement.style.overflow='hidden';
       document.body.style.overflow='hidden';
     }
+    // **自然尺寸大字渲染**（用户要求"放大可以铺满卡片和画布"）：不再 autoFit
+    // 缩小整图——脑图按基础字号自然铺排，超出画布的部分裁掉（卡片）/可拖动
+    // 浏览（放大视图，markmap 自带拖拽 + 滚轮缩放）。
+    if(!fit){ document.getElementById('app').style.fontSize='22px'; }
     var root=new markmap.Transformer().transform(src).root;
-    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{autoFit:true,duration:200,initialExpandLevel:-1},root);
-    // 延迟再 fit 一次：布局/旋转后首帧 fit 可能过时，导致部分分支超出可视区
-    setTimeout(function(){ try{ if(window.__mm){ window.__mm.fit(); } }catch(e){} },350);
+    window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{duration:200,initialExpandLevel:-1},root);
     setTimeout(report,100); setTimeout(report,400);
   };
   </script>
@@ -1764,7 +1766,7 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     }catch(e){}
   };
   window.refit=function(){
-    try{ if(window.__mm){ window.__mm.fit(); } }catch(e){}
+    // 自然尺寸渲染无 fit 概念（用户要求大字铺排），仅回报高度
     report();
   };
   if(typeof ResizeObserver!=='undefined'){new ResizeObserver(function(){report();}).observe(document.getElementById('app'));}
@@ -1775,13 +1777,6 @@ window.addEventListener('load', function(){
   setTimeout(function(){
     try{
       renderPayload({src:'# 澄笺\n\n## 写作\n\n- 分屏实时预览\n- 版本历史与对比\n- 查找替换\n\n## 表达\n\n- 公式与九类图表\n- 手写笔记与手写批注', dark:false, fit:false, bg:'#F7F3EC', vw:0, inline:false});
-      setTimeout(function(){
-        var app=document.getElementById('app');
-        var d=document.createElement('div');
-        d.id='diag';
-        d.textContent='DIAG scrollH='+document.documentElement.scrollHeight+' bodyH='+document.body.scrollHeight+' app='+app.offsetWidth+'x'+app.clientHeight;
-        document.body.appendChild(d);
-      },800);
     }catch(e){ document.title='ERR '+e.message; }
   },150);
 });
