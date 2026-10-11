@@ -2368,7 +2368,9 @@ export struct MdBlockView {
   @Builder
   chartView() {
     Column() {
-      if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
+      // **脑图专用实时卡片**（用户拍板）：markmap 不走缓存图——始终实时渲染，
+    // 卡片内即可拖拽 / 缩放浏览整图（拍摄管线对脑图多轮适配均失败）。
+    if (this.block.lang.toLowerCase() !== 'markmap' && this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
           cardPadding: 0,
