@@ -321,67 +321,34 @@ export struct DiagramWeb {
   }
 
   /**
-   * **整页快照**（webPageSnapshot 抓 Web 的完整绘制结果，不受可视区限制——
-   * 比 componentSnapshot 对 Web 表面可靠得多）。captureRequest 递增时触发；
-   * 失败静默——池子的 4s 超时会兜底跳过这张。
-   *
-   * **块级公式（katex）走品红底拍摄**：页面 __exportBg(true) 把背景置成品红，
-   * 池子据此做色键抠图 → **透明底公式图**——公式卡片挂沉浸光感承载层后，
-   * 材质能透过公式面显示（不透明烘焙底会完全盖住材质，用户要求给公式卡片
-   * 加沉浸光感）。拍摄后立即还原页面背景。
+   * **整页快照**（webPageSnapshot 抓 Web 的完整绘制结果，不受可视区限制）。
+   * captureRequest 递增时触发；失败静默——池子的 4s 超时会兜底跳过这张。
+   * （块级公式曾试验"品红底 + 键控抠透明"——真机上透明 PNG 在 Image 组件里
+   * 渲染不可靠（卡片全黑），已回退为**烘焙卡片底色**的不透明图。）
    */
   private doCapture(): void {
     if (this.captureRequest <= 0 || this.webId.length === 0) {
       return;
     }
     // **延迟 120ms 再拍**：刚回传高度时，行内模式的 Web 表面可能还在
-    // 「回传宽度 → 组件变宽 → 页面重排 → 再回传」的调整中 —— 立即抓会拍到
-    // 内容挤在左侧的宽图。延迟窗口内任务若已切换（webId 变化），放弃本次
-    // 抓取（新任务有自己的快照请求）；池子的 4s 超时仍兜底。
+    // 「回传宽度 → 组件变宽 → 页面重排 → 再回传」的调整中——立即抓会拍到
+    // 内容挤在左侧的宽图。延迟窗口内任务若已切换（webId 变化），放弃本次。
     const capturedId: string = this.webId;
-    // 品红底键控拍摄：仅块级公式（单色笔画，反解干净；彩色图表不键控防误伤）
-    const keyBg: boolean = this.mode === 'katex' && !this.inlineMode;
     setTimeout(() => {
       if (this.webId !== capturedId) {
         return;
       }
-      const shoot = (): void => {
-        try {
-          this.ctrl.webPageSnapshot({ id: capturedId },
-            (err: BusinessError, result: webview.SnapshotResult) => {
-              if (keyBg) {
-                // 无论快照成败都还原页面背景（残留品红 = 后续渲染全粉）
-                try {
-                  this.ctrl.runJavaScript('window.__exportBg(false);');
-                } catch (e) {
-                  // 忽略
-                }
-              }
-              if (err !== undefined || result === undefined
-                || result.status !== true || result.imagePixelMap === undefined) {
-                return;
-              }
-              this.onCaptured(result.imagePixelMap, this.lastPostW, this.lastPostH);
-            });
-        } catch (err) {
-          if (keyBg) {
-            try {
-              this.ctrl.runJavaScript('window.__exportBg(false);');
-            } catch (e) {
-              // 忽略
+      try {
+        this.ctrl.webPageSnapshot({ id: capturedId },
+          (err: BusinessError, result: webview.SnapshotResult) => {
+            if (err !== undefined || result === undefined
+              || result.status !== true || result.imagePixelMap === undefined) {
+              return;
             }
-          }
-        }
-      };
-      if (keyBg) {
-        try {
-          this.ctrl.runJavaScript('window.__exportBg(true);');
-        } catch (err) {
-          // 注入失败：按普通底拍摄
-        }
-        setTimeout(shoot, 90);
-      } else {
-        shoot();
+            this.onCaptured(result.imagePixelMap, this.lastPostW, this.lastPostH);
+          });
+      } catch (err) {
+        // 快照接口异常：静默，池子超时兜底
       }
     }, 120);
   }

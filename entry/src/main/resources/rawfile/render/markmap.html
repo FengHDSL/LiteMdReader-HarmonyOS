@@ -1684,7 +1684,9 @@ function Oc(e){return null==e}var Rc={isNothing:Oc,isObject:function(e){return"o
     var app=document.getElementById('app');
     app.innerHTML='<svg id="mmsvg" style="width:100%;height:100%"></svg>';
     // fit（放大浮层）：**撑满整个画布**（此前 80vh 底部留空，看起来"画布不是全屏"）
-    app.style.height=fit?'100vh':'440px';
+    // 卡片画布高度**自适应设备屏幕**（用户要求：定死 440 不可接受）——
+    // 约 72% 视口高（下限 440），脑图 autoFit 铺满画布；postHeight 跟随卡片高度。
+    app.style.height=fit?'100vh':Math.max(440,Math.round(window.innerHeight*0.72))+'px';
     var root=new markmap.Transformer().transform(src).root;
     window.__mm=markmap.Markmap.create(document.getElementById('mmsvg'),{autoFit:true,duration:200,initialExpandLevel:-1},root);
     // 延迟再 fit 一次：布局/旋转后首帧 fit 可能过时，导致部分分支超出可视区

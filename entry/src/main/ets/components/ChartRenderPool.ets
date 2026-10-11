@@ -140,7 +140,7 @@ export struct ChartRenderPool {
     }, 150);
   }
 
-  /** 收到快照产物 → 归属校验 → （块级公式：品红键控抠透明）→ 空白自检 → 入库 → 收尾。 */
+  /** 收到快照产物 → 归属校验 → 空白自检 → 入库（含逻辑尺寸 sidecar）→ 收尾。 */
   private onCaptured(pixel: image.PixelMap, w: number, h: number): void {
     if (this.guardTimer >= 0) {
       clearTimeout(this.guardTimer);
@@ -153,96 +153,21 @@ export struct ChartRenderPool {
     if (t === null || c === null || t.key !== this.pendingKey) {
       return;
     }
-    // **块级公式：品红底 → 透明底**（键控失败按任务失败处理——绝不把品红图
-    // 落进缓存）。透明图让公式卡片的沉浸光感材质透出来（用户要求）。
-    const needKey: boolean = t.mode === 'katex' && t.inline !== true;
-    const prepare: Promise<image.PixelMap> = needKey
-      ? this.keyMagenta(pixel, this.dark)
-      : Promise.resolve(pixel);
-    prepare.then((final: image.PixelMap) => {
-      return this.pixelLooksBlank(final).then((blank: boolean) => {
-        if (blank) {
-          // **空白自检**：全透明图不落盘——宁可任务保持"未就绪"（正文显示
-          // 线性化文本 / 实时渲染），也不把空白写进持久缓存（那会一直空白、
-          // 重启也无效）。记入失败集让队列继续。
-          this.failed.add(t.key);
-          this.finishOne(t);
-          return;
-        }
-        // w/h = 页面内容逻辑尺寸（css px = vp）：写 .dim sidecar，
-        // 显示端对超宽公式按自然尺寸 + 横向滚动展示（不压扁）
-        ChartCache.save(c, t.key, final, w, h).then(() => {
-          this.finishOne(t);
-        }).catch(() => {
-          this.failed.add(t.key);
-          this.finishOne(t);
-        });
+    this.pixelLooksBlank(pixel).then((blank: boolean) => {
+      if (blank) {
+        // **空白自检**：全透明图不落盘——宁可任务保持"未就绪"（正文显示
+        // 线性化文本 / 实时渲染），也不把空白写进持久缓存。记入失败集让队列继续。
+        this.failed.add(t.key);
+        this.finishOne(t);
+        return;
+      }
+      ChartCache.save(c, t.key, pixel, w, h).then(() => {
+        this.finishOne(t);
+      }).catch(() => {
+        this.failed.add(t.key);
+        this.finishOne(t);
       });
-    }).catch(() => {
-      // 键控异常：按任务失败处理（回落实时渲染），队列继续
-      this.failed.add(t.key);
-      this.finishOne(t);
     });
-  }
-
-  /**
-   * **品红键控抠图**：块级公式快照以品红（#FF00FF）为底拍摄（DiagramWeb
-   * 拍前 __exportBg(true)），这里逐像素从 G 通道反解 alpha、输出
-   * **笔画色 + 透明底**的图——公式卡片挂沉浸光感承载层后，材质透过公式面
-   * 显示（不透明烘焙底会完全盖住材质）。
-   *
-   * 反解依据：katex.html 的笔画是单色 currentColor（深色 #ECEFF4 / 浅色 #000），
-   * 底色 M=#FF00FF 的 G=0 —— G 通道线性可解且灵敏度最高：
-   *   深色：P_G = a·239          → a = P_G / 239
-   *   浅色：P_G = (1-a)·255      → a = 1 - P_R/255（G 无区分度，改用 R）
-   * 公式反走样 = 笔画与底色的线性混合，反解天然干净、无彩边。
-   * 任何异常抛给调用方按任务失败处理（绝不把品红图写进缓存）。
-   */
-  private async keyMagenta(pixel: image.PixelMap, dark: boolean): Promise<image.PixelMap> {
-    const info: image.ImageInfo = await pixel.getImageInfo();
-    if (info.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
-      return pixel;
-    }
-    const w: number = info.size.width;
-    const h: number = info.size.height;
-    if (w <= 0 || h <= 0 || w * h > 40000000) {
-      return pixel;
-    }
-    const buf: ArrayBuffer = new ArrayBuffer(w * h * 4);
-    const area: image.PositionArea = {
-      pixels: buf, offset: 0, stride: w * 4,
-      region: { size: { width: w, height: h }, x: 0, y: 0 }
-    };
-    await pixel.readPixels(area);
-    const px: Uint8Array = new Uint8Array(buf);
-    // 笔画色 = katex.html 的 currentColor：深色 #ECEFF4(236,239,244) / 浅色 #000
-    const fr: number = dark ? 236 : 0;
-    const fgG: number = dark ? 239 : 0;
-    const fgB: number = dark ? 244 : 0;
-    for (let i: number = 0; i < px.length; i += 4) {
-      let a: number;
-      if (dark) {
-        a = px[i + 1] / 239;
-      } else {
-        a = 1 - px[i] / 255;
-      }
-      if (a < 0.015) {
-        a = 0;
-      } else if (a > 0.985) {
-        a = 1;
-      }
-      // ⚠️ **必须写预乘值**（RGB = 笔画色 × a）：快照缓冲按预乘语义解释，
-      // 直写非预乘值时 a=0 的背景像素是非法数据（RGB≠0 且 A=0）——
-      // 解码端行为未定义 = 部分卡片背景渲染成**黑色**（用户实测浅色下滑动
-    // 回来就变黑）。预乘后 a=0 → RGB=0，解码端反预乘还原笔画色。
-      const pa: number = Math.round(a * 255);
-      px[i] = Math.round(fr * a);
-      px[i + 1] = Math.round(fgG * a);
-      px[i + 2] = Math.round(fgB * a);
-      px[i + 3] = pa;
-    }
-    await pixel.writePixels(area);
-    return pixel;
   }
 
   /**

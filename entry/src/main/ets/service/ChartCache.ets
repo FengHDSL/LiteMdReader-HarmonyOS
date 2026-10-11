@@ -45,12 +45,14 @@ export class ChartCache {
    *    （用户实测"类图显示不完整"）。块级图上限提到 4096，键升盐让截断旧图失效。
    *  · v7（2026-10-11 六度升级）：块级公式改**品红底拍摄 + 键控抠透明**——
    *    公式卡片挂沉浸光感承载层，透明图让材质透出（不透明烘焙底会盖住材质）。
-   *  · v8（2026-10-11 七度升级）：①键控改**预乘写法**（此前非预乘数据解码
-   *    未定义：公式卡全透明"消失"、图表卡黑底）；②图表模板页应用卡片底色
-   *    （o.bg，修浅色图表卡黑背景）。键升盐让坏图全部作废重生成。
+   *  · v8（2026-10-11 七度升级）：①键控改**预乘写法**；②图表模板页应用卡片底色
+   *    （o.bg，修浅色图表卡黑背景）。
+   *  · v9（2026-10-11 八度升级）：**公式键控透明方案整体回退**——真机上透明 PNG
+   *    在 Image 组件里渲染不可靠（卡片全黑），公式恢复烘焙卡片底色不透明图。
+   *    键升盐让键控期的透明图全部作废重生成。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v8|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v9|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
