@@ -330,10 +330,12 @@ export struct DiagramWeb {
     if (this.captureRequest <= 0 || this.webId.length === 0) {
       return;
     }
-    // **延迟 120ms 再拍**：刚回传高度时，行内模式的 Web 表面可能还在
-    // 「回传宽度 → 组件变宽 → 页面重排 → 再回传」的调整中——立即抓会拍到
-    // 内容挤在左侧的宽图。延迟窗口内任务若已切换（webId 变化），放弃本次。
+    // **延迟再拍**：基础 120ms（行内模式的 Web 表面可能还在「回传宽度 → 组件变宽
+    // → 页面重排」的调整中）；**markmap 700ms**——脑图的 fit 在渲染后 350ms 才执行，
+    // 拍早了抓到的是 fit 之前的原始布局（未缩放被裁切 = "只有窄窄一条"，用户实测）。
+    // 延迟窗口内任务若已切换（webId 变化），放弃本次（池子的 4s 超时仍兜底）。
     const capturedId: string = this.webId;
+    const settle: number = this.mode === 'markmap' ? 700 : 120;
     setTimeout(() => {
       if (this.webId !== capturedId) {
         return;
@@ -350,6 +352,6 @@ export struct DiagramWeb {
       } catch (err) {
         // 快照接口异常：静默，池子超时兜底
       }
-    }, 120);
+    }, settle);
   }
 }
