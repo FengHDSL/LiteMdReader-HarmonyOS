@@ -16,13 +16,18 @@
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { InlineRuntime } from '../markdown/MdToHtml';
+import { InlineRuntime, MdToHtml } from '../markdown/MdToHtml';
 
 const TAG: string = 'ChartRuntime';
 
 export class ChartRuntimeService {
-  /** 图表语言 → 所需 rawfile 文件名。 */
+  /** 图表语言 → 所需 rawfile 文件名。已关闭引擎返回空（导出降级为代码块，无需库）。 */
   static filesForLang(lang: string): string[] {
+    // 「设置 → 引擎管理」里关闭了对应引擎 → 不读它的库。判定与 MdToHtml.export
+    // 的降级逻辑同源（flowchart 借 mermaid 渲染，两者任一关闭都算关）。
+    if (MdToHtml.engineOffForLang(lang)) {
+      return [];
+    }
     if (lang === 'markmap') {
       return ['d3.min.js', 'markmap-lib.js', 'markmap-view.js'];
     }
@@ -36,7 +41,7 @@ export class ChartRuntimeService {
       return ['katex.min.js', 'katex.min.css'];
     }
     if (lang === 'graphviz') {
-      return ['viz2.js', 'viz2-full.render.js'];
+      return ['viz-global.js'];
     }
     if (lang === 'flowchart') {
       return ['mermaid.min.js'];
@@ -82,7 +87,12 @@ export class ChartRuntimeService {
     return out;
   }
 
-  /** katex 字体文件清单（内联 CSS 时把 url(fonts/xx) 替换成 data URI 用）。 */
+  /**
+   * katex 字体文件清单（内联 CSS 时把 url(fonts/xx) 替换成 data URI 用）。
+   * ⚠️ Size1~4 缺一不可：伸缩括号（\left\right、\big 系列）、大号运算符
+   * （display 模式的 ∑/∏/∫）、超大矩阵括号全靠这四个字体拼接，
+   * 缺失时括号断裂、\big 不放大（用户实测反馈）。
+   */
   static katexFontFiles(): string[] {
     return [
       'KaTeX_AMS-Regular.woff2', 'KaTeX_Caligraphic-Bold.woff2', 'KaTeX_Caligraphic-Regular.woff2',
@@ -90,7 +100,8 @@ export class ChartRuntimeService {
       'KaTeX_Main-BoldItalic.woff2', 'KaTeX_Main-Italic.woff2', 'KaTeX_Main-Regular.woff2',
       'KaTeX_Math-BoldItalic.woff2', 'KaTeX_Math-Italic.woff2', 'KaTeX_SansSerif-Bold.woff2',
       'KaTeX_SansSerif-Italic.woff2', 'KaTeX_SansSerif-Regular.woff2', 'KaTeX_Script-Regular.woff2',
-      'KaTeX_Typewriter-Regular.woff2'
+      'KaTeX_Size1-Regular.woff2', 'KaTeX_Size2-Regular.woff2', 'KaTeX_Size3-Regular.woff2',
+      'KaTeX_Size4-Regular.woff2', 'KaTeX_Typewriter-Regular.woff2'
     ];
   }
 

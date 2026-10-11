@@ -600,6 +600,50 @@ export class DocStore {
    * from / to 形如 `F|名字` 或 `D|名字`——**文件夹与文档之间也能互换**，
    * 这就是「文件夹只能和文件夹换位」那条限制的解法。
    */
+  /**
+   * **交换两篇文档在书架上的位置**（用户要求：拖到另一篇上方悬停 1.5 秒 → 换位）。
+   * 两篇都是散文档 → 交换 order 里的位置；同在一个文件夹内 → 交换 folder.docs。
+   * 跨文件夹 / 涉及文件夹的换位不支持（返回 false，调用方走原有归组逻辑）。
+   */
+  static swapShelfDocs(nameA: string, nameB: string): boolean {
+    if (nameA === nameB || nameA.length === 0 || nameB.length === 0) {
+      return false;
+    }
+    const ia: number = DocStore.ord.indexOf(DocStore.ORDER_DOC + nameA);
+    const ib: number = DocStore.ord.indexOf(DocStore.ORDER_DOC + nameB);
+    if (ia >= 0 && ib >= 0) {
+      DocStore.ord[ia] = DocStore.ORDER_DOC + nameB;
+      DocStore.ord[ib] = DocStore.ORDER_DOC + nameA;
+      DocStore.normalizeOrder();
+      DocStore.persist();
+      return true;
+    }
+    const fa: string = DocStore.folderOfDoc(nameA);
+    if (fa.length > 0 && fa === DocStore.folderOfDoc(nameB)) {
+      let folder: ShelfFolder | null = null;
+      const flist: ShelfFolder[] = DocStore.folderList();
+      for (let k = 0; k < flist.length; k++) {
+        if (flist[k].name === fa) {
+          folder = flist[k];
+          break;
+        }
+      }
+      if (folder === null) {
+        return false;
+      }
+      const pa: number = folder.docs.indexOf(nameA);
+      const pb: number = folder.docs.indexOf(nameB);
+      if (pa < 0 || pb < 0) {
+        return false;
+      }
+      folder.docs[pa] = nameB;
+      folder.docs[pb] = nameA;
+      DocStore.persistFolders();
+      return true;
+    }
+    return false;
+  }
+
   static moveShelfEntry(from: string, to: string): boolean {
     if (from === to || from.length === 0 || to.length === 0) {
       return false;

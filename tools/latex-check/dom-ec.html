@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<iframe id="f" src="/render/echarts.html?v=3" style="width:500px;height:300px"></iframe>
+<script>
+document.getElementById('f').addEventListener('load', function () {
+  const f = this;
+  f.contentWindow.renderPayload(JSON.stringify({ src: '{"xAxis":{"type":"category","data":["a","b"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,7]}]}', dark: false }));
+  setTimeout(function () {
+    const doc = f.contentDocument;
+    const app = doc.getElementById('app');
+    const r = {
+      hasSvg: app.querySelector('svg') !== null,
+      hasCanvas: app.querySelector('canvas') !== null,
+      echartsVersion: f.contentWindow.echarts ? (f.contentWindow.echarts.version || '?') : 'NO-ECHARTS',
+      appHtmlHead: app.innerHTML.slice(0, 200)
+    };
+    const d = document.createElement('div');
+    d.id = 'ec-result'; d.setAttribute('data-json', JSON.stringify(r));
+    document.body.appendChild(d);
+  }, 1200);
+});
+</script>
+<div id="ec-result" data-json="{&quot;hasSvg&quot;:true,&quot;hasCanvas&quot;:false,&quot;echartsVersion&quot;:&quot;6.1.0&quot;,&quot;appHtmlHead&quot;:&quot;&lt;div style=\&quot;position: relative; overflow: hidden; width: 480px; height: 264px;\&quot;&gt;&lt;svg xmlns=\&quot;http://www.w3.org/2000/svg\&quot; xmlns:xlink=\&quot;http://www.w3.org/1999/xlink\&quot; version=\&quot;1.1\&quot; baseProfile=\&quot;full\&quot; widt&quot;}"></div></body></html>

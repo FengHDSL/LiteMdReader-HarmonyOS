@@ -69,6 +69,11 @@ export struct DocCover {
   /** 是否内置教程（角落加「内置」小标） */
   @Prop builtin: boolean = false;
   /**
+   * **小尺寸圆角**（迷你封面用）：5/13 的大圆角是按整格封面设计的，
+   * 缩到 56vp 以下会显得"圆角不协调"（用户反馈）——开启后按比例收紧为 2/6。
+   */
+  @Prop smallCorners: boolean = false;
+  /**
    * 自定义封面底色（#RRGGBB，空 = 用调用方传入的哈希配色）。
    * 只覆盖色板，仍然走同一套「渐变 + 书脊 + 光感」的画法。
    */
@@ -116,7 +121,7 @@ export struct DocCover {
           angle: 200,
           colors: [[this.topColor(), 0.0], [this.bottomColor(), 1.0]]
         })
-        .borderRadius({ topLeft: 5, bottomLeft: 5, topRight: 13, bottomRight: 13 })
+        .borderRadius({ topLeft: this.smallCorners ? 2 : 5, bottomLeft: this.smallCorners ? 2 : 5, topRight: this.smallCorners ? 6 : 13, bottomRight: this.smallCorners ? 6 : 13 })
 
       // 自定义封面图（用户导入）：铺满整张封面，压在书脊与光感层之下。
       // 双保险兜底色用 bottomColor()，图片解码中 / 失败时不会露出空白。
@@ -125,7 +130,7 @@ export struct DocCover {
           .width('100%')
           .height('100%')
           .objectFit(ImageFit.Cover)
-          .borderRadius({ topLeft: 5, bottomLeft: 5, topRight: 13, bottomRight: 13 })
+          .borderRadius({ topLeft: this.smallCorners ? 2 : 5, bottomLeft: this.smallCorners ? 2 : 5, topRight: this.smallCorners ? 6 : 13, bottomRight: this.smallCorners ? 6 : 13 })
           .backgroundColor(this.bottomColor())
           .draggable(false)
       }
@@ -133,24 +138,26 @@ export struct DocCover {
       // 左侧书脊：**胶装条**（用户要求更明显的装订效果）——
       // 一条竖向深色压痕带 + 右缘一道高光线，模拟封面胶装时的书脊贴合力；
       // （用图片封面时书脊减淡，避免把照片压暗）
+      // ⚠️ 迷你封面（smallCorners）书脊收窄到 4：10vp 在 56vp 宽上占近两成，
+      // 看着像"两层封面"（用户反馈），小尺寸下细一点才协调。
       Column()
-        .width(10)
+        .width(this.smallCorners ? 4 : 10)
         .height('100%')
         .linearGradient({
           angle: 0,
           colors: [['#59000000', 0.0], ['#33000000', 0.4], ['#00000000', 0.82], ['#59FFFFFF', 1.0]]
         })
-        .borderRadius({ topLeft: 5, bottomLeft: 5 })
+        .borderRadius({ topLeft: this.smallCorners ? 2 : 5, bottomLeft: this.smallCorners ? 2 : 5 })
         .opacity(this.coverImage.length > 0 ? 0.4 : 1)
 
       // 沉浸光感层：铺在纸面与书脊之上、文字之下——
       // 玻璃质感盖住封面画料，标题仍保持清晰（文字在玻璃之上）
       ImmersiveCardLayer({
-        layerRadius: 9,
-        layerRadiusTL: 5,
-        layerRadiusTR: 13,
-        layerRadiusBL: 5,
-        layerRadiusBR: 13,
+        layerRadius: this.smallCorners ? 4 : 9,
+        layerRadiusTL: this.smallCorners ? 2 : 5,
+        layerRadiusTR: this.smallCorners ? 6 : 13,
+        layerRadiusBL: this.smallCorners ? 2 : 5,
+        layerRadiusBR: this.smallCorners ? 6 : 13,
         layerShadow: false
       })
 
@@ -209,7 +216,7 @@ export struct DocCover {
     .width('100%')
     .height('100%')
     // 轮廓与「新建文档」按钮同款：细描边（用户要求：封面轮廓与新建按钮一致）
-    .borderRadius({ topLeft: 5, bottomLeft: 5, topRight: 13, bottomRight: 13 })
+    .borderRadius({ topLeft: this.smallCorners ? 2 : 5, bottomLeft: this.smallCorners ? 2 : 5, topRight: this.smallCorners ? 6 : 13, bottomRight: this.smallCorners ? 6 : 13 })
     // **必须裁切**：不加这句，子节点（渐变纸面 / 书脊 / 光感层）的方角会在圆角外露出来，
     // 封面就只是"方纸 + 圆角描边"。裁剪后右侧两角被真正切掉 → 书的模样。
     .clip(true)

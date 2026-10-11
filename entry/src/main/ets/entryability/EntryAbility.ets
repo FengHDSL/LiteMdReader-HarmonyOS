@@ -11,8 +11,10 @@ import { setupImmersiveWindow, applyAppColorMode, syncSystemDarkFromContext } fr
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { DocStore } from '../service/DocStore';
-// 桌面卡片暂时停用（见 onForeground / onBackground 里的注释）：FormSync 调用一并注释
-// import { FormSync } from '../service/FormSync';
+import { BackupStore } from '../service/BackupStore';
+import { WebDavStore } from '../service/WebDavStore';
+// 桌面卡片数据同步（2×2 最近阅读卡片）：onForeground/onBackground 主动推送
+import { FormSync } from '../service/FormSync';
 import GlobalUIAbilityContext from '../util/ContextConfig';
 
 const DOMAIN = 0x0000;
@@ -38,6 +40,9 @@ export default class EntryAbility extends UIAbility {
     // 也可能是其他应用「分享」过来的文本 / 文件（Share Kit 的 sendData）——
     // 统一交给 handleSharedData：它先试分享数据，失败再退回 want.uri
     this.handleSharedData(want);
+
+    // **桌面卡片点击路由**（冷启动）
+    this.handleCardAction(want);
 
     // 全局上下文：手写组件等需要 UIAbilityContext 的能力从这里取
     GlobalUIAbilityContext.setContext(this.context);
@@ -74,9 +79,13 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerFontFamily', '');
     PersistentStorage.persistProp('readerParaSpace', 1.0);
     PersistentStorage.persistProp('readerIndent', false);
+    // 网页开放（阅读页「更多」面板开关）：开启后点正文 http(s) 链接半模态打开
+    PersistentStorage.persistProp('readerWebOpen', false);
     // 目录 / 批注侧边栏是否使用沉浸光感（关闭后用阅读背景色）
     PersistentStorage.persistProp('drawerImmersive', true);
     PersistentStorage.persistProp('readerShowMeta', true);
+    // 引擎管理：被关闭的渲染引擎列表（逗号分隔 id，空串 = 全部开启）
+    PersistentStorage.persistProp('disabledEngines', '');
     PersistentStorage.persistProp('readerKeepScreenOn', false);
     // 阅读页标签栏位置：false = 顶栏下方（默认）/ true = 底部悬浮栏上方（「更多」里可切换）
     PersistentStorage.persistProp('readerTabBarAtBottom', false);
@@ -178,9 +187,47 @@ export default class EntryAbility extends UIAbility {
   /** 应用已在运行时，再次被"打开方式" / 分享拉起（热启动）也要接住新内容 */
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     this.handleSharedData(want);
+    // **桌面卡片点击路由**（热启动；冷启动走 onCreate 同名分支）
+    this.handleCardAction(want);
     // **跨设备接续**：热启动也要接住迁移数据（冷启动走 onCreate 同名分支）
     if (launchParam.launchReason === AbilityConstant.LaunchReason.CONTINUATION) {
       this.restoreContinueData(want);
+    }
+  }
+
+  /**
+   * 桌面卡片点击路由（postCardAction router 带 params）：
+   *   · target=doc   → 打开指定文档（name 参数）；
+   *   · target=newdoc → 进编辑器新建；
+   *   · target=shelf → 回书架（无阅读记录时点卡片）。
+   * UIAbility 不能直接路由 Navigation 栈，写 AppStorage 信号由书架页
+   * （Index.onPageShow）消费——与 pendingOpenDocName 同一套模式。
+   */
+  private handleCardAction(want: Want): void {
+    try {
+      const params: Record<string, Object> | undefined = want.parameters;
+      if (params === undefined) {
+        return;
+      }
+      const target: Object | undefined = params['target'];
+      if (target === undefined || target === null) {
+        return;
+      }
+      const t: string = target as string;
+      if (t === 'doc') {
+        const raw: Object | undefined = params['name'];
+        const name: string = raw === undefined || raw === null ? '' : raw as string;
+        if (name.length > 0) {
+          AppStorage.setOrCreate('formJumpDoc', name);
+        }
+      } else if (t === 'newdoc') {
+        // tick 自增保证连续点两次也能触发 @StorageProp 变更
+        const tick: number = AppStorage.get<number>('formJumpNewDoc') ?? 0;
+        AppStorage.setOrCreate('formJumpNewDoc', tick + 1);
+      }
+      // target=shelf 无需信号：拉起后本来就落在书架
+    } catch (err) {
+      // 解析失败不影响启动
     }
   }
 
@@ -404,6 +451,19 @@ export default class EntryAbility extends UIAbility {
     if (uri === undefined || uri === null || uri.length === 0) {
       return;
     }
+    // **.zip 只用于导入备份**（用户要求）：关联打开的 zip 不当文档导入，
+    // 直接走备份恢复（BackupStore.importFromUri），结果经 Index 的
+    // pendingBackupImportMsg 提示一次。
+    const uriLower: string = uri.toLowerCase();
+    if (uriLower.endsWith('.zip')) {
+      BackupStore.importFromUri(this.context, uri).then((msg: string): void => {
+        AppStorage.setOrCreate('pendingBackupImportMsg', msg);
+        hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'zip import: ' + msg);
+      }).catch((err: BusinessError): void => {
+        AppStorage.setOrCreate('pendingBackupImportMsg', '导入失败：' + err.message);
+      });
+      return;
+    }
     try {
       const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
       const stat = fileIo.statSync(file.fd);
@@ -473,6 +533,18 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, 'LiteMdReader', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
+
+    // **WebDAV 定时备份检查**（用户要求：可设定多久自动上传一次）：
+    // 启动后延迟 4s（等首页首帧与壁纸铺好）再判定——「已配置 + 开启间隔 + 已到期」才执行，
+    // 备份在后台异步跑，结果写 AppStorage 'webdavAutoStatus' 供数据管理页显示。
+    setTimeout(() => {
+      try {
+        WebDavStore.maybeAutoBackup(this.context);
+      } catch (err) {
+        hilog.error(DOMAIN, 'LiteMdReader', 'auto webdav backup failed: %{public}s',
+          JSON.stringify(err));
+      }
+    }, 4000);
   }
 
   onWindowStageDestroy(): void {
@@ -492,13 +564,12 @@ export default class EntryAbility extends UIAbility {
     // **回前台补一次系统深浅同步**：用户在后台（或系统设置里）改了深浅色时，
     // 这个时机最可靠——部分设备切深浅并不下发 onConfigurationUpdate。
     this.syncSystemColorMode();
-    // 桌面卡片：**暂时停用**（用户要求，卡片有 bug 待修），推送一并关掉。
-    // 恢复时取消注释即可（同时要在 module.json5 里恢复 EntryFormAbility 注册）。
-    // try {
-    //   FormSync.pushRecents(this.context, false);
-    // } catch (err) {
-    //   // 推送失败不影响主流程
-    // }
+    // 桌面卡片推送：回前台刷一次最近阅读数据（30 分钟定时刷新兜底之外的即时通道）
+    try {
+      FormSync.pushRecents(this.context, false);
+    } catch (err) {
+      // 推送失败不影响主流程
+    }
   }
 
   /** 退到后台 / 被系统回收前落盘一次设置镜像（用户"退出应用"最常见的路径）。 */
@@ -512,12 +583,12 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       // 信号失败不影响主流程
     }
-    // 桌面卡片兜底推送：随卡片一起停用（恢复时取消注释）
-    // try {
-    //   FormSync.pushRecents(this.context, true);
-    // } catch (err) {
-    //   // 卡片推送失败不影响主流程
-    // }
+    // 桌面卡片兜底推送：退后台前最后一次（force 跳过节流）
+    try {
+      FormSync.pushRecents(this.context, true);
+    } catch (err) {
+      // 卡片推送失败不影响主流程
+    }
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onBackground');
   }
 

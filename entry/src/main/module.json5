@@ -52,15 +52,47 @@
         // **应用接续（多设备流转）**（用户要求）：跨设备迁移时在 onContinue
         // 携带当前文档与进度，目标端恢复阅读现场
         "continuable": true,
-        // **窗口模式**（多屏协同放大到全屏需要）：显式声明支持全屏 / 分屏 / 悬浮窗
+        // **启动方向**（官方 module.json5 → abilities.orientation）：**此前完全没配**——
+        // 缺省 unspecified = 由系统判定，**手机上默认锁竖屏**，这就是「锁定竖向、无法横屏」
+        // 的根因（代码里从未调用 setPreferredOrientation，配置里也没声明过）。
+        // 取值口径（官方枚举）：
+        //   · unspecified          → 系统判定（手机默认竖屏）；
+        //   · auto_rotation        → **随传感器旋转，不受系统方向锁定影响**（用户要求：允许横竖屏切换）；
+        //   · auto_rotation_restricted → 随传感器旋转但尊重系统「自动旋转」开关；
+        //   · landscape / portrait → 强制单向。
+        // 用户明确要求「允许横竖屏切换」→ 用 auto_rotation（不越过系统设置改回 restricted）。
+        "orientation": "auto_rotation",
+        // **窗口模式**（官方文档《应用声明支持智慧多窗》）：显式声明全屏 / 分屏 / 悬浮窗三种。
+        // 缺省值本来就是这三种，这里显式写出以便后续直接调整；华为侧排查提示的
+        // 「放大按钮 / 放大不生效」正是要求 supportWindowMode 含 fullscreen ✓ 已满足。
         "supportWindowMode": ["fullscreen", "split", "floating"],
-        // **多窗布局方向**（官方对阅读类竖向应用的建议值）：手机分屏走上下分屏、
-        // 悬浮窗为竖向——配合全屏协同放大（系统调度）的大屏自适应布局
-        "preferMultiWindowOrientation": "portrait",
-        // **自由窗口尺寸限制**（应用适配自由窗口）：限制用户可缩放的最小窗口，
-        // 防止缩到布局崩坏；320vp 宽以内走手机单列布局（isWide 断点 700），均能正常显示
+        // **多窗布局方向（横屏的关键开关）**——官方口径（module.json5 abilities 下）：
+        //   · portrait  → 多窗布局竖向，且**手机会话手势分屏「不支持」**；
+        //   · landscape → **多窗布局横向**，配置后支持**横向悬浮窗 / 横向全屏**与上下分屏
+        //                 （官方建议横向应用配置）← 本应用要的就是这个；
+        //   · default   → 竖向悬浮窗（手机）。
+        // 历史：曾配 portrait（把协同窗口锁成竖向），改 default 后仍是竖向——
+        // 要横屏只能显式 landscape（用户实测：竖屏锁死、无法横屏）。
+        "preferMultiWindowOrientation": "landscape",
+        // **自由窗口尺寸限制**：最小 320×240（本 SDK 校验只认扁平字段
+        // minWindowWidth/minWindowHeight，官方 FAQ 示例的 windowSize 嵌套写法
+        // 会被 Schema 校验拒绝——实测）
         "minWindowWidth": 320,
         "minWindowHeight": 240,
+        // **自由多窗下的窗口模式与启动形态**（官方《窗口元数据配置》）：
+        //   · supportWindowModeInFreeMultiWindow：自由多窗态同样支持 全屏 / 分屏 / 悬浮窗
+        //     （缺了它，自由窗标题栏的「放大」按钮不会出现）；
+        //   · isMaximize=true：自由窗 / 协同窗口**启动即最大化**（即「协同窗口全屏」）。
+        "metadata": [
+          {
+            "name": "ohos.ability.window.supportWindowModeInFreeMultiWindow",
+            "value": "fullscreen,split,floating"
+          },
+          {
+            "name": "ohos.ability.window.isMaximize",
+            "value": "true"
+          }
+        ],
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:starticon_blank",
@@ -92,6 +124,20 @@
               {
                 "scheme": "file",
                 "type": "text/plain",
+                "linkFeature": "FileOpen"
+              },
+              // ── 关联 .zip（1.1.1）：**只用于导入备份**（用户要求）——
+              // 文件管理器里的备份 zip 长按 →「打开方式」→ 澄笺，直接进导入流程；
+              // EntryAbility.handleOpenFile 对 .zip 走 BackupStore.importFromUri，
+              // 不支持的压缩包（非澄笺备份结构）会在导入时报错返回。
+              {
+                "scheme": "file",
+                "type": "application/zip",
+                "linkFeature": "FileOpen"
+              },
+              {
+                "scheme": "file",
+                "type": "application/x-zip-compressed",
                 "linkFeature": "FileOpen"
               }
             ]
@@ -144,22 +190,21 @@
         "type": "embeddedUI",
         "exported": true
       },
-      // ── 桌面卡片（2×4 书架卡片）：**暂时停用**（用户要求，卡片存在 bug，以后再修）──
-      // 停用方式 = 不再注册 form 扩展（卡片因此不出现在「服务卡片」列表里，
-      // 已添加的卡片也不会再被更新）。相关代码都原位保留，日后要恢复：
-      //   ① 取消下面这段注释；② 恢复 EntryAbility / Reader 里的 FormSync.pushRecents 调用。
-      // {
-      //   "name": "EntryFormAbility",
-      //   "srcEntry": "./ets/entryformability/EntryFormAbility.ets",
-      //   "type": "form",
-      //   "exported": true,
-      //   "metadata": [
-      //     {
-      //       "name": "ohos.extension.form",
-      //       "resource": "$profile:form_config"
-      //     }
-      //   ]
-      // }
+      // ── 桌面卡片（2×2 最近阅读卡片，用户要求恢复并新增）──
+      // EntryFormAbility 在卡片添加 / 定时刷新时用 FormSync.buildData 组装数据；
+      // 即时更新走应用进程侧 FormSync.pushRecents（Reader 进度落盘 / 退后台主动推送）。
+      {
+        "name": "EntryFormAbility",
+        "srcEntry": "./ets/entryformability/EntryFormAbility.ets",
+        "type": "form",
+        "exported": true,
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config"
+          }
+        ]
+      }
     ]
   }
 }

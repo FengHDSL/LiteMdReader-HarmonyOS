@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"/>
+<style>
+body { font-family: sans-serif; margin: 16px; background: #eee; }
+.row { display: flex; gap: 12px; margin: 10px 0; }
+.cell { background: #fff; border: 1px solid #ccc; }
+.cap { font-size: 11px; color: #666; padding: 2px 6px; background: #f7f7f7; }
+iframe { border: 0; display: block; }
+</style>
+</head>
+<body>
+<div id="cases"></div>
+<div id="out">running…</div>
+<script>
+// 与真机 DiagramWeb 完全相同的路径：加载产品 render/katex.html
+// → iframe.contentWindow.renderPayload(JSON) 注入 → __render 渲染。
+// 覆盖：行内（inline:true）与块级（inline:false）两种模式 + 宏重定义案例。
+const CASES = [
+  { n: 'inline: 重定义内置宏 \\R', src: '\\newcommand{\\R}{\\mathbb{R}}\\forall x \\in \\R', inline: true },
+  { n: 'inline: 带参宏', src: '\\newcommand{\\myvec}[1]{\\mathbf{#1}}\\myvec{v}', inline: true },
+  { n: 'inline: 伸缩括号', src: '\\left( \\frac{a}{b} \\right), \\left\\| \\frac{n}{k} \\right\\|', inline: true },
+  { n: 'display: 矩阵+求和+tag', src: '\\sum_{n=1}^{\\infty} \\frac{1}{n^2}, \\quad \\begin{pmatrix} 1 & 0 \\\\ 0 & 1 \\end{pmatrix} \\tag{7}', inline: false },
+  { n: 'display: cases + 大括号', src: 'f(x) = \\begin{cases} x^2, & x \\ge 0 \\\\ -x, & x < 0 \\end{cases}', inline: false },
+];
+const host = document.getElementById('cases');
+const pending = [];
+CASES.forEach(function (c, i) {
+  const wrap = document.createElement('div');
+  wrap.className = 'row';
+  const left = document.createElement('div');
+  const cap = document.createElement('div');
+  cap.className = 'cap';
+  cap.textContent = (i + 1) + '. ' + c.n;
+  const frame = document.createElement('iframe');
+  frame.id = 'f' + i;
+  frame.style.width = c.inline ? '420px' : '480px';
+  frame.style.height = '120px';
+  if (!c.inline) { frame.style.height = '220px'; }
+  frame.src = '/katex.html';
+  left.appendChild(cap);
+  left.appendChild(frame);
+  wrap.appendChild(left);
+  host.appendChild(wrap);
+  pending.push({ c: c, frame: frame, i: i });
+});
+// 等所有 iframe 的 load → 注入 renderPayload → 300ms 后收结果
+let done = 0;
+function waitAndRun() {
+  pending.forEach(function (p) {
+    p.frame.addEventListener('load', function () {
+      try {
+        p.frame.contentWindow.renderPayload(JSON.stringify(
+          { src: p.c.src, dark: false, inline: p.c.inline }));
+      } catch (e) { p.err = String(e); }
+      p.loaded = true;
+      done++;
+      if (done === pending.length) { setTimeout(collect, 500); }
+    });
+  });
+}
+function collect() {
+  const out = [];
+  pending.forEach(function (p) {
+    let errTxt = '', rendered = false, h = 0;
+    try {
+      const doc = p.frame.contentDocument;
+      const errEl = doc.querySelector('.katex-error');
+      rendered = doc.querySelector('.katex') !== null;
+      errTxt = errEl ? (errEl.getAttribute('title') || '').slice(0, 120) : '';
+      const app = doc.getElementById('app');
+      h = app ? app.scrollHeight : 0;
+    } catch (e) { errTxt = 'XFRAME: ' + e; }
+    out.push({ i: p.i, name: p.c.n, rendered: rendered, err: errTxt, appH: h });
+  });
+  const res = document.createElement('div');
+  res.id = 'path-result';
+  res.setAttribute('data-json', JSON.stringify(out));
+  document.body.appendChild(res);
+  document.getElementById('out').textContent = 'DONE ' + JSON.stringify(out);
+}
+waitAndRun();
+</script>
+</body>
+</html>

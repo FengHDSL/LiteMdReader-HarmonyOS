@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>zoom-direction-check</title></head>
+<body>
+<pre id="out">pending</pre>
+<iframe id="f" style="width:420px;height:600px;border:1px solid #ccc"></iframe>
+<script>
+// 放大浮层 ± 方向实测：fit=true 类图，body.style.zoom=1 / 1.25 / 0.8
+// 量 sv.getBoundingClientRect()（屏幕可见尺寸）与 getBBox()（图形本身尺寸）
+const SRC = 'classDiagram\n  class 动物 {\n    +名字\n    +吃东西()\n  }\n  动物 <|-- 狗';
+function $(id){ return document.getElementById(id); }
+function measure(w, tag){
+  const d = w.document, sv = d.querySelector('#app svg');
+  const rect = sv ? sv.getBoundingClientRect() : null;
+  const bb = sv && sv.getBBox ? sv.getBBox() : null;
+  return tag + ': rect.w=' + (rect ? Math.round(rect.width) : '-') +
+    ' rect.h=' + (rect ? Math.round(rect.height) : '-') +
+    ' bbox.w=' + (bb ? Math.round(bb.width) : '-') +
+    ' zoomAttr=' + w.document.body.style.zoom;
+}
+(async function(){
+  const lines = [];
+  try {
+    const f = $('f');
+    const loaded = new Promise(function(res, rej){ f.onload = res; f.onerror = function(){ rej(new Error('iframe onerror')); }; });
+    f.src = '/entry/src/main/resources/rawfile/render/mermaid.html';
+    await loaded;
+    const w = f.contentWindow;
+    w.renderPayload({ src: SRC, dark: false, fit: true, inline: false });
+    await new Promise(function(r){ setTimeout(r, 1200); });
+    lines.push(measure(w, 'zoom1.0'));
+    w.document.body.style.zoom = 1.25;
+    await new Promise(function(r){ setTimeout(r, 300); });
+    lines.push(measure(w, 'zoom1.25(加号)'));
+    w.document.body.style.zoom = 0.8;
+    await new Promise(function(r){ setTimeout(r, 300); });
+    lines.push(measure(w, 'zoom0.8(减号)'));
+  } catch (e) {
+    lines.push('FAIL: ' + (e && e.message ? e.message : String(e)));
+  }
+  $('out').textContent = lines.join('\n');
+  document.title = 'DONE';
+})();
+</script>
+</body></html>

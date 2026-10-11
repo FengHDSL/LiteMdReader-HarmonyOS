@@ -13,9 +13,11 @@
  *   行内：粗体、斜体、粗斜体、删除线、行内代码、链接、图片、高亮（==…==）、
  *         脚注引用（[^label]）、反斜杠转义
  *
+ * 数学公式：块级（$$…$$ / \[…\]）与行内（$…$ / \(…\)）**源码原样保留**，
+ * 交给 KaTeX 完整渲染（块级结构段仅作预渲染完成前的线性化兜底）。
+ *
  * 刻意不支持（v1 范围）：
- *   行内 HTML（按纯文本显示）、数学公式（KaTeX 无法在 ArkTS 侧渲染）、
- *   缩进代码块（4 空格）、多文件文档。
+ *   行内 HTML（按纯文本显示）、缩进代码块（4 空格）、多文件文档。
  */
 
 import {
@@ -284,15 +286,20 @@ class MdBlockFactory {
   }
 
   static math(latex: string, id: number, srcLine: number): MdBlock {
+    // \tag{...} **保留原样**（用户要求：对齐与编号需与标准 LaTeX 一致）：
+    // KaTeX display 模式原生支持 tag（编号贴容器右缘）——早期实现曾在解析层
+    // 剥离 tag（当时窄卡片容器与公式重叠），现在块级容器为满宽，重叠不复存在，
+    // 恢复编号显示。MathLite 线性化回退路径自会消费掉 tag 参数不着痕迹。
+    const cleaned: string = latex.trim();
     const b: MdBlock = {
       id: 'b' + id,
       kind: MdBlockKind.Math,
       level: 0,
       lang: '',
-      code: latex,
+      code: cleaned,
       codeLines: [],
       inlines: [],
-      plain: latex,
+      plain: cleaned,
       indent: 0,
       ordered: false,
       marker: '',
@@ -450,6 +457,110 @@ export class MdParser {
     return '';
   }
 
+  /** 数一行里的 $ 个数（跨行公式合并的"未闭合"判定用）。 */
+  private static countDollar(s: string): number {
+    let n: number = 0;
+    for (let k: number = 0; k < s.length; k++) {
+      if (s.charAt(k) === '$') {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * 跨行行内公式合并（用户《LaTeX 渲染能力测试清单》第 4 类的矩阵写法）：
+   *
+   *   `- 圆括号：$` + 空行 + `\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}$`
+   *
+   * 这种「行尾单个 $ + 空行 + 公式内容 + 行尾单个 $」的形态，常见渲染引擎
+   * （Jupyter / CherryStudio 等）都按**跨行行内公式**处理；本解析器逐行工作，
+   * 若不处理则该形态只能按源码文本显示（矩阵块整体判为"不支持"）。
+   * 这里在预处理阶段把公式内容并回首行 —— 行内 $…$ 规则要求开 $ 后不能是
+   * 空格，所以拼接不留空格：`- 圆括号：$\begin{pmatrix}…\end{pmatrix}$`
+   * 随后被行内解析器正常识别为 MathInline。
+   *
+   * **行号安全**：合并后中间行与闭合行**置空**（而不是删除）——数组长度不变，
+   * 原文行号映射（srcIndex / lineMap）与后续所有 srcLine 语义完全不受影响。
+   *
+   * 保守条件（宁可不合并，绝不误吞正文）：
+   *   · 首行 / 闭合行都是「行尾单 $ 且该行 $ 数为**奇数**」——未闭合形态；
+   *     完整单行公式 `$…$` 的 $ 数恒为偶数，绝不误并
+   *   · 围栏代码块内的行一律跳过（教程里可能出现的 $ 示例不参与）
+   *   · 首行到闭合行不超过 62 行
+   *   · 公式内容 ≤ 800 字符、不含 $（避免与金额 / 其他公式歧义）、
+   *     且含 \ 或 &（公式特征；纯散文直接放弃）
+   */
+  private static mergeCrossLineDollar(lines: string[]): void {
+    let i: number = 0;
+    let inFence: boolean = false;
+    let fenceCh: string = '';
+    while (i < lines.length) {
+      const rawTrim: string = lines[i].trim();
+      // 围栏代码块整段跳过（与主循环围栏检测同源近似，保守即可）
+      if (inFence) {
+        if (rawTrim.startsWith(fenceCh)) {
+          inFence = false;
+          fenceCh = '';
+        }
+        i++;
+        continue;
+      }
+      if (rawTrim.startsWith('```') || rawTrim.startsWith('~~~')) {
+        inFence = true;
+        fenceCh = rawTrim.startsWith('~~~') ? '~~~' : '```';
+        i++;
+        continue;
+      }
+      const tail: string = lines[i].replace(/\s+$/, '');
+      if (tail.length >= 2 && tail.endsWith('$') && !tail.endsWith('$$')
+        && MdParser.countDollar(tail) % 2 === 1) {
+        const probeEnd: number = Math.min(lines.length, i + 62);
+        let j: number = i + 1;
+        let found: number = -1;
+        while (j < probeEnd) {
+          const cj: string = lines[j].replace(/\s+$/, '');
+          if (cj.endsWith('$') && !cj.endsWith('$$')
+            && MdParser.countDollar(cj) % 2 === 1) {
+            found = j;
+            break;
+          }
+          j++;
+        }
+        if (found > i) {
+          const parts: string[] = [];
+          let total: number = 0;
+          for (let k: number = i + 1; k < found; k++) {
+            const t: string = lines[k].trim();
+            if (t.length > 0) {
+              parts.push(t);
+              total += t.length;
+            }
+          }
+          const closeRaw: string = lines[found].replace(/\s+$/, '');
+          const closeBody: string = closeRaw.substring(0, closeRaw.length - 1).trim();
+          if (closeBody.length > 0) {
+            parts.push(closeBody);
+            total += closeBody.length;
+          }
+          const content: string = parts.join(' ');
+          const ok: boolean = content.length > 0 && total <= 800
+            && content.indexOf('$') < 0
+            && (content.indexOf('\\') >= 0 || content.indexOf('&') >= 0);
+          if (ok) {
+            lines[i] = tail + content + '$';
+            for (let k: number = i + 1; k <= found; k++) {
+              lines[k] = '';
+            }
+            i = found + 1;
+            continue;
+          }
+        }
+      }
+      i++;
+    }
+  }
+
   /** 解析整篇文档。 */
   static parse(source: string): MdParseResult {
     const normalized: string = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\t/g, '    ');
@@ -545,6 +656,10 @@ export class MdParser {
       }
     }
 
+    // ── 跨行行内公式合并（`前缀$` + 空行 + `公式…$`，见方法注释）──
+    // 放主循环之前、行号映射建立之后：置空法不改变行数，行号语义安全。
+    MdParser.mergeCrossLineDollar(lines);
+
     while (i < lines.length) {
       const raw: string = lines[i];
       const t: string = raw.trim();
@@ -619,7 +734,7 @@ export class MdParser {
       }
 
       // ── 数学公式块 \[...\]（CherryStudio / 常见 LaTeX 写法，兼容补强）────
-      // 与 $$...$$ 完全同构：同样支持单行与多行，交给同一套 MathLite 渲染。
+      // 与 $$...$$ 完全同构：同样支持单行与多行，源码原样交给 KaTeX 渲染。
       if (t.startsWith('\\[')) {
         const mathStart: number = i;
         const latexLines: string[] = [];
@@ -650,7 +765,7 @@ export class MdParser {
         continue;
       }
 
-      // ── 数学公式块 $$...$$（自绘子集渲染） ────────────────────────
+      // ── 数学公式块 $$...$$（源码原样交 KaTeX 渲染） ────────────────
       if (t.startsWith('$$')) {
         const mathStart: number = i;
         const latexLines: string[] = [];
@@ -984,7 +1099,7 @@ export class MdParser {
           const contentP: string = src.substring(i + 2, closeP);
           if (contentP.trim().length > 0) {
             buf = MdParser.flush(out, buf, bold, italic, strike, code);
-            out.push(inlineOf(MdInlineKind.MathInline, MathLite.inlineText(contentP), '', 0,
+            out.push(inlineOf(MdInlineKind.MathInline, contentP, '', 0,
               bold, italic, strike, code));
             i = closeP + 2;
             continue;
@@ -992,7 +1107,24 @@ export class MdParser {
         }
       }
 
-      // 行内数学 $...$（$$ 归块级；开 $ 后不能紧跟空格、闭 $ 前不能是空格，避免误伤货币写法）
+      // 行内数学 $$...$$（同一行内成对出现，如列表项「- 求和：$$\sum…$$」——
+      // 用户《LaTeX 渲染能力测试清单》第 6 类的写法。顶格的 $$ 已由块级解析
+      // 处理（成为 Math 块），不会走到行内解析这里）
+      if (c === '$' && i + 1 < n && src.charAt(i + 1) === '$') {
+        const closeD: number = src.indexOf('$$', i + 2);
+        if (closeD > i + 2) {
+          const contentD: string = src.substring(i + 2, closeD);
+          if (contentD.trim().length > 0 && contentD.indexOf('$') < 0) {
+            buf = MdParser.flush(out, buf, bold, italic, strike, code);
+            out.push(inlineOf(MdInlineKind.MathInline, contentD, '', 0,
+              bold, italic, strike, code));
+            i = closeD + 2;
+            continue;
+          }
+        }
+      }
+
+      // 行内数学 $...$（开 $ 后不能紧跟空格、闭 $ 前不能是空格，避免误伤货币写法）
       if (c === '$' && i + 1 < n && src.charAt(i + 1) !== '$' && src.charAt(i + 1) !== ' ') {
         let close: number = -1;
         for (let k = i + 1; k < n; k++) {
@@ -1007,7 +1139,7 @@ export class MdParser {
           const content: string = src.substring(i + 1, close);
           if (content.trim().length > 0 && content.indexOf('$') < 0) {
             buf = MdParser.flush(out, buf, bold, italic, strike, code);
-            out.push(inlineOf(MdInlineKind.MathInline, MathLite.inlineText(content), '', 0,
+            out.push(inlineOf(MdInlineKind.MathInline, content, '', 0,
               bold, italic, strike, code));
             i = close + 1;
             continue;

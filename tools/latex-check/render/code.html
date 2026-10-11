@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes">
+<title>代码</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{color:#1B1F27;-webkit-text-size-adjust:100%;}
+  body.dark{color:#ECEFF4;}
+  #app{padding:10px 12px;box-sizing:border-box;}
+  table{border-collapse:collapse;
+        font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,"HarmonyOS Sans SC",monospace;}
+  td.ln{width:1%;padding:0 10px 0 0;text-align:right;color:rgba(128,128,128,0.85);
+        user-select:none;vertical-align:top;white-space:nowrap;}
+  td.lc{padding:0;white-space:pre-wrap;word-break:break-word;vertical-align:top;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  var app=document.getElementById('app');
+
+  function esc(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function report(){
+    try{
+      var h=Math.max(app.scrollHeight, document.body.scrollHeight);
+      if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+    }catch(e){}
+  }
+
+  /**
+   * 宿主注入入口（与其它模板同一约定）：p = {src, dark, fit, vw}
+   * src = 代码原文。放大浮层里展示**带行号的等宽代码**，可缩放 / 旋转 / 滚动
+   * （缩放与旋转由放大浮层统一提供，这里只负责排版）。
+   */
+  window.renderPayload=function(p){
+    try{
+      document.body.className=(p&&p.dark)?'dark':'';
+      var lines=String((p&&p.src)||'').replace(/\r\n?/g,'\n').split('\n');
+      var rows=[];
+      for(var k=0;k<lines.length;k++){
+        rows.push('<tr><td class="ln">'+(k+1)+'</td><td class="lc">'+(esc(lines[k])||'&nbsp;')+'</td></tr>');
+      }
+      app.innerHTML='<table>'+rows.join('')+'</table>';
+      report();
+      setTimeout(report,80);
+      setTimeout(report,260);
+    }catch(err){
+      app.innerHTML='<pre>'+(err&&err.message?err.message:err)+'</pre>';
+      report();
+    }
+  };
+
+  window.addEventListener('load',report);
+})();
+</script>
+</body></html>

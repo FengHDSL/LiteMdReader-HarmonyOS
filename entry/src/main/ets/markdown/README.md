@@ -14,7 +14,7 @@
 | `MdView.ets` | **渲染层**（最大的一个文件）。`MdBlockView` 组件按块类型分发到各 `@Builder`；文件内的 `MdViewUtil` 负责把「块 + 批注 + 搜索词」切成 `MdPiece[]`（`buildPieces`），是批注底纹/波浪线/搜索高亮的落点 | 必须 |
 | `CodeHighlight.ets` | 代码块语法高亮（自研分词器，按语言族：cLike / hash 注释 / markup / data 等） | 代码块高亮需要 |
 | `Emoji.ets` | `:smile:` 之类表情短码 → Unicode | 表情短码需要 |
-| `MathLite.ets` | **轻量 LaTeX 渲染**：把 LaTeX 线性化成 Unicode 文本 + 结构段（分式/根号/矩阵），块级公式交给 `katex.html` | 公式需要 |
+| `MathLite.ets` | **LaTeX 线性化兜底**：正式渲染由 KaTeX 完成（`katex.html`，块级/行内都渲染成图）；此模块只在缓存图未就绪的窗口内把公式线性化成 Unicode 文本 + 结构段（分式/根号/矩阵） | 公式兜底需要 |
 | `FlowChart.ets` | `flowchart` 流程图的**纯 ArkUI 布局**（不依赖 Web）：解析节点/边、分层、绘制 | 流程需要 |
 | `MdToHtml.ets` | 导出用：把 `MdBlock[]` 转成完整 HTML（**自研渲染，不依赖任何 Web 引擎**） | 导出需要 |
 
@@ -33,7 +33,7 @@
 
 | 资源 | 用途 |
 |---|---|
-| `katex.html` + `lib/` | 块级公式渲染 |
+| `katex.html` + `fonts/`（KaTeX 全套 20 个 woff2，含 **Size1~4**——伸缩括号/大运算符专用，缺一不可） | 公式渲染（块级与行内） |
 | `mermaid.html` | mermaid 流程图 / 时序图 / 甘特图 |
 | `markmap.html` | 思维导图 |
 | `echarts.html` | 图表 |

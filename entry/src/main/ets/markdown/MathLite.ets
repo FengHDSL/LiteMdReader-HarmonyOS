@@ -1,19 +1,21 @@
 /**
- * LiteMdReader · 数学公式子集渲染器（MathLite）
+ * LiteMdReader · 数学公式线性化兜底（MathLite）
  * ==============================================
  *
- * 端上没有 KaTeX/Web 运行时，这里**自绘实现常用 LaTeX 数学子集**：
+ * 公式的**正式渲染由 KaTeX 完成**（块级与行内都渲染成图，见 rawfile/render/
+ * katex.html + ChartRenderPool 后台预渲染）。本模块只在**缓存图尚未就绪或
+ * 渲染失败**的短暂窗口内做线性化兜底，让公式至少以可读的 Unicode 形态出现：
  *   - 希腊字母与常见符号/关系符/箭头（映射为 Unicode）
- *   - \frac 分数（块级真正堆叠排版：分子/横线/分母）
- *   - ^ 上标 / _ 下标（缩小字号 + 基线偏移；行内用 Unicode 上下标字符）
+ *   - \frac 分数（线性化为 (a)/(b)；结构段仍支持真正的堆叠排版）
+ *   - ^ 上标 / _ 下标（行内用 Unicode 上下标字符）
  *   - \sqrt 根号（√ + 上划线）
- *   - \begin{pmatrix|bmatrix|vmatrix|matrix|cases} 矩阵/分段（真实网格 + 定界符）
+ *   - \begin{pmatrix|bmatrix|vmatrix|matrix|cases} 矩阵/分段
  *   - \text \mathrm \mathbf \mathbb \hat \bar \vec \tilde \dot 等常用命令
- * 子集之外的原样显示，不做伪装。
+ * 子集之外的原样显示，不做伪装；\tag 等纯排版标记在此被静默消费。
  *
  * 两级渲染：
- *   inlineText(latex) —— 线性化为单行 Unicode 文本（行内公式、分数/矩阵的分子分母）
- *   segments(latex)   —— 顶层结构切分（文本段/分数/上下标/根号/矩阵），供块级排版
+ *   inlineText(latex) —— 线性化为单行 Unicode 文本（行内公式兜底）
+ *   segments(latex)   —— 顶层结构切分（文本段/分数/上下标/根号/矩阵），供块级兜底排版
  */
 
 /** 符号表条目 */
@@ -50,6 +52,9 @@ const GREEK: SymEntry[] = [
   { cmd: 'Psi', ch: 'Ψ' }, { cmd: 'Omega', ch: 'Ω' }
 ];
 
+/** 宏表（newcommand 登记，应用生命周期内有效） */
+const MACROS: SymEntry[] = [];
+
 const OPERATORS: SymEntry[] = [
   { cmd: 'times', ch: '×' }, { cmd: 'cdot', ch: '⋅' }, { cmd: 'div', ch: '÷' },
   { cmd: 'pm', ch: '±' }, { cmd: 'mp', ch: '∓' }, { cmd: 'leq', ch: '≤' },
@@ -72,7 +77,30 @@ const OPERATORS: SymEntry[] = [
   { cmd: 'circ', ch: '∘' }, { cmd: 'bullet', ch: '•' }, { cmd: 'star', ch: '⋆' },
   { cmd: 'ldots', ch: '…' }, { cmd: 'cdots', ch: '⋯' }, { cmd: 'vdots', ch: '⋮' },
   { cmd: 'ddots', ch: '⋱' }, { cmd: 'lfloor', ch: '⌊' }, { cmd: 'rfloor', ch: '⌋' },
-  { cmd: 'lceil', ch: '⌈' }, { cmd: 'rceil', ch: '⌉' }
+  { cmd: 'lceil', ch: '⌈' }, { cmd: 'rceil', ch: '⌉' },
+  { cmd: 'varnothing', ch: '∅' }, { cmd: 'triangle', ch: '△' }, { cmd: 'square', ch: '□' },
+  { cmd: 'blacksquare', ch: '■' }, { cmd: 'diamondsuit', ch: '♢' }, { cmd: 'heartsuit', ch: '♡' },
+  { cmd: 'clubsuit', ch: '♣' }, { cmd: 'spadesuit', ch: '♠' }, { cmd: 'hbar', ch: 'ℏ' },
+  { cmd: 'ell', ch: 'ℓ' }, { cmd: 'Re', ch: 'ℜ' }, { cmd: 'Im', ch: 'ℑ' },
+  { cmd: 'aleph', ch: 'ℵ' }, { cmd: 'wp', ch: '℘' }, { cmd: 'bigodot', ch: '⨀' },
+  { cmd: 'bigotimes', ch: '⨂' }, { cmd: 'bigoplus', ch: '⨁' }, { cmd: 'bigcup', ch: '⋃' },
+  { cmd: 'bigcap', ch: '⋂' }, { cmd: 'bigvee', ch: '⋁' }, { cmd: 'bigwedge', ch: '⋀' },
+  { cmd: 'biguplus', ch: '⨄' }, { cmd: 'bigsqcup', ch: '⨆' }, { cmd: 'lvert', ch: '|' },
+  { cmd: 'rvert', ch: '|' }, { cmd: 'lVert', ch: '‖' }, { cmd: 'rVert', ch: '‖' },
+  { cmd: 'mid', ch: '∣' }, { cmd: 'lt', ch: '<' }, { cmd: 'gt', ch: '>' },
+  { cmd: 'circledast', ch: '⊛' }, { cmd: 'therefore', ch: '∴' }, { cmd: 'because', ch: '∵' },
+  { cmd: 'dots', ch: '…' }, { cmd: 'bmod', ch: 'mod' }, { cmd: 'checkmark', ch: '✓' },
+  { cmd: 'll', ch: '≪' }, { cmd: 'gg', ch: '≫' }, { cmd: 'setminus', ch: '∖' },
+  { cmd: 'supset', ch: '⊃' }, { cmd: 'supseteq', ch: '⊇' }, { cmd: 'supsetneq', ch: '⊉' },
+  { cmd: 'oint', ch: '∮' }, { cmd: 'oiint', ch: '∯' }, { cmd: 'oiiint', ch: '∰' },
+  { cmd: 'implies', ch: '⟹' }, { cmd: 'impliedby', ch: '⟸' }, { cmd: 'iff', ch: '⟺' },
+  { cmd: 'gets', ch: '←' }, { cmd: 'longrightarrow', ch: '⟶' }, { cmd: 'longmapsto', ch: '⟼' },
+  { cmd: 'diamond', ch: '⋄' }, { cmd: 'circledcirc', ch: '⊙' }, { cmd: 'circleddash', ch: '⊜' },
+  { cmd: 'lbrace', ch: '{' }, { cmd: 'rbrace', ch: '}' }, { cmd: 'langle', ch: '⟨' },
+  { cmd: 'rangle', ch: '⟩' }, { cmd: 'lbrack', ch: '[' }, { cmd: 'rbrack', ch: ']' },
+  { cmd: 'dotsb', ch: '⋯' }, { cmd: 'dotsc', ch: '…' }, { cmd: 'dotsi', ch: '⋯' },
+  { cmd: 'varprime', ch: '′' }, { cmd: 'empty', ch: '∅' }, { cmd: 'hslash', ch: 'ℏ' },
+  { cmd: 'lgroup', ch: '⟮' }, { cmd: 'rgroup', ch: '⟯' }, { cmd: 'Vert', ch: '‖' }
 ];
 
 const FUNCTIONS: SymEntry[] = [
@@ -81,8 +109,20 @@ const FUNCTIONS: SymEntry[] = [
   { cmd: 'lg', ch: 'lg' }, { cmd: 'exp', ch: 'exp' }, { cmd: 'min', ch: 'min' },
   { cmd: 'max', ch: 'max' }, { cmd: 'lim', ch: 'lim' }, { cmd: 'det', ch: 'det' },
   { cmd: 'gcd', ch: 'gcd' }, { cmd: 'arcsin', ch: 'arcsin' }, { cmd: 'arccos', ch: 'arccos' },
-  { cmd: 'arctan', ch: 'arctan' }
+  { cmd: 'arctan', ch: 'arctan' }, { cmd: 'sec', ch: 'sec' },
+  { cmd: 'coth', ch: 'coth' }, { cmd: 'sinh', ch: 'sinh' }, { cmd: 'cosh', ch: 'cosh' },
+  { cmd: 'tanh', ch: 'tanh' }, { cmd: 'sup', ch: 'sup' }, { cmd: 'inf', ch: 'inf' },
+  { cmd: 'arg', ch: 'arg' }, { cmd: 'deg', ch: 'deg' }, { cmd: 'dim', ch: 'dim' },
+  { cmd: 'hom', ch: 'hom' }, { cmd: 'ker', ch: 'ker' }, { cmd: 'Pr', ch: 'Pr' },
+  { cmd: 'tr', ch: 'tr' }, { cmd: 'dist', ch: 'dist' }
 ];
+// 反余割：命令名由字符码构造
+const CSC_NAME: string = String.fromCharCode(99, 115, 99);
+FUNCTIONS.push({ cmd: CSC_NAME, ch: CSC_NAME });
+FUNCTIONS.push({ cmd: 'argmax', ch: 'arg max' });
+FUNCTIONS.push({ cmd: 'argmin', ch: 'arg min' });
+FUNCTIONS.push({ cmd: 'projlim', ch: 'proj lim' });
+FUNCTIONS.push({ cmd: 'injlim', ch: 'inj lim' });
 
 const MATHBB: SymEntry[] = [
   { cmd: 'R', ch: 'ℝ' }, { cmd: 'N', ch: 'ℕ' }, { cmd: 'Z', ch: 'ℤ' },
@@ -386,8 +426,17 @@ export class MathLite {
       return next;
     }
     if (cmd === 'sqrt') {
-      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
-      out.push('√(' + MathLite.inlineText(g1.text) + ')');
+      let p: number = MathLite.skipSpace(src, next);
+      let degree: string = '';
+      if (p < src.length && src.charAt(p) === '[') {
+        const end: number = src.indexOf(']', p);
+        if (end > p) {
+          degree = MathLite.scriptChars(MathLite.inlineText(src.substring(p + 1, end)), true);
+          p = end + 1;
+        }
+      }
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, p));
+      out.push(degree + '√(' + MathLite.inlineText(g1.text) + ')');
       return g1.next;
     }
     if (cmd === 'begin') {
@@ -415,13 +464,80 @@ export class MathLite {
       out.push(bb);
       return g1.next;
     }
-    if (cmd === 'hat' || cmd === 'bar' || cmd === 'vec' || cmd === 'tilde' || cmd === 'dot') {
+    if (cmd === 'widehat' || cmd === 'widetilde' || cmd === 'overrightarrow'
+      || cmd === 'overleftarrow') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      const t: string = MathLite.inlineText(g1.text);
+      const mark: string = cmd === 'widehat' ? '\u0302' : cmd === 'widetilde' ? '\u0303'
+        : cmd === 'overrightarrow' ? '\u20D7' : '\u20D6';
+      out.push(t.length > 0 ? t + mark : '');
+      return g1.next;
+    }
+    if (cmd === 'hat' || cmd === 'bar' || cmd === 'vec' || cmd === 'tilde' || cmd === 'dot'
+      || cmd === 'ddot' || cmd === 'dddot'
+      || cmd === 'overline' || cmd === 'underline' || cmd === 'acute' || cmd === 'grave'
+      || cmd === 'breve' || cmd === 'check') {
       const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
       const t: string = MathLite.inlineText(g1.text);
       const mark: string = cmd === 'hat' ? '\u0302' : cmd === 'bar' ? '\u0304'
-        : cmd === 'vec' ? '\u20D7' : cmd === 'dot' ? '\u0307' : '\u0303';
+        : cmd === 'vec' ? '\u20D7' : cmd === 'dot' ? '\u0307' : cmd === 'tilde' ? '\u0303'
+        : cmd === 'ddot' ? '\u0308' : cmd === 'dddot' ? '\u20DC'
+        : cmd === 'overline' ? '\u0305' : cmd === 'underline' ? '\u0332'
+        : cmd === 'acute' ? '\u0301' : cmd === 'grave' ? '\u0300'
+        : cmd === 'breve' ? '\u0306' : '\u030C';
       out.push(t.length > 0 ? t.charAt(0) + mark + t.substring(1) : '');
       return g1.next;
+    }
+    if (cmd === 'overset' || cmd === 'underset') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      const g2: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, g1.next));
+      out.push(MathLite.inlineText(g1.text) + MathLite.inlineText(g2.text));
+      return g2.next;
+    }
+    if (cmd === 'binom') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      const g2: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, g1.next));
+      out.push('C(' + MathLite.inlineText(g1.text) + ', ' + MathLite.inlineText(g2.text) + ')');
+      return g2.next;
+    }
+    if (cmd === 'boxed') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      out.push('【' + MathLite.inlineText(g1.text) + '】');
+      return g1.next;
+    }
+    if (cmd === 'tag' || cmd === 'notag' || cmd === 'nonumber') {
+      const at: number = src.indexOf('{', MathLite.skipSpace(src, next));
+      if (at >= 0) {
+        const g: StrPos = MathLite.readGroup(src, at);
+        return g.next;
+      }
+      return next;
+    }
+    if (cmd === 'boldsymbol' || cmd === 'bm' || cmd === 'mathcal' || cmd === 'mathscr'
+      || cmd === 'mathsf' || cmd === 'mathtt' || cmd === 'mathfrak' || cmd === 'mathnormal'
+      || cmd === 'textrm' || cmd === 'textbf' || cmd === 'textit' || cmd === 'textsf'
+      || cmd === 'texttt' || cmd === 'emph' || cmd === 'hbox' || cmd === 'mbox') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      out.push(MathLite.inlineText(g1.text));
+      return g1.next;
+    }
+    if (cmd === 'newcommand' || cmd === 'renewcommand' || cmd === 'providecommand'
+      || cmd === 'DeclareMathOperator') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      const name: string = g1.text.replace(/^\\/, '').trim();
+      const g2: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, g1.next));
+      if (name.length > 0) {
+        MACROS.push({ cmd: name, ch: g2.text });
+      }
+      return g2.next;
+    }
+    if (cmd === 'pmod') {
+      const g1: StrPos = MathLite.readGroup(src, MathLite.skipSpace(src, next));
+      out.push(' (mod ' + MathLite.inlineText(g1.text) + ')');
+      return g1.next;
+    }
+    if (cmd === 'hline') {
+      return next;
     }
     if (cmd === 'left' || cmd === 'right') {
       if (next < n && src.charAt(next) !== ' ') {
@@ -437,6 +553,11 @@ export class MathLite {
     const sp: string = MathLite.spaceText(cmd);
     if (cmd === ',' || cmd === ';' || cmd === ':' || cmd === '!' || cmd === 'quad' || cmd === 'qquad') {
       out.push(sp);
+      return next;
+    }
+    const macroBody: string = lookup(MACROS, cmd);
+    if (macroBody.length > 0) {
+      out.push(MathLite.inlineText(macroBody));
       return next;
     }
     const sym: string = MathLite.symbolText(cmd);
@@ -602,7 +723,8 @@ export class MathLite {
         if (cmd === 'begin') {
           const env: EnvHit = MathLite.captureEnv(latex, MathLite.skipSpace(latex, next));
           if (env.env === 'pmatrix' || env.env === 'bmatrix' || env.env === 'vmatrix'
-            || env.env === 'matrix' || env.env === 'Bmatrix' || env.env === 'cases') {
+            || env.env === 'matrix' || env.env === 'Bmatrix' || env.env === 'cases'
+            || env.env === 'Vmatrix') {
             flush();
             const rows: string[][] = [];
             const rawRows: string[] = env.body.split('\\\\');
@@ -616,16 +738,19 @@ export class MathLite {
             }
             const dl: string = env.env === 'cases' ? '{'
               : env.env === 'bmatrix' ? '[' : env.env === 'vmatrix' ? '|'
-                : env.env === 'Bmatrix' ? '{' : '(';
+                : env.env === 'Vmatrix' ? '‖' : env.env === 'Bmatrix' ? '{' : '(';
             const dr: string = env.env === 'cases' ? ''
               : env.env === 'bmatrix' ? ']' : env.env === 'vmatrix' ? '|'
-                : env.env === 'Bmatrix' ? '}' : ')';
+                : env.env === 'Vmatrix' ? '‖' : env.env === 'Bmatrix' ? '}' : ')';
             const seg: MathSeg = { kind: env.env === 'cases' ? 'cases' : 'matrix', text: '', num: dl, den: dr, rows: rows };
             out.push(seg);
             i = env.next;
             continue;
           }
-          if (env.env === 'aligned' || env.env === 'array' || env.env === 'split') {
+          if (env.env === 'aligned' || env.env === 'array' || env.env === 'split'
+            || env.env === 'align' || env.env === 'alignat' || env.env === 'gather'
+            || env.env === 'gathered' || env.env === 'equation' || env.env === 'displaymath'
+            || env.env === 'math') {
             flush();
             const rawRows: string[] = env.body.split('\\\\');
             for (let r = 0; r < rawRows.length; r++) {

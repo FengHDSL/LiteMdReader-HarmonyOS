@@ -25,6 +25,7 @@ import { MdParser } from '../markdown/MdParser';
 import { MdParseResult, MdBlock, MdBlockKind } from '../markdown/MdTypes';
 import { MdToHtml } from '../markdown/MdToHtml';
 import { ChartCache } from './ChartCache';
+import { ReaderThemeMode, paletteFor, withAlpha } from '../theme/DesignTokens';
 
 /** zip 里的一个条目（原始字节 + 归档内路径） */
 interface ZipEntry {
@@ -219,8 +220,17 @@ export class EpubExport {
       if (mode.length === 0) {
         continue;
       }
-      const key: string = ChartCache.keyFor(mode, b.code, false);
-      const pngPath: string = ChartCache.path(ctx, key);
+      // v4 键含卡片底色：EPUB 用**浅色**底图（dark:false），但浅色系有多个孪生款
+      // （System/Light/Sepia/Green 的 codeBlockBg 各不相同）——逐个候选探测，
+      // 命中哪个用哪个（后台池按用户当时的浅色主题烘焙过对应底色的图）
+      let pngPath: string = '';
+      const lightModes: number[] = [ReaderThemeMode.Light, ReaderThemeMode.System,
+        ReaderThemeMode.Sepia, ReaderThemeMode.Green];
+      for (let m = 0; m < lightModes.length && pngPath.length === 0; m++) {
+        const bg: string = withAlpha(paletteFor(lightModes[m], false).codeBlockBg, 'FF');
+        const key: string = ChartCache.keyFor(mode, b.code, false, bg);
+        pngPath = ChartCache.path(ctx, key);
+      }
       const b64: string = EpubExport.b64Of(b.code);
       const at: number = body.indexOf('data-b64="' + b64 + '"');
       if (at < 0) {

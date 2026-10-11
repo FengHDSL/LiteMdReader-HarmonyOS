@@ -1,0 +1,17 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body>
+<script src="/viz-global.js?v=1"></script>
+<script>
+window.__probe = { scriptRan: true };
+window.__probe.vizType = typeof Viz;
+if (typeof Viz !== 'undefined') {
+  window.__probe.hasInstance = typeof Viz.instance;
+  Viz.instance().then(function (viz) {
+    window.__probe.instanceOk = true;
+    try {
+      var svg = viz.renderString('digraph { a -> b }', { format: 'svg' });
+      window.__probe.renderOk = svg.indexOf('<svg') >= 0;
+      window.__probe.vizVersion = viz.graphvizVersion || '?';
+    } catch (e) { window.__probe.renderErr = String(e).slice(0, 150); }
+  }, function (e) { window.__probe.instanceErr = String(e).slice(0, 150); });
+}
+</script></body></html>

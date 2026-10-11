@@ -58,6 +58,26 @@ export interface ModalSheetSpec {
    */
   detents?: [string | number | Resource, (string | number | Resource)?, (string | number | Resource)?];
   /**
+   * **大尺寸面板**（网页面板：近乎满屏）：height = SheetSize.LARGE（屏高 90%）。
+   * 不传 = 维持 MEDIUM 定高（屏高 60%）。与 detents 互斥（detents 优先）。
+   */
+  large?: boolean;
+  /**
+   * **自定义标题区**（CustomBuilder）：传了就用它替换官方标题文案，
+   * 用于在标题栏内放操作按钮（如网页面板的「刷新 / 复制链接」）。
+   * ⚠️ @Builder 传入必须 `.bind(this)`（括号调用运行时静默失效）。
+   */
+  titleBuilder?: CustomBuilder;
+  /**
+   * 隐藏顶部拖拽条：内容本身就是可滚动的 Web 时，拖拽条会与网页内滚动打架。
+   */
+  hideDragBar?: boolean;
+  /**
+   * **强制底部全宽面板**（忽略横竖屏与平板断点）：网页面板等「近乎满屏」场景用。
+   * 传 true = 始终 SheetType.BOTTOM 且不做宽度收半（横屏也是全宽大面板）。
+   */
+  fullWidth?: boolean;
+  /**
    * 调用方实测的根宽（vp）。平板竖屏（>600vp，官方断点）时面板宽度
    * **收一半**且水平居中，不铺满屏幕（用户要求 2026-09-30）；
    * 手机竖屏保持全宽；横屏走系统默认，不用此值。
@@ -107,11 +127,23 @@ export function modalSheetOptions(spec: ModalSheetSpec): SheetOptions {
   if (spec.detents !== undefined) {
     options.detents = spec.detents;
   } else {
-    options.height = spec.fitContent === true ? SheetSize.FIT_CONTENT : SheetSize.MEDIUM;
+    options.height = spec.fitContent === true ? SheetSize.FIT_CONTENT
+      : (spec.large === true ? SheetSize.LARGE : SheetSize.MEDIUM);
+  }
+  // 自定义标题区（网页面板的操作按钮）：给了就替换官方标题文案。
+  if (spec.titleBuilder !== undefined) {
+    options.title = spec.titleBuilder;
+  }
+  // 内容自带滚动（Web）时隐藏拖拽条
+  if (spec.hideDragBar === true) {
+    options.dragBar = false;
   }
   // **竖屏走手机形态**（用户要求 2026-09-30）：强制底部面板，
   // 平板竖屏不转居中窗口；横屏交还系统默认（平板按官方规格居中 480vp）。
-  if (spec.phoneLayout) {
+  // fullWidth（网页面板）：无视上述规则，始终底部全宽。
+  if (spec.fullWidth === true) {
+    options.preferType = SheetType.BOTTOM;
+  } else if (spec.phoneLayout) {
     options.preferType = SheetType.BOTTOM;
     // **平板竖屏宽度收一半**（用户要求 2026-09-30）：>600vp（官方平板断点）
     // 时面板取根宽的 50%、水平居中，左右不铺满；手机竖屏不设 width，保持全宽。

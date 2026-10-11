@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"/>
+<style>
+body{font-family:system-ui,sans-serif;padding:14px;background:#fff;}
+.case{margin:8px 0;border-bottom:1px dashed #eee;padding:6px 0;}
+.cap{font-size:11px;color:#999;}
+.via-img img{border:1px solid #f0f0f0;}
+</style>
+</head>
+<body>
+<h3>MathJax tex2svg → canvas → PNG 全链路验证</h3>
+<div id="cases"></div>
+<div id="mhold" style="position:absolute;left:-9999px;top:0;font-size:16px;"></div>
+<div id="result"></div>
+<script src="tex-svg.js"></script>
+<script>
+const CASES = [
+  { n: '希腊字母', s: '\\alpha, \\beta, \\gamma, \\Theta, \\Omega, \\lambda, \\mu, \\pi, \\sigma, \\phi', d: false },
+  { n: '上下标', s: 'x^2, e^{i\\pi}, a^{b^c}, x_1^2, A_{ij}^{k}, H_2O', d: false },
+  { n: '分式根式', s: '\\frac{a}{b}, \\frac{1}{1+\\frac{1}{x}}, \\sqrt{x^2+y^2}, \\sqrt[3]{8}', d: false },
+  { n: '大型运算符', s: '\\sum_{n=1}^{\\infty} \\frac{1}{n^2}', d: true },
+  { n: '极限', s: '\\lim_{x \\to 0} \\frac{\\sin x}{x} = 1', d: true },
+  { n: '积分', s: '\\int_{a}^{b} f(x) \\, dx, \\quad \\oint_{\\gamma} f \\, ds', d: false },
+  { n: '矩阵', s: '\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}', d: true },
+  { n: 'cases', s: 'f(x) = \\begin{cases} x^2, & x \\ge 0 \\\\ -x, & x < 0 \\end{cases}', d: true },
+  { n: 'aligned', s: '\\begin{aligned} (a+b)^2 &= a^2+2ab+b^2 \\\\ (a-b)^2 &= a^2-2ab+b^2 \\end{aligned}', d: true },
+  { n: '伸缩括号', s: '\\left( \\frac{a}{b} \\right), \\left\\| \\frac{n}{k} \\right\\|, \\Bigg( x \\Bigg), \\left\\{ \\frac{a}{b} \\right\\}', d: true },
+  { n: 'tag', s: 'f(x) = x^2 \\tag{1}', d: true },
+  { n: '颜色', s: '\\color{red}{红色文字}, \\color{blue}{蓝色数学}', d: false },
+  { n: '中文文本', s: '\\text{如果 } a = b \\text{，则 } c = d', d: false },
+  { n: '粗体希腊+bb', s: '\\boldsymbol{\\alpha}, \\mathbf{A}, \\mathbb{R}, \\mathcal{F}, \\mathrm{d}x', d: false },
+  { n: '装饰', s: '\\overline{z}, \\hat{a}, \\vec{v}, \\dot{x}, \\tilde{\\alpha}, \\overrightarrow{AB}', d: false },
+  { n: 'newcommand', s: '\\newcommand{\\R}{\\mathbb{R}}\\forall x \\in \\R', d: false },
+  { n: 'boxed+overset', s: '\\boxed{E = mc^2}, \\quad \\overset{\\text{def}}{=}, \\quad \\binom{n}{k}', d: true },
+  { n: '集合论', s: '\\cup, \\cap, \\subset, \\in, \\notin, \\emptyset, \\mathbb{N}, \\mathbb{Z}, \\mathbb{Q}, \\mathbb{R}', d: false },
+  { n: '箭头+逻辑', s: '\\to, \\Rightarrow, \\mapsto, \\forall, \\exists, \\neg, \\wedge, \\implies, \\iff', d: false },
+];
+
+function tex2png(tex, display, fontPx) {
+  const holder = document.getElementById('mhold');
+  holder.style.fontSize = fontPx + 'px';
+  const node = MathJax.tex2svg(tex, { display: display });
+  holder.innerHTML = '';
+  holder.appendChild(node);
+  const svg = holder.querySelector('svg');
+  const rect = svg.getBoundingClientRect();
+  const w = Math.max(1, Math.ceil(rect.width));
+  const h = Math.max(1, Math.ceil(rect.height));
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  svg.removeAttribute('style');
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  const xml = new XMLSerializer().serializeToString(svg);
+  const dpr = Math.min(3, window.devicePixelRatio || 2);
+  const cv = document.createElement('canvas');
+  cv.width = Math.ceil(w * dpr);
+  cv.height = Math.ceil(h * dpr);
+  const c2 = cv.getContext('2d');
+  return new Promise(function (resolve) {
+    const img = new Image();
+    img.onload = function () {
+      try {
+        c2.drawImage(img, 0, 0, cv.width, cv.height);
+        const png = cv.toDataURL('image/png');
+        resolve({ ok: true, png: png, w: w, h: h, cw: cv.width, ch: cv.height });
+      } catch (e) { resolve({ ok: false, err: String(e) }); }
+    };
+    img.onerror = function () { resolve({ ok: false, err: 'svg img load fail' }); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+  });
+}
+
+MathJax.startup.promise.then(async function () {
+  const out = [];
+  const list = document.getElementById('cases');
+  for (let i = 0; i < CASES.length; i++) {
+    const c = CASES[i];
+    const item = document.createElement('div');
+    item.className = 'case';
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = (i + 1) + '. ' + c.n + ' [' + (c.d ? 'display' : 'inline') + ']';
+    const box = document.createElement('div');
+    box.className = 'via-img';
+    item.appendChild(cap); item.appendChild(box);
+    list.appendChild(item);
+    try {
+      const r = await tex2png(c.s, c.d, 18);
+      if (r.ok) {
+        const im = document.createElement('img');
+        im.src = r.png;
+        im.style.height = (c.d ? Math.min(90, r.h) : Math.min(34, r.h)) + 'px';
+        box.appendChild(im);
+        out.push({ i: i + 1, n: c.n, ok: true, w: r.w, h: r.h, cw: r.cw, ch: r.ch, len: r.png.length });
+      } else {
+        box.textContent = 'FAIL: ' + r.err;
+        out.push({ i: i + 1, n: c.n, ok: false, err: r.err });
+      }
+    } catch (e) {
+      box.textContent = 'THROW: ' + e;
+      out.push({ i: i + 1, n: c.n, ok: false, err: String(e) });
+    }
+  }
+  const res = document.createElement('div');
+  res.id = 'mj-result';
+  res.setAttribute('data-json', JSON.stringify(out));
+  document.body.appendChild(res);
+  document.title = 'DONE ' + out.filter(function (o) { return o.ok; }).length + '/' + out.length;
+});
+</script>
+</body>
+</html>

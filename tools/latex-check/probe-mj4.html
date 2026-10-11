@@ -1,0 +1,34 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"/></head><body>
+<script>
+// v5：关闭 SRE（explorer/enrichment/speech/assistive）——纯排版渲染不需要无障碍探索器，
+// 且其 speech-worker 在离线环境加载失败会卡死整条渲染链。
+window.MathJax = {
+  options: { enableEnrichment: false, enableExplorer: false, enableAssistiveMml: false, enableMenu: false },
+  svg: { fontCache: 'local' }
+};
+</script>
+<script src="/tex-svg-v4.js?v=13"></script>
+<script>
+const P = { loaded: true };
+window.onerror = function(m){ P.err = String(m).slice(0,200); };
+function write(tag) { const d=document.createElement('div'); d.id=tag; d.setAttribute('data-json', JSON.stringify(P)); document.body.appendChild(d); }
+MathJax.startup.promise.then(function(){
+  P.startupDone = true;
+  var t0 = Date.now();
+  var ok = 0, fail = 0, errs = [];
+  var tests = ['\\color{red}{x} + \\sum_{n=1}^{\\infty} a_n', '\\newcommand{\\R}{\\mathbb{R}}\\forall x \\in \\R', 'x^2+\\frac{a}{b}', '\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}'];
+  for (var i = 0; i < tests.length; i++) {
+    try {
+      var n = MathJax.tex2svg(tests[i], {display:false});
+      if (n && n.querySelector && n.querySelector('svg')) { ok++; } else { fail++; errs.push('t'+i+':no-svg'); }
+    } catch(e) { fail++; errs.push('t'+i+':'+String(e.message||e).slice(0,80)); }
+  }
+  P.syncOk = ok; P.syncFail = fail; P.syncErrs = errs; P.syncMs = Date.now() - t0;
+  write('mjB');
+  // promise 版也测
+  MathJax.tex2svgPromise('\\sqrt{x}', {display:false}).then(function(n2){
+    P.promiseOk = !!(n2 && n2.querySelector && n2.querySelector('svg')); write('mjC');
+  }, function(e){ P.promiseErr = String(e).slice(0,120); write('mjC'); });
+  setTimeout(function(){ if (P.promiseOk === undefined && !P.promiseErr) { P.promiseStuck = true; write('mjD'); } }, 15000);
+});
+</script></body></html>

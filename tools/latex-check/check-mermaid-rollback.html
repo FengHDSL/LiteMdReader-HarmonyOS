@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>mermaid-rollback-check</title></head>
+<body>
+<pre id="out">pending</pre>
+<iframe id="f" style="width:420px;height:600px;border:1px solid #ccc"></iframe>
+<script>
+// mermaid 回退（12.1.0 → 10.9.3）四类图冒烟：流程图 / 状态图 / 类图 / 饼图
+// 判定：#app 里有 svg、无 .err 错误文本、svg 有实际尺寸
+const CASES = [
+  ['flowchart', 'flowchart TD\n  A[开始] --> B{判断}\n  B -->|是| C[处理]\n  B -->|否| D[结束]\n  C --> D'],
+  ['state', 'stateDiagram-v2\n  [*] --> 空闲\n  空闲 --> 运行: 启动\n  运行 --> 空闲: 停止\n  运行 --> [*]'],
+  ['class', 'classDiagram\n  class 动物 {\n    +名字\n    +吃东西()\n  }\n  动物 <|-- 狗\n  动物 <|-- 猫'],
+  ['pie', 'pie title 语言占比\n  "中文" : 55\n  "英文" : 30\n  "其他" : 15']
+];
+function $(id){ return document.getElementById(id); }
+function describe(w){
+  const d = w.document, app = d.getElementById('app');
+  const svgs = d.querySelectorAll('#app svg');
+  let wOk = 0;
+  for (let k = 0; k < svgs.length; k++) {
+    const bb = svgs[k].getBBox ? svgs[k].getBBox() : null;
+    if (bb && bb.width > 10 && bb.height > 10) { wOk++; }
+  }
+  return JSON.stringify({
+    svg: svgs.length, sized: wOk,
+    err: d.querySelector('#app .err') ? (d.querySelector('#app .err').textContent || 'y').substring(0, 60) : ''
+  });
+}
+(async function(){
+  const lines = [];
+  window.onerror = function(m){ lines.push('onerror: ' + m); $('out').textContent = lines.join('\n'); };
+  try {
+    const f = $('f');
+    const loaded = new Promise(function(res, rej){ f.onload = res; f.onerror = function(){ rej(new Error('iframe onerror')); }; });
+    f.src = '/entry/src/main/resources/rawfile/render/mermaid.html';
+    await loaded;
+    const w = f.contentWindow;
+    lines.push('has renderPayload: ' + (typeof w.renderPayload) + ' | mermaid: ' + (w.mermaid ? (w.mermaid.version ? w.mermaid.version : 'loaded') : 'MISSING'));
+    $('out').textContent = lines.join('\n');
+    for (let k = 0; k < CASES.length; k++) {
+      w.renderPayload({ src: CASES[k][1], dark: false, fit: true, inline: false });
+      await new Promise(function(r){ setTimeout(r, 900); });
+      lines.push(CASES[k][0] + ' ' + describe(w));
+      $('out').textContent = lines.join('\n');
+    }
+  } catch (e) {
+    lines.push('FAIL: ' + (e && e.message ? e.message : String(e)));
+  }
+  $('out').textContent = lines.join('\n');
+  document.title = 'DONE';
+})();
+</script>
+</body></html>

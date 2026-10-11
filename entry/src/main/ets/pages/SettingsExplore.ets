@@ -64,6 +64,11 @@ const CREDITS: CreditItem[] = [
     note: '一镜到底 / 多模态转场动效参考'
   },
   {
+    name: 'Vanessa219 / vditor',
+    url: 'https://github.com/Vanessa219/vditor',
+    note: 'Markdown 编辑器三种模式（所见即所得 / 即时渲染 / 分屏预览）与编辑功能设计参考'
+  },
+  {
     name: 'luvi / lv-markdown-in',
     url: 'https://gitee.com/luvi/lv-markdown-in',
     note: 'Markdown 渲染能力参考：代码块行号 / 折叠 / 操作区、HTML 常用标签与 font 快速样式、懒渲染与预渲染块数思路'

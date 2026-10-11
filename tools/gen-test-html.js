@@ -18,7 +18,8 @@ const fonts = ['KaTeX_AMS-Regular.woff2', 'KaTeX_Caligraphic-Bold.woff2', 'KaTeX
   'KaTeX_Main-BoldItalic.woff2', 'KaTeX_Main-Italic.woff2', 'KaTeX_Main-Regular.woff2',
   'KaTeX_Math-BoldItalic.woff2', 'KaTeX_Math-Italic.woff2', 'KaTeX_SansSerif-Bold.woff2',
   'KaTeX_SansSerif-Italic.woff2', 'KaTeX_SansSerif-Regular.woff2', 'KaTeX_Script-Regular.woff2',
-  'KaTeX_Typewriter-Regular.woff2'];
+  'KaTeX_Size1-Regular.woff2', 'KaTeX_Size2-Regular.woff2', 'KaTeX_Size3-Regular.woff2',
+  'KaTeX_Size4-Regular.woff2', 'KaTeX_Typewriter-Regular.woff2'];
 for (const f of fonts) {
   const b = fs.readFileSync(path.join(__dirname, 'runtimes', 'fonts', f)).toString('base64');
   katexCss = katexCss.split('fonts/' + f + ')').join('data:font/woff2;base64,' + b + ')');

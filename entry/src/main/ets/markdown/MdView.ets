@@ -38,15 +38,18 @@ import {
   codeBlockHeight,
   headingFontSize,
   headingSpaceTop,
-  tableColumnWidth
+  tableColumnWidth,
+  withAlpha
 } from '../theme/DesignTokens';
 import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { getImmersiveMaterial } from '../material/SystemMaterial';
+import { modalSheetOptions } from '../material/ModalSheet';
 import { DocStore } from '../service/DocStore';
 import { MathLite, MathSeg } from './MathLite';
 import { FlowChartView } from './FlowChart';
 import { DiagramWeb } from '../components/DiagramWeb';
 import { ChartCache } from '../service/ChartCache';
+import { EngineRegistry } from '../service/EngineRegistry';
 import { UpdateService } from '../service/UpdateService';
 import { common } from '@kit.AbilityKit';
 import {
@@ -135,6 +138,9 @@ export class MdViewUtil {
         kind: item.kind,
         href: item.href,
         num: item.num,
+        // 表格单元格不走批注（区间无意义，占位 0）
+        start: 0,
+        end: 0,
         bold: item.bold,
         italic: item.italic,
         strike: item.strike,
@@ -153,7 +159,8 @@ export class MdViewUtil {
   static pieceKey(piece: MdPiece, index: number): string {
     return piece.kind + '_' + index + '_' + piece.text.length + '_' + piece.num
       + '_' + piece.highlight.length + (piece.wavy ? '_w' : '')
-      + (piece.dblLine ? '_d' : '') + (piece.searchHit ? '_s' : '');
+      + (piece.dblLine ? '_d' : '') + (piece.searchHit ? '_s' : '')
+      + (piece.solid ? '_c' : '');
   }
 
   /** 片段字号：脚注引用与行内代码略小。 */
@@ -172,6 +179,10 @@ export class MdViewUtil {
 
   /** 片段颜色。 */
   static pieceColor(piece: MdPiece, base: string, palette: ReaderPalette): string {
+    if (piece.solid === true && piece.highlight.length > 0) {
+      // **学习卡实色底上的文字**：绿底配白字（用户反馈黄底白字看不清，已改绿底）
+      return '#FFFFFFFF';
+    }
     if (piece.kind === MdInlineKind.Link) {
       return palette.accent;
     }
@@ -233,6 +244,10 @@ export class MdViewUtil {
                          hlOpacity: number = 1): TextBackgroundStyle {
     if (piece.searchHit) {
       return { color: palette.searchHitBg, radius: HwRadius.inline };
+    }
+    if (piece.solid === true && piece.highlight.length > 0) {
+      // **学习卡的实色底**：不透明，不吃荧光笔透明度设置
+      return { color: piece.highlight, radius: HwRadius.inline };
     }
     if (piece.highlight.length > 0) {
       // 荧光笔透明度：批注里存的颜色是 #AARRGGBB，这里按用户设置缩放 AA 通道。
@@ -398,6 +413,7 @@ export class MdViewUtil {
         }
         // 命中底色：取第一个完全覆盖本段的批注
         let highlight: string = '';
+        let solid: boolean = false;
         let annotated: boolean = false;
         let wavy: boolean = false;
         let dblLine: boolean = false;
@@ -410,6 +426,11 @@ export class MdViewUtil {
             } else if (mine[a].style === 'dbl') {
               // **手写批注的红双下划线**：同样不铺底纹，改为在字下画双线
               dblLine = true;
+            } else if (mine[a].style === 'card') {
+              // **学习卡的实色底**（1.1.1）：黄底白字对比度差（用户反馈看不清），
+              // 改为**深绿实色**，配白色文字足够清晰
+              highlight = '#FF1F9E63';
+              solid = true;
             } else if (mine[a].color >= 0) {
               highlight = annotationColor(mine[a].color, dark);
             }
@@ -428,11 +449,14 @@ export class MdViewUtil {
           kind: item.kind,
           href: item.href,
           num: item.num,
+          start: s,
+          end: e,
           bold: item.bold,
           italic: item.italic,
           strike: item.strike,
           code: item.code,
           highlight: highlight,
+          solid: solid,
           wavy: wavy,
           dblLine: dblLine,
           annotated: annotated,
@@ -531,6 +555,12 @@ export struct MdBlockView {
   @Prop annotations: MdAnnotation[] = [];
   /** 处于"系统选择模式"的块 id（该块恢复系统原生长按菜单）；空串 = 无 */
   @Prop systemSelectId: string = '';
+  /** **整页系统选择模式**（AI 对话页等只读展示场景）：所有块的长按直接出系统菜单，
+   *  不弹应用批注菜单（用户要求：对话页长按就是系统选择）；阅读页不传走双轨。 */
+  @Prop alwaysSystemSelect: boolean = false;
+  /** **网页开放开关**（阅读页下发）：true 时点击 http(s) 链接走 webLinkHandler
+   *  半模态打开；false（默认）维持「点击复制地址」。 */
+  @Prop webOpen: boolean = false;
   /** 最近一次点选的批注色索引（色板点击时记录） */
   @State lastAnnoColor: number = 0;
   /** 点正文退出系统选择模式（宿主清掉 systemSelectId） */
@@ -541,6 +571,8 @@ export struct MdBlockView {
   @Prop searchQuery: string = '';
   /** 加载失败的图表缓存 key（Image onError 记入 → 回落 DiagramWeb 实时渲染） */
   @State brokenCharts: string[] = [];
+  /** 行内公式图的坏缓存（加载失败 → 回落线性化文本；与 brokenCharts 同思路） */
+  @State inlineBroken: string[] = [];
   @State copied: boolean = false;
   /**
    * 代码块是否已展开。**长代码默认折叠**（阈值 10 行，参考 lv-markdown-in 的
@@ -570,6 +602,11 @@ export struct MdBlockView {
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
   /** 波浪线粗细（thicknessScale）：系统波浪装饰线唯一开放的可调项 */
   @StorageProp('waveThickness') waveThickness: number = 1;
+  /**
+   * 已关闭的渲染引擎列表（「设置 → 引擎管理」，逗号分隔 id）。
+   * 订阅式读取：设置里一关，所有正文块**当帧**重渲染成源码兜底卡（无需整树重建）。
+   */
+  @StorageProp('disabledEngines') engineOffList: string = '';
 
   /** 代码块 token 缓存：token 化要跨行传递状态，不能逐行算，且不宜每次渲染重算。 */
   private codeTokens: CodeToken[][] = [];
@@ -599,12 +636,20 @@ export struct MdBlockView {
   docLinkHandler: (href: string) => void = () => {
   };
 
+  /** 外部网页链接（webOpen 开启时）：抛给页面在半模态面板内打开。 */
+  webLinkHandler: (href: string) => void = () => {
+  };
+
   /** 任务列表勾选切换（点勾选框）：页面负责改写原文并保存/重载。 */
   taskToggleHandler: (blockId: string) => void = () => {
   };
 
   /** 点击表格块：打开可视化表格编辑（页面按 srcLine 写回原文；只读文档由页面拦截）。 */
   tableEditHandler: (blockId: string) => void = () => {
+  };
+
+  /** 「发送AI」（1.2.0）：把选中文本（或整段兜底）抛给页面 → 进入 AI 对话。 */
+  aiAskHandler: (text: string) => void = () => {
   };
 
   /** 图表/公式放大查看：mode 对应 DiagramWeb 模板名，geoKey = 一镜到底的共享 id，title = 原内容标题（可空）。 */
@@ -1064,31 +1109,52 @@ export struct MdBlockView {
   // ────────────────────── 行内富文本 ──────────────────────
 
   /**
-   * 正文的主力行内渲染：**可长按选择、可复制、可加荧光笔与文字批注**。
-   *
-   * 三个属性缺一不可，否则长按完全没有反应：
-   *   · `copyOption(LocalDevice)` —— 不开的话 Text 根本不进入选择态；
-   *   · `onTextSelectionChange`   —— 拿到选区偏移，批注要用它定位；
-   *   · `bindSelectionMenu`       —— 用自定义菜单替换系统菜单，把「荧光笔」放进去。
+   * 行内段内容（richTextSel 两个分支共用）：
+   * 公式段 = ImageSpan（未就绪回落线性化文本），其余 = Span（含批注底纹 / 链接）。
+   * ⚠️ 系统选择分支也必须走这套——AI 对话气泡恒为 alwaysSystemSelect，
+   * 该分支此前只渲染 block.plain 纯文本，**气泡里的公式从来没渲染过**（用户实测）。
    */
   @Builder
-  richTextSel(size: number, baseColor: string, lineMul: number, align: TextAlign, firstIndent: boolean) {
-    if (this.systemSelectId === this.block.id) {
-      // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
-      // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
-      Text(this.block.plain) {
-      }
-      .fontSize(size)
-      .fontColor(baseColor)
-      .lineHeight(size * lineMul)
-      .textAlign(align)
-      .fontFamily(HwFont.resolve(this.fontKey))
-      .textIndent(firstIndent ? Math.round(size * 2) : 0)
-      .width('100%')
-      .copyOption(CopyOptions.LocalDevice)
-    } else {
-    Text() {
-      ForEach(this.pieces(), (piece: MdPiece) => {
+  inlinePieces(size: number, baseColor: string) {
+    ForEach(this.pieces(), (piece: MdPiece) => {
+        if (piece.kind === MdInlineKind.MathInline) {
+          if (this.inlineMathImg(piece.text, size).length > 0) {
+            // **公式图**（ContainerSpan **恒包**：结构不跨分支——批注底纹画在
+            // 图片背后，透明底的 PNG 会透出底纹；无批注时颜色透明、无视觉差异）。
+            // 点击 → **公式操作菜单**（批注/发送AI/放大等——图片没有文字选区，
+            // 落注走 piece 的字符区间，见 emitMathAnnotation）。
+            ContainerSpan() {
+              ImageSpan(this.inlineMathImg(piece.text, size))
+                .verticalAlign(ImageSpanAlignment.CENTER)
+                .objectFit(ImageFit.Contain)
+                // **显式逻辑尺寸**（vp）：PNG 是"逻辑尺寸 × 屏幕密度"的高清像素，
+                // 不显式定尺寸会被 1:1 当 vp 用、放大 density 倍（用户实测）
+                .width(this.inlineMathW(piece.text, size))
+                .height(this.inlineMathH(piece.text, size))
+                .onError(() => {
+                  // 缓存图损坏/加载失败：标记该公式 → 回落线性化文本，
+                  // 绝不留一块空白（此前无兜底，坏图就是永久空白）
+                  this.markInlineBroken(piece.text, size);
+                })
+                .onClick(() => {
+                  this.openMathMenu(piece);
+                })
+            }
+            .textBackgroundStyle({
+              color: piece.highlight.length > 0 ? piece.highlight : '#00000000',
+              radius: 6
+            })
+          } else {
+            // 图未就绪（或渲染失败）时的兜底：线性化文本——点开**公式操作菜单**
+            //（内含放大查看 / 批注 / 发送AI 等，与图态一致；此前只能点开浮层看大图）
+            Span(MathLite.inlineText(piece.text))
+              .fontSize(MdViewUtil.pieceSize(piece, size))
+              .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
+              .onClick(() => {
+                this.openMathMenu(piece);
+              })
+          }
+        } else {
         Span(piece.text)
           .fontSize(MdViewUtil.pieceSize(piece, size))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
@@ -1112,12 +1178,45 @@ export struct MdBlockView {
             } else if (MdViewUtil.looksLikeDocLink(piece.href)) {
               // 文档间链接（`[文字](./other.md#锚点)`）：交给页面开标签跳转
               this.docLinkHandler(piece.href);
+            } else if (piece.href.startsWith('http://') || piece.href.startsWith('https://')) {
+              // 外部链接：网页开放开启 → 页面半模态打开；关闭 → 维持「点击复制地址」
+              this.webLinkHandler(piece.href);
             } else {
-              // 外部链接不做跳转（需要 want + 浏览器能力），点击复制地址并提示
+              // 其他协议（mailto 等）不做跳转（需要 want + 浏览器能力），点击复制地址并提示
               this.copyText(piece.href, '链接已复制');
             }
           })
+        }
       }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
+  }
+
+  /**
+   * 正文的主力行内渲染：**可长按选择、可复制、可加荧光笔与文字批注**。
+   *
+   * 三个属性缺一不可，否则长按完全没有反应：
+   *   · `copyOption(LocalDevice)` —— 不开的话 Text 根本不进入选择态；
+   *   · `onTextSelectionChange`   —— 拿到选区偏移，批注要用它定位；
+   *   · `bindSelectionMenu`       —— 用自定义菜单替换系统菜单，把「荧光笔」放进去。
+   */
+  @Builder
+  richTextSel(size: number, baseColor: string, lineMul: number, align: TextAlign, firstIndent: boolean) {
+    if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
+      // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
+      // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
+      Text() {
+        this.inlinePieces(size, baseColor)
+      }
+      .fontSize(size)
+      .fontColor(baseColor)
+      .lineHeight(size * lineMul)
+      .textAlign(align)
+      .fontFamily(HwFont.resolve(this.fontKey))
+      .textIndent(firstIndent ? Math.round(size * 2) : 0)
+      .width('100%')
+      .copyOption(CopyOptions.LocalDevice)
+    } else {
+    Text() {
+      this.inlinePieces(size, baseColor)
     }
     .fontSize(size)
     .fontColor(baseColor)
@@ -1145,6 +1244,26 @@ export struct MdBlockView {
   richText(pieces: MdPiece[], size: number, baseColor: string, lineMul: number, align: TextAlign) {
     Text() {
       ForEach(pieces, (piece: MdPiece) => {
+        if (piece.kind === MdInlineKind.MathInline) {
+          if (this.inlineMathImg(piece.text, size).length > 0) {
+            ImageSpan(this.inlineMathImg(piece.text, size))
+              .verticalAlign(ImageSpanAlignment.CENTER)
+              .objectFit(ImageFit.Contain)
+              // **显式逻辑尺寸**（vp）：PNG 是"逻辑尺寸 × 屏幕密度"的高清像素，
+              // 不显式定尺寸会被 1:1 当 vp 用、放大 density 倍（用户实测）
+              .width(this.inlineMathW(piece.text, size))
+              .height(this.inlineMathH(piece.text, size))
+              .onError(() => {
+                // 缓存图损坏/加载失败：标记该公式 → 回落线性化文本，
+                // 绝不留一块空白（此前无兜底，坏图就是永久空白）
+                this.markInlineBroken(piece.text, size);
+              })
+          } else {
+            Span(MathLite.inlineText(piece.text))
+              .fontSize(MdViewUtil.pieceSize(piece, size))
+              .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
+          }
+        } else {
         Span(piece.text)
           .fontSize(MdViewUtil.pieceSize(piece, size))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
@@ -1153,6 +1272,7 @@ export struct MdBlockView {
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
+        }
       }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
     }
     .fontSize(size)
@@ -1220,6 +1340,11 @@ export struct MdBlockView {
               this.emitAnnotation('note', -1);
             })
 
+            // **学习卡**（1.1.0）：实色黄底 + 必填内容，数据供「复习卡片 / 批注速记」用
+            this.menuAction('学习卡', () => {
+              this.emitAnnotation('studycard', -1);
+            })
+
             // 波浪线：与荧光笔、文字批注并列的第三种标注形态（画在字下方）
             this.menuAction('波浪线', () => {
               this.emitAnnotation('wavy', 0);
@@ -1234,6 +1359,19 @@ export struct MdBlockView {
             this.menuAction('系统选择', () => {
               this.sysSelectExit('');
               this.sysSelectEnter(this.block.id);
+            })
+
+            // **发送AI**（1.2.0）：把选中文本发给 AI 助手（无选区时发整段兜底）
+            this.menuAction('发送AI', () => {
+              const s: number = this.selStart;
+              const e: number = this.selEnd;
+              const text: string = (s >= 0 && e > s)
+                ? this.selectedText(s, e) : this.block.plain;
+              if (text.length === 0) {
+                this.toast('没有可发送的文字');
+                return;
+              }
+              this.aiAskHandler(text);
             })
 
             this.menuAction('复制', () => {
@@ -1411,6 +1549,9 @@ export struct MdBlockView {
                   .fontColor(this.palette.textPrimary)
                   .lineHeight(this.bodySize * HwType.codeScale * 1.6)
                   .layoutWeight(1)
+                  // 长按代码 = 系统选择菜单（用户要求：对话页统一系统选择，不做应用菜单）。
+                  // copyOption 是进入选择态的前提；不挂 bindSelectionMenu 即为系统菜单。
+                  .copyOption(CopyOptions.LocalDevice)
                 }
                 .width('100%')
                 .alignItems(VerticalAlign.Center)
@@ -1747,8 +1888,61 @@ export struct MdBlockView {
    * onError 时把 key 记进 brokenCharts，之后走 DiagramWeb 实时渲染兜底，
    * 否则坏缓存会一直"加载不出来"且重启也无效（缓存是持久文件）。
    */
+  /**
+   * 行内公式预渲染图源（后台池按公式自身尺寸渲染；无则回落线性文本）。
+   *
+   * ⚠️ 交给 ImageSpan 必须用 `ChartCache.srcPath`（带 `file://` 前缀）——
+   * 裸沙箱路径会让 ImageSpan **静默加载失败**（用户实测"全部空白"），
+   * 详见 ChartCache.srcPath 的注释。
+   */
+  private inlineMathImg(latex: string, size: number): string {
+    // MathJax 已关闭（设置 → 引擎管理）→ 不再出图：正文回落线性化文本
+    //（即使缓存里还有旧图也不显示——"关闭后无法渲染"的语义必须一致）
+    if (EngineRegistry.isOff('mathjax', this.engineOffList)) {
+      return '';
+    }
+    const key: string = ChartCache.inlineKey(latex, this.dark, size);
+    if (this.brokenCharts.indexOf(key) >= 0 || this.inlineBroken.indexOf(key) >= 0) {
+      return '';
+    }
+    const c = this.getUIContext().getHostContext();
+    if (c === undefined || c === null) {
+      return '';
+    }
+    return ChartCache.srcPath(c as common.UIAbilityContext, key);
+  }
+
+  /**
+   * 本块的卡片底色（不透明 codeBlockBg；**参与缓存键 + 回落 Web 页面底色**）。
+   *
+   * ⚠️ **回落 Web 的页面底色必须不透明**：
+   * 透明 Web 表面被系统合成时颜色不可控——卡片回落 Web 不传 cardBg 时页面透明，
+   * 「一镜到底」退出时系统对卡片做 geometryTransition 快照，透明区域在真机上
+   * 被合成成**垃圾色（用户实测：放大后退出卡片发红）**；与"快照透明合成成黑"
+   * 同一 bug 族。显示用 Web 一律烘焙底色（快照/缓存链路早已如此）。
+   */
+  private cardBgKey(): string {
+    return withAlpha(this.palette.codeBlockBg, 'FF');
+  }
+
+  /** 块级图的缓存键（v4 起含底色——五档主题深浅孪生款底色不同，必须区分，
+   *  否则换深色主题会复用别主题烘焙的图 = "深色下背景发红/发绿"）。 */
+  private blockKeyOf(mode: string): string {
+    return ChartCache.keyFor(mode, this.block.code, this.dark, this.cardBgKey());
+  }
+
+  /** 块级图缓存的**逻辑尺寸**（'w|h'，css px = vp；无记录返回空串）。 */
+  private blockDimOf(mode: string): string {
+    const c = this.getUIContext().getHostContext();
+    if (c === undefined || c === null) {
+      return '';
+    }
+    return ChartCache.dimOf(c as common.UIAbilityContext, this.blockKeyOf(mode));
+  }
+
+  /** 图表/公式块缓存图源（同 inlineMathImg：必须 file:// 前缀给 Image 用）。 */
   private chartImagePath(mode: string): string {
-    const key: string = ChartCache.keyFor(mode, this.block.code, this.dark);
+    const key: string = this.blockKeyOf(mode);
     if (this.brokenCharts.indexOf(key) >= 0) {
       return '';
     }
@@ -1756,98 +1950,303 @@ export struct MdBlockView {
     if (c === undefined || c === null) {
       return '';
     }
-    return ChartCache.path(c as common.UIAbilityContext, key);
+    return ChartCache.srcPath(c as common.UIAbilityContext, key);
+  }
+
+  /**
+   * 块级缓存图展示——**按类型分策略**：
+   *   · 公式（katex）：**自然尺寸 + 横向滚动**（文字必须 1:1 可读——用户要求
+   *     "不限制大小"；有 .dim 逻辑尺寸时按自然尺寸，无则满宽 Contain）；
+   *   · 图表（mermaid/echarts/…）：**缩放适配卡片宽**（旧行为）——类图等大尺寸图
+   *     一律缩到完整可见，绝不按自然尺寸放大裁切（用户实测类图"被放的很大、
+   *     显示不完整"）。
+   */
+  @Builder
+  blockImage(mode: string) {
+    if (mode === 'katex') {
+    Scroll() {
+      Image(this.chartImagePath(mode))
+        .objectFit(ImageFit.Contain)
+        .width(this.blockImgW(mode))
+        .height(this.blockImgH(mode))
+        .onError(() => {
+          this.markChartBroken(mode);
+        })
+    }
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+    // ⚠️ **Scroll 必须自裁圆角**：自然尺寸的公式图比可视区宽时，图片自身的
+    // 圆角在视口外——右缘被 Scroll 的直角边裁出来 = "右边圆角变直角"（用户实测）。
+    .borderRadius(HwRadius.inner)
+    .clip(true)
+    .width('100%')
+  } else {
+      Image(this.chartImagePath(mode))
+        .objectFit(ImageFit.Contain)
+        .borderRadius(HwRadius.inner)
+        .width('100%')
+        .onError(() => {
+          this.markChartBroken(mode);
+        })
+    }
+  }
+
+  /** 块级图自然宽（vp；无尺寸记录回退满宽） */
+  private blockImgW(mode: string): Length {
+    const dim: string = this.blockDimOf(mode);
+    const bar: number = dim.indexOf('|');
+    if (bar <= 0) {
+      return '100%';
+    }
+    const w: number = Number(dim.substring(0, bar));
+    return w > 0 ? w : '100%';
+  }
+
+  /** 块级图自然高（vp；无尺寸记录回退自适应） */
+  private blockImgH(mode: string): Length {
+    const dim: string = this.blockDimOf(mode);
+    const bar: number = dim.indexOf('|');
+    if (bar <= 0) {
+      return 'auto';
+    }
+    const h: number = Number(dim.substring(bar + 1));
+    return h > 0 ? h : 'auto';
+  }
+
+  /** 行内公式图加载失败：记入坏缓存 → 回落线性化文本（避免永久空白）。 */
+  private markInlineBroken(latex: string, size: number): void {
+    const key: string = ChartCache.inlineKey(latex, this.dark, size);
+    if (this.inlineBroken.indexOf(key) < 0) {
+      this.inlineBroken = this.inlineBroken.concat([key]);
+    }
+  }
+
+  // ── 公式操作菜单（点击公式图 / 未就绪文本时打开）──
+  //
+  // 公式图片没有文字选区，批注系统需要「块 id + 渲染文本区间」——直接复用
+  // piece 的 start/end（buildPieces 已带）落注；渲染侧由 ContainerSpan 把
+  // 荧光笔底纹画在图片背后（透明底 PNG 透出底纹）。
+
+  @State mathMenuOn: boolean = false;
+  /** 窗口宽（px，AppStorage 广播）：半模态的平板竖屏收半判断用 */
+  @StorageProp('windowWpx') winWpx: number = 0;
+  private mathMenuStart: number = -1;
+  private mathMenuEnd: number = -1;
+  private mathMenuText: string = '';
+
+  private openMathMenu(piece: MdPiece): void {
+    this.mathMenuText = piece.text;
+    this.mathMenuStart = piece.start;
+    this.mathMenuEnd = piece.end;
+    this.mathMenuOn = true;
+  }
+
+  /** 落注：用公式自身的字符区间，走批注系统统一入口（annotateHandler）。 */
+  private emitMathAnnotation(action: string, color: number): void {
+    const s: number = this.mathMenuStart;
+    const e: number = this.mathMenuEnd;
+    const text: string = this.mathMenuText;
+    this.mathMenuOn = false;
+    if (s < 0 || e <= s || text.length === 0) {
+      this.toast('该位置不支持此操作');
+      return;
+    }
+    this.annotateHandler(action, this.block.id, s, e, text, color);
+  }
+
+  @Builder
+  mathMenuAction(label: string, onTap: () => void) {
+    Text(label)
+      .fontSize(HwType.caption + 1)
+      .fontColor(this.palette.textPrimary)
+      .padding({ left: 12, right: 12, top: 7, bottom: 7 })
+      .borderRadius(15)
+      .backgroundColor(this.palette.quoteBg)
+      .onClick(() => {
+        onTap();
+      })
+  }
+
+  /** 公式操作菜单（半模态：荧光笔色板 + 批注/波浪线/清除 + 学习卡/放大/发送AI/复制）。 */
+  @Builder
+  mathMenuSheet() {
+    Column({ space: HwSpace.sm }) {
+      Text(this.mathMenuText)
+        .fontSize(HwType.caption)
+        .fontColor(this.palette.textTertiary)
+        .maxLines(3)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+
+      Row({ space: HwSpace.xs }) {
+        ForEach(ANNOTATION_COLORS, (item: AnnotationColor, index: number) => {
+          Column()
+            .width(26)
+            .height(26)
+            .borderRadius(13)
+            .backgroundColor(item.light)
+            .border({ width: 1, color: '#33000000' })
+            .onClick(() => {
+              this.emitMathAnnotation('highlight', index);
+            })
+        }, (item: AnnotationColor, index: number) => 'ms' + index)
+        Text('荧光笔')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette.textTertiary)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Row({ space: HwSpace.xs }) {
+        this.mathMenuAction('批注', (): void => { this.emitMathAnnotation('note', -1); })
+        this.mathMenuAction('波浪线', (): void => { this.emitMathAnnotation('wavy', 0); })
+        this.mathMenuAction('清除', (): void => { this.emitMathAnnotation('remove', -1); })
+      }
+      .width('100%')
+
+      Row({ space: HwSpace.xs }) {
+        // **学习卡**（用户要求：渲染出来的公式也要能进背诵系统）——走与文字
+        // 长按选择同一套 'studycard' 流程（实色底高亮落在公式图片背后 + 必填内容）；
+        // 卡面由 MathFormulaText 渲染公式。AI 气泡里该回调未接线（默认空实现，无副作用）。
+        this.mathMenuAction('学习卡', (): void => {
+          this.emitMathAnnotation('studycard', -1);
+        })
+        // 「放大查看」走 KaTeX 引擎（render/katex.html）——该引擎关闭时不出现此动作
+        if (!EngineRegistry.isOff('katex', this.engineOffList)) {
+          this.mathMenuAction('放大查看', (): void => {
+            const t: string = this.mathMenuText;
+            this.mathMenuOn = false;
+            this.enlargeHandler('katex', t, 'inline_math', '');
+          })
+        }
+        this.mathMenuAction('发送AI', (): void => {
+          const t: string = this.mathMenuText;
+          this.mathMenuOn = false;
+          this.aiAskHandler(t);
+        })
+        this.mathMenuAction('复制源码', (): void => {
+          const t: string = this.mathMenuText;
+          this.mathMenuOn = false;
+          this.copyText(t, '公式源码已复制');
+        })
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    // 半模态内容区自带贴边：显式给内边距
+    .padding(HwSpace.md)
+  }
+
+  /**
+   * 行内公式图的**逻辑尺寸**（'w|h'；无记录返回空串）。
+   *
+   * ⚠️ PNG 像素是"逻辑尺寸 × 屏幕密度"的高清图（保清晰度），而 ImageSpan
+   * 对"图片像素"的默认换算不可依赖（实测像素被 1:1 当 vp → 图放大 density
+   * 倍——用户实测"公式渲染放大这么大"）。显示端显式把宽高设为逻辑尺寸
+   * （vp），尺寸精确、像素仍高清。
+   */
+  private inlineDimOf(latex: string, size: number): string {
+    const c = this.getUIContext().getHostContext();
+    if (c === undefined || c === null) {
+      return '';
+    }
+    return ChartCache.dimOf(c as common.UIAbilityContext,
+      ChartCache.inlineKey(latex, this.dark, size));
+  }
+
+  /** ImageSpan 显式宽（vp）；无尺寸记录回退 'auto'（自然尺寸）。 */
+  private inlineMathW(latex: string, size: number): Length {
+    const dim: string = this.inlineDimOf(latex, size);
+    const bar: number = dim.indexOf('|');
+    if (bar <= 0) {
+      return 'auto';
+    }
+    const w: number = Number(dim.substring(0, bar));
+    return w > 0 ? w : 'auto';
+  }
+
+  /** ImageSpan 显式高（vp）；无尺寸记录回退 'auto'。 */
+  private inlineMathH(latex: string, size: number): Length {
+    const dim: string = this.inlineDimOf(latex, size);
+    const bar: number = dim.indexOf('|');
+    if (bar <= 0) {
+      return 'auto';
+    }
+    const h: number = Number(dim.substring(bar + 1));
+    return h > 0 ? h : 'auto';
   }
 
   /** Image 加载失败：把该缓存 key 标记为坏，触发回落 DiagramWeb。 */
   private markChartBroken(mode: string): void {
-    const key: string = ChartCache.keyFor(mode, this.block.code, this.dark);
+    const key: string = this.blockKeyOf(mode);
     if (this.brokenCharts.indexOf(key) < 0) {
       this.brokenCharts = this.brokenCharts.concat([key]);
     }
   }
 
-  @Builder
-  mathView() {
-    // 块级公式：**优先用后台预渲染的缓存图**（打开文件时后台池已转成图片，
-    // 无需滑到位置再等 Web 加载——用户要求）；无缓存才回落 DiagramWeb 实时渲染。
-    // 包 ImmersiveCard 让卡片本体走沉浸光感承载层；
-    // **外边距必须挂在外面这层 Column 上**——自定义组件 + 尾随闭包之后不能再链式调属性。
-    Column() {
-    if (this.chartImagePath('katex').length > 0) {
-      Column() {
-        Image(this.chartImagePath('katex'))
-          .width('100%')
-          .objectFit(ImageFit.Contain)
-          .borderRadius(HwRadius.inner)
-          .onError(() => {
-            this.markChartBroken('katex');
-          })
-      }
-      .width('100%')
-    } else {
-    ImmersiveCard({
-      cardRadius: HwRadius.inner,
-      cardPadding: 0,
-      cardMaterialShadow: false,
-      cardBackground: this.palette.codeBlockBg,
-      palette: this.palette
-    }) {
-      // alignContent: TopEnd —— 放大按钮钉在**右上角**。
-      // 默认 Stack 是居中对齐，按钮会飘在卡片垂直中线上。
-      Stack({ alignContent: Alignment.TopEnd }) {
-        Column() {
-          DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        }
-        .width('100%')
+  // ── 引擎关闭兜底（设置 → 引擎管理）──
+  //
+  // 关掉某个引擎后，对应的图表 / 公式块**不再渲染**（用户要求：关闭后无法渲染），
+  // 统一退化成"源码卡"：保留可读可复制的原文 + 指明去哪里重新开启。
+  // 比留一块空白礼貌，也比继续显示旧缓存图诚实（缓存图会让人以为引擎还在工作）。
 
-        Row() {
-          Blank()
-          this.enlargeButton('katex', this.block.code, 'mdchart_' + this.block.id, '')
-        }
-        .width('100%')
-        // 与图表卡同一处理：整行下压 4vp，与自带 top:4 的放大按钮位置一致
-        .padding({ top: 4 })
-      }
-      .width('100%')
+  /** 本块渲染所依赖的引擎 id（公式块 → katex；图表块 → 语言映射；html → 空串）。 */
+  private blockEngineId(): string {
+    if (this.block.kind === MdBlockKind.Math) {
+      return 'katex';
     }
-    }
-    }
-    .width('100%')
-    // **一镜到底**：与放大浮层的大画布共享同一 id，点放大 / 关闭时卡片 ⇄ 全屏互相形变
-    .geometryTransition('mdchart_' + this.block.id, { follow: true })
-    .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
+    return EngineRegistry.langId(this.block.lang);
   }
 
+  /** 本块的引擎是否已在设置里关闭（空 id 恒 false：html 块不依赖第三方引擎）。 */
+  private blockEngineOff(): boolean {
+    return EngineRegistry.isOff(this.blockEngineId(), this.engineOffList);
+  }
+
+  /** 引擎关闭态的源码卡：引擎名 + 状态 + 可复制源码 + 重新开启提示。 */
   @Builder
-  chartView() {
-    // 图表卡片同样包 ImmersiveCard，按钮钉右上角（外边距挂外层 Column）
-    // **优先用后台预渲染的缓存图**（同公式块）；无缓存才回落 DiagramWeb。
+  engineOffCard() {
     Column() {
-    if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0) {
-      Column() {
-        Image(this.chartImagePath(this.block.lang.toLowerCase()))
+      ImmersiveCard({
+        cardRadius: HwRadius.inner,
+        cardPadding: 0,
+        cardMaterialShadow: false,
+        cardBackground: this.palette.codeBlockBg,
+        palette: this.palette
+      }) {
+        Column() {
+          Row({ space: HwSpace.xs }) {
+            Text(EngineRegistry.nameOf(this.blockEngineId()))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette.textTertiary)
+            Text('引擎已关闭 · 仅显示源码')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette.accent)
+            Blank()
+            ImmersiveIconButton({
+              buttonSize: 28,
+              buttonMaterialShadow: false,
+              palette: this.palette,
+              buttonOnTap: () => {
+                this.copyCode();
+              }
+            }) {
+              if (this.copied) {
+                SymbolGlyph($r('sys.symbol.checkmark'))
+                  .fontSize(14)
+                  .fontColor([this.palette.accent])
+              } else {
+                SymbolGlyph($r('sys.symbol.square_on_square_fill'))
+                  .fontSize(14)
+                  .fontColor([this.palette.textTertiary])
+              }
+            }
+          }
           .width('100%')
-          .objectFit(ImageFit.Contain)
-          .borderRadius(HwRadius.inner)
-          .onError(() => {
-            this.markChartBroken(this.block.lang.toLowerCase());
-          })
-      }
-      .width('100%')
-    } else {
-    ImmersiveCard({
-      cardRadius: HwRadius.inner,
-      cardPadding: 0,
-      cardMaterialShadow: false,
-      cardBackground: this.palette.codeBlockBg,
-      palette: this.palette
-    }) {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Column() {
-        // **查看代码**（用户要求）：直接展示源码，等宽可滚动；切回预览会重新挂载
-        // DiagramWeb（组件重挂即重新 renderPayload，不会留下旧画面）。
-        if (this.chartShowCode) {
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: HwSpace.md, right: HwSpace.xs, top: HwSpace.xs, bottom: 0 })
+
           Scroll() {
             Text(this.block.code)
               .fontSize(this.bodySize * HwType.codeScale)
@@ -1855,40 +2254,44 @@ export struct MdBlockView {
               .lineHeight(this.bodySize * HwType.codeScale * 1.6)
               .width('100%')
               .textAlign(TextAlign.Start)
+              .copyOption(CopyOptions.LocalDevice)
           }
           .scrollable(ScrollDirection.Vertical)
           .scrollBar(BarState.Auto)
           .width('100%')
           .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
-          .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
-        } else if (this.block.lang.toLowerCase() === 'markmap') {
-          DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'mermaid') {
-          DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'echarts') {
-          DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'abc') {
-          DiagramWeb({ mode: 'abc', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'graphviz') {
-          DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'flowchart') {
-          DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else if (this.block.lang.toLowerCase() === 'html') {
-          // **HTML 代码块预览**：解析层（MdParser）已把 `html` 归入图表块，
-          // 这里必须补上对应分支 —— 否则会落到最后的 else 走 codeView，
-          // 于是"预览"变成了显示源码（用户实测：html 块显示的是代码不是效果）。
-          DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-        } else {
-          // 未登记的图表语言：按代码块原样呈现
-          this.codeView()
-        }
-      }
-      .width('100%')
+          .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.sm })
 
-      Row() {
-        Blank()
-        // **预览 ↔ 查看代码**（用户要求）：图表与 HTML 预览都能切到源码核对写法。
-        // 图标用 text_alignleft 表示"代码"；处于代码态时点亮为主题色。
+          Text('可在「设置 → 引擎管理」中重新开启')
+            .fontSize(HwType.caption - 1)
+            .fontColor(this.palette.textTertiary)
+            .width('100%')
+            .textAlign(TextAlign.Center)
+            .padding({ bottom: HwSpace.sm })
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+    }
+    .width('100%')
+    .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
+  }
+
+  /**
+   * **卡片状态栏**（用户要求：所有卡片用代码块同款——操作按钮放顶部，不遮内容）：
+   * 左侧类型徽标 + 右侧（源码切换）+ 放大按钮。
+   */
+  @Builder
+  cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string, showCodeToggle: boolean) {
+    Row() {
+      Text(label)
+        .fontSize(HwType.caption - 1)
+        .fontColor(this.palette.textTertiary)
+        .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(HwRadius.pill)
+        .backgroundColor(this.palette.quoteBg)
+      Blank()
+      if (showCodeToggle) {
         ImmersiveIconButton({
           buttonSize: 28,
           buttonMaterialShadow: false,
@@ -1903,27 +2306,109 @@ export struct MdBlockView {
             .fontSize(13)
             .fontColor([this.chartShowCode ? this.palette.accent : this.palette.textTertiary])
         }
-        // 两个按钮之间的空隙（用户反馈贴在一起）
         Column()
           .width(HwSpace.xs)
-        this.enlargeButton(this.block.lang.toLowerCase(), this.block.code, 'mdchart_' + this.block.id, this.chartTitle())
       }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-      // 放大按钮自带 top:4（见 enlargeButton）→ 整行同样下压 4vp，
-      // 代码按钮与放大按钮**同高对齐**（用户要求：代码按钮跟随放大按钮）
-      .padding({ top: 4 })
+      ImmersiveIconButton({
+        buttonSize: 28,
+        buttonMaterialShadow: false,
+        palette: this.palette,
+        buttonOnTap: () => {
+          this.enlargeHandler(mode, payload, geoKey, title);
+        }
+      }) {
+        SymbolGlyph($r('sys.symbol.arrow_up_left_and_arrow_down_right'))
+          .fontSize(14)
+          .fontColor([this.palette.textTertiary])
+      }
     }
     .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({ left: HwSpace.md, right: HwSpace.xs, top: HwSpace.xs, bottom: 0 })
+  }
+
+  @Builder
+  mathView() {
+    Column() {
+      Text('mathview-test')
     }
-    }
+  }
+
+  @Builder
+  chartView() {
+    Column() {
+      if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
+        ImmersiveCard({
+          cardRadius: HwRadius.inner,
+          cardPadding: 0,
+          cardMaterialShadow: false,
+          cardBackground: this.palette.codeBlockBg,
+          palette: this.palette
+        }) {
+          Column() {
+            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+              'mdchart_' + this.block.id, this.chartTitle(), true)
+            this.blockImage(this.block.lang.toLowerCase())
+          }
+          .width('100%')
+        }
+      } else {
+        ImmersiveCard({
+          cardRadius: HwRadius.inner,
+          cardPadding: 0,
+          cardMaterialShadow: false,
+          cardBackground: this.palette.codeBlockBg,
+          palette: this.palette
+        }) {
+          Column() {
+            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+              'mdchart_' + this.block.id, this.chartTitle(), true)
+            Stack({ alignContent: Alignment.TopEnd }) {
+              Column() {
+                if (this.chartShowCode) {
+                  Scroll() {
+                    Text(this.block.code)
+                      .fontSize(this.bodySize * HwType.codeScale)
+                      .fontColor(this.palette.textPrimary)
+                      .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+                      .width('100%')
+                      .textAlign(TextAlign.Start)
+                  }
+                  .scrollable(ScrollDirection.Vertical)
+                  .scrollBar(BarState.Auto)
+                  .width('100%')
+                  .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
+                  .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
+                } else if (this.block.lang.toLowerCase() === 'markmap') {
+                  DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'mermaid') {
+                  DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'echarts') {
+                  DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'abc') {
+                  DiagramWeb({ mode: 'abc', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'graphviz') {
+                  DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'flowchart') {
+                  DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'html') {
+                  DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else {
+                  this.codeView()
+                }
+              }
+              .width('100%')
+            }
+            .width('100%')
+          }
+          .width('100%')
+        }
+      }
     }
     .width('100%')
-    // **一镜到底**：与放大浮层的大画布共享同一 id（同公式卡片）
     .geometryTransition('mdchart_' + this.block.id, { follow: true })
     .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
   }
-
   // ── 折叠细节块（<details><summary>）──
   @State detailsOpen: boolean = false;
 
@@ -1994,9 +2479,18 @@ export struct MdBlockView {
       } else if (this.block.kind === MdBlockKind.Divider) {
         this.dividerView()
       } else if (this.block.kind === MdBlockKind.Math) {
-        this.mathView()
+        // 引擎被关闭（设置 → 引擎管理）→ 源码兜底卡；开启时走正常渲染
+        if (this.blockEngineOff()) {
+          this.engineOffCard()
+        } else {
+          this.mathView()
+        }
       } else if (this.block.kind === MdBlockKind.Chart) {
-        this.chartView()
+        if (this.blockEngineOff()) {
+          this.engineOffCard()
+        } else {
+          this.chartView()
+        }
       } else if (this.block.kind === MdBlockKind.Details) {
         this.detailsView()
       } else if (this.block.kind === MdBlockKind.Paragraph && this.standaloneImage() !== null) {
@@ -2030,6 +2524,19 @@ export struct MdBlockView {
         }
       }
     })
+    // 公式操作菜单（点公式图 / 未就绪文本打开）：半模态走项目唯一实现
+    // modalSheetOptions——内容自适应高度（小面板），手机形态
+    .bindSheet(this.mathMenuOn, this.mathMenuSheet(), modalSheetOptions({
+      title: '公式',
+      subtitle: '',
+      surface: this.palette.surface,
+      phoneLayout: true,
+      fitContent: true,
+      screenWidth: this.winWpx > 0 ? this.getUIContext().px2vp(this.winWpx) : 361,
+      onDismiss: (): void => {
+        this.mathMenuOn = false;
+      }
+    }))
   }
 
   /** 块与块之间的距离随「段落间距」设置缩放；标题与分割线自带上边距，不再加。 */

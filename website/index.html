@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>澄笺 · 澄心执笔，笺上生光 | 本地优先的 Markdown 书房</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<meta name="description" content="澄笺（LiteMdReader）——一款沉浸光感的 HarmonyOS 原生 Markdown 阅读与写作应用：卡片化排版、学习卡复习、AI 助手（接口由你配置），数据只留本机。">
+<style>
+:root{
+  --paper:#FAF8F3; --paper-2:#F3F0E9;
+  --ink:#22303C; --ink-2:#4A5A68; --ink-3:#7C8B97;
+  --cheng:#4A6FA5; --cheng-2:#7FA8C9; --gold:#B5A27E;
+  --card:#FFFFFF; --line:#E7E2D6;
+  --radius:16px;
+  --serif:'Noto Serif SC','Source Han Serif SC','Songti SC','STSong','SimSun',serif;
+  --sans:'HarmonyOS Sans SC','PingFang SC','Microsoft YaHei',-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.8;-webkit-font-smoothing:antialiased}
+a{color:var(--cheng);text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%;display:block}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+.serif{font-family:var(--serif)}
+
+/* 滚动入场动画 */
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.22,.8,.32,1)}
+.reveal.in{opacity:1;transform:none}
+.d1{transition-delay:.08s}.d2{transition-delay:.16s}.d3{transition-delay:.24s}
+.d4{transition-delay:.32s}.d5{transition-delay:.4s}
+
+/* 导航 */
+nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(14px);background:rgba(250,248,243,.85);border-bottom:1px solid rgba(0,0,0,.05)}
+nav .in{max-width:1140px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:26px}
+nav .brand{font-family:var(--serif);font-size:21px;letter-spacing:3px;color:var(--ink);display:flex;align-items:center;gap:10px}
+nav .brand .logo{width:30px;height:30px;border-radius:8px;box-shadow:0 2px 8px rgba(34,48,60,.18)}
+nav .brand small{font-size:11px;color:var(--ink-3);letter-spacing:1px;margin-left:8px}
+nav .links{margin-left:auto;display:flex;gap:22px;font-size:14px}
+nav .links a{color:var(--ink-2)}
+nav .gh{padding:7px 16px;border:1px solid var(--ink);border-radius:99px;color:var(--ink);font-size:13px}
+nav .gh:hover{background:var(--ink);color:var(--paper);text-decoration:none}
+
+/* Hero */
+.hero{position:relative;overflow:hidden;
+  background:linear-gradient(165deg,#F7F5F0 0%,#EDF2F4 46%,#DFE9EE 100%)}
+.hero::before{content:'';position:absolute;width:760px;height:760px;border-radius:50%;
+  right:-200px;top:-260px;background:radial-gradient(circle,rgba(74,111,165,.16),transparent 65%);
+  pointer-events:none}
+.hero::after{content:'';position:absolute;width:520px;height:520px;border-radius:50%;
+  left:-160px;bottom:-220px;background:radial-gradient(circle,rgba(181,162,126,.14),transparent 65%);
+  pointer-events:none}
+.hero .in{position:relative;max-width:1140px;margin:0 auto;padding:96px 24px 0;display:grid;
+  grid-template-columns:1.05fr 1fr;gap:48px;align-items:center}
+.hero .eyebrow{font-size:13px;letter-spacing:6px;color:var(--cheng);margin-bottom:18px}
+.hero h1{font-family:var(--serif);font-size:58px;line-height:1.26;letter-spacing:2px;font-weight:700}
+.hero h1 em{font-style:normal;color:var(--cheng)}
+.hero p.sub{margin:22px 0 8px;color:var(--ink-2);font-size:17px;max-width:30em}
+.hero .tags{margin:14px 0 30px;display:flex;flex-wrap:wrap;gap:8px}
+.hero .tags span{font-size:12px;color:var(--ink-2);background:rgba(255,255,255,.72);
+  border:1px solid var(--line);border-radius:99px;padding:4px 12px}
+.cta{display:flex;gap:14px;flex-wrap:wrap}
+.cta a{padding:13px 28px;border-radius:12px;font-size:15px}
+.cta .primary{background:var(--ink);color:var(--paper)}
+.cta .primary:hover{background:var(--cheng);text-decoration:none}
+.cta .ghost{border:1px solid var(--ink-3);color:var(--ink)}
+.cta .ghost:hover{border-color:var(--ink);text-decoration:none}
+.hero .shots{position:relative;animation:rise .9s cubic-bezier(.22,.8,.32,1) both .15s}
+.hero .shots .shot-tab{width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.55);
+  box-shadow:0 30px 80px rgba(34,48,60,.24)}
+.hero .shots .shot-phone{position:absolute;width:31%;left:-7%;bottom:-9%;
+  border-radius:18px;border:2px solid rgba(255,255,255,.65);
+  box-shadow:0 34px 80px rgba(20,30,44,.42)}
+.hero .agc{display:inline-flex;align-items:center;gap:12px;cursor:pointer;
+  background:linear-gradient(150deg,#E6483D,#D23227);color:#fff;
+  padding:9px 22px 9px 12px;border-radius:14px}
+.hero .agc img{width:38px;height:38px;border-radius:9px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.hero .agc span{font-size:14px;line-height:1.35;text-align:left}
+.hero .agc small{font-size:11px;opacity:.85;font-weight:normal}
+.hero .agc:hover{filter:brightness(1.06)}
+.sys{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:13px;color:var(--ink-2)}
+.sys img{width:30px;height:30px;border-radius:7px}
+@keyframes rise{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+.hero .shot-cap{text-align:center;font-size:12px;color:var(--ink-3);margin-top:10px}
+/* Hero 入场（逐行） */
+.hero .in>div:first-child>*{animation:rise .7s cubic-bezier(.22,.8,.32,1) both}
+.hero .in>div:first-child>*:nth-child(2){animation-delay:.08s}
+.hero .in>div:first-child>*:nth-child(3){animation-delay:.16s}
+.hero .in>div:first-child>*:nth-child(4){animation-delay:.24s}
+.hero .in>div:first-child>*:nth-child(5){animation-delay:.32s}
+
+/* 通用区块 */
+section{padding:88px 0}
+section.alt{background:var(--paper-2)}
+.sec-head{text-align:center;max-width:720px;margin:0 auto 52px}
+.sec-head .eyebrow{font-size:12px;letter-spacing:5px;color:var(--gold);margin-bottom:12px}
+.sec-head h2{font-family:var(--serif);font-size:34px;letter-spacing:2px}
+.sec-head p{color:var(--ink-3);font-size:15px;margin-top:10px}
+
+/* 功能总览（分组详情） */
+.fgroup{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:30px 32px;margin-bottom:22px;display:grid;grid-template-columns:210px 1fr;gap:32px;
+  transition:box-shadow .3s ease}
+.fgroup:hover{box-shadow:0 16px 44px rgba(34,48,60,.09)}
+.fgroup .head .ic{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;
+  justify-content:center;font-family:var(--serif);font-size:23px;color:#fff;margin-bottom:14px}
+.fgroup .head h3{font-size:18px;margin-bottom:4px}
+.fgroup .head .tag{font-size:12px;color:var(--ink-3)}
+.fgroup ul{list-style:none;columns:2;column-gap:34px}
+.fgroup li{font-size:14px;color:var(--ink-2);padding:5px 0 5px 16px;position:relative;
+  break-inside:avoid;-webkit-column-break-inside:avoid}
+.fgroup li::before{content:'';position:absolute;left:0;top:15px;width:5px;height:5px;
+  border-radius:3px;background:var(--gold)}
+
+/* AI 分区 */
+.ai{background:linear-gradient(160deg,#22303C 0%,#2C4258 60%,#3A5878 100%);color:#EDF1F5}
+.ai .wrap{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.ai .eyebrow{font-size:12px;letter-spacing:5px;color:#9FC0DE;margin-bottom:12px}
+.ai h2{font-family:var(--serif);font-size:32px;letter-spacing:2px;color:#F2F6FA}
+.ai p{color:#B9C7D4;margin:16px 0;font-size:15px}
+.ai ul{list-style:none;margin-top:6px}
+.ai li{padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.14);font-size:14px;color:#C8D4DE}
+.ai li b{color:#EAF1F8}
+.ai .card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14)}
+.ai .card p{color:#B9C7D4}
+.ai .hint{font-size:12px;color:#8FA6BA;margin-top:14px}
+
+/* 画廊 + 灯箱 */
+.gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.gallery figure{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  cursor:zoom-in;transition:transform .25s ease,box-shadow .25s ease}
+.gallery figure:hover{transform:translateY(-6px);box-shadow:0 20px 46px rgba(34,48,60,.16)}
+.gallery img{width:100%;height:100%;object-fit:cover;transition:transform .4s ease}
+.gallery figure{aspect-ratio:4/3}
+.gallery figure:hover img{transform:scale(1.05)}
+.gallery figcaption{padding:10px 14px;font-size:13px;color:var(--ink-2)}
+#lightbox{position:fixed;inset:0;z-index:99;display:none;align-items:center;justify-content:center;
+  background:rgba(12,18,26,.92);cursor:zoom-out;padding:40px}
+#lightbox.open{display:flex;animation:fade .25s ease}
+#lightbox img{max-width:94vw;max-height:88vh;border-radius:10px;box-shadow:0 30px 90px rgba(0,0,0,.5)}
+#lightbox .close{position:absolute;top:26px;right:34px;font-size:34px;color:#fff;cursor:pointer;
+  font-family:var(--serif)}
+#lightbox .cap{position:absolute;bottom:30px;left:0;right:0;text-align:center;color:#C8D4DE;font-size:14px}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+/* 日志 */
+.log{max-width:780px;margin:0 auto}
+.log .v{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:24px 26px;margin-bottom:18px}
+.log .v h3{font-size:16px;display:flex;justify-content:space-between;align-items:baseline}
+.log .v h3 span{font-size:12px;color:var(--ink-3);font-weight:normal}
+.log .v ul{list-style:none;margin-top:10px}
+.log .v li{font-size:14px;color:var(--ink-2);padding:5px 0 5px 18px;position:relative}
+.log .v li::before{content:'';position:absolute;left:2px;top:15px;width:6px;height:6px;
+  border-radius:3px;background:var(--gold)}
+
+/* 桌面卡片展示 */
+.widgetband{background:linear-gradient(150deg,#31465C 0%,#3A5878 55%,#4A6FA5 100%);
+  color:#E8EEF4;overflow:hidden}
+.widgetband .wrap{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center}
+.widgetband .eyebrow{font-size:12px;letter-spacing:5px;color:#B5A27E;margin-bottom:12px}
+.widgetband h2{font-family:var(--serif);font-size:30px;letter-spacing:2px;color:#F2F6FA}
+.widgetband p{color:#B9C7D4;margin-top:14px;font-size:15px}
+.widgetband .stage{display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.10),transparent 70%);
+  min-height:460px}
+.widgetband img{width:min(320px,72%);filter:drop-shadow(0 26px 40px rgba(0,0,0,.38));
+  animation:floaty 4.5s ease-in-out infinite}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
+
+/* FAQ */
+.faq{max-width:780px;margin:0 auto}
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:16px 20px;margin-bottom:12px}
+.faq summary{cursor:pointer;font-size:15px;font-weight:600}
+.faq p{margin-top:10px;font-size:14px;color:var(--ink-2)}
+
+/* 页脚 */
+footer{background:#1B2632;color:#9FB0BF;padding:56px 0 40px;font-size:13px}
+footer .in{max-width:1140px;margin:0 auto;padding:0 24px;
+  display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px}
+footer h4{color:#E4EBF1;font-size:14px;margin-bottom:14px;letter-spacing:2px}
+footer a{color:#9FB0BF}
+footer a:hover{color:#DDE6EE}
+footer .slogan{font-family:var(--serif);font-size:20px;color:#E4EBF1;letter-spacing:3px;margin-bottom:10px}
+footer .bottom{max-width:1140px;margin:0 auto;padding:26px 24px 0;border-top:1px solid rgba(255,255,255,.08);
+  display:flex;justify-content:space-between;color:#6E8093;font-size:12px}
+
+@media (max-width:900px){
+  .hero .in{grid-template-columns:1fr;padding-top:64px}
+  .cards{grid-template-columns:1fr}
+  .ai .wrap{grid-template-columns:1fr}
+  .gallery{grid-template-columns:repeat(2,1fr)}
+  nav .links{display:none}
+  .hero h1{font-size:40px}
+  .fgroup{grid-template-columns:1fr;gap:14px}
+  .fgroup ul{columns:1}
+  .widgetband .wrap{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="in">
+    <div class="brand"><img class="logo" src="assets/icon.png" alt="澄笺图标">澄笺<small>LiteMdReader</small></div>
+    <div class="links">
+      <a href="#features">功能总览</a>
+      <a href="#ai">AI 助手</a>
+      <a href="#gallery">界面</a>
+      <a href="#faq">常见问题</a>
+    </div>
+    <a class="gh" href="https://github.com/FengHDSL/LiteMdReader-HarmonyOS" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="in">
+    <div>
+      <div class="eyebrow">澄笺 · LiteMdReader · HarmonyOS 原生</div>
+      <h1 class="serif">澄心执笔，<br>笺上生光。</h1>
+      <p class="sub">一款沉浸光感的本地优先 Markdown 书房——阅读、写作、学习卡复习，<br>
+      以及一个接口由你定夺的 AI 助手。</p>
+      <div class="tags">
+        <span>本地优先 · 数据不上云</span><span>学习卡 + SM-2 复习</span><span>AI 接口自配</span><span>开源 MIT</span>
+      </div>
+      <div class="cta">
+        <span class="primary agc" title="华为应用市场 · 即将上架，敬请期待">
+          <img src="assets/appgallery.png" alt="AppGallery"><span>华为应用市场<br><small>即将上架</small></span>
+        </span>
+        <a class="primary" href="https://www.sydxky.cn/detail.php?id=956" target="_blank" rel="noopener">Hap Store 下载</a>
+        <a class="ghost" href="https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases" target="_blank" rel="noopener">GitHub Releases</a>
+        <a class="ghost" href="https://gitee.com/pandasoos/LiteMdReader-HarmonyOS" target="_blank" rel="noopener">Gitee 镜像</a>
+      </div>
+      <div class="sys">
+        <img src="assets/hmos.png" alt="HarmonyOS">
+        <span>适配系统：<strong>HarmonyOS 6.1+</strong>（纯血鸿蒙）· 手机 / 平板 / 2in1</span>
+      </div>
+    </div>
+    <div>
+      <div class="shots">
+        <img class="shot-tab" src="assets/tab-shelf.png" alt="澄笺 · 平板书架">
+        <img class="shot-phone" src="assets/phone-shelf.png" alt="澄笺 · 手机书架">
+      </div>
+      <div class="shot-cap">书架 · 手机与大屏横屏（三页分页：文房 · 书架 · 写作日志）</div>
+    </div>
+  </div>
+</header>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">FEATURES</div>
+      <h2>功能总览</h2>
+      <p>七个板块，每一项都在安装包里真实存在——不是概念图。</p>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#4A6FA5">架</div>
+        <h3>书架 · 三页分页</h3>
+        <div class="tag">文房 · 书架 · 写作日志</div>
+      </div>
+      <ul>
+        <li>三页循环滑动：文房（学习与统计）· 书架 · 写作日志（阅读轨迹热力图）</li>
+        <li>程序化书封：按文档名哈希配色，可自定义底色 / 封面图 / 是否显示名称</li>
+        <li>长按拖拽：悬停另一篇 1.5 秒交换位置、快速松手合并文件夹、收进文件夹</li>
+        <li>文件夹原地展开面板，可改名、解散、移出文档</li>
+        <li>网格 / 树形（文件树）双视图；全库搜索直达正文命中位置</li>
+        <li>悬浮胶囊快捷按钮：新建、导入、AI 助手入口（后台完成有角标提醒）</li>
+        <li>桌面卡片（2×2）：最近文档与阅读进度上桌面，点击直达</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#2E7D52">读</div>
+        <h3>阅读</h3>
+        <div class="tag">多标签 · 双抽屉 · 图表公式</div>
+      </div>
+      <ul>
+        <li>多标签阅读，长按关闭其他 / 全部；标签栏位置可切换</li>
+        <li>目录与注释双侧滑抽屉，宽屏两侧常驻可拖宽；注释抽屉带搜索</li>
+        <li>正文渲染：表格、引用、提示块、脚注、任务列表、代码高亮、KaTeX 公式</li>
+        <li>五种图表离线渲染：mermaid / echarts / graphviz / flowchart / markmap</li>
+        <li>图表与公式全屏放大，支持旋转横屏与捏合缩放</li>
+        <li>荧光笔 / 波浪线 / 文字批注 / 学习卡，批注坐标不随排版漂移</li>
+        <li>文档内查找、大纲跳转、进度记忆；朗读全文、对照阅读、网页开放</li>
+        <li>双指捏合调字号、亮度滑条、屏幕常亮、五档主题快捷切换</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#B5A27E">写</div>
+        <h3>写作（编辑）</h3>
+        <div class="tag">实时预览 · 大纲重排 · 版本历史</div>
+      </div>
+      <ul>
+        <li>实时预览编辑：点哪段改哪段，改完原地变回渲染态</li>
+        <li>纯编辑 / 上下分屏 / 左右分屏；Markdown 快捷工具条、语法速查表</li>
+        <li>图库导入图片（复制进沙箱、相对路径引用）</li>
+        <li>大纲重排：长按拖动整节换序；双链补全（[[ 候选）</li>
+        <li>版本历史：自动快照间隔可选 + 保存留档，差异对比与一键恢复</li>
+        <li>Front Matter 元数据：封面显示名 / 底色 / 日期自动生效</li>
+        <li>外接键盘快捷键：Ctrl+S / B / I / F、Ctrl+↑↓ 调字号</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#C9A227">复</div>
+        <h3>复习（学习卡）</h3>
+        <div class="tag">SM-2 记忆曲线 · 签到 · 朗读</div>
+      </div>
+      <ul>
+        <li>划选文字选「学习卡」：实色黄底高亮 + 必填中文备注</li>
+        <li>背卡正面原文、翻面看备注；记得 / 模糊 / 忘了三态评分</li>
+        <li>SM-2 艾宾浩斯曲线排期，忘了 / 模糊重复出现，累计 3 次「记得」才算掌握</li>
+        <li>每日目标条数、连续签到日历、复习统计与遗忘曲线分布</li>
+        <li>学习卡语音朗读（系统语音合成，读单词与备注）</li>
+        <li>支持文档筛选，只背选中的篇目；背完弹出本轮成果页</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#4A90D9">AI</div>
+        <h3>AI 助手（接口由你配置）</h3>
+        <div class="tag">不内置模型服务 · 数据不过手</div>
+      </div>
+      <ul>
+        <li>OpenAI 兼容 / Anthropic 双协议，多份配置随时切换，思考强度可调</li>
+        <li>图片与文件附件不限数量与大小，大文件自动分批上传</li>
+        <li>生成中可切话题，后台继续生成，完成有角标提醒</li>
+        <li>回复中的代码块与图表全屏放大，与阅读页同一套浮层</li>
+        <li>「生成文档」协议：AI 输出直接落盘为书架文档</li>
+        <li>对话记录仅存本机沙箱；接口地址与密钥不离开设备</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#7FA8C9">光</div>
+        <h3>外观与体验</h3>
+        <div class="tag">沉浸光感 · 五档主题 · 动效</div>
+      </div>
+      <ul>
+        <li>沉浸光感材质（系统材质承载层，深浅切换重建）</li>
+        <li>五档主题 + 五款澄笺主题色 + 自定义色号；深浅两套独立灰字配置</li>
+        <li>深浅两套壁纸、自定义字体导入、函数绘制壁纸</li>
+        <li>动效：封面一镜到底、文件夹原地展开、粒子消散、卡片流转</li>
+        <li>智感握姿：底部工具条自动贴近持机一侧</li>
+        <li>平板横屏三栏布局，宽度记忆</li>
+      </ul>
+    </div>
+
+    <div class="fgroup reveal">
+      <div class="head">
+        <div class="ic" style="background:#5C6B7A">据</div>
+        <h3>数据与设置</h3>
+        <div class="tag">备份 · 恢复 · 初始化</div>
+      </div>
+      <ul>
+        <li>阅读调整：字体族 / 字号 / 行高 / 段距 / 版心 / 首行缩进，支持导入字体</li>
+        <li>本地备份包导出 / 导入；批注与图片逐项管理</li>
+        <li>WebDAV 备份与恢复，支持自动上传间隔（每 1 / 3 / 7 天）</li>
+        <li>缓存清理、内置教程移除与恢复、自建文档批量管理</li>
+        <li>应用初始化：一键清空全部本地数据（5 秒确认）</li>
+        <li>检查更新：读取发布页版本号，一键跳转下载</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="ai" class="ai">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">AI ASSISTANT</div>
+      <h2>AI 助手：接口由你定夺</h2>
+      <p>澄笺<strong>不内置任何模型服务</strong>。在设置里填入你自己的 API 地址与密钥——
+        OpenAI 兼容或 Anthropic 皆可，多份配置随时切换。</p>
+      <p>发送消息时，你的文本、选中的原文与附件通过系统网络组件<strong>直接发送到该接口</strong>：
+        我们不经手、不存储、也无法恢复这些内容；对话记录只保存在本机沙箱。</p>
+      <ul>
+        <li><b>附件不限量</b>：图片与文件多选，超大文件按块自动分批上传</li>
+        <li><b>后台生成</b>：切话题不打断，完成后续接时入口亮起角标</li>
+        <li><b>生成文档</b>：AI 输出直接落盘为书架文档</li>
+        <li><b>全屏放大</b>：回复中的代码块与图表，与阅读页同一套浮层</li>
+      </ul>
+      <div class="hint">对话记录只保存在本机沙箱，卸载即消失；使用外部接口产生的费用由接口提供方收取。</div>
+    </div>
+    <div class="card">
+      <p style="font-size:13px;color:#9FC0DE;margin-bottom:10px">一次真实的使用流</p>
+      <p>把《经济学人》里不会的词划成学习卡 → 让 AI 为每个词生成释义与例句并写成一篇「词汇笔记」
+        落到书架 → 第二天在复习卡片里按记忆曲线背记 → 忘了的词让 AI 再出十道例句。</p>
+      <p style="margin-top:14px">从阅读到复习，一条流水线，全程离线留存。</p>
+    </div>
+  </div>
+</section>
+
+<section id="widget" class="widgetband">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">WIDGET</div>
+      <h2>桌面卡片，进度上桌面</h2>
+      <p>2×2 书架卡片把最近阅读的文档钉在桌面：封面、进度一目了然，点击直达继续阅读。</p>
+      <p>卡片数据由应用在添加与定时刷新时组装，不联网、不采集任何信息。</p>
+    </div>
+    <div class="stage"><img src="assets/widget.png" alt="澄笺桌面卡片"></div>
+  </div>
+</section>
+
+<section id="gallery">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">GALLERY</div>
+      <h2>界面一览</h2>
+      <p>点击任意截图可放大查看。</p>
+    </div>
+    <div class="gallery">
+      <figure class="reveal"><img src="assets/phone-shelf.png" alt="书架 · 网格" data-cap="书架 · 三页分页与封面网格"><figcaption>书架 · 三页分页与封面网格</figcaption></figure>
+      <figure class="reveal d1"><img src="assets/phone-reading.png" alt="阅读 · 精读" data-cap="阅读 · 荧光笔与学习卡"><figcaption>阅读 · 荧光笔与学习卡</figcaption></figure>
+      <figure class="reveal d2"><img src="assets/phone-ai.png" alt="AI 助手" data-cap="AI 助手 · 接口由你定夺"><figcaption>AI 助手 · 接口由你定夺</figcaption></figure>
+      <figure class="reveal d3"><img src="assets/phone-review.png" alt="复习" data-cap="复习 · 评分与内容确认"><figcaption>复习 · 评分与内容确认</figcaption></figure>
+      <figure class="reveal"><img src="assets/phone-search.png" alt="注释搜索" data-cap="注释侧栏 · 搜索与分类"><figcaption>注释侧栏 · 搜索与分类</figcaption></figure>
+      <figure class="reveal d1"><img src="assets/phone-editor.png" alt="编辑" data-cap="编辑 · 实时预览与工具条"><figcaption>编辑 · 实时预览与工具条</figcaption></figure>
+      <figure class="reveal d2"><img src="assets/phone-studio.png" alt="文房" data-cap="文房 · 学习与统计"><figcaption>文房 · 学习与统计</figcaption></figure>
+      <figure class="reveal d3"><img src="assets/phone-plan.png" alt="复习计划" data-cap="复习 · 每日目标与记忆曲线"><figcaption>复习 · 每日目标与记忆曲线</figcaption></figure>
+      <figure class="reveal"><img src="assets/phone-log.png" alt="写作日志" data-cap="写作日志 · 阅读轨迹热力图"><figcaption>写作日志 · 阅读轨迹热力图</figcaption></figure>
+      <figure class="reveal"><img src="assets/tab-shelf.png" alt="平板 · 书架" data-cap="平板 · 大屏书架"><figcaption>平板 · 大屏书架</figcaption></figure>
+      <figure class="reveal d1"><img src="assets/tab-reading.png" alt="平板 · 精读" data-cap="平板 · 精读与表格"><figcaption>平板 · 精读与表格</figcaption></figure>
+      <figure class="reveal d2"><img src="assets/pc-shelf.png" alt="PC · 书架" data-cap="PC · 桌面形态"><figcaption>PC · 桌面形态</figcaption></figure>
+      <figure class="reveal d3"><img src="assets/pc-reading.png" alt="PC · 阅读" data-cap="PC · 沉浸阅读"><figcaption>PC · 沉浸阅读</figcaption></figure>
+      <figure class="reveal"><img src="assets/pc-ai.png" alt="PC · AI 助手" data-cap="AI 助手 · 大屏更从容"><figcaption>AI 助手 · 大屏更从容</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <div class="eyebrow">FAQ</div>
+      <h2>常见问题</h2>
+    </div>
+    <div class="faq">
+      <details open><summary>需要联网吗？</summary>
+        <p>阅读、写作、批注、复习、导出全部离线可用。联网只发生在四种情况：文档里的网络图片、
+        WebDAV 备份 / 恢复（含自动备份）、你主动使用 AI 助手（内容直传你配置的接口）、检查更新。</p></details>
+      <details><summary>AI 助手要付费吗？数据安全吗？</summary>
+        <p>应用不内置模型服务、不收任何费用。接口地址与密钥由你自己填写，对话内容直传该接口，
+        澄笺不经手、不存储；对话记录仅保存在本机沙箱，卸载即消失。</p></details>
+      <details><summary>附件有大小和数量限制吗？</summary>
+        <p>不限制。图片与文件均可多选；超大文件按块从磁盘读取、自动分批发送，偏大时应用会提醒。</p></details>
+      <details><summary>学习卡和普通批注有什么区别？</summary>
+        <p>学习卡是独立的高亮形态（实色黄底 + 必填中文备注），专供复习系统；荧光笔、波浪线与
+        文字批注是另一种记录形态，数据互不影响。</p></details>
+      <details><summary>我的文档存在哪？</summary>
+        <p>应用沙箱内，卸载即删除。建议定期导出本地备份包，或配置 WebDAV 自动备份
+        （每 1 / 3 / 7 天）。</p></details>
+      <details><summary>桌面卡片怎么添加？</summary>
+        <p>长按桌面空白处 → 服务卡片 → 澄笺，选择 2×2 卡片即可；卡片展示最近文档与阅读进度，
+        点击直达。</p></details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="in">
+    <div>
+      <div class="slogan">澄笺</div>
+      <p>澄心执笔，笺上生光。<br>一款可以一直用下去的本地 Markdown 书房。</p>
+    </div>
+    <div>
+      <h4>链接</h4>
+      <p><a href="https://github.com/FengHDSL/LiteMdReader-HarmonyOS" target="_blank" rel="noopener">GitHub 项目主页</a><br>
+      <a href="https://www.sydxky.cn/detail.php?id=956" target="_blank" rel="noopener">Hap Store（侧载）</a><br>
+      <a href="https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases" target="_blank" rel="noopener">GitHub Releases</a><br>
+      <a href="https://gitee.com/pandasoos/LiteMdReader-HarmonyOS" target="_blank" rel="noopener">Gitee 镜像</a><br>
+      <a href="privacy.html">隐私政策</a> · <a href="terms.html">用户协议</a></p>
+      <p style="margin-top:8px;color:#6E8093">华为应用市场（纯血鸿蒙）上架后补充直达链接。</p>
+    </div>
+    <div>
+      <h4>参考与致谢</h4>
+      <p>miha_hm<br>zhumo-reader<br>xjau<br>vditor（编辑器三模式设计参考）<br>
+      以及 mermaid · ECharts · graphviz · markmap · abcjs · KaTeX 等开源组件的作者。</p>
+    </div>
+  </div>
+  <div class="bottom">
+    <span>© 2026 澄笺（LiteMdReader）· 以 MIT 许可证发布</span>
+    <span>澄心执笔，笺上生光</span>
+  </div>
+</footer>
+
+<!-- 灯箱 -->
+<div id="lightbox">
+  <span class="close">×</span>
+  <img src="" alt="">
+  <div class="cap"></div>
+</div>
+
+<script>
+// 滚动入场：IntersectionObserver 驱动 .reveal
+const io = new IntersectionObserver((entries) => {
+  entries.forEach((e) => {
+    if (e.isIntersecting) {
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+// 灯箱：点击画廊图片放大查看
+const lb = document.getElementById('lightbox');
+const lbImg = lb.querySelector('img');
+const lbCap = lb.querySelector('.cap');
+document.querySelectorAll('.gallery figure').forEach((fig) => {
+  fig.addEventListener('click', () => {
+    lbImg.src = fig.querySelector('img').src;
+    lbCap.textContent = fig.dataset.cap || fig.querySelector('figcaption').textContent;
+    lb.classList.add('open');
+  });
+});
+lb.addEventListener('click', () => lb.classList.remove('open'));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') lb.classList.remove('open');
+});
+</script>
+
+</body>
+</html>

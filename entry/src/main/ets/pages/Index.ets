@@ -52,6 +52,7 @@ import { DocLint, LintIssue, LintReport } from '../service/DocLint';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { MdAnnotation } from '../markdown/MdTypes';
 import { TaskBoard, TaskBoardResult, TaskItem } from '../service/TaskBoard';
+import { ReadDoc, ReadRange, ReadingLog, readDayKey } from '../service/ReadingLog';
 import { GraphResult, KnowledgeGraph } from '../service/KnowledgeGraph';
 import { ReviewCard, ReviewCardStore, ReviewSeed, ReviewStats } from '../service/ReviewCard';
 import { FontStore } from '../service/FontStore';
@@ -66,9 +67,13 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { SettingsEngines } from './SettingsEngines';
 import { SettingsHelp } from './SettingsHelp';
 import { Changelog } from './Changelog';
 import { Sketch } from './Sketch';
+import { ReviewPage } from './ReviewPage';
+import { AiChat } from './AiChat';
+import { AiSettings } from './AiSettings';
 import { HtmlViewer } from './HtmlViewer';
 import { GripAware } from '../service/GripAware';
 import { LegalDoc, LegalDocRoute } from './LegalDoc';
@@ -227,6 +232,8 @@ struct Index {
   @StorageLink('wallpaperScrim') wallpaperScrim: number = 42;
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完后靠它重算派生色 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** AI 后台生成完成的新事件计数（>0 时书架 AI 入口显示官方 Badge 角标） */
+  @StorageProp('aiNewReply') aiNewReply: number = 0;
 
   @State docs: DocMeta[] = [];
   @State folders: ShelfFolder[] = [];
@@ -356,6 +363,12 @@ struct Index {
   @State absorbAt: string = '';
   /** 外部文件拖到新建卡片上时，显示"释放导入"提示 */
   @State dragOverNewCard: boolean = false;
+  /** 悬停满 1.5 秒的目标文档（松手 = 与它交换位置，用户要求） */
+  @State swapReadyName: string = '';
+  /** 当前悬停的目标（未满 1.5 秒） */
+  private swapHoverTarget: string = '';
+  /** 悬停计时器 */
+  private swapTimer: number = -1;
   /** 函数绘制壁纸的 id（空 = 不用）；见 theme/GenWallpaper.ets */
   @StorageProp('wallpaperGenId') genWallId: string = '';
   /** 导航栈：书架是首页，阅读 / 设置 / 编辑都压在这条栈上 */
@@ -363,6 +376,8 @@ struct Index {
   /** 页面生命周期转发（见 NavLifecycle）：NavDestination 的 onShown/onHidden 会调它 */
   private readerLife: NavLifecycle = new NavLifecycle();
   private settingsLife: NavLifecycle = new NavLifecycle();
+  /** 复习页注册的系统返回拦截（刷卡形态中返回 = 回学习页签） */
+  private reviewBackCb: (() => boolean) | null = null;
   /** 各文档封面的窗口矩形：打开文件时的「一镜到底」要从那一格长出来、缩回去 */
   private docRects: Map<string, CoverRect> = new Map<string, CoverRect>();
   /** 书架网格的滚动控制器：展开文件夹后自动滚到面板处 */
@@ -505,9 +520,17 @@ struct Index {
     });
   }
 
+  /** 书架滚动是否处于顶部（顶部回弹的正偏移不触发底栏隐藏） */
+  private shelfAtTop: boolean = true;
+
   private onScrollFrame(offset: number): void {
     if (this.searchExpanded || this.shelfSheet !== '') {
       this.toggleBars(true);
+      return;
+    }
+    // 顶部回弹（已到顶时上滑只有动画反馈）：正偏移只是弹簧回弹，不触发隐藏
+    if (this.shelfAtTop && offset > 0) {
+      this.scrollAccum = 0;
       return;
     }
     if (offset > 0) {
@@ -1142,6 +1165,38 @@ struct Index {
     return (this.cellDimmed() || this.searchExpanded) ? 6 : 0;
   }
 
+  /**
+   * 树形视图用：按**书架顺序（ord）**列出松散文档。
+   * ⚠️ 不能直接用 this.docs（它按最近打开排序）——拖拽换位改的是书架顺序 ord，
+   * 树形如果按 lastOpen 取数，换位后永远不刷新（用户实测「实际上真没刷新」）。
+   * 网格的 buildItems 也是按 ord 组装的，两个视图从此同源同序。
+   */
+  private shelfOrderedLoose(includeBuiltin: boolean): DocMeta[] {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return includeBuiltin ? this.looseBuiltinDocs() : this.looseDocs();
+    }
+    const order: string[] = DocStore.shelfOrder(ctx);
+    const out: DocMeta[] = [];
+    for (let k = 0; k < order.length; k++) {
+      if (!order[k].startsWith(DocStore.ORDER_DOC)) {
+        continue;
+      }
+      const name: string = order[k].substring(DocStore.ORDER_DOC.length);
+      if (DocStore.folderOfDoc(name).length > 0) {
+        continue;
+      }
+      for (let j = 0; j < this.docs.length; j++) {
+        const m: DocMeta = this.docs[j];
+        if (m.name === name && m.builtin === includeBuiltin) {
+          out.push(m);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
   /** 树形视图的行内展开也要有动画：状态变更包在弹簧 animateTo 里。 */
   private toggleFolderExpandAnimated(name: string): void {
     this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
@@ -1203,6 +1258,34 @@ struct Index {
         this.refresh();
         this.toast('已导入《' + pending + '》');
       }, 460);
+    }
+    // **外部"打开方式"导入的备份 zip**（EntryAbility 已恢复数据）：提示 + 刷新书架
+    const backupMsg: string | undefined = AppStorage.get<string>('pendingBackupImportMsg');
+    if (backupMsg !== undefined && backupMsg.length > 0) {
+      AppStorage.setOrCreate('pendingBackupImportMsg', '');
+      setTimeout(() => {
+        this.refresh();
+        this.toast(backupMsg);
+      }, 500);
+    }
+    // **桌面卡片点击路由**（2×2 最近阅读卡片，EntryAbility.handleCardAction 写的信号）：
+    // 打开指定文档 / 进编辑器新建（target=shelf 无需信号，落在本页即可）
+    const jumpDoc: string | undefined = AppStorage.get<string>('formJumpDoc');
+    if (jumpDoc !== undefined && jumpDoc.length > 0) {
+      AppStorage.setOrCreate('formJumpDoc', '');
+      const jc = this.ctx();
+      const meta: DocMeta | undefined = jc === null ? undefined : DocStore.find(jc, jumpDoc);
+      if (jc !== null && meta !== undefined) {
+        this.openDoc(meta);
+      } else {
+        this.toast('文档不存在或已删除');
+      }
+    }
+    const jumpNew: number | undefined = AppStorage.get<number>('formJumpNewDoc');
+    if (jumpNew !== undefined && jumpNew > 0) {
+      // 消费即清零（下一次点击 tick 会再自增）
+      AppStorage.setOrCreate('formJumpNewDoc', 0);
+      this.pushPage('pages/Editor');
     }
     // **多设备流转接续**（EntryAbility 已把迁移数据写进 AppStorage）：
     // 目标端有同名文档 → 直接打开；没有 → 用迁移来的正文创建一篇再打开。
@@ -1389,6 +1472,8 @@ struct Index {
       this.resumeName = best !== null ? best.name : '';
       this.resumeRatio = best !== null ? best.progressRatio : 0;
       this.resumeLastOpen = best !== null ? best.lastOpen : 0;
+      // 阅读统计卡数据（1.1.0 从写作日志页搬来）随书架一起刷新
+      this.loadReadingStats();
     } catch (err) {
       this.toast('读取书架失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -1438,6 +1523,33 @@ struct Index {
    * 与网格口径保持一致 —— 只装内置文档的「澄笺」在内置被移除后应当一起消失，
    * 而不是留一个空文件夹挂在列表里（用户反馈）。
    */
+  /**
+   * 树形视图用：按**书架顺序（ord）**列出文件夹（只含有可见文档的）。
+   * ⚠️ 与 shelfOrderedLoose 同理——文件夹↔文件夹换位改的是 ord，
+   * 若按 this.folders（数组自身顺序）取数，换位永远不显示（用户实测）。
+   */
+  private shelfOrderedFolders(): ShelfFolder[] {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return this.treeFolders();
+    }
+    const order: string[] = DocStore.shelfOrder(ctx);
+    const out: ShelfFolder[] = [];
+    for (let k = 0; k < order.length; k++) {
+      if (!order[k].startsWith(DocStore.ORDER_FOLDER)) {
+        continue;
+      }
+      const name: string = order[k].substring(DocStore.ORDER_FOLDER.length);
+      for (let j = 0; j < this.folders.length; j++) {
+        if (this.folders[j].name === name && this.folderDocs(name).length > 0) {
+          out.push(this.folders[j]);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
   private treeFolders(): ShelfFolder[] {
     const out: ShelfFolder[] = [];
     for (let k: number = 0; k < this.folders.length; k++) {
@@ -1842,7 +1954,54 @@ struct Index {
   }
 
   /** 拖拽释放到某个文档格上。 */
+  /** 拖拽悬停到文档上：登记目标并启动 1.5 秒换位计时（同上下文才可换位）。 */
+  private trackSwapHover(targetName: string): void {
+    this.cancelSwapHover();
+    const dragged: string = this.draggingName;
+    if (dragged.length === 0 || dragged.startsWith('folder:') || dragged === targetName) {
+      return;
+    }
+    // 只有「同上下文」（同为散文档 / 同一文件夹内）才有换位意义
+    if (DocStore.folderOfDoc(dragged) !== DocStore.folderOfDoc(targetName)) {
+      return;
+    }
+    this.swapHoverTarget = targetName;
+    this.swapTimer = setTimeout(() => {
+      this.swapReadyName = targetName;
+      this.swapTimer = -1;
+    }, 1500);
+  }
+
+  /** 离开目标 / 拖拽结束：清掉换位状态与计时。 */
+  private cancelSwapHover(): void {
+    if (this.swapTimer !== -1) {
+      clearTimeout(this.swapTimer);
+      this.swapTimer = -1;
+    }
+    this.swapReadyName = '';
+    this.swapHoverTarget = '';
+  }
+
+  /** 文档格的落点分流：悬停满 1.5 秒 → 交换位置；否则走原有归组 / 合并逻辑。 */
+  private finishSwapOrDrop(targetName: string): void {
+    // 落地即清悬停反馈：否则目标封面停在 0.94 缩小态，重启才恢复（用户实测）
+    this.hoverDropAt = '';
+    if (this.swapReadyName === targetName && this.draggingName.length > 0) {
+      const dragged: string = this.draggingName;
+      this.draggingName = '';
+      this.cancelSwapHover();
+      if (DocStore.swapShelfDocs(dragged, targetName)) {
+        this.animatedRefresh();
+        this.toast('已与「' + targetName + '」交换位置');
+      }
+      return;
+    }
+    this.cancelSwapHover();
+    this.handleDropOnDoc(targetName);
+  }
+
   private handleDropOnDoc(targetName: string): void {
+    this.hoverDropAt = '';
     const dragged: string = this.draggingName;
     this.draggingName = '';
     if (dragged.length === 0 || dragged === targetName) {
@@ -1911,6 +2070,7 @@ struct Index {
 
   /** 拖拽释放到文件夹格上：文件夹 → 换位；文档 → 收进该文件夹。 */
   private handleDropOnFolder(folderName: string): void {
+    this.hoverDropAt = '';
     const dragged: string = this.draggingName;
     this.draggingName = '';
     if (dragged.length === 0) {
@@ -1949,11 +2109,345 @@ struct Index {
     return this.rootWidth > 760;
   }
 
+  // ══════════════════════ 书架分页（书架 / 写作日志 / 文房） ══════════════════════
+  //
+  // 书架不再只是一页：左滑进「写作日志」（写作 + 阅读统计，回头看看卡置顶），
+  // 右滑进「文房」（今日笺 / 复习卡片 / 全部待办 / 批注汇总的聚合桌面）。
+  // 顶栏与底栏浮在所有页之上，标题随页切换；书架专属按钮只在书架页出现。
+
+  private pageSwiper: SwiperController = new SwiperController();
+  /** 当前分页：0 文房（左） · 1 书架（中，默认） · 2 写作日志（右） */
+  @StorageLink('shelfPage') @Watch('onShelfPageStorage') shelfPage: number = 1;
+  /** 最近一次真正应用到 Swiper 的页码（避免 Swiper onChange 与 AppStorage 回写互相触发） */
+  private lastAppliedPage: number = 1;
+
+  /** AppStorage 里的页码被外部（复习页退出等）改写时，同步拨动 Swiper。 */
+  private onShelfPageStorage(): void {
+    if (this.shelfPage !== this.lastAppliedPage) {
+      this.lastAppliedPage = this.shelfPage;
+      this.pageSwiper.changeIndex(this.shelfPage, false);
+    }
+  }
+  /** 文房页 · 今日笺摘要行 */
+  @State studyDigest: string[] = [];
+  /** 文房页 · 今日到期复习卡数 */
+  @State studyDue: number = 0;
+  /** 文房页 · 复习总览摘要 */
+  @State studyReviewSummary: string = '';
+  /** 文房页 · 待办预览（前 3 条） */
+  @State studyTasks: string[] = [];
+  /** 文房页 · 待办总数 */
+  @State studyTaskCount: number = 0;
+  /** 文房页 · 今日笺 / 全部待办的**原地下拉**展开态（用户要求：不要弹窗） */
+  @State studyDailyOpen: boolean = false;
+  @State studyTasksOpen: boolean = false;
+  /** 今日笺完整内容（下拉展开时展示） */
+  @State studyDailyFull: string[] = [];
+  /** 全部待办完整清单（下拉展开时展示，上限 50 条，**可勾选完成**） */
+  @State studyTaskAll: TaskItem[] = [];
+  /** 文房顶部「批注速记」预览行（存在复习卡片时展示） */
+  @State studyAnnPreview: string[] = [];
+  // ── 阅读统计卡（1.1.0 从写作日志页搬到书架）──
+  @State readToday: number = 0;
+  @State readWeek: number = 0;
+  @State readWeekDays: number = 0;
+  @State readTotal: number = 0;
+  @State readTop: ReadDoc[] = [];
+  /** 读过的文档数（打开过就算） */
+  @State readDocCount: number = 0;
+  /** 历史已读篇数（阅读日志里有留时记录的文档数） */
+  @State readLogCount: number = 0;
+
+  private pageTitle(): string {
+    if (this.shelfPage === 0) {
+      return '文房';
+    }
+    if (this.shelfPage === 2) {
+      return '写作日志';
+    }
+    return '书架';
+  }
+
+  /** 切页后的联动：文房页重新取数（其余页数据随 refresh() 走）。 */
+  private onShelfPageChanged(): void {
+    if (this.shelfPage === 0) {
+      this.refreshStudy();
+    }
+  }
+
+  /** 阅读统计取数（书架阅读卡）：时长 + 两个篇数小卡。 */
+  private loadReadingStats(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    try {
+      ReadingLog.init(c);
+      this.readToday = ReadingLog.secondsOn(readDayKey(Date.now()));
+      const week: ReadRange = ReadingLog.lastDays(c, 7);
+      this.readWeek = week.seconds;
+      this.readWeekDays = week.activeDays;
+      this.readTotal = ReadingLog.totalSeconds(c);
+      this.readTop = ReadingLog.topDocs(c, 3);
+      this.readLogCount = ReadingLog.topDocs(c, 999).length;
+    } catch (err) {
+      // 统计失败不影响书架
+    }
+    try {
+      let n: number = 0;
+      for (let k: number = 0; k < this.docs.length; k++) {
+        if (this.docs[k].lastOpen > 0) {
+          n++;
+        }
+      }
+      this.readDocCount = n;
+    } catch (err) {
+      // 忽略
+    }
+  }
+
+  /**
+   * 阅读统计卡（1.1.0 从写作日志页搬到书架）：时长三格 + **两个篇数小卡**
+   * （读过的文档 / 历史已读）+ 读得最多的几篇。
+   */
+  @Builder
+  readingStatsCard() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette()
+    }) {
+      Column({ space: HwSpace.sm }) {
+        Row({ space: HwSpace.xs }) {
+          SymbolGlyph($r('sys.symbol.book'))
+            .fontSize(18)
+            .fontColor([this.palette().accent])
+          Text('阅读')
+            .fontSize(HwType.label + 2)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+          Blank()
+          Text('今日 ' + ReadingLog.human(this.readToday))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().accent)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Row({ space: HwSpace.sm }) {
+          this.readStatCell(ReadingLog.human(this.readToday), '今日阅读')
+          this.readStatCell(ReadingLog.human(this.readWeek), '近 7 天')
+          this.readStatCell(ReadingLog.human(this.readTotal), '累计阅读')
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+
+        // 两个篇数小卡（用户要求）
+        Row({ space: HwSpace.sm }) {
+          this.readMiniCard($r('sys.symbol.doc_plaintext'),
+            this.readDocCount + ' 篇', '读过的文档')
+          this.readMiniCard($r('sys.symbol.clock'),
+            this.readLogCount + ' 篇', '历史已读')
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        if (this.readTop.length > 0) {
+          ForEach(this.readTop, (d: ReadDoc) => {
+            Row({ space: HwSpace.xs }) {
+              Text(d.name)
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textSecondary)
+                .layoutWeight(1)
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(ReadingLog.human(d.seconds))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().accent)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+          }, (d: ReadDoc) => 'rt_' + d.name)
+        }
+
+        Text('近 7 天有 ' + this.readWeekDays + ' 天在读 · 只统计停留在本应用的时间')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /** 阅读时长统计格。 */
+  @Builder
+  readStatCell(value: string, label: string) {
+    Column({ space: 2 }) {
+      Text(value)
+        .fontSize(HwType.label + 2)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.palette().textPrimary)
+        .maxLines(1)
+      Text(label)
+        .fontSize(HwType.caption)
+        .fontColor(this.palette().textTertiary)
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  /** 篇数小卡：一个数字 + 一行说明（用户要求的"读过的文档 / 历史已读"）。 */
+  @Builder
+  readMiniCard(icon: Resource, value: string, label: string) {
+    Row({ space: HwSpace.sm }) {
+      SymbolGlyph(icon)
+        .fontSize(16)
+        .fontColor([this.palette().accent])
+      Text(value)
+        .fontSize(HwType.label + 1)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(this.palette().textPrimary)
+      Text(label)
+        .fontSize(HwType.caption)
+        .fontColor(this.palette().textTertiary)
+    }
+    .layoutWeight(1)
+    .padding({ top: HwSpace.xs, bottom: HwSpace.xs, left: HwSpace.sm, right: HwSpace.sm })
+    .borderRadius(HwRadius.inner)
+    .backgroundColor(this.palette().quoteBg)
+    .alignItems(VerticalAlign.Center)
+  }
+
+  /**
+   * 文房页取数：与「今日笺 / 复习卡片 / 全部待办」的详情面板**同一数据源**
+   * （DocStore / ReviewCardStore / TaskBoard），卡片上展示的就是详情里的内容，
+   * 点卡片打开详情不会看到两套数字。
+   */
+  private refreshStudy(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const lines: string[] = [];
+    const full: string[] = [];
+    try {
+      DocStore.init(ctx);
+      const day: number = 24 * 60 * 60 * 1000;
+      const now: number = Date.now();
+      const list: DocMeta[] = DocStore.list(ctx);
+      const changed: string[] = [];
+      const opened: string[] = [];
+      const reading: string[] = [];
+      for (let k = 0; k < list.length; k++) {
+        const m: DocMeta = list[k];
+        if (now - m.mtime <= day && changed.length < 5) {
+          changed.push(m.name);
+        }
+        if (m.lastOpen > 0 && now - m.lastOpen <= day && opened.length < 5) {
+          opened.push(m.name);
+        }
+        if (m.progressRatio > 0.01 && m.progressRatio < 0.99 && reading.length < 5) {
+          reading.push(m.name + ' ' + Math.round(m.progressRatio * 100) + '%');
+        }
+      }
+      lines.push('今日修改：' + (changed.length > 0 ? changed.join('、') : '无'));
+      lines.push('今日读过：' + (opened.length > 0 ? opened.join('、') : '无'));
+      lines.push('读到一半：' + (reading.length > 0 ? reading.join('、') : '无'));
+      // 下拉展开时的完整版（与原「今日笺」弹窗同一套口径）
+      full.push('【今日修改】' + (changed.length > 0 ? changed.join('、') : '无'));
+      full.push('【今日读过】' + (opened.length > 0 ? opened.join('、') : '无'));
+      full.push('【读到一半】' + (reading.length > 0 ? reading.join('、') : '无'));
+    } catch (err) {
+      lines.push('书架数据读取失败');
+    }
+    this.studyDigest = lines;
+    this.studyDailyFull = full;
+    try {
+      const due: ReviewCard[] = ReviewCardStore.dueToday(ReviewCardStore.load(ctx));
+      this.studyDue = due.length;
+      const st: ReviewStats = ReviewCardStore.stats(ReviewCardStore.load(ctx));
+      this.studyReviewSummary = ReviewCardStore.summary(st);
+    } catch (err) {
+      this.studyDue = 0;
+      this.studyReviewSummary = '复习数据读取失败';
+    }
+    try {
+      const seeds: ReviewSeed[] = this.buildReviewSeeds(ctx);
+      ReviewCardStore.sync(ctx, seeds);
+      const cards: ReviewCard[] = ReviewCardStore.load(ctx);
+      // 批注速记预览：优先给到期的（最该看的），没有就从全部卡里挑前三张
+      const due: ReviewCard[] = ReviewCardStore.dueToday(cards);
+      const pool: ReviewCard[] = due.length > 0 ? due : cards;
+      const preview: string[] = [];
+      for (let k: number = 0; k < pool.length && k < 3; k++) {
+        preview.push(pool[k].front + '（' + pool[k].docName + '）');
+      }
+      this.studyAnnPreview = preview;
+    } catch (err) {
+      this.studyAnnPreview = [];
+    }
+    try {
+      // **收全部（含已完成）**：用户要求勾选后划线保留在清单里，而不是消失
+      const t: TaskBoardResult = TaskBoard.collect(ctx, false);
+      this.studyTaskCount = t.open;
+      const heads: string[] = [];
+      for (let k = 0; k < t.items.length; k++) {
+        if (t.items[k].done) {
+          continue;
+        }
+        const one: string = t.items[k].text + '（' + t.items[k].docName + '）';
+        if (heads.length < 3) {
+          heads.push(one);
+        }
+      }
+      this.studyTasks = heads;
+      // 下拉清单直接用条目对象：勾选完成需要 docName + line（TaskBoard.toggle）
+      this.studyTaskAll = t.items.length > 50 ? t.items.slice(0, 50) : t.items;
+    } catch (err) {
+      this.studyTaskCount = 0;
+      this.studyTasks = [];
+      this.studyTaskAll = [];
+    }
+  }
+
   // ══════════════════════ 底栏（统计 + 快捷新建 / 导入） ══════════════════════
   //
   // 用户要求：快捷「新建 / 导入」按钮**放在底部那颗悬浮胶囊里面**（不是旁边另挂一颗），
   // 走沉浸光感材质（材质由 ImmersiveBar 统一承载），点击新建文档、长按导入文档。
   // 按钮本体与统计文字同在胶囊内的那一行里，见 bottomBar()。
+
+  // ══════════════ 顶栏胶囊调参区（大屏横屏）· 只改这里 ══════════════
+  //
+  // 【① 胶囊长度】三个状态各一行 return，直接改数字（单位 vp）：
+  //   计算口径：10(左内边距) + 36×按钮数 + 6×(按钮数−1) + 10(右内边距)
+  //     · 书架页 4 钮（搜索/视图/导入/设置）= 182 → 写 186（多 4 给渲染误差）
+  //     · 文房 / 写作日志页 2 钮（搜索/设置）= 98 → 写 102（这就是「缩小后」的长度）
+  //   数值越大胶囊越长；barWidth 直接取本方法，改这里即生效。
+  private topPillWidth(): number {
+    if (this.searchExpanded) {
+      return 420;   // ← 搜索框展开态
+    }
+    if (this.shelfPage === 1) {
+      return 186;   // ← 书架页（4 钮）
+    }
+    return 102;     // ← 文房 / 写作日志页（2 钮）= 缩小后
+  }
+  //
+  // 【② 整体左右位移】胶囊右边缘距屏幕右边的留白（vp）。
+  //   调大 = 整条胶囊往左移；调小 = 往右贴边。
+  //   **顶栏、底栏、页数指示器三处共用这一个值**（改一处三者同步对齐）。
+  private wideBarInset(): number {
+    return HwSpace.lg;   // ← 默认 20
+  }
+  //
+  // 【③ 底栏「回到书架」胶囊长度】文房 / 写作日志页的底栏（页数指示器也按它取中）
+  private homePillWidth(): number {
+    return 190;          // ← 默认 190
+  }
+  //
+  // 【④ 书架页底栏胶囊长度】在 bottomBar() 里，搜 `barWidth: this.isWideShelf() ? 400`
+  // ═══════════════════════════════════════════════════════════════════
 
   @Builder
   topBar() {
@@ -1965,17 +2459,15 @@ struct Index {
       barPaddingH: HwSpace.sm,
       barPaddingV: 4,
       barHeight: HwBar.pill,
-      // **平板放屏幕右上角**：宽屏胶囊只装按钮（标题固定在左上角，不进胶囊）；
-      // 点搜索展开时胶囊加宽到 420 装下搜索框，手机仍整行
-      // 收起态宽度：真实内容 4×36 + 3×6 间距(xs) + 2×10 内边距(sm) = 182，
-      // 留 4vp 余量（186）由 Row 居中把余量**均分到两侧** → 左右间距恒相等
-      // （±2vp 以内的渲染误差也被居中吸收，不再出现单侧偏大）
-      barWidth: this.isWideShelf() ? (this.searchExpanded ? 420 : 186) : '100%'
+      // **平板放屏幕右上角**：宽屏胶囊只装按钮（标题固定在左上角，不进胶囊）。
+      // 宽度取 topPillWidth()、位置取 wideBarInset() —— 都在本文件「顶栏胶囊调参区」
+      // （紧邻 topBar() 上方），要调长度 / 位移改那两处即可。
+      barWidth: this.isWideShelf() ? this.topPillWidth() : '100%'
     }) {
     Row({ space: HwSpace.xs }) {
       if (this.searchExpanded) {
-        // 展开态：搜索框占满整行。它与收起态的搜索按钮共享 'shelfSearch'，
-        // 所以搜索框是「从那颗按钮长出来的」（两者 if/else 互斥，满足同 id 不共存约束）。
+        // 展开态：搜索框占满整行。它与收起态的搜索按钮**不再共享
+        // geometryTransition id**（残留几何会把收起态按钮挤偏，见下方注释）。
         Row({ space: HwSpace.xs }) {
           SymbolGlyph($r('sys.symbol.magnifyingglass'))
             .fontSize(17)
@@ -2029,10 +2521,17 @@ struct Index {
         // 搜索框整圈发蓝（用户要求去掉）。外层 ImmersiveBar 胶囊本身就是
         // 沉浸光感底，这里保持全透明即可。
         .backgroundColor('#00000000')
-        .geometryTransition('shelfSearch', { follow: true })
+        // ⚠️ **不做共享元素**（用户反馈：「点搜索后长度和位置就全恢复正常」= 残留几何）——
+        // 与阅读页同一条教训（见 Reader.topBar 的注释）：搜索按钮与查找条共用
+        // geometryTransition id 时，节点被移除的瞬间会把**最后一帧的几何**留在对方身上，
+        // 收起态的搜索按钮于是带着查找条那一帧的宽/位渲染 → 把胶囊内其余按钮整体挤偏
+        // （观感：按钮全右移、胶囊长度不对），且一直保持到下一次展开/收起才复位。
+        // 展开/收起动画交给胶囊宽度插值 + 内容自身过渡，这里不再共享 id。
       } else {
         // **搜索按钮放到「书架」标题左边**（用户要求；手机端 + 大屏竖屏同此布局，
         // 宽屏横屏标题不进胶囊、保持原按钮顺序）
+        // **搜索按钮常驻**（用户要求：保留不消失）；**原地把搜索展开**（用户反馈：
+        // 没必要切回书架首页）—— 搜索结果本来就是全文档范围的，落到哪页都能点开
         if (!this.isWideShelf()) {
           Stack() {
             ImmersiveIconButton({
@@ -2050,20 +2549,43 @@ struct Index {
           }
           .width(36)
           .height(36)
-          .geometryTransition('shelfSearch', { follow: true })
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
 
           Column({ space: 1 }) {
-            Text('书架')
-              .fontSize(22)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(this.palette().textPrimary)
+            // 页名切换用**渐入渐出**（用户反馈硬切太突兀）：旧页名淡出、新页名淡入
+            if (this.shelfPage === 0) {
+              Text('文房')
+                .fontSize(22)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+                .transition(TransitionEffect.OPACITY
+                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+            } else if (this.shelfPage === 2) {
+              Text('写作日志')
+                .fontSize(22)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+                .transition(TransitionEffect.OPACITY
+                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+            } else {
+              Text('书架')
+                .fontSize(22)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+                .transition(TransitionEffect.OPACITY
+                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+            }
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
         } else {
-          Blank()
-            .layoutWeight(1)
+          // ⚠️ **这里不能放 Blank().layoutWeight(1)**：宽屏胶囊是「定宽 + 按钮数收缩」，
+          // 余量被 Blank 吃掉会把按钮整组推到胶囊右半边（用户反馈「按钮全都右移」）。
+          // 交给外层 Row 的 justifyContent(Center) 均分两侧余量，左右对称。
 
+          // **搜索按钮常驻**（用户要求）：原地把搜索展开，不切回书架
           Stack() {
             ImmersiveIconButton({
               buttonSize: 36,
@@ -2080,34 +2602,54 @@ struct Index {
           }
           .width(36)
           .height(36)
-          .geometryTransition('shelfSearch', { follow: true })
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
         }
 
-      ImmersiveIconButton({
-        buttonSize: 36,
-        buttonMaterialShadow: false,
-        palette: this.palette(),
-        buttonOnTap: () => {
-          this.toggleShelfMode();
+      // 视图切换（网格 / 树形）是书架页专属：只在书架页显示
+      if (this.shelfPage === 1) {
+        // ⚠️ ImmersiveIconButton 是「组件 + 尾随闭包」，闭包后不能再链属性 ——
+        // 过渡动画挂在外层 Stack 上
+        Stack() {
+          ImmersiveIconButton({
+            buttonSize: 36,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.toggleShelfMode();
+            }
+          }) {
+            SymbolGlyph(this.treeMode ? $r('sys.symbol.square_grid_2x2') : $r('sys.symbol.list_bullet'))
+              .fontSize(18)
+              .fontColor([this.palette().textPrimary])
+          }
         }
-      }) {
-        SymbolGlyph(this.treeMode ? $r('sys.symbol.square_grid_2x2') : $r('sys.symbol.list_bullet'))
-          .fontSize(18)
-          .fontColor([this.palette().textPrimary])
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
       }
 
-        ImmersiveIconButton({
-          buttonSize: 36,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            this.importDoc();
+      // 导入文档同样是书架动作：只在书架页显示
+      if (this.shelfPage === 1) {
+        Stack() {
+          ImmersiveIconButton({
+            buttonSize: 36,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.importDoc();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.folder'))
+              .fontSize(18)
+              .fontColor([this.palette().textPrimary])
           }
-        }) {
-          SymbolGlyph($r('sys.symbol.folder'))
-            .fontSize(18)
-            .fontColor([this.palette().textPrimary])
         }
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
+      }
 
         ImmersiveIconButton({
           buttonSize: 36,
@@ -2123,11 +2665,15 @@ struct Index {
         }
       }
     }
-    // **居中排列**：把宽度余量均分到两侧 → 左右间距恒等（用户要求对称）
+    // **居中排列**：把宽度余量均分到两侧 → 左右间距恒等（用户要求对称）。
+    // ⚠️ 必须显式 width('100%')：ImmersiveBar 的内容包装 Row 默认 Start 对齐，
+    // 子 Row 不加宽度就只会按内容尺寸靠左——此时的 justifyContent 是空转，
+    // 加上任何 Blank/layoutWeight 就会把按钮推偏（真机「按钮全右移」实锤）。
+    .width('100%')
     .justifyContent(FlexAlign.Center)
     }
     // 注意：ImmersiveBar 是「自定义组件 + 尾随闭包」，不能再链式调属性；
-    // 宽度已经用 barWidth 参数传入（'100%'）。
+    // 宽度已经用 barWidth 参数传入。
   }
 
   /**
@@ -2715,6 +3261,19 @@ struct Index {
     // 拖拽属性挂在外层 Column 上（与文件夹格同款），不再按 builtin 分支。
     Column() {
       this.coverContent(meta, inPanel)
+      // **换位就绪提示**（用户要求：悬停 1.5 秒后松手交换位置）
+      if (this.swapReadyName === meta.name) {
+        Text('松手换位')
+          .fontSize(HwType.caption - 2)
+          .fontColor('#FFFFFFFF')
+          .padding({ left: 7, right: 7, top: 2, bottom: 2 })
+          .borderRadius(HwRadius.pill)
+          .backgroundColor('#FF2E7D32')
+          .margin({ top: 3 })
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 180, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
+      }
     }
     .width('100%')
     // 系统拖拽：长按起拖；释放到别的文档 / 文件夹上触发 onDrop。
@@ -2722,20 +3281,26 @@ struct Index {
     //  · onDrop 与 onDragStart 同节点 → 释放一定能命中
     .onDragStart((event: DragEvent) => {
       this.draggingName = meta.name;
+      this.cancelSwapHover();
       const info: DragItemInfo = { extraInfo: meta.name };
       return info;
     })
-    // 拖到本格上方 → 轻微缩小，给"可以放这里"的反馈（用户要求）
+    // 拖到本格上方 → 轻微缩小，给"可以放这里"的反馈（用户要求）；
+    // 悬停满 1.5 秒 → 显示「松手换位」（用户要求：拖到其他文档上方 1.5 秒自动交换）
     .onDragEnter((event: DragEvent) => {
       this.hoverDropAt = meta.name;
+      this.trackSwapHover(meta.name);
     })
     .onDragLeave((event: DragEvent) => {
       if (this.hoverDropAt === meta.name) {
         this.hoverDropAt = '';
       }
+      if (this.swapHoverTarget === meta.name || this.swapReadyName === meta.name) {
+        this.cancelSwapHover();
+      }
     })
     .onDrop((event: DragEvent) => {
-      this.handleDropOnDoc(meta.name);
+      this.finishSwapOrDrop(meta.name);
     })
   }
 
@@ -3267,7 +3832,7 @@ struct Index {
    * 「回头看看」卡片（随机一篇 / 那年今天）：**默认关闭**，
    * 开关在「写作日志」页（用户指定位置）。
    */
-  @StorageProp('shelfMemoryCard') showMemoryCard: boolean = false;
+  // （「回头看看」卡的显隐开关已随 1.1.0 卡片搬家一并移除，卡片常驻「写作日志」页顶部）
   /**
    * 编辑页的未保存标记（Editor 通过 @StorageLink 写入）。
    * **系统返回手势的拦截判据**：dirty 时 onBackPressed 拦截并让 Editor 弹"保存 / 不保存"窗，
@@ -3428,11 +3993,6 @@ struct Index {
         .alignItems(VerticalAlign.Center)
       }
     }
-
-      // 随机回顾 / 那年今天：给书架一个"回头翻旧文"的理由（默认关闭，见 shelfMemoryCard）
-      if (this.showMemoryCard) {
-        this.memoryCard()
-      }
     }
     .width('100%')
   }
@@ -3443,6 +4003,8 @@ struct Index {
    * 两颗按钮两种口味：**随机一篇**（从书架里随便挑，排除"继续阅读"那篇）
    * 与 **那年今天**（往年同一天动过的文档）。写笔记的人最容易"只进不出"——
    * 存了几百篇却再没翻开过，这张卡就是给旧文一个再被看见的机会。
+   *
+   * （1.1.0 起卡片从书架页**搬到**「写作日志」页顶部——书架留给文档本身。）
    */
   @Builder
   memoryCard() {
@@ -3481,9 +4043,11 @@ struct Index {
             this.openRandomDoc();
           }
         }) {
-          SymbolGlyph($r('sys.symbol.square_grid_2x2'))
-            .fontSize(13)
-            .fontColor([this.palette().accent])
+          // 用户指定的自定义图标（单词卡套图 · 随机）
+          Image($r('app.media.study_random'))
+            .width(13)
+            .height(13)
+            .fillColor(this.palette().accent)
         }
 
         ImmersiveChip({
@@ -3493,9 +4057,11 @@ struct Index {
             this.openOnThisDay();
           }
         }) {
-          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
-            .fontSize(13)
-            .fontColor([this.palette().accent])
+          // 用户指定的自定义图标（单词卡套图 · 时光）
+          Image($r('app.media.study_time'))
+            .width(13)
+            .height(13)
+            .fillColor(this.palette().accent)
         }
       }
       .width('100%')
@@ -3526,6 +4092,280 @@ struct Index {
     const name: string = picks[idx >= picks.length ? picks.length - 1 : idx];
     const route: ReaderRoute = { name: name };
     this.pushPage('pages/Reader', route);
+  }
+
+  // ══════════════════════ 文房（跨文档工具聚合页） ══════════════════════
+
+  /**
+   * 文房页的功能卡：标题 + 图标 + **默认展开的内容行** + 「查看详情」入口。
+   * 卡片整体可点（进详情），内容行让"不看详情也知道现在什么状况"。
+   */
+  @Builder
+  studyCard(title: string, icon: Resource, lines: string[], actionLabel: string,
+    action: () => void, useMedia: boolean = false) {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette(),
+      cardClickable: true,
+      cardOnTap: (): void => {
+        action();
+      }
+    }) {
+      Column({ space: HwSpace.sm }) {
+        Row({ space: HwSpace.sm }) {
+          // useMedia：自定义 SVG（media 资源）走 Image + fillColor 染色
+          if (useMedia) {
+            Image(icon)
+              .width(20)
+              .height(20)
+              .fillColor(this.palette().accent)
+              .draggable(false)
+          } else {
+            SymbolGlyph(icon)
+              .fontSize(20)
+              .fontColor([this.palette().accent])
+          }
+          Text(title)
+            .fontSize(HwType.label + 3)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+          Blank()
+          Row({ space: 4 }) {
+            Text(actionLabel)
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().accent)
+            Image($r('app.media.chevron_right'))
+              .width(12)
+              .height(12)
+              .fillColor(this.palette().accent)
+              .draggable(false)
+          }
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        // 内容行默认展示在外边（空态也给一句话，不留白板）
+        ForEach(lines.length > 0 ? lines : ['暂无内容'], (line: string) => {
+          Text(line)
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textSecondary)
+            .lineHeight(HwType.label * 1.7)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }, (line: string) => title + '_' + line)
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /**
+   * 今日笺卡：**原地下拉展示**（用户要求：不要弹窗）。
+   * 收起态只露三行摘要；点卡片展开完整内容（待办 / 复习 / 修改 / 读过 / 读到一半）。
+   */
+  @Builder
+  dailyNoteCard() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette(),
+      cardClickable: true,
+      cardOnTap: (): void => {
+        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+          this.studyDailyOpen = !this.studyDailyOpen;
+        });
+      }
+    }) {
+      Column({ space: HwSpace.sm }) {
+        Row({ space: HwSpace.sm }) {
+          SymbolGlyph($r('sys.symbol.doc_plaintext'))
+            .fontSize(20)
+            .fontColor([this.palette().accent])
+          Text('今日笺')
+            .fontSize(HwType.label + 3)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+          Blank()
+          Row({ space: 4 }) {
+            Text('点开看今天的安排')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            Image($r('app.media.chevron_right'))
+              .width(12)
+              .height(12)
+              .fillColor(this.palette().textTertiary)
+              .draggable(false)
+              .rotate({ x: 0, y: 0, z: 1, angle: this.studyDailyOpen ? 90 : 0 })
+              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          }
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        // ⚠️ 收起态**不放详细内容**（用户要求：手动点击后才展开）——完整条目只在展开态渲染。
+
+        // 下拉展开：完整内容（显式 TransitionEffect，展开收起都有动画）
+        if (this.studyDailyOpen) {
+          Column({ space: HwSpace.xs }) {
+            ForEach(this.studyDailyFull, (line: string) => {
+              Text(line)
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textPrimary)
+                .lineHeight(HwType.label * 1.8)
+                .width('100%')
+            }, (line: string) => 'df_' + line)
+          }
+          .width('100%')
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -8 })))
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /**
+   * 全部待办卡：与今日笺同款**原地下拉**。
+   * 展开区限高内滚（工程铁律：可变长内容必须限高），最多预览 50 条。
+   */
+  @Builder
+  taskBoardCard() {
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette(),
+      cardClickable: true,
+      cardOnTap: (): void => {
+        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+          this.studyTasksOpen = !this.studyTasksOpen;
+        });
+      }
+    }) {
+      Column({ space: HwSpace.sm }) {
+        Row({ space: HwSpace.sm }) {
+          SymbolGlyph($r('sys.symbol.checkmark_square'))
+            .fontSize(20)
+            .fontColor([this.palette().accent])
+          Text('全部待办')
+            .fontSize(HwType.label + 3)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+          Blank()
+          Row({ space: 4 }) {
+            Text(this.studyTaskCount > 0 ? this.studyTaskCount + ' 条未完成' : '全部完成')
+              .fontSize(HwType.caption)
+              .fontColor(this.studyTaskCount > 0 ? this.palette().accent : this.palette().textTertiary)
+            Image($r('app.media.chevron_right'))
+              .width(12)
+              .height(12)
+              .fillColor(this.palette().textTertiary)
+              .draggable(false)
+              .rotate({ x: 0, y: 0, z: 1, angle: this.studyTasksOpen ? 90 : 0 })
+              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          }
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        ForEach(this.studyTasks.length > 0 ? this.studyTasks
+          : ['所有文档里没有未完成的任务'], (line: string) => {
+          Text(line)
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textSecondary)
+            .lineHeight(HwType.label * 1.7)
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%')
+        }, (line: string) => 'th_' + line)
+
+        if (this.studyTasksOpen) {
+          Scroll() {
+            Column({ space: HwSpace.xs }) {
+              // 待办清单：**可勾选完成**（用户要求）——勾选后**划线保留在清单里**，
+              // 再点一次取消；状态直接写回原文档
+              ForEach(this.studyTaskAll, (item: TaskItem) => {
+                Row({ space: HwSpace.xs }) {
+                  // 已完成：实心对勾框；未完成：空心框
+                  if (item.done) {
+                    SymbolGlyph($r('sys.symbol.checkmark_square_fill'))
+                      .fontSize(16)
+                      .fontColor([this.palette().accent])
+                      .margin({ top: 2 })
+                  } else {
+                    Column()
+                      .width(16)
+                      .height(16)
+                      .borderRadius(4)
+                      .border({ width: 1.5, color: this.palette().textTertiary })
+                      .margin({ top: 2 })
+                  }
+                  Column({ space: 1 }) {
+                    Text(item.text)
+                      .fontSize(HwType.label)
+                      .fontColor(item.done ? this.palette().textTertiary : this.palette().textPrimary)
+                      .decoration({
+                        type: item.done ? TextDecorationType.LineThrough : TextDecorationType.None
+                      })
+                      .maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .width('100%')
+                    Text(item.docName)
+                      .fontSize(HwType.caption - 1)
+                      .fontColor(this.palette().textTertiary)
+                      .maxLines(1)
+                      .width('100%')
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+                }
+                .width('100%')
+                .alignItems(VerticalAlign.Top)
+                .padding({ top: HwSpace.xs, bottom: HwSpace.xs })
+                .onClick(() => {
+                  this.toggleStudyTask(item);
+                })
+              }, (item: TaskItem) => 'ta_' + item.docName + '_' + item.line + '_' + item.done)
+            }
+            .width('100%')
+          }
+          .width('100%')
+          // 限高内滚：待办多时不把页面无限撑长
+          .constraintSize({ maxHeight: 300 })
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -8 })))
+        }
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /**
+   * 勾选 / 取消文房清单里的一条待办（走 TaskBoard.toggle，直接写回原文档）。
+   * 完成的条目从清单消失（collect 只收未完成），计数同步刷新。
+   */
+  private toggleStudyTask(item: TaskItem): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    const msg: string = TaskBoard.toggle(ctx, item.docName, item.line);
+    if (msg.length > 0) {
+      this.toast(msg);
+      return;
+    }
+    this.toast(item.done ? '已取消完成' : '已完成');
+    this.refreshStudy();
   }
 
   /** 打开「往年的今天」动过的文档（没有就提示）。 */
@@ -4307,7 +5147,8 @@ struct Index {
       // **全部待办**（批 2）：跨文档功能，放在这里先给个入口（后续可移到书架顶栏）
       // 模板新建已移到「新建」面板（模板属于新建流程，见 createDoc / newDocSheet）
       this.menuRow('复习卡片 · 今日到期', () => {
-        this.openReview();
+        // 1.1.0：改进独立复习页（选文档复习 + 遗忘曲线 + 学习记录）
+        this.pushPage('pages/Review');
       })
       this.menuRow('知识图谱 · 文档引用关系', () => {
         this.runGraph();
@@ -4519,6 +5360,34 @@ struct Index {
     .onClick(() => {
       this.openDoc(meta);
     })
+    // **树形视图同样支持拖拽**（用户要求）：长按起拖 → 悬停另一文档 1.5 秒换位 /
+    // 快速放下合并文件夹 / 拖到文件夹行收进文件夹 —— 与网格 docCell 同一套
+    .onDragStart((event: DragEvent) => {
+      this.draggingName = meta.name;
+      this.cancelSwapHover();
+      const info: DragItemInfo = { extraInfo: meta.name };
+      return info;
+    })
+    .onDragEnter((event: DragEvent) => {
+      this.hoverDropAt = meta.name;
+      this.trackSwapHover(meta.name);
+    })
+    .onDragLeave((event: DragEvent) => {
+      if (this.hoverDropAt === meta.name) {
+        this.hoverDropAt = '';
+      }
+      if (this.swapHoverTarget === meta.name || this.swapReadyName === meta.name) {
+        this.cancelSwapHover();
+      }
+    })
+    .onDrop((event: DragEvent) => {
+      this.finishSwapOrDrop(meta.name);
+    })
+    // 悬停换位目标行：accent 描边提示（松手即交换）
+    .border({
+      width: this.swapReadyName === meta.name ? 1.5 : 0,
+      color: this.palette().accent
+    })
   }
 
   @Builder
@@ -4576,6 +5445,24 @@ struct Index {
       // 行内展开也要有动画：状态变更包在弹簧 animateTo 里
       this.toggleFolderExpandAnimated(folder.name);
     })
+    // **树形文件夹行也接收拖拽**（用户要求：拖文档到文件夹行 = 收进文件夹）
+    .onDragStart((event: DragEvent) => {
+      this.draggingName = 'folder:' + folder.name;
+      this.cancelSwapHover();
+      const info: DragItemInfo = { extraInfo: 'folder:' + folder.name };
+      return info;
+    })
+    .onDragEnter((event: DragEvent) => {
+      this.hoverDropAt = folder.name;
+    })
+    .onDragLeave((event: DragEvent) => {
+      if (this.hoverDropAt === folder.name) {
+        this.hoverDropAt = '';
+      }
+    })
+    .onDrop((event: DragEvent) => {
+      this.handleDropOnFolder(folder.name);
+    })
   }
 
   @Builder
@@ -4597,30 +5484,30 @@ struct Index {
       // ⚠️ 用 **looseBuiltinDocs()**（已过滤"已收入文件夹"的预置文档）而不是 builtinDocs()：
       // 网格样式同样只列松散预置 —— 之前列表用全量，预置文档已拖进文件夹后
       // 列表顶层还重复显示一份（用户反馈）。与网格口径一致。
-      ForEach(this.looseBuiltinDocs(), (meta: DocMeta) => {
+      ForEach(this.shelfOrderedLoose(true), (meta: DocMeta, idx: number) => {
         ListItem() {
           this.treeDocRow(meta, 0)
         }
-      }, (meta: DocMeta) => 'tb_' + meta.name)
+      }, (meta: DocMeta, idx: number) => 'tb' + idx + '_' + meta.name)
 
-      ForEach(this.treeFolders(), (folder: ShelfFolder) => {
+      ForEach(this.shelfOrderedFolders(), (folder: ShelfFolder) => {
         ListItem() {
           this.treeFolderRow(folder)
         }
         if (this.expandedFolders.indexOf(folder.name) >= 0) {
-          ForEach(this.folderDocs(folder.name), (meta: DocMeta) => {
+          ForEach(this.folderDocs(folder.name), (meta: DocMeta, idx: number) => {
             ListItem() {
               this.treeDocRow(meta, 26)
             }
-          }, (meta: DocMeta) => 'fd_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch)
+          }, (meta: DocMeta, idx: number) => 'fd' + idx + '_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch)
         }
       }, (folder: ShelfFolder) => 'f_' + folder.name + '_' + this.folderDocs(folder.name).length)
 
-      ForEach(this.looseDocs(), (meta: DocMeta) => {
+      ForEach(this.shelfOrderedLoose(false), (meta: DocMeta, idx: number) => {
         ListItem() {
           this.treeDocRow(meta, 0)
         }
-      }, (meta: DocMeta) => 't_' + meta.name + '_' + meta.mtime)
+      }, (meta: DocMeta, idx: number) => 't' + idx + '_' + meta.name + '_' + meta.mtime)
 
       ListItem() {
         Text('树形视图 · 文件夹来自书架拖拽归组')
@@ -4635,9 +5522,10 @@ struct Index {
     .layoutWeight(1)
     // 右侧滚动条不显示（用户要求）
     .scrollBar(BarState.Off)
-    .edgeEffect(EdgeEffect.Spring)
+    .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     .padding({ left: HwSpace.lg, right: HwSpace.lg })
     .onScrollIndex((first: number, last: number) => {
+      this.shelfAtTop = first <= 0;
       if (first <= 0) {
         this.scrollAccum = 0;
         this.toggleBars(true);
@@ -4725,26 +5613,34 @@ struct Index {
         this.trailButton()
         // 爱心：收藏快速查看（与新建按钮同侧，一起跟随握姿适配）
         this.starButton()
+        // AI 助手入口（1.2.0）：同样跟随握姿换边
+        this.aiButton()
       }
       Text(this.docs.length + ' 篇 · ' + this.folders.length + ' 个文件夹')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textSecondary)
-        // 窄屏优先让按钮可见：统计文字压缩到最多 200vp，超出省略
-        .constraintSize({ maxWidth: 200 })
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Column()
+        // **弹性中段 + 跑马灯**（用户要求）：空间不够时**文本自身收窄**并滚动，
+        // 绝不把两侧按钮顶出去。此前 constraintSize(200) 只是"上限"不是"收缩承诺"——
+        // 行内总宽超了照样把按钮推到胶囊外（用户实测）；改 layoutWeight 后文本
+        // 优先让位，超长部分交给跑马灯滚动。
         .layoutWeight(1)
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.MARQUEE })
+        // step 是"每帧移动的 px"：22 ≈ 每秒千像素级（用户："滚动速度那么快，搞笑吗？"）
+        // → 3 ≈ 每秒百像素上下的阅读节奏
+        .marqueeOptions({ start: true, step: 3, fromStart: true })
       Text(this.totalWords + ' 字')
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .constraintSize({ maxWidth: 100 })
         .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .textOverflow({ overflow: TextOverflow.MARQUEE })
+        .marqueeOptions({ start: true, step: 3, fromStart: true })
       if (this.gripSide !== -1) {
         this.newDocButton()
         this.trailButton()
         this.starButton()
+        this.aiButton()
       }
     }
   }
@@ -5032,15 +5928,20 @@ struct Index {
       const arr: MdAnnotation[] = AnnotationStore.load(c, list[k].name);
       for (let j = 0; j < arr.length; j++) {
         const a: MdAnnotation = arr[j];
-        if (a.note.startsWith('hw:')) {
+        // **只认「学习卡」**（1.1.0）：批注 / 荧光笔 / 波浪线 / 手写是独立标识，
+        // 不混入复习数据（用户明确要求）；手写（hw:）本来也不是学习卡
+        if (a.style !== 'card') {
           continue;
         }
         const front: string = a.text.trim();
         if (front.length === 0) {
           continue;
         }
+        // ⚠️ **docName 必须用 meta.name**（跨文档服务铁律）：
+        // 之前用 fileName 生成 id，与 ReviewPage 的 name 版 id 不同 ——
+        // 文房页每次刷新都会把全部卡"重新同步成到期"，掌握记录直接作废（真机实锤）。
         out.push({
-          docName: list[k].fileName, annId: a.id, front: front, back: a.note
+          docName: list[k].name, annId: a.id, front: front, back: a.note
         } as ReviewSeed);
       }
     }
@@ -5828,6 +6729,60 @@ struct Index {
   // ══════════════════════ 组装 ══════════════════════
 
   /**
+   * 胶囊内的「AI 助手」按钮（1.2.0）：圆形小钮 + 火花图标。
+   * 与新建 / 收藏同一套，跟随智感握姿换边；点击进入 AI 对话页。
+   */
+  @Builder
+  aiButton() {
+    // **后台生成完成的新事件角标**（用户要求）：红点 + 白描边，画在按钮右上角。
+    // ⚠️ 不用官方 Badge 包裹——Badge 会改变子组件的布局尺寸，导致这颗按钮
+    // 与底栏其它按钮**高度不一致**（用户实测）；改成与相邻按钮完全同构的
+    // Stack(36×36) + 角标覆盖层（有新事件才挂载，count<=0 不出现）。
+    Stack({ alignContent: Alignment.TopEnd }) {
+      ImmersiveIconButton({
+        buttonSize: NEW_BTN_SIZE,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          if (this.openFolderName.length > 0) {
+            return;
+          }
+          // **基础模式（纯离线）拦截**（用户要求）：AI 助手要走网络，离线直接挡在入口
+          if (UpdateService.isOffline()) {
+            this.toast('基础模式（纯离线）下 AI 助手不可用');
+            return;
+          }
+          if (this.pathStack !== null) {
+            this.pathStack.pushPath({ name: 'pages/AiChat' });
+          }
+        }
+      }) {
+        Image($r('app.media.ai_spark'))
+          .width(18)
+          .height(18)
+          .fillColor(this.palette().accent)
+          .draggable(false)
+      }
+      if (this.aiNewReply > 0) {
+        Column()
+          .width(12)
+          .height(12)
+          .borderRadius(6)
+          .backgroundColor('#FFFF3B30')
+          .border({ width: 1.5, color: '#FFFFFFFF' })
+          .margin({ top: 2, right: 2 })
+          // 出现 / 清零带过渡（凡事带动画）
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.5, y: 0.5 })))
+      }
+    }
+    .width(NEW_BTN_SIZE)
+    .height(NEW_BTN_SIZE)
+    .margin(this.gripSide === -1 ? { right: HwSpace.xs } : { left: HwSpace.xs })
+  }
+
+  /**
    * 书架页：**原地不动**（位移钉 0、不淡出）。
    * 退场/进场的动感由「封面层滑走 + 阅读页从右滑入」承担，
    * 书架自己再动就是两套效果打架。
@@ -5850,6 +6805,70 @@ struct Index {
 
       Row() {
         Column() {
+          // ── 横向分页：书架 ⇄ 写作日志 ⇄ 文房（用户要求：左右滑动切换页面）──
+          // 顶栏 / 底栏浮在所有页之上（在 Swiper 外），标题随页切换。
+          // indicator 关掉：左上角的页名就是当前页的提示，不加多余的点。
+          Swiper(this.pageSwiper) {
+          // ── 页 1：文房（书架**右滑**到达；跨文档工具的聚合桌面）──
+          Column() {
+            Scroll() {
+              Column({ space: HwSpace.lg }) {
+                // 「阅读」统计卡（1.1.0 从写作日志页搬来；用户要求放在文房页）
+                this.readingStatsCard()
+
+                // ── 批注速记卡（存在复习卡片时展示）：随手看两条批注，方便学习 ──
+                if (this.studyAnnPreview.length > 0) {
+                  this.studyCard('批注速记', $r('sys.symbol.highlighter_tip'),
+                    this.studyAnnPreview, '去复习', (): void => {
+                      this.pushPage('pages/Review');
+                    })
+                }
+
+                // 今日笺：**原地下拉展示**（用户要求：不要弹窗）——点卡片展开 / 收起
+                this.dailyNoteCard()
+
+                // 复习卡片：点击进入独立复习页（选文档复习 + 遗忘曲线 + 学习记录）
+                // 复习卡片：点击进入独立复习页（图标用用户指定的自定义 SVG）
+                this.studyCard('复习卡片', $r('app.media.study_word_card'),
+                  [this.studyDue > 0
+                    ? '今天到期 ' + this.studyDue + ' 张，该翻卡了'
+                    : '今天没有到期的卡片', this.studyReviewSummary],
+                  '进入复习', (): void => {
+                    this.pushPage('pages/Review');
+                  }, true)
+
+                // 全部待办：**原地下拉展示**全部待办（上限 50 条，内部滚动）
+                this.taskBoardCard()
+
+                // 批注汇总：把全部标注整理成一篇文档收进书架
+                this.studyCard('批注汇总', $r('sys.symbol.square_and_pencil'),
+                  ['把全部文档的荧光笔与文字批注整理成一篇《批注汇总》放进书架，方便复盘。'],
+                  '生成批注汇总', (): void => {
+                    this.exportAnnotationSummary();
+                  })
+              }
+              .width('100%')
+              .padding({
+                left: HwSpace.lg,
+                right: HwSpace.lg,
+                // 顶部 = 状态栏 + 悬浮胶囊 + 余量：内容从胶囊底下开始，不顶进状态栏
+                top: this.padTop() + HwBar.pill + HwSpace.md,
+                bottom: this.padBottom() + 84
+              })
+            }
+            .scrollBar(BarState.Off)
+            .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+            .width('100%')
+            .height('100%')
+            .align(Alignment.Top)
+            // 搜索展开时整页内容模糊（与书架格子同一程度 = cellBlur，用户要求三页一致）
+            .blur(this.cellBlur())
+          }
+          .width('100%')
+          .height('100%')
+
+          // ── 页 2：书架（原网格 / 树形视图原样内联；**默认停在这一页**）──
+          Column() {
           if (this.treeMode) {
             this.treeList()
           } else {
@@ -5867,10 +6886,10 @@ struct Index {
             // 首屏留白放在**第一个内容项**上而不是滚动容器上：
             // 滚动容器的 padding 是裁剪边界，放那儿内容就永远进不了顶栏底下；
             // 放在内容项上，静止时内容在胶囊下方，滚动时能穿到胶囊下面。
-            // bottom 保底间距：通栏横幅与下一行（尤其展开面板顶缘）之间永远不贴住
+            // ⚠️ **不加 bottom margin**（用户反馈"卡片和书籍之间空隙太大"）：
+            // 通栏卡与下一行的间距统一交给 rowsGap，和书与书之间的空隙保持一致。
             .margin({
-              top: this.padTop() + HwBar.pill + HwSpace.md,
-              bottom: HwSpace.md
+              top: this.padTop() + HwBar.pill + HwSpace.md
             })
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())
@@ -6005,7 +7024,7 @@ struct Index {
           .layoutWeight(1)
           // 右侧滚动条不显示（用户要求）
           .scrollBar(BarState.Off)
-          .edgeEffect(EdgeEffect.Spring)
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
           // 顶部 padding 为 0：**内容要能画进顶栏底下**（滚动组件的 padding 是裁剪边界，
           // padding 区域不绘制）。顶栏是悬浮材质胶囊，文字从它下面穿过。
           .padding({ left: HwSpace.lg, right: HwSpace.lg })
@@ -6030,6 +7049,57 @@ struct Index {
           // 按钮）会被列表复用、颜色不跟着变；换容器 key 才会整段重建。
           .key('shelfGrid_' + this.themeEpoch)
           }
+          }
+          .width('100%')
+          .height('100%')
+
+          // ── 页 3：写作日志（设置页同款内容嵌入书架；「回头看看」卡置顶）──
+          Column() {
+            Scroll() {
+              Column({ space: HwSpace.lg }) {
+                // 「回头看看」卡从书架搬到这里置顶（随机一篇 / 那年今天）
+                this.memoryCard()
+                SettingsWriting({ embedded: true })
+              }
+              .width('100%')
+              .padding({
+                left: HwSpace.lg,
+                right: HwSpace.lg,
+                top: this.padTop() + HwBar.pill + HwSpace.md,
+                bottom: this.padBottom() + 84
+              })
+            }
+            .scrollBar(BarState.Off)
+            .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+            .width('100%')
+            .height('100%')
+            .align(Alignment.Top)
+            // 搜索展开时整页内容模糊（与书架格子同一程度 = cellBlur，用户要求三页一致）
+            .blur(this.cellBlur())
+          }
+          .width('100%')
+          .height('100%')
+          }
+          .width('100%')
+          .height('100%')
+          // **循环滑动**（用户要求）：文房 ↔ 书架 ↔ 写作日志首尾相接
+          .loop(true)
+          .indicator(false)
+          // 默认停在中间的书架页（页序：文房 0 · 书架 1 · 写作日志 2）
+          // ⚠️ **必须绑到 shelfPage 而不是写死 1**：切深浅 / 换主题时根部 Navigation 换 key
+          // 整树重建（见 applyThemeChange），写死 1 会让 Swiper 回到书架页 —— 用户在
+          // 文房 / 写作日志切主题就被弹回书架（用户实测）。绑状态后重建也停在原页。
+          .index(this.shelfPage)
+          .duration(300)
+          .onChange((index: number) => {
+            this.shelfPage = index;
+            this.lastAppliedPage = index;
+            if (index !== 1 && this.searchExpanded) {
+              // 离开书架页时顺手收起搜索（搜索框只属于书架页）
+              this.collapseSearch();
+            }
+            this.onShelfPageChanged();
+          })
 
           // ── 搜索展开时的「点任意区域收起」层 ──
           //
@@ -6057,19 +7127,47 @@ struct Index {
           // hitTestBehavior 用 Transparent：胶囊自身的空隙不拦截触摸，
           // 点击会落到下方的卡片上；胶囊上的按钮照常可点。
           Row() {
-            // **「书架」标题固定在左上角**（平板；不进胶囊、不随内容滚动位置变化）
+            // **页名固定在左上角**（平板；不进胶囊、不随内容滚动位置变化），
+            // 随分页切换（渐入渐出）；页序：文房 0 · 书架 1 · 写作日志 2
             if (this.isWideShelf()) {
-              Text('书架')
-                .fontSize(24)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(this.palette().textPrimary)
-                .margin({ top: 6 })
+              Column() {
+                if (this.shelfPage === 0) {
+                  Text('文房')
+                    .fontSize(24)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.palette().textPrimary)
+                    .margin({ top: 6 })
+                    .transition(TransitionEffect.OPACITY
+                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                } else if (this.shelfPage === 2) {
+                  Text('写作日志')
+                    .fontSize(24)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.palette().textPrimary)
+                    .margin({ top: 6 })
+                    .transition(TransitionEffect.OPACITY
+                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                } else {
+                  Text('书架')
+                    .fontSize(24)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor(this.palette().textPrimary)
+                    .margin({ top: 6 })
+                    .transition(TransitionEffect.OPACITY
+                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                }
+              }
+              .alignItems(HorizontalAlign.Start)
             }
             this.topBar()
           }
           .width('100%')
           .justifyContent(this.isWideShelf() ? FlexAlign.SpaceBetween : FlexAlign.Start)
-          .padding({ left: HwSpace.lg, right: HwSpace.lg })
+          // 右留白 =「整体位移」调参：wideBarInset()（顶层调参区②），宽屏改它可整条左/右移
+          .padding({
+            left: HwSpace.lg,
+            right: this.isWideShelf() ? this.wideBarInset() : HwSpace.lg
+          })
           // 只让**胶囊本体**占触摸区（不含 padTop 那条空白），
           // 否则顶部近百 vp 都成了滑动死区，手一放上去就像「滑不动」。
           .position({ x: 0, y: this.padTop() })
@@ -6079,26 +7177,111 @@ struct Index {
           .opacity(1)
           .translate({ y: 0 })
 
+          // ── 页数指示器（用户要求：悬浮底栏上方，**高度压低贴近底栏**）──
+          // 三页各一枚圆点，当前页拉长成胶囊并染强调色；点圆点直接滑到对应页。
+          Row({ space: HwSpace.xs }) {
+            ForEach([0, 1, 2], (page: number) => {
+              Column()
+                .width(this.shelfPage === page ? 18 : 6)
+                .height(6)
+                .borderRadius(3)
+                .backgroundColor(this.shelfPage === page
+                  ? this.palette().accent : this.palette().divider)
+                .onClick(() => {
+                  if (this.shelfPage !== page) {
+                    this.pageSwiper.changeIndex(page, true);
+                  }
+                })
+                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            }, (page: number) => 'dot_' + page)
+          }
+          .justifyContent(FlexAlign.Center)
+          // **大屏横屏**：与悬浮底栏同一水平区间（右对齐、按「回到书架」胶囊长度取中），
+          // 指示器落在底栏正上方的中点；手机 / 竖屏维持整行居中。
+          // 区间长度 = 调参区③ homePillWidth()，右留白 = 调参区② wideBarInset()
+          .width(this.isWideShelf() ? this.homePillWidth() : '100%')
+          .position({
+            x: this.isWideShelf() ? this.rootWidth - this.wideBarInset() - this.homePillWidth() : 0,
+            y: this.rootHeight - this.padBottom() - HwBar.pill - 16
+          })
+          .hitTestBehavior(HitTestMode.Transparent)
+
           // （快捷「新建 / 导入」按钮已经在 bottomBar 的胶囊**内部**，见 bottomBar()）
           // 批量操作：多选时底栏整体换成操作条（不随滚动收起，操作中必须可见）
+          // 非书架页（文房 / 写作日志）：底栏整体换成**主页钮**，点了回书架（带过渡动画）
           Row() {
-            if (this.multiSelect) {
-              this.multiBar()
+            if (this.shelfPage !== 1) {
+              // ── 主页钮胶囊（写作日志 / 文房页）──
+              // ⚠️ ImmersiveBar 是「组件 + 尾随闭包」，过渡动画挂在外层 Column 上
+              Column() {
+                ImmersiveBar({
+                  palette: this.palette(),
+                  barPaddingH: HwSpace.sm,
+                  barPaddingV: 4,
+                  barHeight: HwBar.pill,
+                  // 底栏「回到书架」胶囊长度（调参区③）
+                  barWidth: this.isWideShelf() ? this.homePillWidth() : '100%'
+                }) {
+                  Row({ space: HwSpace.xs }) {
+                    ImmersiveIconButton({
+                      buttonSize: 36,
+                      buttonMaterialShadow: false,
+                      palette: this.palette(),
+                      buttonOnTap: () => {
+                        this.pageSwiper.changeIndex(1, true);
+                      }
+                    }) {
+                      SymbolGlyph($r('sys.symbol.house'))
+                        .fontSize(18)
+                        .fontColor([this.palette().textPrimary])
+                    }
+                    Text('回到书架')
+                      .fontSize(HwType.label)
+                      .fontColor(this.palette().textPrimary)
+                      .maxLines(1)
+                    Blank()
+                  }
+                  .width('100%')
+                  .alignItems(VerticalAlign.Center)
+                }
+              }
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+                .combine(TransitionEffect.translate({ y: 16 })))
+            } else if (this.multiSelect) {
+              Column() {
+                this.multiBar()
+              }
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
             } else {
-              this.bottomBar()
+              Column() {
+                this.bottomBar()
+              }
+              .transition(TransitionEffect.OPACITY
+                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+                .combine(TransitionEffect.translate({ y: 16 })))
             }
           }
           .width('100%')
-          // **平板放屏幕右下角**：宽屏胶囊靠右
-          .justifyContent(this.isWideShelf() && !this.multiSelect ? FlexAlign.End : FlexAlign.Start)
-          .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: this.padBottom() })
+          // **大屏横屏一律靠右**（用户要求：切到写作日志 / 文房页底栏保持原位不左移，
+          // 主页钮胶囊与书架页底栏同一位置）；多选操作条与手机端维持原对齐
+          .justifyContent(this.isWideShelf() && !this.multiSelect
+            ? FlexAlign.End : FlexAlign.Start)
+          // 右留白与顶栏同一参数（wideBarInset）→ 顶/底栏始终对齐
+          .padding({
+            left: HwSpace.lg,
+            right: this.isWideShelf() ? this.wideBarInset() : HwSpace.lg,
+            bottom: this.padBottom()
+          })
           .position({ x: 0, y: this.rootHeight - this.padBottom() - HwBar.pill })
-          .hitTestBehavior(this.multiSelect || this.barsVisible
+          // 主页钮在非书架页**常驻可见**（它就是这页的底栏）；书架页沿用原显隐逻辑
+          .hitTestBehavior(this.shelfPage !== 1 || this.multiSelect || this.barsVisible
             ? HitTestMode.Transparent : HitTestMode.None)
-          .opacity(this.multiSelect || this.barsVisible ? 1 : 0)
-          .translate({ y: this.multiSelect || this.barsVisible ? 0 : 16 })
+          .opacity(this.shelfPage !== 1 || this.multiSelect || this.barsVisible ? 1 : 0)
+          .translate({ y: this.shelfPage !== 1 || this.multiSelect || this.barsVisible ? 0 : 16 })
           .animation({ duration: 220, curve: Curve.FastOutSlowIn })
-          .enabled(this.barsVisible)
+          .enabled(this.barsVisible || this.shelfPage !== 1)
         }
         .width('100%')
         .height('100%')
@@ -6316,6 +7499,8 @@ struct Index {
         SettingsReading({ stack: this.pathStack })
       } else if (name === 'pages/SettingsWriting') {
         SettingsWriting({ stack: this.pathStack })
+      } else if (name === 'pages/SettingsEngines') {
+        SettingsEngines({ stack: this.pathStack })
       } else if (name === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.pathStack })
       } else if (name === 'pages/Changelog') {
@@ -6324,6 +7509,30 @@ struct Index {
         SettingsHelp({ stack: this.pathStack })
       } else if (name === 'pages/Sketch') {
         Sketch({ stack: this.pathStack })
+      } else if (name === 'pages/Review') {
+        // 复习页（1.1.0）：背书软件式复习 + 遗忘曲线 + 学习记录
+        ReviewPage({
+          stack: this.pathStack,
+          onBackBind: (cb: () => boolean): void => {
+            this.reviewBackCb = cb;
+          }
+        })
+      } else if (name === 'pages/AiChat') {
+        // AI 助手（1.2.0）：对话页；阅读 / 编辑场景的上下文经 AppStorage 信号传入
+        AiChat({
+          stack: this.pathStack
+        })
+      } else if (name === 'pages/AiSettings') {
+        // AI 接口配置（API 地址 / Key / 模型 / 系统提示词 / 思考强度）
+        AiSettings({
+          stack: this.pathStack
+        })
+      } else if (name === 'pages/AiSettingsEmbedded') {
+        // 设置页入口进来的 AI 设置：嵌入形态（SettingsShell 外壳，与其他设置项一致）
+        AiSettings({
+          stack: this.pathStack,
+          embedded: true
+        })
       } else if (name === 'pages/HtmlViewer') {
         // 参数安全解析：push 时未带 param 也不能整页空白
         HtmlViewer({
@@ -6341,6 +7550,17 @@ struct Index {
     }
     .hideTitleBar(true)
     .backgroundColor(this.palette().pageBottom)
+    // **复习页的返回拦截**：刷卡形态中侧滑 / 返回键 = 退回「学习」页签（回调由
+    // ReviewPage 在 aboutToAppear 注册），返回 false 时才真正退出页面。
+    .onBackPressed(() => {
+      if (name !== 'pages/Review') {
+        return false;
+      }
+      if (this.reviewBackCb !== null) {
+        return this.reviewBackCb();
+      }
+      return false;
+    })
     // **设置子页的旋转收栈**（用户要求）：竖屏打开的设置子页旋转到横屏时应回到
     // 设置主页的左右分栏，而不是被强行拉伸铺满。主页被本页盖住收不到尺寸回调，
     // 所以由**可见的本页**监听：宽屏（>760 且横屏）且栈深超过进入设置时的基线 →

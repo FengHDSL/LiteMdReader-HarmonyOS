@@ -1,10 +1,10 @@
 {
   "forms": [
     {
-      "name": "ShelfCard2x4",
-      "displayName": "$string:form_shelf_display",
-      "description": "$string:form_shelf_desc",
-      "src": "./ets/pages/form/ShelfCard.ets",
+      "name": "RecentCard2x2",
+      "displayName": "$string:form_recent_display",
+      "description": "$string:form_recent_desc",
+      "src": "./ets/pages/form/RecentCard.ets",
       "uiSyntax": "arkts",
       "window": {
         "designWidth": 720,
@@ -14,9 +14,9 @@
       "isDefault": true,
       "updateEnabled": true,
       "updateDuration": 1,
-      "defaultDimension": "2*4",
+      "defaultDimension": "2*2",
       "supportDimensions": [
-        "2*4"
+        "2*2"
       ]
     }
   ]

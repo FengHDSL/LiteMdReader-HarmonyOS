@@ -28,7 +28,6 @@ import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
 import { DocCover, coverColorsOf, coverStyleFromColor } from '../components/DocCover';
 import { DocMeta, DocStore } from '../service/DocStore';
 import { DayRecord, LogRange, WritingLog, dayKeyOf } from '../service/WritingLog';
-import { ReadDoc, ReadRange, ReadingLog, readDayKey } from '../service/ReadingLog';
 import {
   CoverStyle,
   HwRadius,
@@ -129,19 +128,18 @@ export struct SettingsWriting {
   private heatScroller: Scroller = new Scroller();
   /** 最新文档（封面墙） */
   @State latestDocs: LatestDoc[] = [];
-  // ── 阅读统计（ReadingLog）：与写作对称的另一半 ──
-  /** 今日阅读秒数 */
-  @State readToday: number = 0;
-  /** 近 7 天阅读秒数 */
-  @State readWeek: number = 0;
-  /** 近 7 天有阅读的天数 */
-  @State readWeekDays: number = 0;
-  /** 累计阅读秒数 */
-  @State readTotal: number = 0;
-  /** 读得最多的前 5 篇 */
-  @State readTop: ReadDoc[] = [];
-  /** 书架「回头看看」卡片是否显示（默认关，本页开关） */
-  @StorageLink('shelfMemoryCard') memoryCard: boolean = false;
+  // （阅读统计已搬到书架页，本页只保留写作侧）
+  /** 嵌入模式：书架分页的「写作日志」页复用本组件内容（不套 SettingsShell） */
+  @Prop embedded: boolean = false;
+  /** 书架当前分页（Index 写入）：嵌入模式下切到本页时重新取数 */
+  @StorageProp('shelfPage') @Watch('onShelfPageWatch') embeddedPage: number = 0;
+
+  /** 嵌入模式下切到本页（shelfPage === 2）时刷新统计。 */
+  onShelfPageWatch(): void {
+    if (this.embedded && this.embeddedPage === 2) {
+      this.reload();
+    }
+  }
 
   aboutToAppear(): void {
     this.life.onShow = () => {
@@ -171,7 +169,6 @@ export struct SettingsWriting {
       this.calcToday();
       this.calcMonth();
       this.calcLatestDocs(c);
-      this.loadReading(c);
       this.loadError = '';
       // 热力图默认滚到"最新有数据"的列：内容要等一帧布局完成，延迟触发
       setTimeout(() => {
@@ -187,25 +184,6 @@ export struct SettingsWriting {
       const e = err as BusinessError;
       this.loadError = '数据加载失败：' + (e.message && e.message.length > 0
         ? e.message : (e.code !== undefined ? 'code ' + e.code : '未知错误'));
-    }
-  }
-
-  /** 阅读统计：今日 / 近 7 天 / 累计 + 读得最多的几篇。 */
-  private loadReading(c: common.UIAbilityContext): void {
-    try {
-      ReadingLog.init(c);
-      this.readToday = ReadingLog.secondsOn(readDayKey(Date.now()));
-      const week: ReadRange = ReadingLog.lastDays(c, 7);
-      this.readWeek = week.seconds;
-      this.readWeekDays = week.activeDays;
-      this.readTotal = ReadingLog.totalSeconds(c);
-      this.readTop = ReadingLog.topDocs(c, 5);
-    } catch (err) {
-      this.readToday = 0;
-      this.readWeek = 0;
-      this.readWeekDays = 0;
-      this.readTotal = 0;
-      this.readTop = [];
     }
   }
 
@@ -427,60 +405,7 @@ export struct SettingsWriting {
     .alignItems(HorizontalAlign.Start)
   }
 
-  /**
-   * 阅读统计卡：**与写作对称的另一半**。
-   *
-   * 写作日志回答"写了多少"，这里回答"读了多少"—— 时长是进度条给不出的信息
-   * （同一篇读 5 分钟和读 50 分钟，进度都是"已读 30%"）。
-   */
-  @Builder
-  readingCard() {
-    Column({ space: HwSpace.sm }) {
-      Row({ space: HwSpace.sm }) {
-        this.statCell(ReadingLog.human(this.readToday), '今日阅读')
-        this.statCell(ReadingLog.human(this.readWeek), '近 7 天')
-        this.statCell(ReadingLog.human(this.readTotal), '累计阅读')
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-
-      if (this.readTop.length === 0) {
-        Text('还没有阅读记录 —— 打开一篇文档读一会儿，这里就会开始累计。')
-          .fontSize(HwType.caption)
-          .fontColor(this.palette().textTertiary)
-          .width('100%')
-      } else {
-        Text('读得最多的几篇')
-          .fontSize(HwType.caption)
-          .fontColor(this.palette().textTertiary)
-          .width('100%')
-
-        ForEach(this.readTop, (d: ReadDoc) => {
-          Row({ space: HwSpace.xs }) {
-            Text(d.name)
-              .fontSize(HwType.label)
-              .fontColor(this.palette().textPrimary)
-              .layoutWeight(1)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-            Text(ReadingLog.human(d.seconds))
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().accent)
-          }
-          .width('100%')
-          .height(36)
-          .alignItems(VerticalAlign.Center)
-        }, (d: ReadDoc) => d.name)
-      }
-
-      Text('近 7 天有 ' + this.readWeekDays + ' 天在读 · 只统计停留在本页的时间（退后台不计）')
-        .fontSize(HwType.caption)
-        .fontColor(this.palette().textTertiary)
-        .width('100%')
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-  }
+  // （阅读统计卡已搬到书架页，见 Index.readingStatsCard；本页只保留写作侧）
 
   /** 写作热力图卡（GitHub 风格：横向滑动一年 + 月份对齐列 + 左侧星期；年份选择在**右下角**）。 */
   @Builder
@@ -519,7 +444,8 @@ export struct SettingsWriting {
                   .margin({ left: m.col * this.colStep() })
               }, (m: MonthMark) => 'mm_' + m.label)
             }
-            .width(HEAT_WEEKS * this.colStep())
+            // 尾部 +8 空隙：滚到最右时末格与右缘留出呼吸位（用户反馈末格被裁一点）
+            .width(HEAT_WEEKS * this.colStep() + 8)
             .height(15)
 
             // 7 行 × 53 列。⚠️ itemGenerator 里不能调 @Builder（白屏坑④），格子内联画
@@ -552,7 +478,8 @@ export struct SettingsWriting {
                 }
               }, (row: number) => 'hr_' + row)
             }
-            .width(HEAT_WEEKS * this.colStep())
+            // 同上：尾部 +8 空隙（与月份标注同宽，末格留出呼吸位）
+            .width(HEAT_WEEKS * this.colStep() + 8)
           }
         }
         .scrollable(ScrollDirection.Horizontal)
@@ -562,32 +489,7 @@ export struct SettingsWriting {
       .width('100%')
       .alignItems(VerticalAlign.Top)
 
-      // 年份选择：**右下角下拉 Select**（用户要求：从右上角挪下来）
-      Row({ space: HwSpace.xs }) {
-        Blank()
-        Select(this.yearSelectOptions())
-          .selected(this.yearOptions().indexOf(this.viewYear))
-          .value(this.viewYear + ' 年')
-          .font({ size: HwType.caption })
-          .fontColor(this.palette().textPrimary)
-          .backgroundColor(withAlpha(this.palette().accent, '2E'))
-          .borderRadius(HwRadius.inner)
-          .onSelect((index: number) => {
-            const y: number = this.yearOptions()[index];
-            // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
-            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
-              this.viewYear = y;
-            });
-            // 切年份后重新定位到该年最新有数据的列
-            setTimeout(() => {
-              this.scrollHeatToLatest();
-            }, 120);
-          })
-      }
-      .width('100%')
-
-      // 底部：左统计口径说明（GitHub "Learn how we count contributions" 位）+ 右图例
-      //（图例收紧：格 8vp、间距 3 —— 用户反馈之前间距太宽）
+      // 底部标识行：左统计口径说明 + 右图例（图例收紧：格 8vp、间距 3）
       Row({ space: 3 }) {
         Text('按每日写作增量统计')
           .fontSize(HwType.caption - 1)
@@ -608,6 +510,38 @@ export struct SettingsWriting {
           .fontColor(this.palette().textTertiary)
       }
       .width('100%')
+
+       // ── 年份选择行（用户要求：胶囊、字体大一点、**左边补内容不空**）──
+       // ⚠️ 说明文字必须 layoutWeight(1) 自适应收缩：定宽文字 + Select 超出
+       // 行宽时，Select 会被挤出卡片内边距、直接贴到卡片边缘（真机实锤）。
+       Row({ space: HwSpace.sm }) {
+         Text('切换年份，查看不同时段的写作热力')
+           .fontSize(HwType.caption)
+           .fontColor(this.palette().textTertiary)
+           .layoutWeight(1)
+           .maxLines(1)
+           .textOverflow({ overflow: TextOverflow.Ellipsis })
+         Select(this.yearSelectOptions())
+           .selected(this.yearOptions().indexOf(this.viewYear))
+           .value(this.viewYear + ' 年')
+           .font({ size: HwType.label })
+           .fontColor(this.palette().textPrimary)
+           .backgroundColor(withAlpha(this.palette().accent, '2E'))
+           .borderRadius(HwRadius.pill)
+           .onSelect((index: number) => {
+            const y: number = this.yearOptions()[index];
+            // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
+            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+              this.viewYear = y;
+            });
+            // 切年份后重新定位到该年最新有数据的列
+            setTimeout(() => {
+              this.scrollHeatToLatest();
+            }, 120);
+          })
+      }
+      .width('100%')
+      .margin({ top: 2 })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -717,10 +651,12 @@ export struct SettingsWriting {
       if (col < 0) {
         return;
       }
-      // 视口宽不做精确量测（不再挂 onAreaChange）：按常见机型 ~300vp 估算，
-      // 目标列靠右缘即可，误差不影响"打开即见最新"的目的
+      // 视口宽不做精确量测（不再挂 onAreaChange）：
+      // **定位目标**：今天那一列的右缘要落在视口右缘内约 30vp 处（用户反馈：
+      // 默认位置最右的格子被裁掉半个 —— 说明之前的公式把今天卡在了视口边缘上）。
+      // 内容尾部还有 8vp 空隙兜底，保证滚到最右也不裁。
       const viewport: number = 280;
-      const x: number = Math.max(0, (col + 1) * this.colStep() - viewport + this.colStep());
+      const x: number = Math.max(0, (col + 1) * this.colStep() + 30 - viewport);
       this.heatScroller.scrollTo({ xOffset: x, yOffset: 0 });
     } catch (err) {
       // 定位失败不影响展示，用户可手动滑
@@ -902,12 +838,30 @@ export struct SettingsWriting {
   }
 
   build() {
+    // **嵌入模式**（1.1.0）：书架右滑的「写作日志」页直接复用本页内容 ——
+    // 不套 SettingsShell（那层带返回栈语义），内容原样铺进书架分页；
+    // 数据刷新由 Index 切页时写 AppStorage('shelfPage') 触发（见 onPageWatch）。
+    if (this.embedded) {
+      // ⚠️ 嵌入时**不要给根设 height('100%')**：外层是 Scroll 的内容列（高度由内容撑开），
+      // 根被钉成一屏高会把整页内容裁在首屏里、滚不下去（真机反馈"卡片巨长没法用"）。
+      Column() {
+        this.writingContent()
+      }
+      .width('100%')
+    } else {
     SettingsShell({
       shellTitle: '写作日志',
       shellSubtitle: '热力图 · 字数 · 阅读时长 · 本地计算',
       stack: this.stack,
       life: this.life
     }) {
+      this.writingContent()
+    }
+    }
+  }
+
+  @Builder
+  writingContent() {
       Column({ space: HwSpace.lg }) {
         // ① 总览 4 格
         ImmersiveCard({
@@ -918,20 +872,8 @@ export struct SettingsWriting {
           this.overviewRow()
         }
 
-        // ①之二 阅读统计（与写作对称）
-        Text('阅读')
-          .fontSize(HwType.label + 4)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.palette().textPrimary)
-          .width('100%')
-
-        ImmersiveCard({
-          cardRadius: HwRadius.card,
-          cardPadding: HwSpace.lg,
-          palette: this.palette()
-        }) {
-          this.readingCard()
-        }
+        // ①之二 阅读统计：**1.1.0 起搬到书架页**（用户要求：书架页直接看阅读时长），
+        // 设置页不再重复展示。
 
         // 数据加载失败的可见提示（排障：不再静默吞掉）
         if (this.loadError.length > 0) {
@@ -975,38 +917,8 @@ export struct SettingsWriting {
         }
 
         // ⑥ 书架显示：把「回头看看」卡片的开关放在这里（用户指定位置）
-        Text('书架显示')
-          .fontSize(HwType.label + 4)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(this.palette().textPrimary)
-          .width('100%')
-
-        ImmersiveCard({
-          cardRadius: HwRadius.card,
-          cardPadding: HwSpace.lg,
-          palette: this.palette()
-        }) {
-          Row() {
-            Column({ space: 2 }) {
-              Text('「回头看看」卡片')
-                .fontSize(HwType.label + 1)
-                .fontColor(this.palette().textPrimary)
-              Text('在书架顶部显示一张回顾卡：随机挑一篇旧文 / 打开往年的今天')
-                .fontSize(HwType.caption)
-                .fontColor(this.palette().textTertiary)
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-
-            Toggle({ type: ToggleType.Switch, isOn: this.memoryCard })
-              .onChange((isOn: boolean) => {
-                this.memoryCard = isOn;
-              })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-        }
-
+        // ⚠️ 1.1.0 起卡片从书架搬到书架分页的「写作日志」页顶部，开关不再有意义，
+        // 设置页一并移除（卡片常驻展示）。
         Text('数据来自本机写作记录，卸载应用或清除数据后不可恢复。')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
@@ -1019,6 +931,5 @@ export struct SettingsWriting {
       // 大屏横屏下尺寸回调高频触发 + 状态回写会造成渲染异常（曾整页白屏），
       // 与其他设置页保持完全一致的写法。
       .padding({ bottom: HwSpace.xxl })
-    }
   }
 }

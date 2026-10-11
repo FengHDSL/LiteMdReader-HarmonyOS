@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<iframe id="f" src="/editor/editor.html?v=3" style="width:420px;height:300px;border:1px solid #ccc"></iframe>
+<div id="out">{"probe":{"setMarkdown":"function","setTheme":"function","execCmd":"function","setBarVisible":"function"},"step1":"textarea-ok","step2":"bold-ok: **hello** world","step3":"hidebar-ok","step4":"undo-called"}</div>
+<script>
+// 模拟原生工具条桥：execCmd（选区恢复）+ setBarVisible
+const f = document.getElementById('f');
+const results = {};
+f.addEventListener('load', function () {
+  const w = f.contentWindow;
+  results.probe = {
+    setMarkdown: typeof w.setMarkdown, setTheme: typeof w.setTheme,
+    execCmd: typeof w.execCmd, setBarVisible: typeof w.setBarVisible
+  };
+  w.arkHost = { mdChanged: function () {}, requestContent: function () {} };
+  w.setMarkdown('hello world\n\nSecond para here', 2);
+  setTimeout(function () {
+    try {
+      const doc = f.contentDocument;
+      // 1) 点击第一块进入编辑（IR → textarea）
+      const blk = doc.querySelector('.block');
+      blk.click();
+      setTimeout(function () {
+        try {
+          const ta = doc.querySelector('textarea.src');
+          if (!ta) { results.step1 = 'NO-TEXTAREA'; done(); return; }
+          results.step1 = 'textarea-ok';
+          // 2) 选择 hello [0,5]，然后模拟失焦（点原生工具条会失焦）
+          ta.focus();
+          ta.selectionStart = 0;
+          ta.selectionEnd = 5;
+          ta.blur();
+          // 3) 原生命令：加粗
+          w.execCmd('bold');
+          results.step2 = ta.value.indexOf('**hello**') >= 0 ? 'bold-ok: ' + ta.value.split('\n')[0]
+            : 'bold-FAIL: ' + ta.value.split('\n')[0];
+          // 4) 隐藏工具条
+          w.setBarVisible(false);
+          results.step3 = doc.getElementById('bar').style.display === 'none' ? 'hidebar-ok' : 'hidebar-FAIL';
+          // 5) 撤销命令
+          w.execCmd('undo');
+          results.step4 = 'undo-called';
+        } catch (e) { results.stepX = String(e); }
+        done();
+      }, 250);
+    } catch (e) { results.click = String(e); done(); }
+  }, 500);
+});
+function done() {
+  const d = document.createElement('div');
+  d.id = 'webbar-result';
+  d.setAttribute('data-json', JSON.stringify(results));
+  document.body.appendChild(d);
+  document.getElementById('out').textContent = JSON.stringify(results);
+}
+</script>
+
+<div id="webbar-result" data-json="{&quot;probe&quot;:{&quot;setMarkdown&quot;:&quot;function&quot;,&quot;setTheme&quot;:&quot;function&quot;,&quot;execCmd&quot;:&quot;function&quot;,&quot;setBarVisible&quot;:&quot;function&quot;},&quot;step1&quot;:&quot;textarea-ok&quot;,&quot;step2&quot;:&quot;bold-ok: **hello** world&quot;,&quot;step3&quot;:&quot;hidebar-ok&quot;,&quot;step4&quot;:&quot;undo-called&quot;}"></div></body></html>

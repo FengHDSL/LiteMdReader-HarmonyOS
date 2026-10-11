@@ -21,7 +21,7 @@ export enum MdBlockKind {
   Table = 5,
   Divider = 6,
   Callout = 7,
-  /** 数学公式块（$$...$$），由 MathLite 自绘子集渲染 */
+  /** 数学公式块（$$...$$ / \[...\]），由 KaTeX 完整渲染（未就绪时 MathLite 线性化兜底） */
   Math = 8,
   /** 图表块（```mermaid / markmap / echarts ...），按语言分发渲染 */
   Chart = 9,
@@ -40,7 +40,7 @@ export enum MdInlineKind {
   Image = 6,
   Mark = 7,
   FootnoteRef = 8,
-  /** 行内数学（$...$），线性化为 Unicode 呈现 */
+  /** 行内数学（$...$ / \(...\)），KaTeX 渲染成图内联；未就绪时线性化兜底 */
   MathInline = 9,
   /** 上标 ^text^ */
   Sup = 10,
@@ -213,12 +213,24 @@ export interface MdPiece {
   kind: MdInlineKind;
   href: string;
   num: number;
+  /**
+   * 该片段在块内**渲染文本**（各 spanLabel 拼接）中的字符范围 [start, end)。
+   * 供**非文本片段**（行内公式图）的批注定位用——图片没有选区，落注/查询
+   * 都靠这段区间与批注系统的「块 id + 渲染区间」坐标系对齐。
+   */
+  start: number;
+  end: number;
   bold: boolean;
   italic: boolean;
   strike: boolean;
   code: boolean;
   /** 该片段的荧光笔底色；空串表示无底纹 */
   highlight: string;
+  /**
+   * **实色底**（学习卡）：true 时 highlight 按**不透明**渲染，
+   * 不走荧光笔透明度缩放（默认黄色实底）
+   */
+  solid?: boolean;
   /** 该片段是否带波浪线标注（与底纹互斥） */
   wavy: boolean;
   /** **红色双下划线**（手写批注的标记形态，`TextDecorationStyle.DOUBLE`） */

@@ -32,6 +32,11 @@ export interface ReviewCard {
   reps: number;
   /** 上次复习时间（ms），0 = 从未复习 */
   lastReview: number;
+  /**
+   * 连续「记得」次数（1.1.0 复习逻辑：会话内累计选满 3 次「记得」才算掌握，
+   * 中途忘了 / 模糊即清零重数）。旧存档没有该字段 → undefined，按 0 处理。
+   */
+  streak?: number;
 }
 
 /** 复习统计 */

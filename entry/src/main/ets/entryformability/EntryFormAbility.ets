@@ -9,11 +9,13 @@
  * **即时更新走应用进程侧的 FormSync.pushRecents**（Reader 进度落盘 /
  * 应用退后台时主动 formProvider.updateForm），这里只是定时兜底。
  *
- * 卡片添加时把 formId（want 参数 FormParam.IDENTITY_KEY）登记进
- * `<filesDir>/form_ids.json`，移除时去登记——应用进程侧推送靠这份存档。
+ * 卡片添加时把 formId（want 参数 FormParam.IDENTITY_KEY）登记进 form_ids.json，
+ * 移除时去登记——应用进程侧推送靠这份存档。卡片内「刷新」按钮的 message
+ * 动作落在 onFormEvent（立即重推一份数据）。
  *
- * 注意：FormExtensionContext 没有 filesDir，而 DocStore 只用 filesDir，
- * 所以这里把 **ApplicationContext**（有 filesDir）传给 DocStore。
+ * 注意：FormSync 的所有文件（form_ids / form_snapshot）统一放在
+ * **ApplicationContext.filesDir（应用级目录）**——它与 UIAbilityContext 的
+ * HAP 级 filesDir 不是同一路径，跨进程只有应用级目录两边一致（详见 FormSync 头注释）。
  */
 import { FormExtensionAbility, formBindingData, formProvider, formInfo } from '@kit.FormKit';
 import { Want } from '@kit.AbilityKit';
@@ -36,6 +38,22 @@ export default class EntryFormAbility extends FormExtensionAbility {
       formProvider.updateForm(formId, FormSync.buildData(this.appCtx()));
     } catch (err) {
       hilog.warn(0x0000, TAG, 'updateForm failed: %{public}s', (err as Error).message);
+    }
+  }
+
+  /**
+   * 卡片内按钮的 message 动作（postCardAction action='message'）走这里。
+   * 目前唯一用途：2×2 卡片右上角的「刷新」按钮——立即重推一份数据，
+   * 数据偶尔没刷出来时用户点一下即可自愈。
+   * （本 SDK 基类签名是旧版第二参 message: string，保持一致才能覆写）
+   */
+  onFormEvent(formId: string, message: string): void {
+    try {
+      // 顺带登记（首次 message 也能把 ID 收进存档）
+      FormSync.rememberFormId(this.appCtx(), formId);
+      formProvider.updateForm(formId, FormSync.buildData(this.appCtx()));
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'onFormEvent failed: %{public}s', (err as Error).message);
     }
   }
 

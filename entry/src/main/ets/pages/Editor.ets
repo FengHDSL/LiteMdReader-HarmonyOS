@@ -21,12 +21,17 @@ import { image } from '@kit.ImageKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { KeyboardAvoidMode } from '@kit.ArkUI';
+import { webview } from '@kit.ArkWeb';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { modalSheetOptions } from '../material/ModalSheet';
 import { VersionSnapshot, VersionStore } from '../service/VersionStore';
 import { EditorDraft } from '../service/EditorDraft';
+import { UpdateService } from '../service/UpdateService';
 import { UnsavedConfirmDialog } from '../components/UnsavedConfirmDialog';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { withAlpha } from '../theme/DesignTokens';
+import { InlineFormulaPool } from '../components/InlineFormulaPool';
+import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import {
   HwBar,
   HwRadius,
@@ -48,9 +53,11 @@ import {
   ImmersiveIconButton
 } from '../material/ImmersiveCard';
 import { DocMeta, DocStore, ReaderRoute } from '../service/DocStore';
+import { AiChatStore } from '../service/AiChatStore';
 import { NavLifecycle } from '../service/NavLifecycle';
-import { MdBlock, MdBlockKind, MdHeading, MdParseResult, MdSrcRange, emptyBlock } from '../markdown/MdTypes';
+import { MdBlock, MdBlockKind, MdHeading, MdParseResult, MdSrcRange, MdTaskState, emptyBlock } from '../markdown/MdTypes';
 import { MdParser } from '../markdown/MdParser';
+import { EngineRegistry } from '../service/EngineRegistry';
 import { MdBlockView } from '../markdown/MdView';
 import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
@@ -135,6 +142,37 @@ const SYNTAX_ROWS: SyntaxRow[] = [
 /** 速查行语法 → 解析后的块缓存（key = syntax 原文） */
 const syntaxBlockCache: Map<string, MdBlock[]> = new Map();
 
+interface PreviewModeItem {
+  m: number;
+  label: string;
+  desc: string;
+}
+
+const PREVIEW_MODE_ITEMS: PreviewModeItem[] = [
+  // ⚠️ 实时预览只保留**分段预览编辑**（用户决定：WYSIWYG / IR 的 Web 表面路线
+  // 罢试，编辑页回到 1.1.1 的稳定形态）。两种 Web 模式的分支保留为死代码，
+  // previewMode 在进页时强制归 0。
+  { m: 0, label: '分段预览编辑', desc: '点哪块改哪块（原比例内联编辑）' }
+];
+
+/** Web 编辑器（WYSIWYG / IR）与 ArkTS 的桥：Web 调 mdChanged 推送内容。 */
+class EditorWebBridge {
+  onMd: ((md: string) => void) | null = null;
+  onNeedContent: (() => void) | null = null;
+
+  mdChanged(md: string): void {
+    if (this.onMd !== null) {
+      this.onMd(md);
+    }
+  }
+
+  requestContent(): void {
+    if (this.onNeedContent !== null) {
+      this.onNeedContent();
+    }
+  }
+}
+
 @Component
 export struct Editor {
   /** 分屏模式：0 纯编辑/预览切换 1 上下分屏 2 左右分屏 */
@@ -186,7 +224,7 @@ export struct Editor {
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
 
   @State docName: string = '';
-  @State content: string = '';
+  @State @Watch('onContentChanged') content: string = '';
   @State isNew: boolean = true;
   /** 已打开的文档是否为「只读」（标记见 DocStore.isReadOnly）：只读时不允许保存回写 */
   @State docReadOnly: boolean = false;
@@ -235,6 +273,120 @@ export struct Editor {
    * （`MdParser.blockSrcRange`）。所以编辑一个块不会动到别的块，
    * 工具条插入的元素也能立刻以渲染态出现在正确位置。
    */
+  /** 实时预览模式：0=分段预览编辑 1=所见即所得（WYSIWYG） 2=即时渲染（IR） */
+  @StorageLink('editorPreviewMode') @Watch('onPreviewModeChange') previewMode: number = 0;
+  /** 已关闭的渲染引擎（设置 → 引擎管理）：marked / turndown 任一关闭 = WYSIWYG 与 IR 停用 */
+  @StorageProp('disabledEngines') @Watch('onEnginesChanged') disabledEngineList: string = '';
+  /** 模式下拉菜单开关 */
+  @State previewModeMenu: boolean = false;
+  /** 模式变更：切走时同步 IR 草稿；Web 表面按新模式重渲染。 */
+  onPreviewModeChange(): void {
+    this.flushIrDraft();
+    if (this.liveMode && this.previewMode >= 1) {
+      this.pushContentToWeb();
+    }
+  }
+
+  selectPreviewMode(mode: number): void {
+    // WYSIWYG / IR 依赖 marked（MD→HTML）与 turndown（HTML→MD）——
+    // 「设置 → 引擎管理」里任一被关闭就停用这两个模式（关闭后无法渲染）
+    if (mode >= 1 && this.webModeBlocked()) {
+      this.toast('该模式依赖 marked / turndown，已在「设置 → 引擎管理」中关闭');
+      this.previewModeMenu = false;
+      return;
+    }
+    // 切走 IR 前先同步未落盘草稿
+    if (this.previewMode === 2) {
+      this.flushIrDraft();
+    }
+    this.previewMode = mode;
+    if (!this.liveMode) {
+      this.toggleLive();
+    }
+    this.previewModeMenu = false;
+    const labels: string[] = ['分段预览编辑', '所见即所得（WYSIWYG）', '即时渲染（IR）'];
+    this.toast('已切换：' + labels[mode] + (this.previewMode === 2 ? ' · 在上方源码区直接修改' : ''));
+  }
+
+  /** WYSIWYG / IR 的序列化引擎（marked 解析 + turndown 反序列化）是否已被关闭。 */
+  private webModeBlocked(): boolean {
+    const off: string = this.disabledEngineList;
+    return EngineRegistry.isOff('marked', off) || EngineRegistry.isOff('turndown', off);
+  }
+
+  /**
+   * 「设置 → 引擎管理」开关变化：
+   *   · 重收预览区行内公式任务（MathJax 开关，重新开启后补生成图）；
+   *   · marked / turndown 被关闭且当前正处在 WYSIWYG / IR → 强制回落「分段预览编辑」
+   *    （预览区图表 / 公式块的显隐由 MdBlockView 订阅同一键即时重渲染）。
+   */
+  onEnginesChanged(): void {
+    // 换 renderEpoch 强制预览列表重建：真机上子组件的 @StorageProp 不保证回刷
+    // （readerIndent 先例），key 驱动的整列表重建是项目铁律的兜底手段
+    this.renderEpoch++;
+    this.syncFormulaTasks();
+    if (this.previewMode >= 1 && this.webModeBlocked()) {
+      this.previewMode = 0;
+      this.toast('marked / turndown 已关闭，实时预览回落为分段预览编辑');
+    }
+  }
+
+  @Builder
+  previewModeMenuBuilder() {
+    Column() {
+      ForEach(PREVIEW_MODE_ITEMS, (item: PreviewModeItem) => {
+        Row({ space: 10 }) {
+          SymbolGlyph($r('sys.symbol.checkmark'))
+            .fontSize(15)
+            .fontColor([this.previewMode === item.m ? '#D4BA86' : '#00000000'])
+          Column({ space: 2 }) {
+            Text(item.label)
+              .fontSize(15)
+              .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
+              .fontColor(this.palette().textPrimary)
+            Text(item.desc)
+              .fontSize(12)
+              .fontColor(this.palette().textTertiary)
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+        }
+        .width('100%')
+        .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+        .borderRadius(10)
+        // 引擎管理里关闭了 marked / turndown → WYSIWYG / IR 两项淡显（点了会提示）
+        .opacity(this.webModeBlocked() && item.m >= 1 ? 0.4 : 1)
+        .onClick(() => {
+          this.selectPreviewMode(item.m);
+        })
+      }, (item: PreviewModeItem) => '' + item.m + '_' + this.previewMode)
+      Divider()
+        .strokeWidth(1)
+        .color(this.palette().divider)
+        .margin({ top: 6, bottom: 6 })
+      Row({ space: 10 }) {
+        SymbolGlyph($r('sys.symbol.xmark'))
+          .fontSize(15)
+          .fontColor([this.palette().textSecondary])
+        Text('关闭实时预览')
+          .fontSize(15)
+          .fontColor(this.palette().textSecondary)
+      }
+      .width('100%')
+      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+      .borderRadius(10)
+      .onClick(() => {
+        this.previewModeMenu = false;
+        if (this.liveMode) {
+          this.toggleLive();
+        }
+      })
+    }
+    .width(260)
+    .padding(8)
+  }
+  /** 实时预览编辑默认关闭（用户拍板：不要默认进入；从眼睛图标进，仅本会话）；
+   *  想要纯文本编辑可从模式菜单「关闭实时预览」，仅本次会话生效。 */
   @State liveMode: boolean = false;
   /** 正在编辑的块下标（-1 = 没有块处于编辑态） */
   @State liveEditing: number = -1;
@@ -253,12 +405,33 @@ export struct Editor {
   private lastEditSwitchAt: number = 0;
   /** 实时预览里正在网格编辑的表格块下标（-1 = 没有） */
   @State liveTableIndex: number = -1;
+  /** 所见即所得：弹出面板编辑态（-1 = 关闭）；草稿为该块源码 */
+  @State wysOpen: boolean = false;
+  @State wysIndex: number = -1;
+  @State wysDraft: string = '';
+  /** 即时渲染（IR）：整页源码草稿与防抖句柄 */
+  @State irDraft: string = '';
+  private irDebounce: number = -1;
+  /** Web 编辑器（WYSIWYG / IR 表面） */
+  private editWebCtrl: webview.WebviewController = new webview.WebviewController();
+  private webBridge: EditorWebBridge = new EditorWebBridge();
+  /** Web 内容冲刷去重（防保存重入无限循环） */
+  private webFlushed: boolean = false;
   /**
    * 「块内部刚消费过这次点击」的标记。
    * ArkUI 的 ClickEvent 没有 stopPropagation，父子 onClick 都会跑（子先父后），
    * 靠它避免点图片 / 表格 / 放大按钮时又顺带进了整块的编辑态。
    */
   private liveChildTap: boolean = false;
+  /** 子交互标记的时刻：超过 700ms 视为陈旧、不再吞下一次块点击
+   *  （打开网格/放大图等不冒泡的路径会留下 true，把下一次点块吞掉——
+   *   用户实测"点一下就进去就行，为什么要点两次"） */
+  private liveChildTapAt: number = 0;
+
+  private markChildTap(): void {
+    this.liveChildTap = true;
+    this.liveChildTapAt = Date.now();
+  }
   /** 插入锚点：最近点过 / 编辑过的块下标，工具条插入的元素落在它后面 */
   @State liveAnchor: number = -1;
   /** 编辑态下方「这块渲染出来什么样」的预览块（只解析草稿，块很小，开销可忽略） */
@@ -292,6 +465,21 @@ export struct Editor {
   @State showSyntax: boolean = false;
   /** 画板浮层 */
   @State previewBlocks: MdBlock[] = [];
+  /** 实时自动保存防抖定时器（-1 = 无待发；1.2s 无新改动即落盘） */
+  private autoSaveTimer: number = -1;
+  /** 自动保存基线：加载 / 草稿恢复 / 模板灌入 / 上次保存成功时的内容快照 */
+  private autoSaveBase: string = '';
+  /** 迷你预览刷新计数：每次草稿重解析递增（块 id 是解析序号，打字时不变，
+   *  不加它 ForEach 复用旧节点 = "预览效果不实时刷新"——用户实测） */
+  @State livePreviewTick: number = 0;
+  /** 块提交/删除计数：提交后块内容变了但 id（解析序号）与 renderEpoch 都没变，
+   *  key 不变会让 ForEach 复用旧节点 = "完成后不刷新"与"点两次才进编辑"
+   * （用户实测）。进 key 强制整列表按新内容重建。 */
+  @State liveCommitTick: number = 0;
+  /** 行内公式图任务（编辑器预览里的 $公式$ 与阅读页同款出图） */
+  @State formulaTasks: FormulaTask[] = [];
+  /** 公式图就绪信号（递增 → 预览块 key 重算 → 换成图） */
+  @State formulaTick: number = 0;
   @State rootWidth: number = 360;
   /** 窗口实测高度（全屏画板的尺寸依据） */
   @State rootHeight: number = 800;
@@ -300,6 +488,8 @@ export struct Editor {
 
   onVisualChanged(): void {
     this.renderEpoch++;
+    // 公式图缓存键含字号——预览区的图任务重收（否则新字号永远无图）
+    this.syncFormulaTasks();
   }
   // ── 编辑器查找 / 替换 / 跳转行（移植自参考项目 CodeMirror 的查找替换与跳转行） ──
   @State showFind: boolean = false;
@@ -337,12 +527,19 @@ export struct Editor {
   private lastAutoAt: number = 0;
   private lastAutoContent: string = '';
 
+  /** AI 预设菜单显隐：已配置接口才出现「摘要 / 续写 / 润色」（进入对话始终可用） */
+  @State aiReady: boolean = false;
+  /** 配置纪元：设置页保存后重新判定 AI 是否已配置（否则编辑页入口停在旧状态） */
+  @StorageProp('aiCfgTick') @Watch('onAiCfgTick') aiCfgTick: number = 0;
+
   aboutToAppear(): void {
     // **键盘避让改 RESIZE**：默认 OFFSET 是「整页上移」，会把悬浮工具层顶到
     // 键盘上方一大截（页面没缩、只是平移）。RESIZE 让页面布局高度直接收缩，
     // 钉底的悬浮层自然贴在键盘上沿，正文区也同步缩小——平台级方案，自己不算高度。
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     this.startBlobDrift();
+    const aiCtx: common.UIAbilityContext | null = this.ctx();
+    this.aiReady = aiCtx !== null && AiChatStore.isConfigured(AiChatStore.loadConfig(aiCtx));
     const params: ReaderRoute = this.route;
     if (params !== undefined && params !== null && params.name !== undefined && params.name.length > 0) {
       this.loadExisting(params.name);
@@ -359,16 +556,38 @@ export struct Editor {
       this.dirty = false;
     }
     applySystemBarTheme(this.isDark());
+    // 恢复的预览模式可能落在已关闭的引擎上（上次用着 WYSIWYG，之后在
+    // 「设置 → 引擎管理」里关了 marked/turndown）→ 进页先回落，别等渲染失败
+    // ⚠️ 实时预览只保留分段预览编辑（WYSIWYG / IR 已罢试）——持久化的 1/2 归 0
+    if (this.previewMode !== 0) {
+      this.previewMode = 0;
+    }
     // 版本历史自动保存：30s 一次节拍，到间隔且内容有变化才真正落快照
     this.verTimer = setInterval(() => {
       this.autoSnapshotTick();
     }, 30000);
+    // **实时自动保存的基线**（用户要求"实时保存修改的内容"）：加载 / 草稿恢复 /
+    // 模板灌入完成后，把当前内容定为基线——此后内容偏离基线（用户真的改了）才
+    // 防抖落盘，避免"打开文档就被自动保存"的误写。
+    this.autoSaveBase = this.content;
   }
 
   aboutToDisappear(): void {
     if (this.verTimer >= 0) {
       clearInterval(this.verTimer);
       this.verTimer = -1;
+    }
+    // 编辑中的块先提交，再有未落盘内容就立即静默保存（最后一次敲击不丢）
+    this.flushLiveEdit();
+    if (this.content !== this.autoSaveBase && this.dirty) {
+      if (this.autoSaveTimer >= 0) {
+        clearTimeout(this.autoSaveTimer);
+        this.autoSaveTimer = -1;
+      }
+      this.save(true);
+    } else if (this.autoSaveTimer >= 0) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = -1;
     }
   }
 
@@ -496,6 +715,10 @@ export struct Editor {
   onThemeChanged(): void {
     applyAppColorMode(this.themeMode);
     applySystemBarTheme(this.isDark());
+    // Web 编辑表面（WYSIWYG/IR）配色跟主题走（浅色主题不再是一整块深色网页）
+    this.pushThemeToWeb();
+    // 公式图缓存键含深浅——预览区图任务重收
+    this.syncFormulaTasks();
   }
 
   /** 沉浸布局下顶部要避开状态栏（px → vp，用 UIContext 的 px2vp，全局那个已废弃）。 */
@@ -571,6 +794,12 @@ export struct Editor {
   }
 
   // ══════════════════════ 基础 ══════════════════════
+
+  /** 设置页保存了 AI 配置：重新判定 AI 入口可用性（编辑页 AI chip 的预设菜单随之出现）。 */
+  private onAiCfgTick(): void {
+    const c: common.UIAbilityContext | null = this.ctx();
+    this.aiReady = c !== null && AiChatStore.isConfigured(AiChatStore.loadConfig(c));
+  }
 
   private ctx(): common.UIAbilityContext | null {
     const c = this.getUIContext().getHostContext();
@@ -796,6 +1025,61 @@ export struct Editor {
   // 移植自参考项目「编辑时粘贴图片 → 存进 images/ 目录 → 自动插引用」：
   // 端上没有剪贴板图片的可靠入口，用系统图片选择器替代；
   // 图片复制进沙箱 docs/images/（无权限要求），引用相对路径，阅读页可真实加载。
+
+  /**
+   * 进入 AI 对话（1.2.0）：把当前编辑的文档发给 AI（修改 / 润色 / 提问）。
+   * 正文走 AppStorage 信号直传（**未保存的修改也在内**，AI 读到的是此刻内容）；
+   * quote 非空 = 实时预览里长按选择条「发送AI」带来的选中文本。
+   */
+  private openAiChat(quote: string): void {
+    // **基础模式（纯离线）拦截**（用户要求）：AI 助手要走网络，离线模式直接挡在入口
+    if (UpdateService.isOffline()) {
+      this.toast('基础模式（纯离线）下 AI 助手不可用');
+      return;
+    }
+    // **未保存先自动保存**（用户要求）：保证 AI 拿到的文档名 / 正文与磁盘一致；
+    // 保存失败（如只读文档）不阻断——正文仍经信号直传给 AI
+    if (this.dirty) {
+      this.save();
+    }
+    AppStorage.setOrCreate('aiChatDocName', this.docName);
+    AppStorage.setOrCreate('aiChatDocContent', this.content);
+    AppStorage.setOrCreate('aiChatQuote', quote);
+    if (this.stack !== null) {
+      this.stack.pushPath({ name: 'pages/AiChat' });
+    }
+  }
+
+  /** 编辑页 AI 预设：摘要 / 续写 / 润色 → 进对话页自动发送（复用文档上下文与 <doc> 落盘） */
+  private sendAiPreset(prompt: string): void {
+    AppStorage.setOrCreate('aiChatPreset', prompt);
+    this.openAiChat('');
+  }
+
+  /** AI 助手 chip 长按菜单（bindContextMenu LongPress；与 chip 点击进对话不竞争，MenuItem 点击自动收起） */
+  @Builder
+  aiChipMenu() {
+    Menu() {
+      MenuItem({ content: '进入 AI 对话' })
+        .onClick(() => {
+          this.openAiChat('');
+        })
+      if (this.aiReady) {
+        MenuItem({ content: '生成摘要' })
+          .onClick(() => {
+            this.sendAiPreset('请为这篇文档生成一份摘要，要点清晰、语言简洁。');
+          })
+        MenuItem({ content: '续写' })
+          .onClick(() => {
+            this.sendAiPreset('请接着这篇文档的结尾续写一段，保持原文的风格与语气。');
+          })
+        MenuItem({ content: '润色' })
+          .onClick(() => {
+            this.sendAiPreset('请润色这篇文档的语言表达，保持原意与整体结构，并给出修改后的完整全文。');
+          })
+      }
+    }
+  }
 
   private insertImage(): void {
     const ctx = this.ctx();
@@ -1089,7 +1373,59 @@ export struct Editor {
 
   // ══════════════════════ 保存与返回 ══════════════════════
 
-  private save(): boolean {
+  /**
+   * **正在编辑的块草稿提交回正文**（保存 / 离开前必须调用——否则当前块的
+   * 修改不在 content 里，保存就丢：用户实测"保存后也没有修改"）。
+   */
+  private flushLiveEdit(): void {
+    if (this.liveMode && this.liveEditing >= 0) {
+      this.commitBlockEdit();
+    }
+  }
+
+  /**
+   * **实时自动保存**（用户要求"实时保存修改的内容"）：内容偏离基线 1.2s 后
+   * 静默落盘（不打 toast、不打版本快照——快照有 30s 节拍兜底）。
+   * 基线 = 加载 / 草稿恢复 / 模板灌入 / 上次保存成功的内容，打开文档本身不触发。
+   * 失败（只读等）静默返回，dirty 保持 true 由显式保存兜底。
+   */
+  private onContentChanged(): void {
+    if (this.content === this.autoSaveBase) {
+      return;
+    }
+    if (this.autoSaveTimer >= 0) {
+      clearTimeout(this.autoSaveTimer);
+    }
+    this.autoSaveTimer = setTimeout((): void => {
+      this.autoSaveTimer = -1;
+      if (this.content !== this.autoSaveBase && this.dirty) {
+        this.save(true);
+      }
+    }, 1200);
+  }
+
+  /**
+   * 保存。quiet = **实时自动保存通道**（用户要求"实时保存修改的内容"）：
+   * 成功不打 toast（连续自动保存不吵）、只读/未命名的提示也静默跳过；
+   * 失败照常提示（罕见且必须让用户知道），dirty 保持 true 由显式保存兜底。
+   */
+  private save(quiet: boolean = false): boolean {
+    // **正在编辑的块先提交回正文**（否则保存丢当前块——用户实测）
+    this.flushLiveEdit();
+    // Web 编辑模式：先把 Web 里的最新内容同步回来再落盘（200ms 等桥回调，只重试一次）
+    if (this.previewMode >= 1 && this.liveMode && !this.webFlushed) {
+      this.webFlushed = true;
+      try {
+        this.editWebCtrl.runJavaScript('window.exportToHost();');
+      } catch (err) {
+        // 忽略
+      }
+      setTimeout((): void => {
+        this.save(quiet);
+      }, 200);
+      return false;
+    }
+    this.webFlushed = false;
     const ctx = this.ctx();
     if (ctx === null) {
       return false;
@@ -1103,12 +1439,16 @@ export struct Editor {
         + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
     }
     if (wanted.length === 0) {
-      this.toast('请先填写文档名');
+      if (!quiet) {
+        this.toast('请先填写文档名');
+      }
       return false;
     }
     // 只读文档不允许回写（正常入口已隐藏编辑按钮，这里兜底挡住深层路径）
     if (this.docReadOnly && !this.isNew) {
-      this.toast('该文档是只读的，先切成「可写」再编辑');
+      if (!quiet) {
+        this.toast('该文档是只读的，先切成「可写」再编辑');
+      }
       return false;
     }
     try {
@@ -1124,8 +1464,11 @@ export struct Editor {
         this.docName = meta.name;
         this.dirty = false;
         EditorDraft.clear(ctx, meta.name);
-        this.snapshotAfterSave(ctx);
-        this.toast('已保存《' + meta.name + '》');
+        this.autoSaveBase = this.content;
+        if (!quiet) {
+          this.snapshotAfterSave(ctx);
+          this.toast('已保存《' + meta.name + '》');
+        }
         return true;
       }
       if (wanted !== this.originalName) {
@@ -1143,8 +1486,12 @@ export struct Editor {
       this.dirty = false;
       // 已写入正文：草稿没有存在意义了，清掉（否则下次打开又会冒出旧内容）
       EditorDraft.clear(ctx, this.originalName);
-      this.snapshotAfterSave(ctx);
-      this.toast('已保存《' + this.originalName + '》');
+      this.autoSaveBase = this.content;
+      if (!quiet) {
+        // 版本快照只在显式保存时记（实时自动保存有 30s 节拍兜底，不打快照防刷屏）
+        this.snapshotAfterSave(ctx);
+        this.toast('已保存《' + this.originalName + '》');
+      }
       return true;
     } catch (err) {
       this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
@@ -1179,6 +1526,8 @@ export struct Editor {
    * 新文档（还没存过盘、没有名字）没有草稿挂靠点，退化为不保存直接走。
    */
   private leaveWithDraft(): void {
+    // 编辑中的块先提交：草稿要存的是"含当前块修改"的完整内容
+    this.flushLiveEdit();
     const ctx = this.ctx();
     if (ctx !== null && this.docName.length > 0) {
       if (EditorDraft.save(ctx, this.docName, this.content)) {
@@ -1186,6 +1535,8 @@ export struct Editor {
       }
     }
     this.dirty = false;
+    // 基线对齐：离开后 aboutToDisappear 的冲刷不能把"直接离开"的内容再写进正文
+    this.autoSaveBase = this.content;
     this.unsavedDialog.close();
     this.closePage();
   }
@@ -1293,31 +1644,51 @@ export struct Editor {
             .fontColor([this.palette().textPrimary])
         }
 
-        // **实时预览编辑**（用户要求）：渲染态直接编辑，点哪块改哪块
+        // **实时预览编辑**（用户要求：点击直接进入 / 再点退出，不再弹模式菜单）；
+        // 金点 = 实时预览中的状态标记
         ImmersiveIconButton({
           buttonSize: 34,
           buttonMaterialShadow: false,
           palette: this.palette(),
           buttonOnTap: () => {
-            this.toggleLive();
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.toggleLive();
+            });
           }
         }) {
-          SymbolGlyph($r('sys.symbol.square_and_pencil'))
-            .fontSize(16)
-            .fontColor([this.liveMode ? this.palette().accent : this.palette().textPrimary])
+          Stack({ alignContent: Alignment.Center }) {
+            SymbolGlyph($r('sys.symbol.square_and_pencil'))
+              .fontSize(16)
+              .fontColor([this.liveMode ? this.palette().accent : this.palette().textPrimary])
+            Circle()
+              .width(8)
+              .height(8)
+              .fill('#D4BA86')
+              .offset({ x: 8, y: -7 })
+              .opacity(this.liveMode ? 1 : 0)
+          }
+          .width(22)
+          .height(22)
         }
-
-        ImmersiveIconButton({
-          buttonSize: 34,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            this.togglePreview();
+        // **纯预览切换（眼睛）**：实时预览编辑中隐藏（用户要求，带出现/消失过渡）——
+        // 实时预览本身全程渲染态，纯预览按钮此时是冗余入口
+        if (!this.liveMode) {
+          Column() {
+            ImmersiveIconButton({
+              buttonSize: 34,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.togglePreview();
+              }
+            }) {
+              SymbolGlyph(this.preview ? $r('sys.symbol.highlighter_line') : $r('sys.symbol.eye'))
+                .fontSize(17)
+                .fontColor([this.preview ? this.palette().accent : this.palette().textPrimary])
+            }
           }
-        }) {
-          SymbolGlyph(this.preview ? $r('sys.symbol.highlighter_line') : $r('sys.symbol.eye'))
-            .fontSize(17)
-            .fontColor([this.preview ? this.palette().accent : this.palette().textPrimary])
+          .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.scale({ x: 0.7, y: 0.7 })))
         }
 
         ImmersiveIconButton({
@@ -1388,9 +1759,9 @@ export struct Editor {
     this.updateChipFade();
   }
 
-  /** 芯片总数（手写 + 插图片 + SNIPPETS）。 */
+  /** 芯片总数（手写 + 插图片 + AI 助手 + SNIPPETS）。 */
   private chipCount(): number {
-    return 2 + SNIPPETS.length;
+    return 3 + SNIPPETS.length;
   }
 
   /**
@@ -1477,6 +1848,29 @@ export struct Editor {
           this.rememberChipGeo(1, newValue);
         })
 
+        // AI 助手（1.2.0）：点击**直接进入对话**（真机验证：bindMenu 与 chip 内部手势
+        // 竞争导致点击无反应 → 点击直进对话 + 长按弹功能菜单，两者不竞争）
+        Column() {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: 'AI 助手',
+            chipOnTap: () => {
+              this.openAiChat('');
+            }
+          }) {
+            Image($r('app.media.ai_spark'))
+              .width(17)
+              .height(17)
+              .fillColor(this.palette().accent)
+          }
+        }
+        .opacity(this.chipAlphaAt(2))
+        .blur(this.chipBlurAt(2))
+        .onAreaChange((oldValue: Area, newValue: Area) => {
+          this.rememberChipGeo(2, newValue);
+        })
+        .bindContextMenu(this.aiChipMenu.bind(this), ResponseType.LongPress)
+
         ForEach(SNIPPETS, (item: MdSnippet, index: number) => {
           ImmersiveChip({
             palette: this.palette(),
@@ -1485,10 +1879,10 @@ export struct Editor {
               this.insertSnippet(item);
             }
           })
-          .opacity(this.chipAlphaAt(index + 2))
-          .blur(this.chipBlurAt(index + 2))
+          .opacity(this.chipAlphaAt(index + 3))
+          .blur(this.chipBlurAt(index + 3))
           .onAreaChange((oldValue: Area, newValue: Area) => {
-            this.rememberChipGeo(index + 2, newValue);
+            this.rememberChipGeo(index + 3, newValue);
           })
         }, (item: MdSnippet) => item.key)
       }
@@ -1898,6 +2292,9 @@ export struct Editor {
                   },
                   imageTapHandler: (key: string, src: string) => {
                     this.openPreviewImagePayload('image', src);
+                  },
+                  aiAskHandler: (text: string) => {
+                    this.openAiChat(text);
                   }
                 })
                 .width('100%')
@@ -2039,6 +2436,11 @@ export struct Editor {
             palette: this.palette(),
             bodySize: this.fontSize,
             lineMul: this.lineMul,
+            // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
+            // 勾选直接改对应源码行的 [ ]↔[x]，与就地编辑同一套数据。
+            taskToggleHandler: (blockId: string): void => {
+              this.togglePreviewTask(blockId);
+            },
             // **预览里的图片卡片要能放大**（用户反馈：卡片的放大按钮点了没反应）——
             // 此前这两个回调没传，MdBlockView 用的是默认空实现，所以点右上角放大钮
             // 与点图片本体都毫无反应。这里接到编辑页既有的图片浮层上（可捏合 / 拖动）。
@@ -2055,10 +2457,19 @@ export struct Editor {
               this.previewImgDx = 0;
               this.previewImgDy = 0;
               this.previewImage = src;
+            },
+            aiAskHandler: (text: string) => {
+              // 预览列表长按「发送AI」（1.2.0）
+              this.openAiChat(text);
             }
           })
         }
-      }, (block: MdBlock) => 'p_' + block.id + '_' + this.renderEpoch)
+      }, (block: MdBlock) => {
+        // 读取公式就绪信号建立依赖：图就绪 → 该块重建 → 文字换成图
+        const ft: number = this.formulaTick;
+        return 'p_' + block.id + '_' + this.renderEpoch + (ft >= 0 ? this.formulaSuffix(block) : '')
+          + (block.task === MdTaskState.Done ? '_d' : (block.task === MdTaskState.Todo ? '_t' : ''));
+      })
       ListItem() {
         Text('—— 预览结束 ——')
           .fontSize(HwType.caption)
@@ -2096,6 +2507,30 @@ export struct Editor {
           .height(this.contentTopInset())
       }
 
+      // 即时渲染（IR）：整页源码置顶，下方渲染块随输入防抖更新
+      if (this.previewMode === 2) {
+        ListItem() {
+          Column({ space: HwSpace.xs }) {
+            Text('即时渲染 · 直接改源码，下方实时预览')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            TextArea({ text: this.irDraft })
+              .width('100%')
+              .height(230)
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+              .backgroundColor(this.palette().quoteBg)
+              .borderRadius(HwRadius.inner)
+              .onChange((v: string) => {
+                this.onIrInput(v);
+              })
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+          .padding({ bottom: HwSpace.sm })
+        }
+      }
+
       // 常驻用法提示（编辑态时不显示，免得跟着滚动干扰）：正文明明是渲染态，
       // 不写清楚"可以点"，很容易以为只能看
       if (this.liveEditing < 0 && this.previewBlocks.length > 0) {
@@ -2129,6 +2564,8 @@ export struct Editor {
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
                 renderEpoch: this.renderEpoch,
+                formulaTick: this.formulaTick,
+                previewTick: this.livePreviewTick,
                 previewBlocks: this.livePreviewBlocks,
                 draft: $liveDraft,
                 onDelete: (i: number): void => {
@@ -2165,12 +2602,19 @@ export struct Editor {
                 palette: this.palette(),
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
+                // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
+                // 勾选直接翻转对应源码行的 [ ]↔[x]；同时置 liveChildTap，
+                // 防止这次点击冒泡到外层、误触"整块进入编辑态"。
+                taskToggleHandler: (blockId: string): void => {
+                  this.markChildTap();
+                  this.togglePreviewTask(blockId);
+                },
                 tableEditHandler: (blockId: string): void => {
-                  this.liveChildTap = true;
+                  this.markChildTap();
                   this.openLiveTable(index);
                 },
                 enlargeHandler: (mode: string, payload: string, geoKey: string, title: string): void => {
-                  this.liveChildTap = true;
+                  this.markChildTap();
                   if (mode === 'image') {
                     this.previewImgScale = 1;
                     this.previewImgDx = 0;
@@ -2179,11 +2623,16 @@ export struct Editor {
                   }
                 },
                 imageTapHandler: (key: string, src: string): void => {
-                  this.liveChildTap = true;
+                  this.markChildTap();
                   this.previewImgScale = 1;
                   this.previewImgDx = 0;
                   this.previewImgDy = 0;
                   this.previewImage = src;
+                },
+                aiAskHandler: (text: string): void => {
+                  // 实时预览长按「发送AI」（1.2.0）：与图片点击同一套防冒泡标记
+                  this.markChildTap();
+                  this.openAiChat(text);
                 }
               })
               // 每块末尾的编辑图标：**明确告诉用户"这一块能改"** ——
@@ -2203,7 +2652,7 @@ export struct Editor {
                 .padding({ left: 8, right: 4, top: 3, bottom: 3 })
                 .opacity(0.6)
                 .onClick(() => {
-                  this.liveChildTap = true;
+                  this.markChildTap();
                   this.editBlock(index);
                 })
               }
@@ -2224,10 +2673,11 @@ export struct Editor {
             // 块内部的图片 / 表格 / 放大按钮、以及上面的编辑图标点过后会置
             // `liveChildTap`，这里读到就复位并跳过，避免一次点击进两次编辑态。
             .onClick(() => {
-              if (this.liveChildTap) {
+              if (this.liveChildTap && Date.now() - this.liveChildTapAt < 700) {
                 this.liveChildTap = false;
                 return;
               }
+              this.liveChildTap = false;
               this.editBlock(index);
             })
             // 退出编辑态后本段重新挂载：淡入，避免"啪"地一下换回来
@@ -2236,11 +2686,18 @@ export struct Editor {
             }))
           }
         }
-      }, (block: MdBlock, index: number) => 'L_' + index + '_' + block.id + '_' + this.renderEpoch)
+      }, (block: MdBlock, index: number) => {
+        const ft: number = this.formulaTick;
+        return 'L_' + index + '_' + block.id + '_' + this.renderEpoch + (ft >= 0 ? this.formulaSuffix(block) : '')
+          + (block.task === MdTaskState.Done ? '_d' : (block.task === MdTaskState.Todo ? '_t' : ''))
+          + '_c' + this.liveCommitTick;
+      })
 
       // 文末**正在新建的那一块**：还没写进正文（也没有对应的渲染块），
       // 属于内存态的编辑项 —— 用户输入完成才落到原文，空着就丢弃。
       // 索引用 `previewBlocks.length` 表示"新块"，是这套机制的唯一约定。
+      // ⚠️ key 带 liveCommitTick：提交/删除后强制整列表按新内容重建，
+      // 否则 ForEach 复用旧节点 = "完成后不刷新 / 点两次才进编辑"（用户实测）。
       if (this.liveEditing >= this.previewBlocks.length && this.liveEditing >= 0) {
         ListItem() {
           Column() {
@@ -2272,7 +2729,7 @@ export struct Editor {
           // 编辑器内部的点击（输入框、完成、删除）都属于"已消费"，
           // 不要让外层再当成"点空白新建一段"
           .onClick(() => {
-            this.liveChildTap = true;
+            this.markChildTap();
           })
         }
       }
@@ -2349,6 +2806,47 @@ export struct Editor {
     return 1 + tip;
   }
 
+  /**
+   * 实时预览里的**待办勾选**（用户反馈：待办点了没反应）——
+   * 按块 id 找到对应源码行，把 `[ ]` ↔ `[x]` 翻转后整体回写 this.content：
+   * 与就地编辑同一套数据，后续保存自然带上。
+   */
+  private togglePreviewTask(blockId: string): void {
+    let at: number = -1;
+    for (let k = 0; k < this.previewBlocks.length; k++) {
+      if (this.previewBlocks[k].id === blockId) {
+        at = k;
+        break;
+      }
+    }
+    if (at < 0) {
+      return;
+    }
+    const block: MdBlock = this.previewBlocks[at];
+    if (block.task !== MdTaskState.Todo && block.task !== MdTaskState.Done) {
+      return;
+    }
+    const lines: string[] = this.content.split('\n');
+    // 块的 srcLine 是 **0 起**（与 Reader 的任务跳转同一口径）
+    const i: number = block.srcLine;
+    if (i < 0 || i >= lines.length) {
+      return;
+    }
+    if (lines[i].indexOf('[ ]') >= 0) {
+      lines[i] = lines[i].replace('[ ]', '[x]');
+    } else if (lines[i].indexOf('[x]') >= 0 || lines[i].indexOf('[X]') >= 0) {
+      lines[i] = lines[i].replace('[x]', '[ ]').replace('[X]', '[ ]');
+    } else {
+      return;
+    }
+    this.content = lines.join('\n');
+    this.dirty = true;
+    this.refreshPreviewBlocks();
+    // ⚠️ 这里**不要** renderEpoch++：那会把整个预览列表的 key 全部换掉、
+    // 整列表重建 = 屏幕闪一下（用户反馈）。勾选状态已并入 ForEach 的
+    // key 后缀（任务态标记），只有被勾选的那一块会重建。
+  }
+
   /** 解析当前内容供预览区渲染 */
   private refreshPreviewBlocks(): void {
     try {
@@ -2357,6 +2855,34 @@ export struct Editor {
     } catch (err) {
       this.previewBlocks = [];
     }
+    // 预览内容一变就重收公式任务（预览区的 $公式$ 与阅读页同款出图）
+    this.syncFormulaTasks();
+  }
+
+  /** 收集预览块里的行内公式图任务（缓存键含字号；未就绪时回落线性化文本）。 */
+  private syncFormulaTasks(): void {
+    // **正在编辑块的迷你预览也要收**（用户要求：实时预览编辑里输入的 $公式$
+    // 立刻渲染成公式图）——livePreviewBlocks 是编辑草稿的解析结果。
+    const tasks: FormulaTask[] = FormulaTasks.collect(this.previewBlocks, this.isDark(), this.fontSize);
+    const live: FormulaTask[] = FormulaTasks.collect(this.livePreviewBlocks, this.isDark(), this.fontSize);
+    for (let k: number = 0; k < live.length; k++) {
+      let dup: boolean = false;
+      for (let q: number = 0; q < tasks.length; q++) {
+        if (tasks[q].key === live[k].key) {
+          dup = true;
+          break;
+        }
+      }
+      if (!dup) {
+        tasks.push(live[k]);
+      }
+    }
+    this.formulaTasks = tasks;
+  }
+
+  /** 预览块 key 的"公式就绪位"后缀（图就绪 → 该块重建 → 文字换成图）。 */
+  private formulaSuffix(block: MdBlock): string {
+    return FormulaTasks.readySuffix(this.ctx(), block, this.isDark(), this.fontSize);
   }
 
   // ══════════════════════ 实时预览编辑（块级所见即所得）══════════════════════
@@ -2779,17 +3305,139 @@ export struct Editor {
   }
 
   /** 点一块 → 进入它的编辑态（表格走网格编辑器）。 */
+  // ── Web 编辑器（WYSIWYG / IR）内容同步 ──
+
+  /** Web → 原生：Web 推送整篇 Markdown（防抖后 / 导出时）。 */
+  private onWebMdChanged(md: string): void {
+    if (this.content === md) {
+      return;
+    }
+    this.content = md;
+    this.dirty = true;
+    this.refreshPreviewBlocks();
+  }
+
+  /** 原生 → Web：整篇 Markdown + 当前模式推给编辑器页面。 */
+  private pushContentToWeb(): void {
+    try {
+      this.editWebCtrl.runJavaScript('window.setMarkdown('
+        + JSON.stringify(this.content) + ',' + this.previewMode + ');');
+    } catch (err) {
+      // Web 未就绪：onPageEnd 会再推一次
+    }
+  }
+
+  /**
+   * 原生 → Web：把 app 当前主题的**调色变量**推给 Web 编辑表面。
+   *
+   * 编辑表面（editor.html）此前配色固定深色（#11161d）：浅色主题下整块编辑区
+   * 变成"深色网页"，与 app 割裂（用户实测"怎么出现 web 端的工具栏了？而且
+   * 界面也不一样"）。工具条本身是 vditor 式设计（按用户要求实现、保留），
+   * 这里把它的配色与 app 主题对齐——变量名与 editor.html 的 :root 一一对应。
+   */
+  private pushThemeToWeb(): void {
+    const p: ReaderPalette = this.palette();
+    const vars: string = '{"--bg":"' + Editor.cssColor(p.pageTop)
+      + '","--bg2":"' + Editor.cssColor(withAlpha(p.surface, 'FF'))
+      + '","--line":"' + Editor.cssColor(p.divider)
+      + '","--tx":"' + Editor.cssColor(p.textPrimary)
+      + '","--tx2":"' + Editor.cssColor(p.textTertiary)
+      + '","--accent":"' + Editor.cssColor(p.accent)
+      + '","--gold":"' + Editor.cssColor(p.accent)
+      + '","--code":"' + Editor.cssColor(withAlpha(p.codeBlockBg, 'FF'))
+      + '","--press":"' + (this.isDark() ? '255,255,255' : '0,0,0') + '"}';
+    try {
+      this.editWebCtrl.runJavaScript('window.setTheme(' + vars + ');');
+    } catch (err) {
+      // Web 未就绪：onPageEnd 会再推一次
+    }
+  }
+
+  // ── 原生样式工具条（WYSIWYG / IR 模式）──
+  //
+  // 编辑表面是 Web（连续编辑无法用 ArkUI 重建），但工具条由**原生渲染**：
+  // app 字体 / 主题配色 / 圆角 / 中文按钮——用户要求"使用 app 原生的样式"。
+  // 点击经 execCmd 桥直达 Web 编辑表面（选区恢复在页面侧处理）。
+  // （webCmd 原为顶部原生样式工具条所用——该工具条已按用户要求删除，
+  //   execCmd 桥保留：底部工具层与后续功能仍可直达 Web 命令。）
+
+  // ⚠️ Web 自带工具栏与原生样式工具条均已删除（用户要求"删除 web 的工具栏"，
+  //    两条工具栏功能重复互相冲突）：格式与插入统一走底部应用工具层；
+  //    editor.html 里的 #bar / #toast 已移除，window.execCmd 桥保留备用。
+
+  /**
+   * 项目调色板色（**#AARRGGBB**，alpha 在前）→ CSS 颜色字符串（`rgba(r,g,b,a)`）。
+   *
+   * ⚠️ 不能直接塞进 CSS：CSS 的 8 位 hex 是 **#RRGGBBAA**（alpha 在后）——
+   * 直接把 `#FF1B1F27` 给 CSS 会被读成"15% 透明的淡红色"（文字全变淡红），
+   * 这正是此前浅色主题下编辑区显示异常的原因。统一转 rgba() 杜绝顺序歧义。
+   */
+  private static cssColor(appHex: string): string {
+    const s: string = appHex.trim();
+    if (s.length !== 9 || s.charAt(0) !== '#') {
+      return s;
+    }
+    const a: number = parseInt(s.substring(1, 3), 16);
+    const r: number = parseInt(s.substring(3, 5), 16);
+    const g: number = parseInt(s.substring(5, 7), 16);
+    const b: number = parseInt(s.substring(7, 9), 16);
+    if (isNaN(a) || isNaN(r) || isNaN(g) || isNaN(b)) {
+      return s;
+    }
+    const alpha: number = Math.round(a / 255 * 100) / 100;
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
+  /** 离开 Web 编辑表面：先让 Web 导出最新内容，稍后切回原生块列表。 */
+  private leaveWebMode(): void {
+    try {
+      this.editWebCtrl.runJavaScript('window.exportToHost();');
+    } catch (err) {
+      // 忽略
+    }
+    setTimeout((): void => {
+      this.liveMode = false;
+      this.refreshPreviewBlocks();
+    }, 180);
+  }
+
   private editBlock(index: number): void {
     if (index < 0 || index >= this.previewBlocks.length) {
       return;
+    }
+    // 所见即所得（WYSIWYG）：编辑在弹出面板完成，正文流全程渲染态（源码不进入正文流）
+    if (this.previewMode === 1) {
+      this.wysIndex = index;
+      this.wysDraft = this.blockSourceAt(index);
+      this.wysOpen = true;
+      return;
+    }
+    // 即时渲染（IR）：整页源码置顶，下方即时渲染随输入更新 —— 不做内联编辑
+    if (this.previewMode === 2) {
+      return;
+    }
+    // ⚠️ **正在编辑另一段：先把它的草稿提交回正文**（用户实测"改完一段改另一段，
+    // 上一段就恢复正常了"= 切块时草稿被直接覆盖、改动全丢）。提交会让块数变化
+    //（比如一段里敲出分隔线），点中的目标块若在原编辑块之后，下标要按增量平移。
+    let wasSwitching: boolean = false;
+    if (this.liveEditing >= 0 && this.liveEditing !== index) {
+      wasSwitching = true;
+      const before: number = this.previewBlocks.length;
+      const prevEditing: number = this.liveEditing;
+      this.commitBlockEdit();
+      const delta: number = this.previewBlocks.length - before;
+      if (index > prevEditing) {
+        index = index + delta;
+      }
+      if (index < 0 || index >= this.previewBlocks.length) {
+        return;
+      }
     }
     this.liveAnchor = index;
     if (this.previewBlocks[index].kind === MdBlockKind.Table) {
       this.openLiveTable(index);
       return;
     }
-    // 已经处于编辑态 = **从一段切到另一段**
-    const switching: boolean = this.liveEditing >= 0;
     this.liveDraft = this.blockSourceAt(index);
     this.liveEditing = index;
     this.refreshLivePreview();
@@ -2797,7 +3445,7 @@ export struct Editor {
     // 用户是**点屏幕上看得见的那一段**进来的，它本来就在可视区里，根本不需要滚；
     // 而滚动会让输入框在替换过程中被搬动，系统很容易判定为"失去焦点场景"而收起输入法。
     // 只有从"没有编辑态"首次进入时（键盘马上要弹起来、可能遮挡目标段）才滚到可见区中部。
-    if (!switching) {
+    if (!wasSwitching) {
       setTimeout(() => {
         this.scrollLiveToEditing();
       }, 160);
@@ -2852,6 +3500,46 @@ export struct Editor {
     } catch (err) {
       this.livePreviewBlocks = [];
     }
+    // ⚠️ tick 必须递增：块 id 是解析序号（b0/b1…），打字重解析后 key 不变会让
+    // ForEach 复用旧节点——"预览效果不实时刷新"（用户实测）
+    this.livePreviewTick++;
+    // 迷你预览里的 $公式$ 也要出图（收集进公式池，就绪后 key 变化换成图）
+    this.syncFormulaTasks();
+  }
+
+  /** 所见即所得：提交弹出面板里的块编辑（复用块提交链路）。 */
+  private saveWysBlock(): void {
+    if (this.wysIndex < 0) {
+      return;
+    }
+    this.liveEditing = this.wysIndex;
+    this.liveDraft = this.wysDraft;
+    this.commitBlockEdit();
+    this.wysOpen = false;
+  }
+
+  /** IR 输入：防抖后整页同步渲染。 */
+  private onIrInput(value: string): void {
+    this.irDraft = value;
+    this.dirty = true;
+    if (this.irDebounce >= 0) {
+      clearTimeout(this.irDebounce);
+    }
+    this.irDebounce = setTimeout(() => {
+      this.irDebounce = -1;
+      this.content = this.irDraft;
+      this.refreshPreviewBlocks();
+    }, 400);
+  }
+
+  /** IR 模式切换时的兜底：把未落盘的草稿立即同步。 */
+  private flushIrDraft(): void {
+    if (this.irDebounce >= 0) {
+      clearTimeout(this.irDebounce);
+      this.irDebounce = -1;
+      this.content = this.irDraft;
+      this.refreshPreviewBlocks();
+    }
   }
 
   /** 提交块编辑：把草稿整段替换回原文对应行区间。 */
@@ -2874,6 +3562,9 @@ export struct Editor {
       this.liveEditing = -1;
       this.liveDraft = '';
       this.livePreviewBlocks = [];
+      if (text.trim().length > 0) {
+        this.liveCommitTick++;
+      }
       this.refreshPreviewBlocks();
       return;
     }
@@ -2888,6 +3579,9 @@ export struct Editor {
     this.liveEditing = -1;
     this.liveDraft = '';
     this.livePreviewBlocks = [];
+    // ⚠️ 提交计数必须递增：块内容变了但 id（解析序号）与 renderEpoch 没变，
+    // key 不变会让 ForEach 复用旧节点 = "完成后不刷新"（用户实测）
+    this.liveCommitTick++;
     this.refreshPreviewBlocks();
   }
 
@@ -2916,6 +3610,7 @@ export struct Editor {
     this.liveDraft = '';
     this.livePreviewBlocks = [];
     this.liveAnchor = -1;
+    this.liveCommitTick++;
     this.refreshPreviewBlocks();
   }
 
@@ -3071,6 +3766,15 @@ export struct Editor {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
+      // 行内公式图生成池（MathJax → PNG）：1×1 隐形，预览里的 $公式$ 出图
+      InlineFormulaPool({
+        tasks: this.formulaTasks,
+        dark: this.isDark(),
+        onOneDone: () => {
+          this.formulaTick++;
+        }
+      })
+
       // 背景：**与阅读页完全同一套优先级与遮罩**——
       //   ① 阅读背景图 → ② 阅读背景样式（readerBgId）→ ③ 外观壁纸
       //   → ④ 函数壁纸 → ⑤ 自定义背景色 → ⑥ 主题渐变
@@ -3181,8 +3885,48 @@ export struct Editor {
             }
             .width('100%')
             .layoutWeight(1)
+          } else if (this.liveMode && this.previewMode >= 1) {
+            // WYSIWYG / IR：Web 编辑表面 + **原生样式工具条**（用户要求
+            // "使用 app 原生的样式"：工具条为 ArkTS 原生渲染——app 字体/配色/圆角，
+            // 命令经 execCmd 桥直达 Web；Web 自带的 vditor 式 #bar 在注入后隐藏）
+            Column() {
+              // ⚠️ **Web 自带工具栏已删除**（用户要求"删除 web 的工具栏"）：
+              // 页面内 #bar（editor.html）连同原生样式工具条（webToolBar）一并移除，
+              // 格式插入统一走底部应用工具层（片段条 + execCmd 桥保留备用）。
+              Web({ src: $rawfile('editor/editor.html'), controller: this.editWebCtrl })
+                .javaScriptProxy({
+                  object: {
+                    mdChanged: (md: string) => {
+                      this.onWebMdChanged(md);
+                    },
+                    requestContent: () => {
+                      this.pushContentToWeb();
+                    }
+                  },
+                  name: 'editorHost',
+                  methodList: ['mdChanged', 'requestContent'],
+                  controller: this.editWebCtrl
+                })
+                .onPageEnd(() => {
+                  // 先主题后内容：避免首屏闪一下默认深色
+                  //（Web 自带 #bar 已从 editor.html 删除，无需再隐藏）
+                  this.pushThemeToWeb();
+                  this.pushContentToWeb();
+                })
+                .width('100%')
+                .layoutWeight(1)
+                .forceDarkAccess(false)
+                .zoomAccess(false)
+            }
+            .width('100%')
+            .height('100%')
+            // ⚠️ **顶部让位**（此前缺失）：没有它，原生样式工具条直接落在 y=0
+            // **压住系统状态栏**、Web 里的文档标题被悬浮导航胶囊遮住
+            //（用户实测"莫名其妙的工具栏、文本被遮挡"）。让位值与其他编辑模式
+            // 的首行占位同源（状态栏 + 导航胶囊 + 小缝）。
+            .padding({ top: this.contentTopInset() })
           } else if (this.liveMode) {
-            // 实时预览编辑：渲染态直接改，块级就地编辑
+            // 分段预览编辑：渲染态直接改，块级就地编辑
             this.liveArea()
           } else if (this.preview) {
             this.previewArea()
@@ -3219,6 +3963,100 @@ export struct Editor {
         }
         .width('100%')
         .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.padTop() })
+      }
+
+      // ── 实时预览模式选择浮窗（顶栏下方右上角，遮罩点击关闭）──
+      if (this.previewModeMenu) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .onClick(() => {
+              this.previewModeMenu = false;
+            })
+          Column() {
+            ForEach(PREVIEW_MODE_ITEMS, (item: PreviewModeItem) => {
+              Row({ space: 10 }) {
+                Column({ space: 2 }) {
+                  Text(item.label)
+                    .fontSize(15)
+                    .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
+                    .fontColor(this.palette().textPrimary)
+                  Text(item.desc)
+                    .fontSize(12)
+                    .fontColor(this.palette().textTertiary)
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+              }
+              .width('100%')
+              .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+              .borderRadius(10)
+              // 引擎管理里关闭了 marked / turndown → WYSIWYG / IR 两项淡显（点了会提示）
+              .opacity(this.webModeBlocked() && item.m >= 1 ? 0.4 : 1)
+              .onClick(() => {
+                this.selectPreviewMode(item.m);
+              })
+            }, (item: PreviewModeItem) => '' + item.m + '_' + this.previewMode)
+            Divider()
+              .strokeWidth(1)
+              .color(this.palette().divider)
+              .margin({ top: 6, bottom: 6 })
+            Row({ space: 10 }) {
+              SymbolGlyph($r('sys.symbol.xmark'))
+                .fontSize(15)
+                .fontColor([this.palette().textSecondary])
+              Text('关闭实时预览')
+                .fontSize(15)
+                .fontColor(this.palette().textSecondary)
+            }
+            .width('100%')
+            .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+            .borderRadius(10)
+            .onClick(() => {
+              this.previewModeMenu = false;
+              if (this.liveMode) {
+                this.toggleLive();
+              }
+            })
+          }
+          .width(300)
+          .padding(8)
+          .margin({
+            right: HwSpace.lg,
+            top: this.padTop() + HwBar.pill + 10
+          })
+          .borderRadius(HwRadius.card)
+          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
+          .border({ width: 1, color: this.palette().divider })
+          .shadow({ radius: 24, color: this.palette().shadow, offsetY: 6 })
+          .alignItems(HorizontalAlign.Start)
+          .transition(TransitionEffect.OPACITY
+            .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+            .combine(TransitionEffect.translate({ y: -10 })))
+        }
+        .width('100%')
+        .height('100%')
+      }
+
+      // ── 专注写作：编辑块激活（键盘弹出）时，片段工具条随键盘一同弹出 ──
+      // 用户要求：只弹工具条本身，工具条下方的状态栏不弹
+      if (this.focusMode && this.liveMode && this.liveEditing >= 0) {
+        Stack({ alignContent: Alignment.BottomStart }) {
+          Column({ space: HwSpace.xs }) {
+            this.snippetBar()
+          }
+          .width('100%')
+          .padding({
+            left: HwSpace.lg,
+            right: HwSpace.lg,
+            bottom: this.keyboardPx > 0 ? 6 : this.padBottom()
+          })
+        }
+        .width('100%')
+        .transition(TransitionEffect.OPACITY
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .combine(TransitionEffect.translate({ y: 18 })))
       }
 
       // ── 悬浮底部工具层：片段条 + 底栏，固定在键盘之上（焦点写作时隐藏）──
@@ -3440,6 +4278,87 @@ export struct Editor {
           right: HwSpace.lg
         })
       }
+      // ── 所见即所得：块编辑面板（弹出编辑，正文流全程渲染态）──
+      if (this.wysOpen) {
+        Stack({ alignContent: Alignment.BottomStart }) {
+          Column()
+            .width('100%')
+            .height('100%')
+            .backgroundColor('#33000000')
+            .onClick(() => {
+              this.wysOpen = false;
+            })
+          Column({ space: HwSpace.sm }) {
+            Row({ space: HwSpace.xs }) {
+              SymbolGlyph($r('sys.symbol.square_and_pencil'))
+                .fontSize(16)
+                .fontColor([this.palette().accent])
+              Text('编辑这一块')
+                .fontSize(HwType.label + 2)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textPrimary)
+              Blank()
+              ImmersiveIconButton({
+                buttonSize: 30,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => {
+                  this.wysOpen = false;
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.xmark'))
+                  .fontSize(14)
+                  .fontColor([this.palette().textPrimary])
+              }
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+            TextArea({ text: this.wysDraft })
+              .width('100%')
+              .height(190)
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+              .backgroundColor(this.palette().quoteBg)
+              .borderRadius(HwRadius.inner)
+              .onChange((v: string) => {
+                this.wysDraft = v;
+              })
+
+            Row({ space: HwSpace.sm }) {
+              Blank()
+              Text('取消')
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textSecondary)
+                .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+                .borderRadius(HwRadius.pill)
+                .border({ width: 1, color: this.palette().divider })
+                .onClick(() => {
+                  this.wysOpen = false;
+                })
+              Text('保存')
+                .fontSize(HwType.label)
+                .fontColor('#FFFFFF')
+                .padding({ left: 20, right: 20, top: 8, bottom: 8 })
+                .borderRadius(HwRadius.pill)
+                .backgroundColor(this.palette().accent)
+                .onClick(() => {
+                  this.saveWysBlock();
+                })
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+          }
+          .padding(HwSpace.lg)
+          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
+          .borderRadius({ topLeft: HwRadius.card, topRight: HwRadius.card })
+          .alignItems(HorizontalAlign.Start)
+        }
+        .width('100%')
+        .height('100%')
+        .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+      }
+
 
       // ── **大纲重排面板**：把某一节整段挪到别处（拖动排序，或用 ↑↓ 微调）──
       if (this.outlineOpen) {
@@ -3560,7 +4479,7 @@ export struct Editor {
           .width('86%')
           .padding(HwSpace.lg)
           .borderRadius(HwRadius.card)
-          .backgroundColor(this.palette().surface)
+          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
           .border({ width: 1, color: this.palette().divider })
           .shadow({ radius: 24, color: this.palette().shadow, offsetY: 6 })
           .alignItems(HorizontalAlign.Start)

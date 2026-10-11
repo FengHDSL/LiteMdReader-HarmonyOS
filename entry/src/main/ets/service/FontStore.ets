@@ -83,6 +83,12 @@ export class FontStore {
   /** 已导入字体列表（读清单）。 */
   static list(ctx: common.UIAbilityContext): UserFont[] {
     FontStore.init(ctx);
+    // **进程内缓存**（1.1.0 转场降载）：Reader 每打开一篇文档都会调 registerAll →
+    // list → 读清单文件 + 逐个 accessSync，全是同步 IO，正好卡在转场首帧前。
+    // 字体清单只在导入 / 删除时变化（那两处会调 invalidateCache），缓存安全。
+    if (FontStore.cacheReady) {
+      return FontStore.cache.slice();
+    }
     const fonts: UserFont[] = FontStore.loadManifest();
     // 磁盘文件被外部删掉的条目剔除
     const alive: UserFont[] = [];
@@ -95,7 +101,19 @@ export class FontStore {
         // 文件不存在，跳过
       }
     }
-    return alive;
+    FontStore.cache = alive;
+    FontStore.cacheReady = true;
+    return alive.slice();
+  }
+
+  /** 字体清单缓存（进程内）：转场期间避免重复同步 IO。 */
+  private static cache: UserFont[] = [];
+  private static cacheReady: boolean = false;
+
+  /** 字体导入 / 删除后调用：下次 list 重新读盘。 */
+  static invalidateCache(): void {
+    FontStore.cacheReady = false;
+    FontStore.cache = [];
   }
 
   /** 注册全部已导入字体（幂等）。进书架 / 进设置页时调用。 */
@@ -171,6 +189,7 @@ export class FontStore {
     const fonts: UserFont[] = FontStore.loadManifest();
     fonts.push(f);
     FontStore.saveManifest(fonts);
+    FontStore.invalidateCache();
     return stem;
   }
 
@@ -193,6 +212,7 @@ export class FontStore {
     }
     if (removed) {
       FontStore.saveManifest(kept);
+      FontStore.invalidateCache();
     }
     return removed;
   }

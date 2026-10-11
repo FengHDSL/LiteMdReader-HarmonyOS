@@ -10,7 +10,19 @@
  *
  * **卡片 ID 登记**：提供方侧拿不到「已添加卡片列表」（FormInfo 上没有 formId），
  * 标准做法是 onAddForm 时从 want 参数（FormParam.IDENTITY_KEY）取出 formId
- * 存进 `<filesDir>/form_ids.json`，onRemoveForm 移除；推送时按存档逐个 updateForm。
+ * 存进 form_ids.json，onRemoveForm 移除；推送时按存档逐个 updateForm。
+ *
+ * **⚠️ 跨进程目录铁律**：form_ids / form_snapshot 必须放在
+ * **ApplicationContext.filesDir（应用级目录）**。UIAbilityContext.filesDir 是
+ * HAP 级目录（…/haps/entry/files），ApplicationContext.filesDir 是应用级目录
+ * （…/base/files）——两者不是同一个路径！之前卡片进程用 ApplicationContext、
+ * 应用进程用 UIAbilityContext，读写落在两个目录，卡片永远读不到应用写入的
+ * 数据（真机表现为「暂无阅读记录」）。ApplicationContext 在两个进程里都拿得到
+ * 且指向同一目录，FormSync 的所有文件统一放这。
+ *
+ * **快照机制**：应用进程把最近阅读 3 篇写成 form_snapshot.json（小文件、
+ * 不受节流限制），卡片进程 buildData 只读这份快照，不再依赖卡片进程里
+ * DocStore 的初始化时序；快照缺失时回落 DocStore 现算（应用首装首次添加卡片）。
  */
 import { formBindingData, formProvider } from '@kit.FormKit';
 import { common } from '@kit.AbilityKit';
@@ -33,11 +45,34 @@ interface FormIdFile {
   ids: string[];
 }
 
+/** form_snapshot.json 的落盘结构（应用进程写、卡片进程读） */
+interface FormSnapshot {
+  savedAt: number;
+  docs: RecentDoc[];
+}
+
 let lastPushAt: number = 0;
 
 export class FormSync {
+  /**
+   * 跨进程统一目录（应用级）。两个进程调它拿到的一定是同一路径——
+   * 详见文件头「跨进程目录铁律」。
+   */
+  private static appFilesDir(ctx: common.UIAbilityContext): string {
+    try {
+      const appCtx: common.ApplicationContext = ctx.getApplicationContext();
+      return appCtx.filesDir;
+    } catch (err) {
+      return ctx.filesDir;
+    }
+  }
+
   private static idsPath(ctx: common.UIAbilityContext): string {
-    return ctx.filesDir + '/form_ids.json';
+    return FormSync.appFilesDir(ctx) + '/form_ids.json';
+  }
+
+  private static snapshotPath(ctx: common.UIAbilityContext): string {
+    return FormSync.appFilesDir(ctx) + '/form_snapshot.json';
   }
 
   /** 已登记的卡片 ID（文件损坏按空处理）。 */
@@ -140,16 +175,68 @@ export class FormSync {
     return out;
   }
 
-  /** 组装卡片数据：三个槽位，空槽给占位文案 */
+  /**
+   * 应用进程**写快照**（最近阅读 3 篇，不受节流限制——写小文件远比推送便宜）。
+   * 卡片进程 buildData 只读这份快照，绕开卡片进程里 DocStore 初始化的不确定性。
+   */
+  static writeSnapshot(ctx: common.UIAbilityContext, recents: RecentDoc[]): void {
+    try {
+      const file: fs.File = fs.openSync(FormSync.snapshotPath(ctx),
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      try {
+        const snap: FormSnapshot = { savedAt: Date.now(), docs: recents };
+        fs.writeSync(file.fd, JSON.stringify(snap));
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+          // 关闭失败无副作用
+        }
+      }
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'writeSnapshot failed: %{public}s', (err as Error).message);
+    }
+  }
+
+  /** 读快照；文件不存在 / 损坏 / 无 docs 时返回 null（调用方回落 DocStore 现算）。 */
+  private static readSnapshot(ctx: common.UIAbilityContext): RecentDoc[] | null {
+    try {
+      const path: string = FormSync.snapshotPath(ctx);
+      if (!fs.accessSync(path)) {
+        return null;
+      }
+      const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
+      if (text.length === 0) {
+        return null;
+      }
+      const parsed: FormSnapshot = JSON.parse(text) as FormSnapshot;
+      if (parsed === null || parsed === undefined || parsed.docs === undefined || parsed.docs === null) {
+        return null;
+      }
+      return parsed.docs;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /** 组装卡片数据：三个槽位，空槽给占位文案；同时携带 2×2 卡片（单文档）的键 */
   static buildData(ctx: common.UIAbilityContext): formBindingData.FormBindingData {
-    const recents: RecentDoc[] = FormSync.recentDocs(ctx);
-    hilog.info(0x0000, TAG, 'buildData: recents=%{public}d docs=%{public}d', recents.length, DocStore.list(ctx).length);
+    // 数据源优先级：快照（应用进程落盘，卡片进程零依赖可读）→ DocStore 现算
+    let recents: RecentDoc[] | null = FormSync.readSnapshot(ctx);
+    const fromSnapshot: boolean = recents !== null;
+    if (recents === null) {
+      recents = FormSync.recentDocs(ctx);
+    }
+    hilog.info(0x0000, TAG, 'buildData: recents=%{public}d source=%{public}s',
+      recents.length, fromSnapshot ? 'snapshot' : 'docstore');
     const names: string[] = ['暂无阅读记录', '', ''];
     const percents: string[] = ['去书架挑一篇吧', '', ''];
     for (let k = 0; k < recents.length; k++) {
       names[k] = recents[k].name;
       percents[k] = recents[k].percent > 0 ? '已读 ' + recents[k].percent + '%' : '刚开始读';
     }
+    // 2×2 卡片（最近阅读一篇 + 新建文档按钮）：与 2×4 共用一次 recentDocs
+    const hasRecent: string = recents.length > 0 ? '1' : '0';
     const data: Record<string, string> = {
       'recent1': names[0],
       'recent2': names[1],
@@ -163,7 +250,13 @@ export class FormSync {
       'has3': recents.length > 2 ? '1' : '0',
       'builtin1': recents.length > 0 && recents[0].builtin ? '1' : '0',
       'builtin2': recents.length > 1 && recents[1].builtin ? '1' : '0',
-      'builtin3': recents.length > 2 && recents[2].builtin ? '1' : '0'
+      'builtin3': recents.length > 2 && recents[2].builtin ? '1' : '0',
+      // ── 2×2 卡片键 ──
+      'recentName': hasRecent === '1' ? recents[0].name : '暂无阅读记录',
+      'recentPercent': hasRecent === '1' ? percents[0] : '去书架挑一篇吧',
+      'hasRecent': hasRecent,
+      // 卡片点击路由参数：要打开的文档名（postCardAction params 用）
+      'docName': hasRecent === '1' ? recents[0].name : ''
     };
     return formBindingData.createFormBindingData(data);
   }
@@ -175,6 +268,9 @@ export class FormSync {
    * @param force true = 跳过节流（如退后台前的最后一次推送）
    */
   static pushRecents(ctx: common.UIAbilityContext, force: boolean = false): void {
+    // 快照先落盘（不受节流限制）：即使推送被节流跳过，卡片下次刷新也能读到新数据
+    const recents: RecentDoc[] = FormSync.recentDocs(ctx);
+    FormSync.writeSnapshot(ctx, recents);
     const now: number = Date.now();
     if (!force && now - lastPushAt < PUSH_MIN_INTERVAL_MS) {
       return;

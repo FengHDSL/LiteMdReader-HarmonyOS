@@ -23,6 +23,14 @@
     {
       "name": "form_shelf_desc",
       "value": "展示最近阅读的三篇文档"
+    },
+    {
+      "name": "form_recent_display",
+      "value": "澄笺 · 最近阅读"
+    },
+    {
+      "name": "form_recent_desc",
+      "value": "最近阅读的文档与新建文档入口"
     }
   ]
 }

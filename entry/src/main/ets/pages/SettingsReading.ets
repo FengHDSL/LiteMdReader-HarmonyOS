@@ -28,6 +28,10 @@ export struct SettingsReading {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完靠它重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  // ── 实时预览（与 ReadingSettingsPanel 共用同一批 AppStorage 键）──
+  @StorageLink('readerFontSize') fontSize: number = 17;
+  @StorageLink('readerLineHeight') lineMul: number = 1.6;
+  @StorageLink('readerParaSpace') paraSpace: number = 1;
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、不登记依赖，
@@ -47,11 +51,50 @@ export struct SettingsReading {
       stack: this.stack,
       life: this.life
     }) {
-      // ── 三个功能区各自成卡（用户要求：排版 / 主题 / 显示 分开）──
+      // ── **实时预览卡**（1.1.0 排版重设计）：字号 / 行距 / 段距改动立即反映 ──
+      ImmersiveCard({
+        cardRadius: HwRadius.card,
+        cardPadding: HwSpace.lg,
+        palette: this.palette()
+      }) {
+        Column({ space: HwSpace.sm }) {
+          Row({ space: HwSpace.sm }) {
+            SymbolGlyph($r('sys.symbol.eye'))
+              .fontSize(16)
+              .fontColor([this.palette().accent])
+            Text('实时预览')
+              .fontSize(HwType.label + 1)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('跟随下方设置')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Divider().strokeWidth(0.5).color(this.palette().divider)
+
+          Text('澄笺')
+            .fontSize(this.fontSize + 3)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(this.palette().textPrimary)
+          Text('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——'
+            + '阅读时所见即所得，不用来回试。')
+            .fontSize(this.fontSize)
+            .lineHeight(this.fontSize * this.lineMul)
+            .fontColor(this.palette().textSecondary)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── 三个功能区各自成卡（面板自带节标题，页面上不再重复）──
       // showHeader=false：面板自带的「阅读设置」标题不要（外壳有标题）；
       // panelGroup 让同一份面板按组渲染，避免把 700 行设置逻辑抄三遍。
       ImmersiveCard({
-        cardRadius: HwRadius.sheet,
+        cardRadius: HwRadius.card,
         cardPadding: HwSpace.lg,
         cardMaterialShadow: false,
         palette: this.palette()
@@ -60,7 +103,7 @@ export struct SettingsReading {
       }
 
       ImmersiveCard({
-        cardRadius: HwRadius.sheet,
+        cardRadius: HwRadius.card,
         cardPadding: HwSpace.lg,
         cardMaterialShadow: false,
         palette: this.palette()
@@ -69,7 +112,7 @@ export struct SettingsReading {
       }
 
       ImmersiveCard({
-        cardRadius: HwRadius.sheet,
+        cardRadius: HwRadius.card,
         cardPadding: HwSpace.lg,
         cardMaterialShadow: false,
         palette: this.palette()

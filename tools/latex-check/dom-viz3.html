@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head><body>
+<iframe id="f" src="/probe-viz3.html?v=1" style="width:400px;height:200px"></iframe>
+<script>
+document.getElementById('f').addEventListener('load', function () {
+  var w = this.contentWindow;
+  setTimeout(function () {
+    var d = document.createElement('div'); d.id = 'vz';
+    d.setAttribute('data-json', JSON.stringify(w.__probe || {pending: true}));
+    document.body.appendChild(d);
+  }, 6000);
+});
+</script>
+<div id="vz" data-json="{&quot;scriptRan&quot;:true,&quot;vizType&quot;:&quot;object&quot;,&quot;hasInstance&quot;:&quot;function&quot;,&quot;instanceOk&quot;:true,&quot;renderOk&quot;:true,&quot;vizVersion&quot;:&quot;16.1.0&quot;}"></div></body></html>

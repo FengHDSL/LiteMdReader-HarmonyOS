@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>body{font-family:sans-serif;padding:10px}.row{margin:6px 0}.cap{font-size:12px;color:#666}iframe{border:1px solid #ccc;background:#fff}</style>
+<title>DONE 5/6</title></head><body>
+<h3>渲染引擎升级验证（mermaid 12 / echarts 6 / abcjs 6.7 / flowchart 1.17 / graphviz / katex 0.19）</h3>
+<div id="frames"><div class="row"><div class="cap">mermaid</div><iframe src="/render/mermaid.html?v=9" style="width: 560px; height: 220px;"></iframe></div><div class="row"><div class="cap">echarts</div><iframe src="/render/echarts.html?v=9" style="width: 560px; height: 320px;"></iframe></div><div class="row"><div class="cap">abc</div><iframe src="/render/abc.html?v=9" style="width: 560px; height: 160px;"></iframe></div><div class="row"><div class="cap">flowchart</div><iframe src="/render/flowchart.html?v=9" style="width: 560px; height: 200px;"></iframe></div><div class="row"><div class="cap">graphviz</div><iframe src="/render/graphviz.html?v=9" style="width: 560px; height: 200px;"></iframe></div><div class="row"><div class="cap">katex</div><iframe src="/render/katex.html?v=9" style="width: 560px; height: 160px;"></iframe></div></div>
+<script>
+const CASES = [
+  { mode: 'mermaid', payload: 'graph TD\nA[开始] --> B{判断}\nB -->|是| C[结束]', check: 'svg', w: 560, h: 220 },
+  { mode: 'echarts', payload: '{"xAxis":{"type":"category","data":["一","二"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[5,8]}]}', check: 'canvas', w: 560, h: 320 },
+  { mode: 'abc', payload: 'X:1\nT:测试谱\nK:C\nCDEF GABC|', check: 'svg', w: 560, h: 160 },
+  { mode: 'flowchart', payload: 'st=>start: 开始\nop=>operation: 处理\nst->op', check: 'svg', w: 560, h: 200 },
+  { mode: 'graphviz', payload: 'digraph { a -> b -> c }', check: 'svg', w: 560, h: 200 },
+  { mode: 'katex', payload: '\\frac{a}{b} = \\sqrt{x^2 + y^2}', check: 'katex', w: 560, h: 160 },
+];
+const results = [];
+function runOne(i) {
+  if (i >= CASES.length) { done(); return; }
+  const c = CASES[i];
+  const wrap = document.createElement('div');
+  wrap.className = 'row';
+  wrap.innerHTML = '<div class="cap">' + c.mode + '</div>';
+  const f = document.createElement('iframe');
+  f.style.width = c.w + 'px'; f.style.height = c.h + 'px';
+  f.src = '/render/' + c.mode + '.html?v=9';
+  wrap.appendChild(f);
+  document.getElementById('frames').appendChild(wrap);
+  f.addEventListener('load', function () {
+    f.contentWindow.renderPayload(JSON.stringify({ src: c.payload, dark: false }));
+    setTimeout(function () {
+      let ok = false; let extra = '';
+      try {
+        const doc = f.contentDocument;
+        if (c.check === 'svg') { ok = doc.querySelector('#app svg') !== null; }
+        else if (c.check === 'canvas') { ok = doc.querySelector('#app canvas') !== null || doc.querySelector('#app svg') !== null; } // echarts 6 默认 svg 渲染器
+        else if (c.check === 'katex') { ok = doc.querySelector('#app .katex') !== null; }
+        const err = doc.querySelector('#app .err');
+        if (err) { extra = (err.textContent || '').slice(0, 100); ok = false; }
+      } catch (e) { extra = String(e); }
+      results.push({ mode: c.mode, check: c.check, ok: ok, err: extra });
+      runOne(i + 1);
+    }, c.mode === 'graphviz' ? 5000 : 1500);
+  });
+}
+function done() {
+  const d = document.createElement('div');
+  d.id = 'eng-result';
+  d.setAttribute('data-json', JSON.stringify(results));
+  document.body.appendChild(d);
+  document.title = 'DONE ' + results.filter(function (r) { return r.ok; }).length + '/' + results.length;
+}
+runOne(0);
+</script>
+
+<div id="eng-result" data-json="[{&quot;mode&quot;:&quot;mermaid&quot;,&quot;check&quot;:&quot;svg&quot;,&quot;ok&quot;:true,&quot;err&quot;:&quot;&quot;},{&quot;mode&quot;:&quot;echarts&quot;,&quot;check&quot;:&quot;canvas&quot;,&quot;ok&quot;:true,&quot;err&quot;:&quot;&quot;},{&quot;mode&quot;:&quot;abc&quot;,&quot;check&quot;:&quot;svg&quot;,&quot;ok&quot;:true,&quot;err&quot;:&quot;&quot;},{&quot;mode&quot;:&quot;flowchart&quot;,&quot;check&quot;:&quot;svg&quot;,&quot;ok&quot;:true,&quot;err&quot;:&quot;&quot;},{&quot;mode&quot;:&quot;graphviz&quot;,&quot;check&quot;:&quot;svg&quot;,&quot;ok&quot;:false,&quot;err&quot;:&quot;&quot;},{&quot;mode&quot;:&quot;katex&quot;,&quot;check&quot;:&quot;katex&quot;,&quot;ok&quot;:true,&quot;err&quot;:&quot;&quot;}]"></div></body></html>

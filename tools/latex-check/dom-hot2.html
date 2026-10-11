@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<style>
+body { font-family: sans-serif; margin: 14px; background: #eee; }
+#f { display: block; background: #fff; border: 1px solid #ccc; }
+#log { font: 12px monospace; white-space: pre-wrap; background: #111; color: #eee; padding: 8px; }
+</style>
+</head>
+<body>
+<h3>热注入连续性验证（模拟后台池同页面连续任务）</h3>
+<iframe id="f" src="/katex.html" style="width:480px;height:300px"></iframe>
+<pre id="log">[
+ {
+  "cap": "display-A 求和+tag",
+  "katex": true,
+  "err": "",
+  "appDisplay": "flex",
+  "bodyDisplay": "",
+  "bodyDark": false,
+  "bodyBg": "rgb(250, 247, 241)",
+  "appW": 480,
+  "appH": 300,
+  "inlineFlag": false
+ },
+ {
+  "cap": "inline-B 伸缩括号",
+  "katex": true,
+  "err": "",
+  "appDisplay": "inline-block",
+  "bodyDisplay": "inline-block",
+  "bodyDark": false,
+  "bodyBg": "transparent",
+  "appW": 78,
+  "appH": 32,
+  "inlineFlag": true
+ },
+ {
+  "cap": "display-C cases",
+  "katex": true,
+  "err": "",
+  "appDisplay": "flex",
+  "bodyDisplay": "",
+  "bodyDark": false,
+  "bodyBg": "rgb(42, 42, 42)",
+  "appW": 480,
+  "appH": 300,
+  "inlineFlag": false
+ },
+ {
+  "cap": "inline-D pmatrix",
+  "katex": true,
+  "err": "",
+  "appDisplay": "inline-block",
+  "bodyDisplay": "inline-block",
+  "bodyDark": false,
+  "bodyBg": "transparent",
+  "appW": 67,
+  "appH": 46,
+  "inlineFlag": true
+ },
+ {
+  "cap": "inline-E 重定义宏",
+  "katex": true,
+  "err": "",
+  "appDisplay": "inline-block",
+  "bodyDisplay": "inline-block",
+  "bodyDark": false,
+  "bodyBg": "transparent",
+  "appW": 60,
+  "appH": 28,
+  "inlineFlag": true
+ }
+]</pre>
+<script>
+// 序列：块级 → 行内 → 块级 → 行内（与池子混排任务一致）
+const STEPS = [
+  { cap: 'display-A 求和+tag', src: '\\sum_{n=1}^{\\infty} \\frac{1}{n^2} \\tag{7}', inline: false, bg: '#FAF7F1' },
+  { cap: 'inline-B 伸缩括号', src: '\\left( \\frac{a}{b} \\right), \\left\\| \\frac{n}{k} \\right\\|', inline: true, bg: '#FAF7F1' },
+  { cap: 'display-C cases', src: 'f(x) = \\begin{cases} x^2, & x \\ge 0 \\\\ -x, & x < 0 \\end{cases}', inline: false, bg: '#2A2A2A' },
+  { cap: 'inline-D pmatrix', src: '\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}', inline: true, bg: '' },
+  { cap: 'inline-E 重定义宏', src: '\\newcommand{\\R}{\\mathbb{R}}\\forall x \\in \\R', inline: true, bg: '#FAF7F1' },
+];
+const frame = document.getElementById('f');
+const logEl = document.getElementById('log');
+const results = [];
+let stepIdx = 0;
+
+function probe(cap, expectInline) {
+  try {
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    const app = doc.getElementById('app');
+    const hasKatex = doc.querySelector('.katex') !== null;
+    const errEl = doc.querySelector('.katex-error');
+    results.push({
+      cap: cap,
+      katex: hasKatex,
+      err: errEl ? (errEl.getAttribute('title') || '').slice(0, 100) : '',
+      appDisplay: app ? app.style.display : 'n/a',
+      bodyDisplay: doc.body.style.display,
+      bodyDark: doc.body.classList.contains('dark'),
+      bodyBg: doc.body.style.background,
+      appW: app ? app.scrollWidth : 0,
+      appH: app ? app.scrollHeight : 0,
+      inlineFlag: win.__inline,
+    });
+  } catch (e) {
+    results.push({ cap: cap, throw: String(e) });
+  }
+}
+
+function runNext() {
+  if (stepIdx >= STEPS.length) {
+    const res = document.createElement('div');
+    res.id = 'hot-result';
+    res.setAttribute('data-json', JSON.stringify(results));
+    document.body.appendChild(res);
+    logEl.textContent = JSON.stringify(results, null, 1);
+    return;
+  }
+  const s = STEPS[stepIdx];
+  stepIdx++;
+  try {
+    frame.contentWindow.renderPayload(JSON.stringify({ src: s.src, dark: false, inline: s.inline, bg: s.bg || '' }));
+  } catch (e) {
+    results.push({ cap: s.cap, throw: String(e) });
+  }
+  // 等渲染稳定（60/300ms setTimeout(report) 之后）再记录
+  setTimeout(function () {
+    probe(s.cap, s.inline);
+    setTimeout(runNext, 120);
+  }, 500);
+}
+
+frame.addEventListener('load', function () {
+  setTimeout(runNext, 300);
+});
+</script>
+
+
+<div id="hot-result" data-json="[{&quot;cap&quot;:&quot;display-A 求和+tag&quot;,&quot;katex&quot;:true,&quot;err&quot;:&quot;&quot;,&quot;appDisplay&quot;:&quot;flex&quot;,&quot;bodyDisplay&quot;:&quot;&quot;,&quot;bodyDark&quot;:false,&quot;bodyBg&quot;:&quot;rgb(250, 247, 241)&quot;,&quot;appW&quot;:480,&quot;appH&quot;:300,&quot;inlineFlag&quot;:false},{&quot;cap&quot;:&quot;inline-B 伸缩括号&quot;,&quot;katex&quot;:true,&quot;err&quot;:&quot;&quot;,&quot;appDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDark&quot;:false,&quot;bodyBg&quot;:&quot;transparent&quot;,&quot;appW&quot;:78,&quot;appH&quot;:32,&quot;inlineFlag&quot;:true},{&quot;cap&quot;:&quot;display-C cases&quot;,&quot;katex&quot;:true,&quot;err&quot;:&quot;&quot;,&quot;appDisplay&quot;:&quot;flex&quot;,&quot;bodyDisplay&quot;:&quot;&quot;,&quot;bodyDark&quot;:false,&quot;bodyBg&quot;:&quot;rgb(42, 42, 42)&quot;,&quot;appW&quot;:480,&quot;appH&quot;:300,&quot;inlineFlag&quot;:false},{&quot;cap&quot;:&quot;inline-D pmatrix&quot;,&quot;katex&quot;:true,&quot;err&quot;:&quot;&quot;,&quot;appDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDark&quot;:false,&quot;bodyBg&quot;:&quot;transparent&quot;,&quot;appW&quot;:67,&quot;appH&quot;:46,&quot;inlineFlag&quot;:true},{&quot;cap&quot;:&quot;inline-E 重定义宏&quot;,&quot;katex&quot;:true,&quot;err&quot;:&quot;&quot;,&quot;appDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDisplay&quot;:&quot;inline-block&quot;,&quot;bodyDark&quot;:false,&quot;bodyBg&quot;:&quot;transparent&quot;,&quot;appW&quot;:60,&quot;appH&quot;:28,&quot;inlineFlag&quot;:true}]"></div></body></html>

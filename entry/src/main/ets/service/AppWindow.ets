@@ -60,6 +60,22 @@ export function setupImmersiveWindow(windowStage: window.WindowStage): void {
     syncAvoidArea(win);
     immersiveReady = true;
 
+    // **窗口尺寸广播**（多屏协同 / 分屏 / 自由窗 / PC 放大等窗口模式变化）：
+    // 把主窗口宽高（px）写进 AppStorage，页面据此做断点适配布局。
+    // 参考华为「多设备窗口形态」最佳实践：windowStatusChange 只报模式，
+    // 模式变化后的**实际尺寸一律以 windowSizeChange 回调为准**，所以这里只挂尺寸。
+    try {
+      const rect: window.Rect = win.getWindowProperties().windowRect;
+      AppStorage.setOrCreate('windowWpx', rect.width);
+      AppStorage.setOrCreate('windowHpx', rect.height);
+    } catch (err) {
+      // 读不到初始尺寸就等第一次回调
+    }
+    win.on('windowSizeChange', (size: window.Size) => {
+      AppStorage.setOrCreate('windowWpx', size.width);
+      AppStorage.setOrCreate('windowHpx', size.height);
+    });
+
     // 旋转、折叠、手势条显隐都会改变避让区，必须跟着更新，否则正文会被状态栏盖住
     win.on('avoidAreaChange', () => {
       syncAvoidArea(win);

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>class-diagram-size</title></head>
+<body>
+<pre id="out">pending</pre>
+<iframe id="f" style="width:420px;height:600px;border:1px solid #ccc"></iframe>
+<script>
+// 类图在卡片模式（fit=false，池子/卡片同参）下的实际内容尺寸：
+// scrollWidth/Height 就是快照链路会写入 .dim 的逻辑尺寸——
+// 若远大于视口 → blockImage 的"自然尺寸+横向滑动"会把类图放大显示（用户实测）
+const SRC = 'classDiagram\n  class 动物 {\n    +名字\n    +年龄\n    +吃东西()\n    +睡觉()\n  }\n  class 狗 {\n    +品种\n    +汪汪叫()\n  }\n  class 猫 {\n    +花色\n    +喵喵叫()\n  }\n  动物 <|-- 狗\n  动物 <|-- 猫\n  狗 : implements 家宠\n  猫 : implements 家宠';
+function $(id){ return document.getElementById(id); }
+(async function(){
+  const lines = [];
+  try {
+    const f = $('f');
+    const loaded = new Promise(function(res, rej){ f.onload = res; f.onerror = function(){ rej(new Error('iframe onerror')); }; });
+    f.src = '/entry/src/main/resources/rawfile/render/mermaid.html';
+    await loaded;
+    const w = f.contentWindow;
+    w.renderPayload({ src: SRC, dark: false, fit: false, inline: false, vw: 0 });
+    await new Promise(function(r){ setTimeout(r, 1200); });
+    const d = w.document, app = d.getElementById('app');
+    const sv = d.querySelector('#app svg');
+    const r = d.getElementById('out');
+    lines.push('svg attrs: w=' + (sv ? sv.getAttribute('width') : '-') +
+      ' h=' + (sv ? sv.getAttribute('height') : '-') +
+      ' style.maxWidth=' + (sv ? (sv.style.maxWidth || '(none)') : '-') +
+      ' viewBox=' + (sv ? (sv.getAttribute('viewBox') || '(none)') : '-'));
+    lines.push('content: scrollW=' + app.scrollWidth + ' clientW=' + app.clientWidth +
+      ' scrollH=' + app.scrollHeight + ' clientH=' + app.clientHeight +
+      ' | docH=' + d.documentElement.scrollHeight);
+  } catch (e) {
+    lines.push('FAIL: ' + (e && e.message ? e.message : String(e)));
+  }
+  $('out').textContent = lines.join('\n');
+  document.title = 'DONE';
+})();
+</script>
+</body></html>

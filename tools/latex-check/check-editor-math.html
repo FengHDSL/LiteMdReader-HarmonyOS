@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>editor-math-check</title></head>
+<body>
+<pre id="out">pending</pre>
+<iframe id="f" style="width:460px;height:640px;border:1px solid #ccc"></iframe>
+<script>
+// 编辑器 WYSIWYG 表面的 LaTeX 渲染验证：
+//   ① katex 资产加载（window.katex）
+//   ② setMarkdown 含 $…$ 与 $$…$$ → .edit-math 孤岛被 KaTeX 渲染、无 katex-error
+//   ③ 原文 $ 定界符不再以裸文本出现
+const MD = '# 数学测试\n\n质能方程 $E=mc^2$ 与 $\\sum_{i=1}^{n} a_i$。\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\n正文段落。';
+function $(id){ return document.getElementById(id); }
+(async function(){
+  const lines = [];
+  try {
+    const f = $('f');
+    const loaded = new Promise(function(res, rej){ f.onload = res; f.onerror = function(){ rej(new Error('iframe onerror')); }; });
+    f.src = '/entry/src/main/resources/rawfile/editor/editor.html';
+    await loaded;
+    const w = f.contentWindow;
+    lines.push('katex: ' + (w.katex ? (w.katex.version || 'loaded') : 'MISSING') +
+      ' | setMarkdown: ' + (typeof w.setMarkdown));
+    $('out').textContent = lines.join('\n');
+    w.setMarkdown(MD, 1);
+    await new Promise(function(r){ setTimeout(r, 900); });
+    const d = w.document;
+    const math = d.querySelectorAll('.edit-math');
+    let rendered = 0, errs = d.querySelectorAll('.katex-error').length;
+    for (let k = 0; k < math.length; k++) {
+      if (math[k].querySelector('.katex')) { rendered++; }
+    }
+    const body = d.getElementById('editor').textContent;
+    lines.push('islands=' + math.length + ' rendered=' + rendered +
+      ' errors=' + errs +
+      ' rawDollarLeft=' + (body.indexOf('$E') >= 0 ? 1 : 0) +
+      ' integral=' + (body.indexOf('∫') >= 0 || body.indexOf('∫') >= 0 || math.length >= 2 ? 1 : 0));
+  } catch (e) {
+    lines.push('FAIL: ' + (e && e.message ? e.message : String(e)));
+  }
+  $('out').textContent = lines.join('\n');
+  document.title = 'DONE';
+})();
+</script>
+</body></html>

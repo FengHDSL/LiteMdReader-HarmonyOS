@@ -199,14 +199,16 @@ export struct ImmersiveCard {
     if (!this.flowTouch) {
       return;
     }
-    if (event.touches.length === 0) {
-      return;
-    }
-    const t: TouchObject = event.touches[0];
+    // **Up / Cancel 必须最先判定**：抬起时 touches 可能已清空，若放在
+    // length 检查之后会提前 return，pressing 复不了位 → 残留一块不消失的光斑
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
       this.pressing = false;
       return;
     }
+    if (event.touches.length === 0) {
+      return;
+    }
+    const t: TouchObject = event.touches[0];
     if (event.type !== TouchType.Down && event.type !== TouchType.Move) {
       return;
     }
@@ -416,14 +418,16 @@ export struct ImmersiveIconButton {
     if (!this.flowTouch) {
       return;
     }
-    if (event.touches.length === 0) {
-      return;
-    }
-    const t: TouchObject = event.touches[0];
+    // **Up / Cancel 必须最先判定**：抬起时 touches 可能已清空，若放在
+    // length 检查之后会提前 return，pressing 复不了位 → 顶栏按钮残留蓝色光斑（真机实锤）
     if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
       this.pressing = false;
       return;
     }
+    if (event.touches.length === 0) {
+      return;
+    }
+    const t: TouchObject = event.touches[0];
     if (event.type !== TouchType.Down && event.type !== TouchType.Move) {
       return;
     }

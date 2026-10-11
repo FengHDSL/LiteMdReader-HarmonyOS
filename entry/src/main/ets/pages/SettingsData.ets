@@ -18,9 +18,13 @@ import { WebDavConfig, WebDavResult, WebDavStore } from '../service/WebDavStore'
 import { UpdateService } from '../service/UpdateService';
 import { DocMeta, DocStore } from '../service/DocStore';
 import { ExportService } from '../service/ExportService';
+import { SettingsMirror } from '../service/SettingsMirror';
+import { AppResetDialog } from '../components/AppResetDialog';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { AnnotationStore } from '../service/AnnotationStore';
+import { MdAnnotation } from '../markdown/MdTypes';
 import {
   HwRadius,
   HwSpace,
@@ -30,10 +34,32 @@ import {
   paletteFor
 } from '../theme/DesignTokens';
 
+/** 批注数据管理：跨文档批注预览条目 */
+interface AnnoPreviewItem {
+  docName: string;
+  kind: string;
+  text: string;
+}
+
 @Component
 export struct SettingsData {
   stack: NavPathStack | null = null;
   life: NavLifecycle = new NavLifecycle();
+
+  /** **应用初始化**确认弹窗（确认键倒计时 5 秒，见 AppResetDialog） */
+  resetDialog: CustomDialogController = new CustomDialogController({
+    builder: AppResetDialog({
+      onCancel: (): void => {
+        this.resetDialog.close();
+      },
+      onConfirm: (): void => {
+        this.resetDialog.close();
+        this.wipeAllData();
+      }
+    }),
+    autoCancel: true,
+    customStyle: true
+  });
 
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
@@ -60,13 +86,27 @@ export struct SettingsData {
   @State webdavUser: string = '';
   @State webdavPassword: string = '';
   @State webdavDir: string = 'litemdreader';
+  /** 自动备份间隔（天）：0 = 关闭；1 / 3 / 7 = 每 N 天自动上传一次 */
+  @State webdavAutoDays: number = 0;
+  /** 上次成功备份的时间戳（0 = 从未） */
+  @State webdavLastAt: number = 0;
+  /** 自动备份运行状态（AppStorage 由 WebDavStore.maybeAutoBackup 写入） */
+  @StorageProp('webdavAutoStatus') webdavAutoStatus: string = '';
   @State backupStatus: string = '';
   @State backing: boolean = false;
+  @State restoring: boolean = false;
   @State confirmClearAll: boolean = false;
   /** 全屏放大预览（展开区右上角放大按钮触发）：本地图=file:// URI、网络图=URL */
   @State previewImage: string = '';
   @State previewScale: number = 1;
   private previewPinchBase: number = 1;
+  /** 缓存大小文案（storageStatistics 统计，清除后延迟重算） */
+  @State cacheSizeText: string = '计算中…';
+  /** 批注数据管理：预览展开态 + 跨文档批注聚合 */
+  @State annoOpen: boolean = false;
+  @State annoPreview: AnnoPreviewItem[] = [];
+  @State annoTotal: number = 0;
+  @State annoDocs: number = 0;
   /** 图片管理：**原位下拉展开**的那一项（本地图=文件名；网络图=URL）；空 = 全部收起 */
   @State expandedImg: string = '';
 
@@ -108,6 +148,8 @@ export struct SettingsData {
     this.webdavUser = cfg.user;
     this.webdavPassword = cfg.password;
     this.webdavDir = cfg.dir.length > 0 ? cfg.dir : 'litemdreader';
+    this.webdavAutoDays = cfg.autoDays;
+    this.webdavLastAt = cfg.lastAutoAt;
   }
 
   private saveWebDavConfig(): void {
@@ -120,15 +162,103 @@ export struct SettingsData {
       server: this.webdavServer.trim(),
       user: this.webdavUser.trim(),
       password: this.webdavPassword,
-      dir: this.webdavDir.trim().length > 0 ? this.webdavDir.trim() : 'litemdreader'
+      dir: this.webdavDir.trim().length > 0 ? this.webdavDir.trim() : 'litemdreader',
+      autoDays: this.webdavAutoDays,
+      lastAutoAt: this.webdavLastAt
     };
     WebDavStore.saveConfig(c, cfg);
     this.toast('WebDAV 配置已保存');
   }
 
-  /** 一键备份：全部文档 + 书架索引 + 批注 + 阅读设置。 */
+  /** 设定自动备份间隔（用户要求：可设定多久上传一次）。 */
+  private setAutoDays(days: number): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    this.webdavAutoDays = days;
+    WebDavStore.setAutoDays(c, days);
+    if (days <= 0) {
+      this.toast('已关闭自动备份');
+    } else {
+      this.toast('自动备份：每 ' + days + ' 天（应用启动时检查，到点自动上传）');
+    }
+  }
+
+  /** 自动备份状态行（间隔 / 上次 / 下次）。 */
+  private webdavAutoLine(): string {
+    if (this.webdavAutoDays <= 0) {
+      return '自动备份：关闭（选择间隔后，应用启动时到点自动上传）';
+    }
+    const c = this.ctx();
+    const line: string = '自动备份：每 ' + this.webdavAutoDays + ' 天'
+      + (this.webdavLastAt > 0 ? ' · 上次 ' + this.stampOf(this.webdavLastAt) : ' · 尚未备份');
+    if (c === null) {
+      return line;
+    }
+    const left: number = WebDavStore.msToNextAuto(c);
+    if (left === 0) {
+      return line + ' · 已到期（下次启动应用时自动上传）';
+    }
+    if (left > 0) {
+      const hours: number = Math.ceil(left / 3600000);
+      return line + ' · 约 ' + (hours >= 24 ? Math.round(hours / 24) + ' 天后' : hours + ' 小时后');
+    }
+    return line;
+  }
+
+  /** 时间戳 → 'MM-DD HH:mm'。 */
+  private stampOf(ms: number): string {
+    const d: Date = new Date(ms);
+    const pad = (v: number): string => {
+      return v < 10 ? '0' + v : '' + v;
+    };
+    return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /** WebDAV 间隔选择芯片（选中高亮）。 */
+  @Builder
+  intervalChip(label: string, days: number) {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipActive: this.webdavAutoDays === days,
+      chipLabel: label,
+      chipOnTap: () => {
+        this.setAutoDays(days);
+      }
+    })
+  }
+
+  /** **应用初始化**：清空全部数据（等同卸载重装），确认弹窗带 5 秒倒计时。 */
+  private wipeAllData(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    // ① 持久化设置键逐个删（PersistentStorage 的持久层与 AppStorage 一起清）
+    const keys: string[] = SettingsMirror.KEYS;
+    for (let i = 0; i < keys.length; i++) {
+      try {
+        PersistentStorage.deleteProp(keys[i]);
+      } catch (err) {
+        // 单个键失败不阻断
+      }
+    }
+    // ② 沙箱数据（文档 / 批注 / AI / 备份 / 壁纸 / 草稿 …）与缓存、各类 Preferences
+    BackupStore.wipeAll(c).then((msg: string) => {
+      this.toast(msg + '，应用即将退出');
+      // ③ 退出应用：下次启动就是全新安装的初始状态
+      setTimeout(() => {
+        c.terminateSelf();
+      }, 900);
+    }).catch((_err: BusinessError) => {
+      this.toast('清空失败，请重试');
+    });
+  }
+
+  /** 一键备份：全部文档 + 书架索引 + 阅读设置 + 完整备份包（含 AI 对话记录）。 */
   private runBackup(): void {
-    if (this.backing) {
+    if (this.backing || this.restoring) {
       return;
     }
     // 基础模式（纯离线）：网络备份不可用（用户要求）
@@ -157,6 +287,9 @@ export struct SettingsData {
       if (result.error.length === 0) {
         this.backupStatus = '备份完成：' + result.uploaded + ' 个文件';
         this.toast('备份完成');
+        // 记一次成功时间（自动备份的到期判定以它为基准）
+        this.webdavLastAt = Date.now();
+        WebDavStore.markBackedUp(c);
       } else {
         this.backupStatus = '备份中断：' + result.error;
         this.toast('备份中断');
@@ -167,6 +300,74 @@ export struct SettingsData {
     });
   }
 
+  /** 从 WebDAV 恢复（确认后执行：整包下载解压，**覆盖**本机同名数据）。 */
+  private confirmRestoreWebDav(): void {
+    if (this.backing || this.restoring) {
+      return;
+    }
+    if (UpdateService.isOffline()) {
+      this.toast('当前是基础模式（纯离线），网络恢复不可用');
+      return;
+    }
+    const c = this.ctx();
+    if (c === null) {
+      this.toast('拿不到应用上下文');
+      return;
+    }
+    const cfg: WebDavConfig = WebDavStore.loadConfig(c);
+    if (!WebDavStore.isConfigured(cfg)) {
+      this.toast('请先填写服务器地址与账号');
+      return;
+    }
+    try {
+      this.getUIContext().showAlertDialog({
+        title: '从 WebDAV 恢复备份？',
+        message: '会用服务器上的完整备份包覆盖本机同名数据'
+          + '（文档、书架、AI 对话记录、批注、设置）。',
+        primaryButton: {
+          value: '取消',
+          action: () => {
+            // 什么都不做
+          }
+        },
+        secondaryButton: {
+          value: '恢复',
+          action: () => {
+            this.runRestoreWebDav();
+          }
+        }
+      });
+    } catch (err) {
+      this.runRestoreWebDav();
+    }
+  }
+
+  /** 恢复的实际执行体：下载完整备份包 → 整包解压覆盖。 */
+  private runRestoreWebDav(): void {
+    const c = this.ctx();
+    if (c === null) {
+      this.toast('拿不到应用上下文');
+      return;
+    }
+    const cfg: WebDavConfig = WebDavStore.loadConfig(c);
+    if (!WebDavStore.isConfigured(cfg)) {
+      this.toast('请先填写服务器地址与账号');
+      return;
+    }
+    this.restoring = true;
+    this.backupStatus = '开始恢复…';
+    WebDavStore.restoreFull(c, cfg, (label: string) => {
+      this.backupStatus = label;
+    }).then((msg: string) => {
+      this.restoring = false;
+      this.backupStatus = msg;
+      this.toast(msg.indexOf('失败') >= 0 || msg.indexOf('没有') >= 0 ? '恢复未完成' : '恢复完成');
+    }).catch((e: BusinessError) => {
+      this.restoring = false;
+      this.backupStatus = '恢复失败：' + e.message;
+    });
+  }
+
   // ══════════════════════ ④ 清空自建文档 ══════════════════════
   // ══════════════════════ ③ 书架数据（内置文档） ══════════════════════
 
@@ -174,9 +375,75 @@ export struct SettingsData {
   aboutToAppear(): void {
     this.loadBuiltins();
     this.loadWebDavConfig();
+    this.refreshCacheSize();
+    this.refreshAnnoData();
     this.life.onShow = () => {
       this.loadBuiltins();
+      this.refreshCacheSize();
+      this.refreshAnnoData();
     };
+  }
+
+  /** 缓存大小刷新（清除后延迟 500ms 再读，等系统回收磁盘空间 —— xjau 同款经验）。 */
+  private refreshCacheSize(delayMs: number = 0): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    if (delayMs > 0) {
+      this.cacheSizeText = '计算中…';
+      setTimeout(() => this.refreshCacheSize(0), delayMs);
+      return;
+    }
+    BackupStore.cacheSizeText(ctx).then((s: string) => {
+      this.cacheSizeText = s;
+    });
+  }
+
+  /** 批注形态分类文字（与注释抽屉同一套口径）。 */
+  private annoKindLabel(a: MdAnnotation): string {
+    if (a.style === 'card') {
+      return '学习卡';
+    }
+    if (a.style === 'wavy') {
+      return '波浪线';
+    }
+    if (a.style === 'dbl') {
+      return '手写批注';
+    }
+    return a.note.length > 0 ? '文字批注' : '荧光笔';
+  }
+
+  /** 跨文档收集全部批注做预览（上限 100 条，超出提示总数）。 */
+  private refreshAnnoData(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    DocStore.init(ctx);
+    const list: DocMeta[] = DocStore.list(ctx);
+    const out: AnnoPreviewItem[] = [];
+    let total: number = 0;
+    let docs: number = 0;
+    for (let k = 0; k < list.length; k++) {
+      const arr: MdAnnotation[] = AnnotationStore.load(ctx, list[k].name);
+      if (arr.length === 0) {
+        continue;
+      }
+      docs++;
+      total += arr.length;
+      for (let j = 0; j < arr.length && out.length < 100; j++) {
+        const a: MdAnnotation = arr[j];
+        out.push({
+          docName: list[k].name,
+          kind: this.annoKindLabel(a),
+          text: a.text.length > 0 ? a.text : '（无划选文字）'
+        } as AnnoPreviewItem);
+      }
+    }
+    this.annoTotal = total;
+    this.annoDocs = docs;
+    this.annoPreview = out;
   }
 
   private loadBuiltins(): void {
@@ -523,6 +790,8 @@ export struct SettingsData {
       if (msg.length > 0) {
         this.toast(msg);
       }
+      // 打包用的临时 zip 落在 cacheDir，导出完刷新缓存大小
+      this.refreshCacheSize(500);
     }).catch((err: BusinessError) => {
       this.zipBusy = false;
       this.zipStatus = '导出失败：' + err.message;
@@ -558,6 +827,8 @@ export struct SettingsData {
     BackupStore.clearCache(ctx).then((msg: string) => {
       this.zipStatus = msg;
       this.toast(msg);
+      // 清完延迟重算缓存大小（等系统回收磁盘空间）
+      this.refreshCacheSize(500);
     }).catch((err: BusinessError) => {
       this.zipStatus = '清除失败：' + err.message;
     });
@@ -646,8 +917,10 @@ export struct SettingsData {
       // ── ① 备份与恢复 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('把文档、书架索引、批注、手写笔迹打包成一个 zip 导出到你自己选的位置；' +
-            '导入会覆盖同名数据，请先确认当前数据已备份。')
+          Text('把全部数据打包成一个 zip 导出到你自己选的位置：文档、书架索引、批注、'
+            + '手写笔迹、复习数据、字体、草稿、阅读背景等全部沙箱数据，'
+            + '**外加阅读设置的偏好快照**（导入后重启应用生效）。'
+            + '导入会覆盖同名数据，请先确认当前数据已备份。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -699,6 +972,99 @@ export struct SettingsData {
             Text(this.zipStatus)
               .fontSize(HwType.caption)
               .fontColor(this.palette().accent)
+              .width('100%')
+          }
+
+          // **当前缓存大小**（用户要求：清除缓存要能看到大小）
+          Text('当前缓存大小：' + this.cacheSizeText
+            + '（缓存可随时清除，不影响文档 / 批注等用户数据）')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── ② 批注数据管理（用户要求：预览全部批注；批注随全量备份打包）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.sm }) {
+          Text('批注数据管理')
+            .fontSize(HwType.label + 1)
+            .fontColor(this.palette().textPrimary)
+          Text('全部批注共 ' + this.annoTotal + ' 条，覆盖 ' + this.annoDocs + ' 篇文档。'
+            + '批注随「导出备份」一并打包（annotations 目录），预览最多列出 100 条。')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
+
+          ImmersiveChip({
+            palette: this.palette(),
+            chipActive: this.annoOpen,
+            chipLabel: this.annoOpen ? '收起预览' : '预览全部批注',
+            chipOnTap: () => {
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.annoOpen = !this.annoOpen;
+              });
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.doc_text'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+          }
+
+          if (this.annoOpen) {
+            Scroll() {
+              Column({ space: HwSpace.xs }) {
+                ForEach(this.annoPreview, (it: AnnoPreviewItem, idx: number) => {
+                  Column({ space: 2 }) {
+                    Row({ space: HwSpace.xs }) {
+                      Text(it.kind)
+                        .fontSize(HwType.caption - 1)
+                        .fontColor(this.palette().accent)
+                        .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+                        .borderRadius(HwRadius.pill)
+                        .backgroundColor(this.palette().quoteBg)
+                      Text(it.docName)
+                        .fontSize(HwType.caption - 1)
+                        .fontColor(this.palette().textTertiary)
+                        .maxLines(1)
+                        .textOverflow({ overflow: TextOverflow.Ellipsis })
+                        .layoutWeight(1)
+                    }
+                    .width('100%')
+                    .alignItems(VerticalAlign.Center)
+
+                    Text(it.text)
+                      .fontSize(HwType.label)
+                      .fontColor(this.palette().textPrimary)
+                      .maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .width('100%')
+                  }
+                  .width('100%')
+                  .alignItems(HorizontalAlign.Start)
+                  .padding(HwSpace.sm)
+                  .borderRadius(HwRadius.inline)
+                  .backgroundColor(this.palette().quoteBg)
+                }, (it: AnnoPreviewItem, idx: number) => 'ap_' + idx + '_' + it.docName + '_' + it.kind)
+              }
+              .width('100%')
+            }
+            .width('100%')
+            .constraintSize({ maxHeight: 320 })
+            .scrollBar(BarState.Off)
+            .edgeEffect(EdgeEffect.Spring)
+            .align(Alignment.Top)
+            .transition(TransitionEffect.OPACITY
+              .animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+          }
+
+          if (this.annoTotal > 100 && this.annoOpen) {
+            Text('共 ' + this.annoTotal + ' 条，仅显示前 100 条 —— 全部内容以备份文件为准。')
+              .fontSize(HwType.caption - 1)
+              .fontColor(this.palette().textTertiary)
               .width('100%')
           }
         }
@@ -1037,7 +1403,7 @@ export struct SettingsData {
           Text('WebDAV 备份')
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
-          Text('把文档、书架索引、批注与阅读设置上传到你自己的 WebDAV 服务器；凭据只存在本机')
+          Text('上传全部文档与完整备份包（含 AI 对话记录、批注、手写、设置）到你的 WebDAV 服务器；凭据只存在本机。恢复时下载完整备份包整包还原')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1060,20 +1426,85 @@ export struct SettingsData {
             ImmersiveChip({
               palette: this.palette(),
               chipTint: '#FF2E7D32',
-              chipActive: !this.backing,
+              chipActive: !this.backing && !this.restoring,
               chipLabel: this.backing ? '备份中…' : '立即备份',
               chipOnTap: () => {
                 this.runBackup();
               }
             })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FF1565C0',
+              chipActive: !this.backing && !this.restoring,
+              chipLabel: this.restoring ? '恢复中…' : '恢复备份',
+              chipOnTap: () => {
+                this.confirmRestoreWebDav();
+              }
+            })
           }
           .width('100%')
+
+          // ── 自动备份间隔（用户要求：支持设定多久上传一次）──
+          Text(this.webdavAutoLine())
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+          Flex({
+            wrap: FlexWrap.Wrap,
+            space: { main: LengthMetrics.vp(HwSpace.xs), cross: LengthMetrics.vp(HwSpace.xs) }
+          }) {
+            this.intervalChip('关闭', 0)
+            this.intervalChip('每天', 1)
+            this.intervalChip('每 3 天', 3)
+            this.intervalChip('每周', 7)
+          }
+          .width('100%')
+          // 间隔切换的提示行出现 / 消失带过渡（凡事带动画）
+          .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+
+          if (this.webdavAutoStatus.length > 0) {
+            Text('上次自动任务：' + this.webdavAutoStatus)
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+          }
 
           if (this.backupStatus.length > 0) {
             Text(this.backupStatus)
               .fontSize(HwType.caption)
               .fontColor(this.palette().accent)
               .width('100%')
+          }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── **应用初始化**（用户要求：清空全部数据，等同卸载重装；确认键倒计时 5 秒）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.sm }) {
+          Text('应用初始化')
+            .fontSize(HwType.label + 1)
+            .fontColor('#FFD93B3B')
+            .fontWeight(FontWeight.Medium)
+          Text('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、'
+            + '阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
+          ImmersiveChip({
+            palette: this.palette(),
+            chipTint: '#FFD93B3B',
+            chipActive: true,
+            chipLabel: '应用初始化…',
+            chipOnTap: () => {
+              this.resetDialog.open();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.trash'))
+              .fontSize(13)
+              .fontColor(['#FFD93B3B'])
           }
         }
         .width('100%')

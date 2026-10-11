@@ -38,6 +38,11 @@ export struct LiveBlockEditor {
   @Prop lineMul: number = 1.6;
   /** 渲染纪元（字号 / 主题变化后强制重建，拼进 ForEach key） */
   @Prop renderEpoch: number = 0;
+  /** 公式图就绪信号（宿主递增）：迷你预览里输入的 $公式$ 出图后换掉线性化文本 */
+  @Prop formulaTick: number = 0;
+  /** 迷你预览刷新计数（宿主每次草稿重解析递增）：块 id 是解析序号、打字时不变，
+   *  不把它并进 key 的话 ForEach 复用旧节点 = "预览效果不实时刷新"（用户实测） */
+  @Prop previewTick: number = 0;
   /** 草稿的解析结果（宿主在草稿变化时解析好传进来；组件内不做重活） */
   @Prop previewBlocks: MdBlock[] = [];
   /** 源码草稿：与宿主的 @State 双向绑定（@Link 同一引用） */
@@ -212,7 +217,8 @@ export struct LiveBlockEditor {
               bodySize: this.bodySize,
               lineMul: this.lineMul
             })
-          }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch)
+          }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch + '_ft' + this.formulaTick
+            + '_r' + this.previewTick)
         }
         .width('100%')
         .padding({ top: HwSpace.xs })

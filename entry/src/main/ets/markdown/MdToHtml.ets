@@ -14,6 +14,7 @@
 
 import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCodeState, resolveFamily } from './CodeHighlight';
 import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind } from './MdTypes';
+import { EngineRegistry } from '../service/EngineRegistry';
 import { util } from '@kit.ArkTS';
 
 /** 内嵌 CSS。浅色纸面配色，与阅读器浅色主题同一气质。 */
@@ -25,6 +26,9 @@ const HTML_CSS: string = `
   .markmap { width: 100%; height: 420px; }
   .mermaid, .ktx, .gv, .abc { width: 100%; overflow-x: auto; text-align: center; }
   .gv svg, .abc svg { max-width: 100%; height: auto; }
+  /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
+     JS 未加载 / 渲染失败时以源码兜底显示 */
+  .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
   h1, h2, h3, h4, h5, h6 { line-height: 1.35; margin: 1.6em 0 0.6em; }
   h1 { font-size: 1.75em; } h2 { font-size: 1.42em; border-bottom: 1px solid #e2e6ee; padding-bottom: 0.3em; }
   h3 { font-size: 1.21em; } h4 { font-size: 1.09em; } h5 { font-size: 1em; } h6 { font-size: 0.94em; color: #525a68; }
@@ -162,6 +166,14 @@ export class MdToHtml {
         body = '<sup class="fnref">[' + label + ']</sup>';
       } else if (item.kind === MdInlineKind.Code) {
         // 上面已经包过 code
+      } else if (item.kind === MdInlineKind.MathInline) {
+        // **行内公式**（`$…$` / `\(…\)`）：独立行内容器 + data-b64 携带源码，
+        // runner 用 KaTeX 以 displayMode:false 渲染。此前这里没有任何分支——
+        // 行内公式以 **LaTeX 源码原文**出现在导出网页里（用户实测
+        // "转网页把 latex 没有完全支持"）。容器内预填 esc 后的源码作占位：
+        // JS 未加载 / 渲染失败时以源码兜底（可读），渲染成功会被替换。
+        body = '<span class="kxi" data-b64="' + MdToHtml.b64(item.text) + '">'
+          + MdToHtml.esc(item.text) + '</span>';
       }
       out += body;
     }
@@ -240,15 +252,36 @@ export class MdToHtml {
     return false;
   }
 
+  /**
+   * 导出视角：该语言依赖的渲染引擎是否已在「设置 → 引擎管理」里关闭。
+   *
+   * ⚠️ flowchart 在导出侧**借 mermaid 渲染**（阅读侧才用 flowchart.js），
+   * 两者任一被关闭都算关——导出统一降级为代码块（关闭后无法渲染，
+   * 导出的网页也不能假装能渲染）。`html` 块与未登记语言 → 空引擎 → 恒 false。
+   */
+  static engineOffForLang(lang: string): boolean {
+    const l: string = lang.trim().toLowerCase();
+    if (l === 'flowchart') {
+      return EngineRegistry.isOff('flowchart', EngineRegistry.current())
+        || EngineRegistry.isOff('mermaid', EngineRegistry.current());
+    }
+    return EngineRegistry.isOff(EngineRegistry.langId(l), EngineRegistry.current());
+  }
+
   /** 扫描文档包含的图表块数（Chart 块 + Math 公式块；导出面板据此决定内联哪些库）。 */
   static countCharts(blocks: MdBlock[]): number {
     let n: number = 0;
     for (let k = 0; k < blocks.length; k++) {
       const b: MdBlock = blocks[k];
       if (b.kind === MdBlockKind.Chart && MdToHtml.isChartLang(b.lang)) {
-        n++;
+        // 已关闭引擎的图表不计入：导出会降级为代码块，不需要预装渲染库
+        if (!MdToHtml.engineOffForLang(b.lang)) {
+          n++;
+        }
       } else if (b.kind === MdBlockKind.Math) {
-        n++;
+        if (!EngineRegistry.isOff('katex', EngineRegistry.current())) {
+          n++;
+        }
       }
     }
     return n;
@@ -315,6 +348,10 @@ export class MdToHtml {
     }
     // ── CDN 引用模式（回退）──
     const has = (lang: string): boolean => {
+      // 已关闭引擎不注入任何脚本（正文里也不会有它的容器——见 export 的降级逻辑）
+      if (MdToHtml.engineOffForLang(lang)) {
+        return false;
+      }
       for (let k = 0; k < blocks.length; k++) {
         const b: MdBlock = blocks[k];
         const l: string = b.lang.trim().toLowerCase();
@@ -322,7 +359,7 @@ export class MdToHtml {
           return true;
         }
         if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'flowchart') {
-          return true;
+          return !MdToHtml.engineOffForLang('flowchart');
         }
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
           return true;
@@ -360,6 +397,10 @@ export class MdToHtml {
   /** 页尾 runner：解码各容器的 Base64 内容并调对应渲染库绘制（内联 / CDN 共用）。 */
   private static chartRunner(blocks: MdBlock[]): string {
     const has = (lang: string): boolean => {
+      // 与 chartAssets 同一套门控：已关闭引擎既没有容器也没有渲染库，runner 不出它的代码
+      if (MdToHtml.engineOffForLang(lang)) {
+        return false;
+      }
       for (let k = 0; k < blocks.length; k++) {
         const b: MdBlock = blocks[k];
         const l: string = b.lang.trim().toLowerCase();
@@ -367,7 +408,7 @@ export class MdToHtml {
           return true;
         }
         if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'flowchart') {
-          return true;
+          return !MdToHtml.engineOffForLang('flowchart');
         }
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
           return true;
@@ -378,6 +419,74 @@ export class MdToHtml {
     const runnerCode: string = '\n<script>\n(function() {\n'
       + '  function b64u(b64) { var bin = atob(b64); var u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) { u[i] = bin.charCodeAt(i); } return new TextDecoder().decode(u); }\n'
       + '  function tryRun(fn) { try { fn(); } catch (e) { console.error("chart render failed", e); } }\n'
+      + (has('katex') ? '  // 宏定义宽容化（与 render/katex.html 的 __normalizeMacros 保持一致）：\n'
+        + '  // \\newcommand / \\renewcommand / \\providecommand → \\def —— KaTeX 内置 texvc 宏\n'
+        + '  // （\\R=\\mathbb{R} 等）与用户宏同名时会报 "attempting to redefine"，\\def 可静默覆盖。\n'
+        + '  function normalizeMacros(s) {\n'
+        + '    try {\n'
+        + '      var out = ""; var last = 0; var n = s.length; var changed = false;\n'
+        + '      var re = /\\\\(newcommand|renewcommand|providecommand)\\b/g;\n'
+        + '      var m;\n'
+        + '      while ((m = re.exec(s)) !== null) {\n'
+        + '        var start = m.index;\n'
+        + '        if (start < last) { continue; }\n'
+        + '        var j = start + m[0].length;\n'
+        + '        while (j < n && /\\s/.test(s.charAt(j))) { j++; }\n'
+        + '        if (s.charAt(j) === "*") { j++; }\n'
+        + '        while (j < n && /\\s/.test(s.charAt(j))) { j++; }\n'
+        + '        var name = "";\n'
+        + '        if (s.charAt(j) === "{") {\n'
+        + '          var k = j + 1; var inner = "";\n'
+        + '          while (k < n && s.charAt(k) !== "}") { inner += s.charAt(k); k++; }\n'
+        + '          if (k < n && inner.charAt(0) === "\\\\") { name = inner.substring(1).trim(); j = k + 1; }\n'
+        + '        } else if (s.charAt(j) === "\\\\") {\n'
+        + '          var k2 = j + 1;\n'
+        + '          while (k2 < n && /[a-zA-Z]/.test(s.charAt(k2))) { k2++; }\n'
+        + '          if (k2 > j + 1) { name = s.substring(j + 1, k2); j = k2; }\n'
+        + '        }\n'
+        + '        if (name.length === 0) { continue; }\n'
+        + '        while (j < n && /\\s/.test(s.charAt(j))) { j++; }\n'
+        + '        var argc = 0;\n'
+        + '        if (s.charAt(j) === "[") {\n'
+        + '          var k3 = j + 1; var num = "";\n'
+        + '          while (k3 < n && s.charAt(k3) !== "]") { num += s.charAt(k3); k3++; }\n'
+        + '          var p = parseInt(num, 10);\n'
+        + '          if (k3 < n && !isNaN(p) && p >= 0 && p <= 9) { argc = p; j = k3 + 1; }\n'
+        + '        }\n'
+        + '        while (j < n && /\\s/.test(s.charAt(j))) { j++; }\n'
+        + '        if (s.charAt(j) !== "{") { continue; }\n'
+        + '        var depth = 0; var k4 = j; var end = -1;\n'
+        + '        while (k4 < n) {\n'
+        + '          var c = s.charAt(k4);\n'
+        + '          if (c === "\\\\") { k4 += 2; continue; }\n'
+        + '          if (c === "{") { depth++; }\n'
+        + '          else if (c === "}") { depth--; if (depth === 0) { end = k4; break; } }\n'
+        + '          k4++;\n'
+        + '        }\n'
+        + '        if (end < 0) { continue; }\n'
+        + '        var body = s.substring(j, end + 1);\n'
+        + '        var params = "";\n'
+        + '        for (var q = 1; q <= argc; q++) { params += "#" + q; }\n'
+        + '        out += s.substring(last, start) + "\\\\def\\\\" + name + params + body;\n'
+        + '        last = end + 1;\n'
+        + '        re.lastIndex = last;\n'
+        + '        changed = true;\n'
+        + '      }\n'
+        + '      if (!changed) { return s; }\n'
+        + '      return out + s.substring(last);\n'
+        + '    } catch (e) { return s; }\n'
+        + '  }\n'
+        + '  // 公式渲染（块级 display / 行内）：常规失败且是宏重定义类问题时用宽容化源码重试一次\n'
+        + '  function renderKx(el, display) {\n'
+        + '    var s = b64u(el.dataset.b64);\n'
+        + '    var opt = { displayMode: display, throwOnError: false };\n'
+        + '    el.innerHTML = "";\n'
+        + '    katex.render(s, el, opt);\n'
+        + '    if (el.querySelector(".katex-error")) {\n'
+        + '      var s2 = normalizeMacros(s);\n'
+        + '      if (s2 !== s) { el.innerHTML = ""; katex.render(s2, el, opt); }\n'
+        + '    }\n'
+        + '  }\n' : '')
       + '  window.addEventListener("load", function() {\n'
       + (has('markmap') ? '    if (window.markmap && markmap.Transformer && markmap.Markmap) {\n'
         + '      document.querySelectorAll(".markmap").forEach(async function(el) {\n'
@@ -401,7 +510,10 @@ export class MdToHtml {
         + '    }\n' : '')
       + (has('katex') ? '    if (window.katex) {\n'
         + '      document.querySelectorAll(".ktx").forEach(function(el) {\n'
-        + '        tryRun(function() { katex.render(b64u(el.dataset.b64), el, { displayMode: true, throwOnError: false }); });\n'
+        + '        tryRun(function() { renderKx(el, true); });\n'
+        + '      });\n'
+        + '      document.querySelectorAll(".kxi").forEach(function(el) {\n'
+        + '        tryRun(function() { renderKx(el, false); });\n'
         + '      });\n'
         + '    }\n' : '')
       + (has('echarts') ? '    if (window.echarts) {\n'
@@ -410,12 +522,12 @@ export class MdToHtml {
         + '      });\n'
         + '    }\n' : '')
       + (has('graphviz') ? '    if (window.Viz) {\n'
-        + '      document.querySelectorAll(".gv").forEach(async function(el) {\n'
-        + '        try {\n'
-        + '          var svg = await new Viz().renderString(b64u(el.dataset.b64), { format: "svg" });\n'
-        + '          el.innerHTML = svg;\n'
-        + '        } catch (e) { console.error("graphviz render failed", e); }\n'
-        + '      });\n'
+        + '      Viz.instance().then(function(viz) {\n'
+        + '        document.querySelectorAll(".gv").forEach(function(el) {\n'
+        + '          try { el.innerHTML = viz.renderString(b64u(el.dataset.b64), { format: "svg" }); }\n'
+        + '          catch (e) { console.error("graphviz render failed", e); }\n'
+        + '        });\n'
+        + '      }, function(e) { console.error("viz init failed", e); });\n'
         + '    }\n' : '')
       + (has('abc') ? '    if (window.ABCJS) {\n'
         + '      document.querySelectorAll(".abc").forEach(function(el) {\n'
@@ -567,9 +679,13 @@ export class MdToHtml {
           body += '<p>' + MdToHtml.inline(block.inlines) + '</p>';
         } else if (block.kind === MdBlockKind.Chart) {
           // 图表块：rich 且语言受支持 → 渲染容器（渲染库内联）；
-          // flowchart 语法 → 转换为 mermaid 渲染；graphviz 等无方案 → 保持代码块
+          // flowchart 语法 → 转换为 mermaid 渲染；graphviz 等无方案 → 保持代码块。
+          // 「设置 → 引擎管理」里关闭了对应引擎 → 一律保持代码块（关闭后无法渲染，
+          // 导出的网页也不能假装能渲染；与阅读页源码兜底卡同一语义）。
           const langLower: string = block.lang.trim().toLowerCase();
-          if (rich && langLower === 'flowchart') {
+          if (MdToHtml.engineOffForLang(langLower)) {
+            body += MdToHtml.codeBlock(block.lang, block.codeLines);
+          } else if (rich && langLower === 'flowchart') {
             body += MdToHtml.chartContainer('mermaid',
               [MdToHtml.flowchartToMermaid(block.code)]);
             chartIndex++;
@@ -580,9 +696,13 @@ export class MdToHtml {
             body += MdToHtml.codeBlock(block.lang, block.codeLines);
           }
         } else if (block.kind === MdBlockKind.Math && rich) {
-          // rich 模式：公式块转 katex 容器
-          body += MdToHtml.chartContainer('katex', [block.code]);
-          chartIndex++;
+          // rich 模式：公式块转 katex 容器；KaTeX 关闭 → 保持源码代码块
+          if (EngineRegistry.isOff('katex', EngineRegistry.current())) {
+            body += MdToHtml.codeBlock('latex', [block.code]);
+          } else {
+            body += MdToHtml.chartContainer('katex', [block.code]);
+            chartIndex++;
+          }
         } else if (block.kind === MdBlockKind.Code) {
           body += MdToHtml.codeBlock(block.lang, block.codeLines);
         } else if (block.kind === MdBlockKind.Quote) {

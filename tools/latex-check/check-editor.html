@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<style>body{font-family:sans-serif;padding:12px;display:flex;gap:14px}iframe{border:1px solid #ccc;display:block}
+.cap{font-size:12px;color:#666;margin-bottom:4px}</style></head><body>
+<div><div class="cap">默认（未 setTheme = 深色）</div><iframe id="f" src="/editor/editor.html" style="width:400px;height:430px"></iframe></div>
+<div><div class="cap">setTheme 浅色（模拟 app 浅色主题）</div><iframe id="g" src="/editor/editor.html" style="width:400px;height:430px"></iframe></div>
+<script>
+const content = '# 使用说明\n\n**粗体**与 *斜体* 与 `代码`\n\n- 列表第一项\n- 列表第二项\n\n> 引用一段话\n\n<!-- 普通段落文字，检查主题基线 -->\n';
+document.getElementById('f').addEventListener('load', function () {
+  this.contentWindow.setMarkdown(content, 0);
+});
+document.getElementById('g').addEventListener('load', function () {
+  this.contentWindow.setTheme({
+    '--bg': 'rgba(246,251,255,0.95)', '--bg2': 'rgba(255,255,255,1)', '--line': 'rgba(0,0,0,0.12)',
+    '--tx': 'rgba(27,31,39,1)', '--tx2': 'rgba(139,147,161,1)', '--accent': 'rgba(47,99,232,1)',
+    '--gold': 'rgba(47,99,232,1)', '--code': 'rgba(242,242,245,1)', '--press': '0,0,0'
+  });
+  this.contentWindow.setMarkdown(content, 0);
+});
+</script>
+</body></html>

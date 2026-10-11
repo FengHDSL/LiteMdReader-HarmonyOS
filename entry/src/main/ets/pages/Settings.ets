@@ -21,8 +21,10 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { SettingsEngines } from './SettingsEngines';
 import { Changelog } from './Changelog';
 import { SettingsHelp } from './SettingsHelp';
+import { AiSettings } from './AiSettings';
 import { DocStore } from '../service/DocStore';
 import { bundleManager, common } from '@kit.AbilityKit';
 import { GenWallpaper } from '../theme/GenWallpaper';
@@ -64,6 +66,16 @@ const SECTIONS: SectionItem[] = [
     name: '数据管理',
     route: 'pages/SettingsData',
     note: 'zip / WebDAV 备份恢复 · 书架数据 · 缓存'
+  },
+  {
+    name: '助手设置',
+    route: 'pages/AiSettingsEmbedded',
+    note: 'API 地址 · 模型 · 思考强度 · 词元消耗'
+  },
+  {
+    name: '引擎管理',
+    route: 'pages/SettingsEngines',
+    note: '渲染引擎版本 · 可单独关闭'
   },
   {
     name: '探索中心',
@@ -358,12 +370,16 @@ export struct Settings {
         SettingsData({ stack: this.stack })
       } else if (route === 'pages/SettingsReading') {
         SettingsReading({ stack: this.stack })
+      } else if (route === 'pages/SettingsEngines') {
+        SettingsEngines({ stack: this.stack, life: this.life })
       } else if (route === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.stack, embedded: true })
       } else if (route === 'pages/Changelog') {
         Changelog({ stack: this.stack, embedded: true })
       } else if (route === 'pages/SettingsHelp') {
         SettingsHelp({ stack: this.stack })
+      } else if (route === 'pages/AiSettingsEmbedded') {
+        AiSettings({ stack: this.stack, embedded: true })
       }
     }, (route: string) => route)
   }
