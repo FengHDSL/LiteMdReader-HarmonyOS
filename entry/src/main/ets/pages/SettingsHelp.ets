@@ -717,6 +717,8 @@ export struct SettingsHelp {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** 关键词筛选（空串 = 全部） */
   @State query: string = '';
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
 
   private palette(): ReaderPalette {
     return paletteFor(this.themeMode, this.systemDark);

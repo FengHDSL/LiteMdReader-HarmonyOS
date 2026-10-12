@@ -103,6 +103,8 @@ export struct Sketch {
   private delivered: boolean = false;
   /** 导出中标记（防重复点「插入文档」） */
   @State saving: boolean = false;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @StorageProp('systemDark') systemDark: boolean = false;
   @StorageProp('readerThemeMode') themeMode: number = 0;
   /** 顶部安全区（px）：顶栏据此避让系统状态栏 */
@@ -1003,5 +1005,6 @@ export struct Sketch {
       bottom: HwSpace.xl
     })
     .alignItems(HorizontalAlign.Start)
+    .key('sketch_l' + this.languageTick)
   }
 }

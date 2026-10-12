@@ -114,6 +114,8 @@ export struct ReviewPage {
 
   /** 页签：0 学习主页 · 1 统计 */
   @State tab: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 是否处于全屏复习（刷卡形态） */
   @State reviewing: boolean = false;
   /** 本轮全部背完：展示完成界面（用户要求专门设计） */

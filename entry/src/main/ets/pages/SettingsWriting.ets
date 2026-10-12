@@ -115,6 +115,8 @@ export struct SettingsWriting {
   /** 本页实测宽度（热力图格子尺寸按可用宽度算） */
   /** 书架总量（自建） */
   @State totalDocs: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State totalWords: number = 0;
   /** 今日 / 本月实际写入 */
   @State todayWords: number = 0;

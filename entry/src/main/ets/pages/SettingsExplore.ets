@@ -81,6 +81,8 @@ export struct SettingsExplore {
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   @State versionName: string = '1.0.0';
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 「检查更新」进行中（按钮转圈 + 文案变「检查中…」，期间重复点击直接忽略） */
   @State checkingUpdate: boolean = false;
   /** 平板分栏嵌入模式：true = 由设置分栏的右栏承载，法务在卡片内展开 */

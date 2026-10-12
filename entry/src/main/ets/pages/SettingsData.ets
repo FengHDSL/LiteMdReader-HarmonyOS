@@ -68,6 +68,8 @@ export struct SettingsData {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** zip 备份/恢复的进行中标记与结果文案 */
   @State zipBusy: boolean = false;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State zipStatus: string = '';
   /** 书架数据：内置文档清单 + 待确认删除的那一篇 */
   @State builtinList: DocMeta[] = [];

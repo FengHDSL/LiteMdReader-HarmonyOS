@@ -13,6 +13,8 @@ struct ReaderExtPage {
   @StorageLink('continueDocName') docName: string = '澄笺 · 协同阅读';
   @StorageLink('continueDocContent') docContent: string = '';
   @State fontSize: number = 18;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   private scroller: Scroller = new Scroller();
 
   /** 正文行：按换行切分（扩展页只做纯文本阅读，不引 Markdown 管线）。 */
@@ -40,6 +42,7 @@ struct ReaderExtPage {
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
           .borderRadius(8)
           .backgroundColor('#14000000')
+    .key('rext_l' + this.languageTick)
           .onClick(() => {
             this.fontSize = Math.max(12, this.fontSize - 2);
           })

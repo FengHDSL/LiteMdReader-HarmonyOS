@@ -36,6 +36,8 @@ export struct MergeExportPanel {
 
   /** 已选文档（按合并顺序排列） */
   @State order: string[] = [];
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 「添加文档」清单是否展开 */
   @State addOpen: boolean = false;
   @State withTitle: boolean = true;

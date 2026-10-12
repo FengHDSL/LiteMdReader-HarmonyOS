@@ -45,6 +45,8 @@ export struct AiSettings {
 
   // ── 表单 ──
   @State apiUrl: string = '';
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State apiKey: string = '';
   @State modelsText: string = '';
   @State systemPrompt: string = '';
@@ -862,5 +864,6 @@ export struct AiSettings {
     }
     .alignItems(HorizontalAlign.Start)
     .width('100%')
+    .key('aiset_l' + this.languageTick)
   }
 }

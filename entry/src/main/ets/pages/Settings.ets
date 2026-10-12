@@ -102,6 +102,8 @@ export struct Settings {
   @StorageProp('wallpaperBlur') wallpaperBlur: number = 4;
   @StorageProp('wallpaperScrim') wallpaperScrim: number = 42;
   @State docCount: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State totalWords: number = 0;
   /** 本页实测宽度（平板分栏判定） */
   @State rootW: number = 0;
@@ -278,7 +280,9 @@ export struct Settings {
       .width('100%')
       .height('100%')
       // **不透明底**：修「滑动进入时短暂看到上一级页面」与深色下右栏发白
+      .key('settings_l2' + this.languageTick)
       .backgroundColor(this.palette().pageBottom)
+      .key('settings_l' + this.languageTick)
       // 铺进状态栏 / 手势条区域：右栏背景与左栏一样全出血（避让由各栏内容自理）
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .onAreaChange((oldValue: Area, newValue: Area) => {

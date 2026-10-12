@@ -84,6 +84,8 @@ export struct SettingsAppearance {
    */
   @StorageLink('themeColor') @Watch('onAppearanceChanged') themeColor: string = '';
   @State customHex: string = '';
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 函数绘制壁纸选中款（空 = 不用） */
   @StorageLink('wallpaperGenId') genWallId: string = '';
   /** 自定义函数壁纸三键（GenWallpaper 的 custom 分支读取绘制） */

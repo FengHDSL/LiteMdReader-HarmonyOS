@@ -367,6 +367,8 @@ export struct AiChat {
   }
   // ── 图表放大浮层（与阅读页同一套观感）──
   @State chartOpen: boolean = false;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State chartMode: string = 'mermaid';
   @State chartPayload: string = '';
   @State chartTitle: string = '';
@@ -2044,7 +2046,7 @@ export struct AiChat {
           this.bubble(m, idx)
         }
       }, (m: AiChatMessage, idx: number) => 'm' + idx + '_' + m.ts
-        + (m.err === true ? '_e' : '') + '_t' + this.themeEpoch)
+        + (m.err === true ? '_e' : '') + '_t' + this.themeEpoch + '_l' + this.languageTick)
 
       // **底部占位条目**：末条消息滚到底停在输入栏上方（不被挡），
       // 滚动中其他消息可从输入栏底下穿过。inputH = 输入区实测高（已含安全区让位）
@@ -2080,7 +2082,7 @@ export struct AiChat {
     // 只改条目 key 不够——已挂载的 ListItem / 其中的 Markdown 气泡由列表复用，
     // 换**容器** key 才会把整段回复真正重建、取到新调色板；
     // 否则背景靠 @StorageProp 即时变深、正文停在旧主题 → 深底深字看不清（用户实测）。
-    .key('aiMsgs_' + this.themeEpoch)
+    .key('aiMsgs_' + this.themeEpoch + '_l' + this.languageTick)
   }
 
   @Builder

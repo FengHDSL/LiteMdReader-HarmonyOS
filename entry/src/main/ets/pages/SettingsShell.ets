@@ -340,7 +340,7 @@ export struct SettingsShell {
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)
     // **主题纪元拼进根容器 key**：系统深浅一变整树重建，设置页也一次刷新到位
-    .key('settings_theme_' + this.themeEpoch)
+    .key('settings_theme_' + this.themeEpoch + '_l' + this.languageTick)
   }
 
   /** 默认内容：调用方没传闭包时的占位，避免出现空白页 */

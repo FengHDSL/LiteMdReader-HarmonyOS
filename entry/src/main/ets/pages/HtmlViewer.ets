@@ -33,6 +33,8 @@ export struct HtmlViewer {
   @Prop htmlPath: string = '';
   private controller: webview.WebviewController = new webview.WebviewController();
   @State status: string = '准备中…';
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   @State ready: boolean = false;
   @State printing: boolean = false;
   @State failed: boolean = false;

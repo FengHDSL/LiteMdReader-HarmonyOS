@@ -264,6 +264,8 @@ class EditorWebBridge {
 export struct Editor {
   /** 分屏模式：0 纯编辑/预览切换 1 上下分屏 2 左右分屏 */
   @State splitMode: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 背景链（与阅读页/书架一致）：手选壁纸 / 函数壁纸 / 模糊 */
   /** 阅读背景图（阅读页设置的"阅读背景"，编辑页同用，优先于壁纸） */
   @StorageProp('readerBgPath') readerBgPath: string = '';
@@ -5093,6 +5095,7 @@ export struct Editor {
     // 根节点铺满整个窗口（含状态栏与手势条区域），避让由 padTop / padBottom 统一负责
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .backgroundColor(this.palette().pageBottom)
+    .key('editor_l' + this.languageTick)
     .onAreaChange((oldValue: Area, newValue: Area) => {
       // Area.width / height 的类型是 Length（number | string | Resource），必须收窄后再用
       const raw: Length = newValue.width;

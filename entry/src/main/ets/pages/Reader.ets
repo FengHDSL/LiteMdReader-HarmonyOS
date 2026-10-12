@@ -266,6 +266,8 @@ export struct Reader {
    * 已挂载的 ListItem 与其中的按钮是被列表复用的，必须换容器 key 才会真正重建。
    */
   @State themeEpoch: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 显示设置变化即刻下发窗口（阅读页持有常亮 / 亮度行为，离开时交还）。
    *  亮度不能叫 brightness——与组件基类的 .brightness() 属性方法重名（同 outline 的坑）。 */
   @StorageLink('readerKeepScreenOn') @Watch('onDisplaySettingChanged') keepOn: boolean = false;
@@ -7472,7 +7474,7 @@ export struct Reader {
           // 只改条目的 key 不够——已挂载的 ListItem / 其中的按钮是由列表**复用**的，
           // 换容器的 key 才会把整段正文真正重建一遍（用户反馈：正文前段、部分按钮
           // 切换深浅后不变色，就是因为它们是被复用的那一批）。
-          .key('readerBody_' + this.themeEpoch)
+          .key('readerBody_' + this.themeEpoch + '_l' + this.languageTick)
 
           // 大屏/横屏：注释停靠右侧（正文列与目录列之间），宽度同样可调
           if (this.isWide() && this.notesPinned) {
@@ -7728,7 +7730,7 @@ export struct Reader {
       .hitTestBehavior(HitTestMode.Transparent)
       // **主题纪元拼在顶栏层上**：明暗切换时整个顶栏（胶囊 + 里面的按钮）重建。
       // 只改条目 key 不够——按钮是由这一层复用的，会保留旧颜色。
-      .key('readerTopLayer_' + this.themeEpoch)
+      .key('readerTopLayer_' + this.themeEpoch + '_l' + this.languageTick)
       // **沉浸阅读：整层完全不渲染**（用户要求"完全隐藏"，而不是收成迷你胶囊）——
       // Visibility.None 既不绘制也不占位，比只翻 topBarVisible 彻底得多。
       .visibility(this.immersiveRead ? Visibility.None : Visibility.Visible)
@@ -7802,7 +7804,7 @@ export struct Reader {
       .animation({ duration: 260, curve: Curve.FastOutSlowIn })
       .hitTestBehavior(HitTestMode.Transparent)
       // **主题纪元拼在底栏层上**：明暗切换时整颗胶囊（含里面的按钮与标签数字）重建
-      .key('readerBottomLayer_' + this.themeEpoch)
+      .key('readerBottomLayer_' + this.themeEpoch + '_l' + this.languageTick)
       // 同上：沉浸阅读时底栏层整层不渲染（连收起态的迷你胶囊也一并消失）
       .visibility(this.immersiveRead ? Visibility.None : Visibility.Visible)
       // 侧滑抽屉打开时的背景模糊（同书架搜索展开）

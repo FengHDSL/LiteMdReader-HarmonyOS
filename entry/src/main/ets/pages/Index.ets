@@ -213,6 +213,8 @@ struct Index {
    * 拼在根节点上还能正常逐帧过渡（新老节点各渲染一帧，不会闪空白）。
    */
   @State themeEpoch: number = 0;
+  /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
+  @StorageProp('languageTick') languageTick: number = 0;
   /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手 */
   @State gripSide: number = 0;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
@@ -3803,7 +3805,7 @@ struct Index {
             GridItem() {
               this.docCell(meta, true)
             }
-          }, (meta: DocMeta) => 'fp_' + meta.name + '_' + this.docCoverTag(meta) + '_t' + this.themeEpoch)
+          }, (meta: DocMeta) => 'fp_' + meta.name + '_' + this.docCoverTag(meta) + '_t' + this.themeEpoch + '_l' + this.languageTick)
         }
         .columnsTemplate(this.panelColumnsStr())
         .columnsGap(HwSpace.sm)
@@ -5574,7 +5576,7 @@ struct Index {
             ListItem() {
               this.treeDocRow(meta, 26)
             }
-          }, (meta: DocMeta, idx: number) => 'fd' + idx + '_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch)
+          }, (meta: DocMeta, idx: number) => 'fd' + idx + '_' + folder.name + '_' + meta.name + '_t' + this.themeEpoch + '_l' + this.languageTick)
         }
       }, (folder: ShelfFolder) => 'f_' + folder.name + '_' + this.folderDocs(folder.name).length)
 
@@ -7137,7 +7139,7 @@ struct Index {
           })
           // **主题纪元拼在 Grid 容器上**：只换条目 key 时，已挂载的卡片（含其中的
           // 按钮）会被列表复用、颜色不跟着变；换容器 key 才会整段重建。
-          .key('shelfGrid_' + this.themeEpoch)
+          .key('shelfGrid_' + this.themeEpoch + '_l' + this.languageTick)
           }
           }
           .width('100%')
@@ -7554,7 +7556,7 @@ struct Index {
     // **主题纪元拼进 key**：系统深浅 / 应用主题一变，整棵组件树重建一次，
     // 材质、壁纸、所有派生色一次刷新到位（不用再"进别的页面"才完全刷新）。
     // key 里必须带真正变化的量（themeEpoch），否则每个节点 key 相同 = 没换 key。
-    .key('index_theme_' + this.themeEpoch)
+    .key('index_theme_' + this.themeEpoch + '_l' + this.languageTick)
   }
 
   /**
