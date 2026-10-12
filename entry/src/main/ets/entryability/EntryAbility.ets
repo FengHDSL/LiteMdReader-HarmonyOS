@@ -54,6 +54,8 @@ export default class EntryAbility extends UIAbility {
 
     // 使用模式：'' 未选择（首次启动会弹窗让用户选）/ 'full' 全量 / 'offline' 基础（纯离线）
     PersistentStorage.persistProp('appMode', '');
+    PersistentStorage.persistProp('reviewSwapMode', false);
+    PersistentStorage.persistProp('reviewTypingMode', false);
     // 已经弹过「本次更新内容」的版本号（更新后首次启动弹一次）
     PersistentStorage.persistProp('lastSeenVersion', '');
     // 上次自动检查更新的时间戳（固定 48 小时一次）

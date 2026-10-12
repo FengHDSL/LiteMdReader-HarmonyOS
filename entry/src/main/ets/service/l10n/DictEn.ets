@@ -8,6 +8,13 @@
 import { L10nEntry, toL10nMap } from './L10nEntries';
 
 export const EN_US_ENTRIES: L10nEntry[] = [
+  { k: '互换', v: 'Swap sides' },
+  { k: '拼写', v: 'Spelling' },
+  { k: '提交', v: 'Submit' },
+  { k: '提示', v: 'Hint' },
+  { k: '忘记了', v: 'Forgot' },
+  { k: '不对——正确内容已翻面显示，按「下一个」继续', v: 'Not quite — the answer is on the flipped side; tap “Next” to continue' },
+  { k: '输入隐藏的内容…', v: 'Type the hidden content…' },
   { k: '已清除缓存 ', v: 'Cache cleared ' },
   { k: '开始复习', v: 'Start review' },
   { k: ' · 上次 ', v: ' · Last: ' },

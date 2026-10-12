@@ -135,6 +135,43 @@ export struct ReviewPage {
   @State queueTotal: number = 0;
   @State queueIndex: number = 0;
   @State flipped: boolean = false;
+  /** 互换模式：正面显示批注、背面显示原文（单词与翻译互换，用户要求） */
+  @StorageLink('reviewSwapMode') swapMode: boolean = false;
+  /** 拼写模式：输入隐藏内容判定，完全一致才通过 */
+  @StorageLink('reviewTypingMode') typingMode: boolean = false;
+  /** 拼写输入内容 */
+  @State typeInput: string = '';
+  /** 拼写判定失败（翻面显示正确答案并按模糊计） */
+  @State typeWrong: boolean = false;
+
+  /** 当前卡的正面（互换模式下显示批注内容） */
+  private cardFront(): string {
+    const c: ReviewCard = this.queue[this.queueIndex];
+    return this.swapMode ? c.back : c.front;
+  }
+
+  /** 当前卡的背面（互换模式下显示原文） */
+  private cardBack(): string {
+    const c: ReviewCard = this.queue[this.queueIndex];
+    return this.swapMode ? c.front : c.back;
+  }
+
+  /** 拼写提交：输入与隐藏内容完全一致（trim 后）才通过，否则翻面看答案并按模糊计 */
+  private submitTyping(): void {
+    if (this.typeInput.trim().length === 0 || this.queueIndex >= this.queue.length) {
+      return;
+    }
+    const hidden: string = this.cardBack().trim();
+    if (this.typeInput.trim() === hidden) {
+      this.typeWrong = false;
+      this.typeInput = '';
+      this.grade(2);
+    } else {
+      this.typeWrong = true;
+      this.flipped = true;
+      this.grade(1);
+    }
+  }
   @State hintText: string = '';
   /** 提示自动消失计时器（2 秒） */
   private hintTimer: number = -1;
@@ -159,8 +196,8 @@ export struct ReviewPage {
       return;
     }
     const card: ReviewCard = this.queue[this.queueIndex];
-    // **只读卡片正面**（单词 / 原句）：批注内容（中文释义）不播（用户要求）
-    const text: string = card.front;
+    // **只读卡片正面**（单词 / 原句）：批注内容（中文释义）不播（用户要求）；互换模式读互换后的正面
+    const text: string = this.swapMode ? card.back : card.front;
     if (this.ttsEngine === null) {
       // 基础离线模式下只能用离线音色（与阅读页朗读同一口径）
       const mode: string = AppStorage.get<string>('appMode') ?? '';
@@ -563,6 +600,9 @@ export struct ReviewPage {
 
   /** 确认卡上的「下一个」：按类型收尾（掌握落 SM-2，否则排队尾）并推进。 */
   private confirmContinue(): void {
+    this.typeInput = '';
+    this.typeWrong = false;
+    this.flipped = false;
     const c = this.ctx();
     const cur: ReviewCard | undefined =
       this.queueIndex < this.queue.length ? this.queue[this.queueIndex] : undefined;
@@ -1804,7 +1844,7 @@ export struct ReviewPage {
             // **卡面公式渲染**（用户要求）：学习卡内容含公式（公式菜单 → 学习卡的
             // 裸 LaTeX / 正文划选的 $…$）→ 在卡面小区域直接渲染成公式图
             MathFormulaText({
-              src: this.queue[this.queueIndex].front,
+              src: this.cardFront(),
               dark: this.isDark(),
               fontSize: HwType.label + 2,
               color: this.palette().textTertiary,
@@ -1813,7 +1853,7 @@ export struct ReviewPage {
 
             if (this.queue[this.queueIndex].back.length > 0) {
               MathFormulaText({
-                src: this.queue[this.queueIndex].back,
+                src: this.cardBack(),
                 dark: this.isDark(),
                 fontSize: HwType.label + 5,
                 bold: true,
@@ -1852,9 +1892,36 @@ export struct ReviewPage {
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
+            // ── 模式切换芯片：互换（正反面交换）/ 拼写（输入判定）──
+            Row({ space: HwSpace.xs }) {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipLabel: L10n.t('互换'),
+                chipActive: this.swapMode,
+                chipOnTap: () => {
+                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                    this.swapMode = !this.swapMode;
+                    this.flipped = false;
+                    this.typeWrong = false;
+                  });
+                }
+              })
+              ImmersiveChip({
+                palette: this.palette(),
+                chipLabel: L10n.t('拼写'),
+                chipActive: this.typingMode,
+                chipOnTap: () => {
+                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                    this.typingMode = !this.typingMode;
+                    this.typeInput = '';
+                    this.typeWrong = false;
+                  });
+                }
+              })
+            }
             // **卡面公式渲染**（同上）：正面 = 原文（含公式时直接渲染）
             MathFormulaText({
-              src: this.queue[this.queueIndex].front,
+              src: this.cardFront(),
               dark: this.isDark(),
               fontSize: HwType.label + 8,
               bold: true,
@@ -1862,9 +1929,9 @@ export struct ReviewPage {
               textAlign: TextAlign.Start
             })
             if (this.flipped) {
-              if (this.queue[this.queueIndex].back.length > 0) {
+              if (this.cardBack().length > 0) {
                 MathFormulaText({
-                  src: this.queue[this.queueIndex].back,
+                  src: this.cardBack(),
                   dark: this.isDark(),
                   fontSize: HwType.label + 3,
                   color: this.palette().accent,
@@ -1900,7 +1967,9 @@ export struct ReviewPage {
             TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn })
           ))
           .onClick(() => {
-            this.flipped = !this.flipped;
+            if (!this.typingMode) {
+              this.flipped = !this.flipped;
+            }
           })
         }
         }
@@ -1962,6 +2031,86 @@ export struct ReviewPage {
           }
           .width('100%')
           .padding({ left: HwSpace.xl, right: HwSpace.xl })
+        } else if (this.typingMode) {
+          if (this.hintText.length > 0) {
+            Text(this.hintText)
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+              .textAlign(TextAlign.Center)
+              .width('100%')
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          }
+          if (this.typeWrong) {
+            Text(L10n.t('不对——正确内容已翻面显示，按「下一个」继续'))
+              .fontSize(HwType.caption)
+              .fontColor('#FFD32F2F')
+              .textAlign(TextAlign.Center)
+              .width('100%')
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          }
+          Row({ space: HwSpace.sm }) {
+            TextInput({ text: this.typeInput, placeholder: L10n.t('输入隐藏的内容…') })
+              .layoutWeight(1)
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+              .placeholderColor(this.palette().textTertiary)
+              .backgroundColor(this.palette().cardBg)
+              .borderRadius(HwRadius.pill)
+              .onChange((value: string) => {
+                this.typeInput = value;
+              })
+              .onSubmit(() => {
+                this.submitTyping();
+              })
+          }
+          .width('100%')
+          Row({ space: HwSpace.sm }) {
+            Row() {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipTint: '#FF1F9E66',
+                chipActive: true,
+                chipFontSize: 15,
+                chipLabel: L10n.t('提交'),
+                chipOnTap: () => {
+                  this.submitTyping();
+                }
+              })
+            }
+            .layoutWeight(1)
+            Row() {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipTint: '#FFE08000',
+                chipActive: true,
+                chipFontSize: 15,
+                chipLabel: L10n.t('提示'),
+                chipOnTap: () => {
+                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                    this.flipped = true;
+                  });
+                }
+              })
+            }
+            .layoutWeight(1)
+            Row() {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipTint: '#FFD32F2F',
+                chipActive: true,
+                chipFontSize: 15,
+                chipLabel: L10n.t('忘记了'),
+                chipOnTap: () => {
+                  this.typeInput = '';
+                  this.typeWrong = false;
+                  this.grade(0);
+                }
+              })
+            }
+            .layoutWeight(1)
+          }
+          .width('100%')
+          .padding({ left: HwSpace.lg, right: HwSpace.lg, bottom: HwSpace.sm })
         } else {
           if (this.hintText.length > 0) {
             Text(this.hintText)
