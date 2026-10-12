@@ -354,13 +354,14 @@ export class BackupStore {
     let uri: string = '';
     try {
       const options = new picker.DocumentSaveOptions();
-      // **备份文件名带日期**（用户要求）：澄笺备份_2026-10-01.zip
+      // **备份文件名：澄笺_年月日_时分秒**（用户要求）：澄笺_20261012_193045.zip
       const now: Date = new Date();
       const pad = (v: number): string => {
         return v < 10 ? '0' + v : '' + v;
       };
-      const stamp: string = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
-      options.newFileNames = ['澄笺备份_' + stamp + '.zip'];
+      const stamp: string = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate())
+        + '_' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      options.newFileNames = ['澄笺_' + stamp + '.zip'];
       const viewPicker = new picker.DocumentViewPicker(ctx);
       const uris: string[] = await viewPicker.save(options);
       if (uris === undefined || uris === null || uris.length === 0) {
