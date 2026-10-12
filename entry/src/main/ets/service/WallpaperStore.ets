@@ -303,4 +303,68 @@ export class WallpaperStore {
     }
     AppStorage.setOrCreate(READER_BG_PATH_KEY, '');
   }
+
+  /**
+   * 备份恢复后**按盘上实际文件重指壁纸路径**。
+   *
+   * 三个壁纸键存的都是**沙箱绝对路径**，而落盘文件名带时间戳（`wallpaper_light_<ts>.img`
+   * 这类，为了让 @StorageProp 感知到路径变化、壁纸实时重绘）。换机恢复时文件名可能对
+   * 不上，设置里那条路径就成了死链——壁纸文件明明导进来了，界面却按"没有壁纸"显示。
+   * 这里对每个键：没设过 → 不动（别把用户清掉的壁纸又找回来）；记的路径还在 → 不动；
+   * 路径已失效 → 按前缀在 filesDir 里找 `.img`，取 mtime 最新的那个重新指上。
+   */
+  static relink(ctx: common.UIAbilityContext): void {
+    WallpaperStore.relinkKey(ctx, WALLPAPER_PATH_LIGHT_KEY, 'wallpaper_light_');
+    WallpaperStore.relinkKey(ctx, WALLPAPER_PATH_DARK_KEY, 'wallpaper_dark_');
+    WallpaperStore.relinkKey(ctx, READER_BG_PATH_KEY, 'reader_bg');
+  }
+
+  private static relinkKey(ctx: common.UIAbilityContext, key: string, prefix: string): void {
+    const value: string | undefined = AppStorage.get<string>(key);
+    const cur: string = value === undefined || value === null ? '' : value;
+    if (cur.length === 0) {
+      return;
+    }
+    try {
+      if (fs.accessSync(cur)) {
+        return;
+      }
+    } catch (err) {
+      // 路径无效，往下找
+    }
+    const found: string = WallpaperStore.newestWith(ctx.filesDir, prefix);
+    if (found.length > 0) {
+      AppStorage.setOrCreate(key, found);
+    }
+  }
+
+  /** 目录顶层里以 prefix 开头、`.img` 结尾、mtime 最新的那个文件；没有返回空串 */
+  private static newestWith(dir: string, prefix: string): string {
+    let best: string = '';
+    let bestTime: number = -1;
+    let names: string[] = [];
+    try {
+      names = fs.listFileSync(dir);
+    } catch (err) {
+      return '';
+    }
+    for (let k = 0; k < names.length; k++) {
+      const n: string = names[k];
+      if (n.length < prefix.length + 4 || n.substring(0, prefix.length) !== prefix
+        || n.substring(n.length - 4) !== '.img') {
+        continue;
+      }
+      const p: string = dir + '/' + n;
+      try {
+        const t: number = fs.statSync(p).mtime;
+        if (t > bestTime) {
+          bestTime = t;
+          best = p;
+        }
+      } catch (err) {
+        // 单个文件读不到就跳过
+      }
+    }
+    return best;
+  }
 }

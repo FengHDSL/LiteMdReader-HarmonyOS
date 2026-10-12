@@ -922,10 +922,17 @@ export struct SettingsData {
       // ── ① 备份与恢复 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text(L10n.t('把**整个应用的全部数据**打包成一个 zip 导出到你选的位置：文档正文与图片、') + '书架索引与文件夹、批注与学习卡、手写笔迹、复习数据、阅读与写作日志、'
-            + 'AI 对话与配置、草稿、字体、壁纸与阅读背景、全部设置，以及 WebDAV 账号配置。'
-            + '导入会覆盖同名数据，回到书架即刻生效（不必重启应用）；'
-            + '导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。')
+          Text(L10n.t('把整个应用的全部数据按类别打包成一个 zip：文档与图片、书架索引、批注与学习卡、手写笔迹、AI 会话与配置、草稿、版本快照、字体、壁纸与阅读背景、阅读与写作日志、阅读标签页、复习数据、全部设置、网盘账号配置、桌面卡片快照，以及图表与导出缓存。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
+          Text(L10n.t('包内按文件夹分类，并附一份 manifest.json 清单（导出时间、每类的文件数与落点）；导入时认这份清单，把每个文件夹写回它本来的位置。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
+          Text(L10n.t('导入会覆盖同名文件，但不会删除本机多出来的数据；回到书架即刻生效，不必重启应用。导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -981,8 +988,7 @@ export struct SettingsData {
           }
 
           // **当前缓存大小**（用户要求：清除缓存要能看到大小）
-          Text(L10n.t('当前缓存大小：') + this.cacheSizeText
-            + '（缓存可随时清除，不影响文档 / 批注等用户数据）')
+          Text(L10n.f1('当前缓存大小：%1（缓存也进备份包，可随时清除，不影响文档 / 批注等用户数据）', this.cacheSizeText))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')

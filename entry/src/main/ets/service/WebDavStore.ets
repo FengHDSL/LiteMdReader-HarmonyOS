@@ -8,13 +8,16 @@
  * 上传内容（两阶段，口径与用户要求一致）：
  *   ① 逐文件：docs/*.md（**只传用户自建的文档**，内置教程随应用包发布）+ shelf.json
  *      + config.json（= settings.json 设置镜像，网盘端可直接翻看、也能手动取用）；
- *   ② **完整备份包** litemdreader_full.zip —— BackupStore.packToZip 打的全量包
- *     （文档正文与图片、批注、手写、AI 对话与配置、草稿、版本、两份日志、壁纸、
- *     全部设置、WebDAV 账号配置 = filesDir 全部条目），恢复时整包下载 + 覆盖拷贝。
+ *   ② **完整备份包** litemdreader_full.zip —— BackupStore.packToZip 打的全量包：
+ *     包内按类别分文件夹（docs / annotations / ai / drafts / versions / fonts /
+ *     wallpaper / logs / tabs / review / settings / webdav / form / cache / extra）
+ *     并附 manifest.json 清单，落点覆盖 filesDir、cacheDir、应用级 filesDir 与
+ *     preferences 四处（完整对照表见 BackupStore 顶部说明）。
  *
- * 恢复走 BackupStore.restoreFromPath：解压到暂存目录 → 校验 → 同名先删再拷 →
- * 设置与语言回填 AppStorage、WebDAV 配置回填 preferences、各内存缓存重载 ——
- * **不必重启应用**（老版本"重启后数据还是旧的"的成因见 BackupStore 顶部说明）。
+ * 恢复走 BackupStore.restoreFromPath：解压到暂存目录 → 认清单/认类别文件夹 →
+ * 每类写回它本来的落点 → 设置与语言回填 AppStorage、WebDAV 配置回填 preferences、
+ * 各内存缓存重载 —— **不必重启应用**（老版本"重启后数据还是旧的"的成因见
+ * BackupStore 顶部说明）。
  *
  * 三个设计决策：
  *

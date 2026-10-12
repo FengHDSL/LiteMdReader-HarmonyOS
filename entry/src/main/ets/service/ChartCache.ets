@@ -26,6 +26,17 @@ export class ChartCache {
   private static dimMemo: Map<string, string> = new Map();
 
   /**
+   * 清空三份会话内缓存，让下次查询按磁盘重建。
+   * 备份恢复与清缓存后必须调它：memo 里记的是**恢复前**的路径与尺寸，
+   * 不清的话界面上还会拿旧条目显示（新导入的 PNG / .dim 明明在盘上却读不到）。
+   */
+  static invalidate(): void {
+    ChartCache.memo.clear();
+    ChartCache.uriMemo.clear();
+    ChartCache.dimMemo.clear();
+  }
+
+  /**
    * 内容哈希：mode | 深浅 | **卡片底色** | 源码 → md5 hex。同步实现（输入都是小文本）。
    *
    * **键盐代际**（历史包袱的教训，别再往回调）：
