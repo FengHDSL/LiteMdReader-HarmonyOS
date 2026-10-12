@@ -44,6 +44,8 @@ import {
 import { getImmersiveMaterial } from '../material/SystemMaterial';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
+import { MergeExportPanel } from '../components/MergeExportPanel';
+import { MergeSource } from '../service/MergeExport';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -334,6 +336,12 @@ struct Index {
   @State cellMenuKind: string = 'doc';
   @State cellMenuFor: string = '';
   @State cellMenuBuiltin: boolean = false;
+  /**
+   * 合并导出面板的数据（打开时刷新一遍，再换纪元重建面板 ——
+   * MergeExportPanel 的 sources/preselect 只在创建那一刻读一次）
+   */
+  @State mergeSources: MergeSource[] = [];
+  @State mergePreselect: string[] = [];
   /** 书架视图：true 网格 / false 树形（文件树形态） */
   @State treeMode: boolean = false;
   @State expandedFolders: string[] = [];
@@ -883,6 +891,28 @@ struct Index {
   private openCellExport(): void {
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.shelfSheet = 'export';
+      this.shelfVisible = true;
+    });
+  }
+
+  /**
+   * 合并导出（书架多选 → 合并导出）：候选 = 当前书架全部文档，
+   * 预选 = 这次勾选的那批（保持勾选顺序）。
+   */
+  private openMergeExport(): void {
+    const src: MergeSource[] = [];
+    for (let k = 0; k < this.docs.length; k++) {
+      src.push({ name: this.docs[k].name, builtin: this.docs[k].builtin === true } as MergeSource);
+    }
+    const pre: string[] = [];
+    for (let k = 0; k < this.multiNames.length; k++) {
+      pre.push(this.multiNames[k]);
+    }
+    this.mergeSources = src;
+    this.mergePreselect = pre;
+    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.sheetEpoch++;
+      this.shelfSheet = 'merge';
       this.shelfVisible = true;
     });
   }
@@ -4426,6 +4456,9 @@ struct Index {
     if (this.shelfSheet === 'export') {
       return '导出与分享';
     }
+    if (this.shelfSheet === 'merge') {
+      return '合并导出';
+    }
     return this.cellMenuFor;
   }
 
@@ -4443,6 +4476,9 @@ struct Index {
     }
     if (this.shelfSheet === 'export') {
       return '「' + this.cellMenuFor + '」';
+    }
+    if (this.shelfSheet === 'merge') {
+      return '把多篇按选定顺序拼成一篇，再导 HTML / 打印 / MD / TXT';
     }
     return '选择操作';
   }
@@ -4878,6 +4914,13 @@ struct Index {
       }
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
+    } else if (this.shelfSheet === 'merge') {
+      // 双写分支只为强制重建（面板数据刚在 openMergeExport 里刷过）
+      if (this.sheetEpoch % 2 === 0) {
+        this.mergeSheet()
+      } else {
+        this.mergeSheet()
+      }
     } else {
       // **强制重建靠分支切换**（用户实测：面板里点收藏后文案不刷新）——
       // `.id()` / `.key()` 换值都不会重建节点，只有 if 分支切换是确定的
@@ -4889,6 +4932,24 @@ struct Index {
         this.cellMenuSheet()
       }
     }
+  }
+
+  /** 合并导出面板（选篇 / 排序 / 合并样式 + 四种输出）。 */
+  @Builder
+  mergeSheet() {
+    Column() {
+      MergeExportPanel({
+        sources: this.mergeSources,
+        preselect: this.mergePreselect,
+        stack: this.pathStack,
+        palette: this.palette(),
+        onClosed: () => {
+          this.closeRename();
+        }
+      })
+    }
+    .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
   }
 
   /** bindSheet 内容包装（格子菜单 / 重命名）。菜单内容较高，**整页可滚**（MEDIUM 定高，超出会被裁掉）。 */
@@ -5588,6 +5649,21 @@ struct Index {
             }
           })
         Blank()
+        // 合并导出：把勾选的这批拼成一篇再导出（面板里还能调顺序）
+        ImmersiveChip({
+          palette: this.palette(),
+          chipActive: true,
+          chipLabel: '合并导出',
+          chipOnTap: () => {
+            if (this.multiNames.length < 2) {
+              this.getUIContext().getPromptAction().showToast({
+                message: '至少选两篇才能合并', duration: 1600
+              });
+              return;
+            }
+            this.openMergeExport();
+          }
+        })
         ImmersiveChip({
           palette: this.palette(),
           chipTint: '#FFD32F2F',

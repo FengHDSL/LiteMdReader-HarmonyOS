@@ -10,7 +10,7 @@
 
 | | |
 | --- | --- |
-| 当前版本 | **v1.1.2** |
+| 当前版本 | **v1.1.3** |
 | 平台 | HarmonyOS（ArkTS / ArkUI，Stage 模型） |
 | 设备 | 手机 · 平板 · 2in1 |
 | 包名 | `com.litemdreader.lzb` |

@@ -75,6 +75,8 @@ import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
 import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { MathFormulaText } from '../components/MathFormulaText';
 import { NotePanel } from '../components/NotePanel';
+import { MergeExportPanel } from '../components/MergeExportPanel';
+import { MergeSource } from '../service/MergeExport';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
@@ -776,6 +778,13 @@ export struct Reader {
   /** 翻页动效的透明度分量（0.3 → 1） */
   /** 当前打开的半模态面板：settings/note/tabMenu/bright/more；空串 = 全关 */
   @State activeSheet: string = '';
+  /**
+   * 合并导出面板的数据源（打开面板那一刻重建，见 openMergeExport 的 sheetEpoch）。
+   * MergeExportPanel 的 sources/preselect 是普通成员，只在创建时读一次，
+   * 所以每次打开都要先把这两份刷新一遍、再换纪元重建面板。
+   */
+  @State mergeSources: MergeSource[] = [];
+  @State mergePreselect: string[] = [];
   @State contentFade: number = 1;
   @State rootWidth: number = 360;
   /** 窗口高度（vp）：页面过渡的缩放锚点兜底用 */
@@ -3944,6 +3953,9 @@ export struct Reader {
     if (this.activeSheet === 'export') {
       return '导出与分享';
     }
+    if (this.activeSheet === 'merge') {
+      return '合并导出';
+    }
     if (this.activeSheet === 'compare') {
       return '对照阅读';
     }
@@ -3969,6 +3981,9 @@ export struct Reader {
     }
     if (this.activeSheet === 'export') {
       return '「' + this.docName + '」';
+    }
+    if (this.activeSheet === 'merge') {
+      return '把多篇按选定顺序拼成一篇，再导 HTML / 打印 / MD / TXT';
     }
     return '';
   }
@@ -4011,6 +4026,13 @@ export struct Reader {
       .width('100%')
       .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
       .id('shExport_' + this.sheetEpoch)
+    } else if (this.activeSheet === 'merge') {
+      // 双写分支只为强制重建（面板数据在 openMergeExport 里刚刷过）
+      if (this.sheetEpoch % 2 === 0) {
+        this.mergeSheet()
+      } else {
+        this.mergeSheet()
+      }
     } else if (this.activeSheet === 'more') {
       this.moreSheet()
     } else if (this.activeSheet === 'web') {
@@ -4465,6 +4487,25 @@ export struct Reader {
     .width('100%')
     .padding(HwSpace.lg)
     .id('shNote_' + this.sheetEpoch)
+  }
+
+  /** 合并导出面板（选篇 / 排序 / 合并样式 + 四种输出）。 */
+  @Builder
+  mergeSheet() {
+    Column() {
+      MergeExportPanel({
+        sources: this.mergeSources,
+        preselect: this.mergePreselect,
+        stack: this.stack,
+        palette: this.palette(),
+        onClosed: () => {
+          this.closeMore();
+        }
+      })
+    }
+    .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm })
+    .id('shMerge_' + this.sheetEpoch)
   }
 
   @Builder
@@ -5213,6 +5254,10 @@ export struct Reader {
         })
         this.moreTile('导出与分享', $r('sys.symbol.doc_text_badge_arrow_up'), (): void => {
           this.openExport();
+        })
+        // 合并导出：多篇拼一篇（选篇 + 排序 + HTML/打印/MD/TXT）
+        this.moreTile('合并导出', $r('sys.symbol.doc_plaintext'), (): void => {
+          this.openMergeExport();
         })
       }
       .width('100%')
@@ -6469,6 +6514,43 @@ export struct Reader {
   private openExport(): void {
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.activeSheet = 'export';
+      this.sheetVisible = true;
+    });
+  }
+
+  /**
+   * 合并导出面板：候选 = 书架全部文档（内置教程也算），预选 = 当前这篇排第一。
+   * ⚠️ 面板的 sources/preselect 只在创建那一刻读一次，所以每次打开都要重刷数据
+   * 并换纪元重建（分支里用 sheetEpoch % 2 双写，见 currentSheetBody）。
+   */
+  private openMergeExport(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      DocStore.init(ctx);
+      const list: DocMeta[] = DocStore.list(ctx);
+      const src: MergeSource[] = [];
+      for (let k = 0; k < list.length; k++) {
+        src.push({ name: list[k].name, builtin: list[k].builtin === true } as MergeSource);
+      }
+      const pre: string[] = [];
+      for (let k = 0; k < src.length; k++) {
+        if (src[k].name === this.docName) {
+          pre.push(this.docName);
+          break;
+        }
+      }
+      this.mergeSources = src;
+      this.mergePreselect = pre;
+    } catch (err) {
+      this.toast('读取文档清单失败');
+      return;
+    }
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.sheetEpoch++;
+      this.activeSheet = 'merge';
       this.sheetVisible = true;
     });
   }
