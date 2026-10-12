@@ -18,7 +18,11 @@
  *  · **竖屏走手机形态（用户要求 2026-09-30）**——`phoneLayout: true` 时
  *    `preferType: SheetType.BOTTOM` 强制底部全宽面板，平板竖屏不转居中窗口；
  *    横屏交还系统默认（平板按官方规格转居中窗口 480vp）。
- *  · **高度固定 MEDIUM**——屏幕高度的 60%。
+ *  · **高度**——手机形态给**档位阶梯**（起档 = 原来那档：fitContent 或 MEDIUM，
+ *    往上可拖到 MEDIUM / LARGE，用户要求面板要能手动抬高）；横屏/平板居中窗口
+ *    平台不支持多档拖拽，仍走 height 定高。
+ *  · **键盘避让**——平台对 BindSheet 不做键盘避让（SDK NOTE 明确列出 BindSheet），
+ *    所以面板内容一律包在 `SheetKeyboardLift` 里，靠键盘高度垫底把输入框抬到输入法上方。
  *  · **拖拽条（操作提示）**——dragBar: true。
  *  · **关闭按钮**——规范默认显示，showClose: true，出现在标题栏右上角。
  *  · **标题栏**——官方自带标题区（title / subtitle），渲染在左上角，
@@ -30,7 +34,61 @@
 
 import { withAlpha } from '../theme/DesignTokens';
 
-/** 半模态面板的统一打开参数（全新接口，不复用旧面板的任何参数结构）。 */
+/**
+ * 半模态内容的**键盘抬高包装层**（所有面板共用，内容都包在里面）。
+ *
+ * **为什么只能应用层自己做**：SDK 在 `UIContext.setKeyboardAvoidMode` 的 NOTE 里
+ * 写死了 —— "only affects page layouts. It does not apply to popup components,
+ * including the following: **Dialog, Popup, Menu, BindSheet, BindContentCover,
+ * Toast, OverlayManager**"（见 Sdk/26.0.0/ets/api/@ohos.arkui.UIContext.d.ts）。
+ * 所以键盘弹起时半模态**不会**自动上移，面板下部的输入框必然被输入法盖住；
+ * 把内容做高也不行（fitContent 只跟内容尺寸走，跟键盘无关）。
+ *
+ * **做法**：给内容垫一段等于键盘高度的底部 padding —— 内容整体落到键盘上沿之上。
+ * fitContent 面板随之长高，定高面板则压缩可视区，两种都让输入框可见。
+ *
+ * **数据源**：AppStorage 的 `keyboardPx`，由 AppWindow 用 avoidAreaChange 的
+ * **TYPE_KEYBOARD** 全局广播。刻意不用 `keyboardHeightChange`：本仓实测其上报值
+ * 与键盘面板真实高度不一致，会悬空一大截（见 service/AppWindow.ets 注释）。
+ *
+ * **为什么是组件而不是给各面板直接加属性**：bindSheet 的 builder 不跟宿主状态
+ * 重渲染（本工程固定坑，AutoScrollTile / ReadAloudTile / ReaderFlagTile 同一结论），
+ * 键盘高度这种"面板开着时才会变"的量，必须由自持 @StorageProp 的子组件来吃。
+ */
+@Component
+export struct SheetKeyboardLift {
+  @StorageProp('keyboardPx') keyboardPx: number = 0;
+
+  @Builder
+  doNothing() {
+  }
+
+  @BuilderParam content: () => void = this.doNothing;
+
+  /** 键盘占位（px → vp）；键盘收起时为 0，不垫任何高度。 */
+  private liftVp(): number {
+    if (this.keyboardPx <= 0) {
+      return 0;
+    }
+    return Math.round(this.getUIContext().px2vp(this.keyboardPx));
+  }
+
+  build() {
+    Column() {
+      this.content()
+    }
+    .width('100%')
+    .padding({ bottom: this.liftVp() })
+    // **抬/落都走过渡**（用户要求平滑移动上去、平滑移动下来）：
+    // ArkUI 的 .animation 只管**它之前声明的那些属性**，所以必须排在 padding 之后。
+    // 时长取 200ms：再长会和系统键盘动画脱节，再短就还是"跳"。
+    .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+  }
+}
+
+/**
+ * 半模态面板的统一打开参数（全新接口，不复用旧面板的任何参数结构）。
+ */
 export interface ModalSheetSpec {
   /** 官方标题栏主标题（渲染在面板左上角） */
   title: string;
@@ -126,6 +184,18 @@ export function modalSheetOptions(spec: ModalSheetSpec): SheetOptions {
   };
   if (spec.detents !== undefined) {
     options.detents = spec.detents;
+  } else if (spec.phoneLayout && spec.large !== true) {
+    // **手动抬高**（用户要求：所有半模态都要能自己拉高）：以前只给 height = 定高，
+    // 拖拽条没有第二档可去，等于"看着能拖、实际拖不动"。这里把单一高度改成
+    // **档位阶梯**，起档仍是原来那一档（视觉不变），往上多出可拖的档。
+    // ⚠️ 多档拖拽只在手机形态生效（横屏/平板居中窗口不支持），所以宽屏仍走 height。
+    const ladderFit: [string | number | Resource,
+      (string | number | Resource)?, (string | number | Resource)?] =
+      [SheetSize.FIT_CONTENT, SheetSize.MEDIUM, SheetSize.LARGE];
+    const ladderMedium: [string | number | Resource,
+      (string | number | Resource)?, (string | number | Resource)?] =
+      [SheetSize.MEDIUM, SheetSize.LARGE];
+    options.detents = spec.fitContent === true ? ladderFit : ladderMedium;
   } else {
     options.height = spec.fitContent === true ? SheetSize.FIT_CONTENT
       : (spec.large === true ? SheetSize.LARGE : SheetSize.MEDIUM);

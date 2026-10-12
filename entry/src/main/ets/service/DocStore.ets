@@ -132,7 +132,7 @@ interface ShelfIndex {
   order?: string[];
   /** 被用户删掉的内置教程名（内置文档不落盘，只能用这份名单"删"；设置页可一键恢复） */
   hiddenBuiltins?: string[];
-  /** 「澄笺」文件夹的一次性播种标记（把两本内置教程收进文件夹，只做一次） */
+  /** 「澄笺」文件夹的一次性播种标记（把内置教程收进文件夹，只做一次；老安装新增的内置文档会以散件出现，可手动拖入） */
   seededFolder?: boolean;
 }
 
@@ -214,12 +214,12 @@ export interface DocTimes {
 
 export class DocStore {
   /** 内置文档清单（展示名 + rawfile），常驻书架最前。
-   *  coverColor = 预置封面色（用户要求：教程蓝、示例绿；用户改封面会覆盖此值）。
-   *  **只保留两份**（用户指令）：教程 + 全功能演示；知识图谱 / 待办的演示文档
-   *  已删除——两个功能用自建文档即可体验，无内置依赖。 */
+   *  coverColor = 预置封面色（用户要求：教程蓝、示例绿、能力总览紫；用户改封面会覆盖此值）。
+   *  知识图谱 / 待办的演示文档已删除——两个功能用自建文档即可体验，无内置依赖。 */
   static readonly BUILTINS: DocBuiltin[] = [
     { name: 'Markdown 语法教程', raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' }
+    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' },
+    { name: '澄笺 · 渲染能力总览', raw: 'capabilities.md', coverColor: '#7A5FA8' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
@@ -260,7 +260,7 @@ export class DocStore {
     }
     DocStore.docs = DocStore.loadIndex();
     DocStore.ready = true;
-    // **首次启动**：把两本内置教程收进「澄笺」文件夹（一次性，之后可自行解散）
+    // **首次启动**：把内置教程收进「澄笺」文件夹（一次性，之后可自行解散）
     DocStore.seedChengjianFolder();
     // 内置文档用到的插图释放到沙箱（只读 rawfile 里的图片，正文才能用常规 ![]() 引用）
     DocStore.ensureBuiltinImages(ctx);
@@ -294,7 +294,7 @@ export class DocStore {
     }
   }
 
-  /** 把两本内置教程收进「澄笺」文件夹（只做一次；被隐藏的内置文档不参与）。 */
+  /** 把内置教程收进「澄笺」文件夹（只做一次；被隐藏的内置文档不参与）。 */
   private static seedChengjianFolder(): void {
     if (DocStore.seededFolder) {
       return;

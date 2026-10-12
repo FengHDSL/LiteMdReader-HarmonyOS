@@ -52,9 +52,20 @@ export class ChartCache {
    *  · v10（2026-10-11 九度升级）：markmap 高度回传改**画布实际高度**——此前
    *    scrollHeight 被 svg 内部尺寸虚高，脑图快照成"上方一条 + 下方空白"、
    *    卡片按虚高拉满（用户实测"显示面积异常"）。键升盐作废虚高期脑图缓存。
+   *  · v11～v12：放大浮层画布形态与模板统一（markmap-card 一份模板管两种形态）。
+   *  · v13（2026-10-11 十度升级）：修**超宽公式快照被裁断**——katex 块级路径此前是
+   *    `#app{overflow:auto}`，#app 自己吞掉溢出，文档宽度恒等于视口宽
+   *    （实测 2195px 的公式 documentElement.scrollWidth 仍只有 617），整页快照
+   *    只拍得到左边一截 → 烘焙出的 PNG 天生缺一段，卡片里怎么滑都补不回来
+   *    （用户实测"部分内容被裁切显示不完全"）。当时改为溢出可见 + body max-content；
+   *    ⚠️ 但这批改动让用户实测更差（卡片被拉得一屏长、有的公式内容反而变小），
+   *    已**整体撤回**，katex.html 恢复原状。
+   *  · v14（2026-10-11 十一次升级）：跟随公式卡片撤回**键升盐**——v13 那批
+   *    "按公式自身尺寸"的 PNG 与 .dim 和撤回后的模板产物尺寸口径不同，
+   *    两代混存会让卡片高度忽高忽低，必须一并作废重生成。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v12|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v14|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

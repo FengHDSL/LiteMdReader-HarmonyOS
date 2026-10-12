@@ -43,7 +43,7 @@ import {
   ImmersiveSheetPanel
 } from '../material/ImmersiveCard';
 import { getImmersiveMaterial } from '../material/SystemMaterial';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
 import { AutoScrollTile } from '../components/AutoScrollTile';
@@ -74,6 +74,7 @@ import { EngineRegistry } from '../service/EngineRegistry';
 import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
 import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { MathFormulaText } from '../components/MathFormulaText';
+import { NotePanel } from '../components/NotePanel';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import { ReaderFlagTile } from '../components/ReaderFlagTile';
 import { MdParser } from '../markdown/MdParser';
@@ -677,6 +678,18 @@ export struct Reader {
 
   @State noteDraft: string = '';
   @State noteQuote: string = '';
+  /**
+   * **公式批注上下文**（action='mathnote' 时非空，其余批注为空串）。
+   * 面板内的编辑/选区/预览都由 NotePanel 自持（bindSheet 不跟宿主刷新），
+   * 这里只留**提交与写回时宿主必须知道**的三样：
+   *  - noteMathQuote：文档里当前这条公式的源码（收窄定位的基准）；
+   *  - noteMathBlockId：它所在的块（写回要用 srcLine）；
+   *  - noteMathBase：这条公式在块渲染文本里的起始偏移（annotateHandler 传来的 start），
+   *    收窄后的区间 = base + 选中段在 noteMathQuote 中的位置。
+   */
+  @State noteMathQuote: string = '';
+  @State noteMathBlockId: string = '';
+  private noteMathBase: number = 0;
   @State tocOpen: boolean = false;
   @State notesOpen: boolean = false;
   @State progress: number = 0;
@@ -1285,6 +1298,13 @@ export struct Reader {
       if (mode === 'markmap') {
         continue;
       }
+      // **HTML 预览必须留在实时 Web 上**（用户实测"卡片上无法操作，只能放大后才行"）：
+      // html 块的产物是**可交互网页**（按钮、canvas 触摸），一旦进后台池烘焙成 PNG，
+      // 正文就会走 chartImagePath 的静态图分支——看着一样，点起来是死的。
+      // 放大浮层本来就是实时 Web，所以只有卡片坏，症状才这么偏。
+      if (mode === 'html') {
+        continue;
+      }
       // 键含卡片底色（v4）：五档主题的深浅孪生款 codeBlockBg 不同，
       // 不区分会复用别主题烘焙的图（"深色下背景发红/发绿"——用户实测）
       out.push({
@@ -1350,7 +1370,7 @@ export struct Reader {
       return false;
     }
     return m === 'mermaid' || m === 'markmap' || m === 'echarts' || m === 'abc'
-      || m === 'graphviz' || m === 'flowchart' || m === 'html' || m === 'code';
+      || m === 'graphviz' || m === 'flowchart' || m === 'wavedrom' || m === 'html' || m === 'code';
   }
 
   /**
@@ -1939,13 +1959,22 @@ export struct Reader {
       this.removeAnnotations(blockId, start, end);
       return;
     }
-    if (action === 'note') {
+    if (action === 'note' || action === 'mathnote') {
       this.pendingBlockId = blockId;
       this.pendingStart = start;
       this.pendingEnd = end;
       this.pendingColor = -1;
       this.pendingStyle = '';
       this.noteQuote = text;
+      // 公式批注：面板要带渲染与源码编辑。非公式路径必须清空，否则上一次的
+      // 公式上下文会留在面板里（源码编辑框出现在普通文字批注面板上）。
+      if (action === 'mathnote') {
+        this.noteMathQuote = text;
+        this.noteMathBlockId = blockId;
+        this.noteMathBase = start;
+      } else {
+        this.clearMathNoteContext();
+      }
       // **恢复未过期的草稿**：不小心退出后再点「添加批注」，之前写的内容还在；
       // 超过 3 分钟视为已放弃（避免很久以后突然冒出旧草稿）。
       const draftAt: number = AppStorage.get<number>(NOTE_DRAFT_AT_KEY) ?? 0;
@@ -1955,23 +1984,39 @@ export struct Reader {
         this.noteDraft = '';
       }
       this.getUIContext().animateTo(this.animateParam(), () => {
+        // **换纪元重建面板**：NotePanel 的 init* 只在组件创建那一刻读一次，
+        // 而 bindSheet 的内容实例可能被复用；不换纪元就会把上一条批注的草稿/原文
+        // 带进新面板（sheetEpoch 这套约定原本就是为"面板内容不跟宿主刷新"准备的）
+        this.sheetEpoch++;
         this.activeSheet = 'note';
         this.sheetVisible = true;
       });
       return;
     }
     // **学习卡**（1.1.0）：实色黄底高亮 + 必填批注内容，数据供「复习卡片 / 批注速记」使用
-    if (action === 'studycard') {
+    if (action === 'studycard' || action === 'mathstudycard') {
       this.pendingBlockId = blockId;
       this.pendingStart = start;
       this.pendingEnd = end;
       this.pendingColor = 3;            // 默认黄色（ANNOTATION_COLORS 索引 3）
       this.pendingStyle = 'card';       // 实色底形态（见 MdView.pieceBackground）
       this.noteQuote = text;
+      // 公式学习卡与公式批注共用同一个面板（渲染 + 源码 + 选段），只是形态预选卡片
+      if (action === 'mathstudycard') {
+        this.noteMathQuote = text;
+        this.noteMathBlockId = blockId;
+        this.noteMathBase = start;
+      } else {
+        this.clearMathNoteContext();
+      }
       this.noteDraft = '';
       AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
       AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
       this.getUIContext().animateTo(this.animateParam(), () => {
+        // **换纪元重建面板**：NotePanel 的 init* 只在组件创建那一刻读一次，
+        // 而 bindSheet 的内容实例可能被复用；不换纪元就会把上一条批注的草稿/原文
+        // 带进新面板（sheetEpoch 这套约定原本就是为"面板内容不跟宿主刷新"准备的）
+        this.sheetEpoch++;
         this.activeSheet = 'note';
         this.sheetVisible = true;
       });
@@ -1985,6 +2030,7 @@ export struct Reader {
       this.pendingEnd = end;
       this.pendingColor = -1;
       this.noteQuote = text;
+      this.clearMathNoteContext();
       AppStorage.setOrCreate('sketchMode', 'annotate');
       AppStorage.setOrCreate('sketchAnnotationImage', '');
       if (this.stack !== null) {
@@ -2083,21 +2129,235 @@ export struct Reader {
     }
   }
 
-  /** 批注输入框的保存。 */
-  private saveNoteDraft(): void {
+  /** 清空公式批注上下文（非公式路径与关闭面板时都要调，避免面板串成公式态）。 */
+  private clearMathNoteContext(): void {
+    this.noteMathQuote = '';
+    this.noteMathBlockId = '';
+  }
+
+  /**
+   * 「保存公式」：把编辑框里的 LaTeX 写回原文并重载正文。
+   *
+   * 两种形态定位方式不同：
+   *   · 块级公式（`$$…$$` / `\[…\]`）：整块就是一个行段，按原有定界符与
+   *     单行/多行形态替换 `[起始行, 闭合行]`；
+   *   · 行内公式（段落里的 `$…$`）：在该块的行段里找整串 `$旧源码$` 替换。
+   *
+   * ⚠️ **任何一步定位不上都只提示、不动文件**（与表格写回同一套纪律）：写坏原文
+   * 比不写严重得多。重载后块序号不变（替换的是同一段行区间、且仍解析成一个块），
+   * 所以批注锚点 noteMathBase 直接续用，区间尾端按新源码长度重算。
+   *
+   * 返回是否真的写回成功 —— NotePanel 只在成功时把本地基准换成新源码，
+   * 失败时面板维持原状（预览与"只批选中段"的定位才不会跟正文脱节）。
+   */
+  private saveMathEdit(edited: string): boolean {
+    const ctx = this.ctx();
+    if (ctx === null || this.noteMathBlockId.length === 0) {
+      return false;
+    }
+    const newLatex: string = edited.trim();
+    if (newLatex.length === 0) {
+      this.toast('公式源码是空的，未写回');
+      return false;
+    }
+    if (newLatex === this.noteMathQuote) {
+      this.toast('源码没有变化');
+      return false;
+    }
+    const idx: number = this.blockIndexOf(this.noteMathBlockId);
+    if (idx < 0) {
+      this.toast('找不到对应的公式块，未写回');
+      return false;
+    }
+    const block: MdBlock = this.blocks[idx];
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+      if (meta === undefined) {
+        this.toast('文档不存在');
+        return false;
+      }
+      const text: string = DocStore.readText(ctx, meta, this.docEncoding);
+      const lines: string[] = text.replace(/\r\n?/g, '\n').split('\n');
+      const spanEnd: number = idx + 1 < this.blocks.length
+        ? this.blocks[idx + 1].srcLine : lines.length;
+      const out: string[] | null = block.kind === MdBlockKind.Math
+        ? this.spliceMathBlock(lines, block, newLatex)
+        : this.spliceInlineMath(lines, block.srcLine, spanEnd, this.noteMathQuote, newLatex);
+      if (out === null) {
+        return false;
+      }
+      DocStore.update(ctx, this.docName, out.join('\n'));
+      this.skipRestoreOnce = true;
+      this.loadDoc();
+      // 面板保持打开：改完源码接着批注是常见路径
+      this.noteMathQuote = newLatex;
+      if (idx < this.blocks.length) {
+        this.noteMathBlockId = this.blocks[idx].id;
+      }
+      this.pendingEnd = this.noteMathBase + newLatex.length;
+      this.toast('公式已写回文档');
+      return true;
+    } catch (err) {
+      this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
+      return false;
+    }
+  }
+
+  /**
+   * 块级公式写回：替换 `[起始行, 闭合行]` 整段。
+   * 用 `block.code`（解析结果）反查校验——行段按解析口径重新取出的 LaTeX 必须与它
+   * 一致，否则说明文档在打开后被改过（行号已漂），此时绝不落笔。
+   */
+  private spliceMathBlock(lines: string[], block: MdBlock, newLatex: string): string[] | null {
+    const start: number = block.srcLine;
+    if (start < 0 || start >= lines.length) {
+      this.toast('该公式所在位置无法定位，未写回');
+      return null;
+    }
+    const head: string = lines[start].trim();
+    let delim: string = '';
+    let close: string = '';
+    if (head.startsWith('$$')) {
+      delim = '$$';
+      close = '$$';
+    } else if (head.startsWith('\\[')) {
+      delim = '\\[';
+      close = '\\]';
+    } else {
+      this.toast('该公式所在位置无法定位，未写回');
+      return null;
+    }
+    if (newLatex.indexOf(delim) >= 0 || newLatex.indexOf(close) >= 0) {
+      this.toast('源码里不能包含「' + delim + '」，未写回');
+      return null;
+    }
+    // 单行形态（$$x$$）闭合就是本行；否则向后找到以 close 结尾的行
+    let end: number = -1;
+    let single: boolean = false;
+    if (head.length > delim.length + close.length && head.endsWith(close)) {
+      end = start;
+      single = true;
+    } else {
+      for (let k = start + 1; k < lines.length; k++) {
+        if (lines[k].trim().endsWith(close)) {
+          end = k;
+          break;
+        }
+      }
+    }
+    if (end < 0) {
+      this.toast('没找到这条公式的闭合行，未写回');
+      return null;
+    }
+    // 按解析口径重取正文，与 block.code 比对。**要和 MdParser 逐行同构**（首行余量
+    // 空串也压、中间行含空行照压、闭合行只在非空时压）：解析层保留了块内的空行
+    // （\begin{cases} 之类），这里若把空行滤掉，比对必然失配、把合法写回误拒。
+    const body: string[] = [];
+    if (single) {
+      body.push(head.substring(delim.length, head.length - close.length).trim());
+    } else {
+      body.push(head.substring(delim.length).trim());
+      for (let k = start + 1; k < end; k++) {
+        body.push(lines[k].trim());
+      }
+      const tail: string = lines[end].trim();
+      const seg: string = tail.substring(0, tail.length - close.length).trim();
+      if (seg.length > 0) {
+        body.push(seg);
+      }
+    }
+    if (body.join('\n').trim() !== block.code) {
+      this.toast('文档已改动，位置对不上了，未写回');
+      return null;
+    }
+    const replacement: string[] = single
+      ? [delim + newLatex + close]
+      : [delim].concat(newLatex.split('\n'), [close]);
+    return lines.slice(0, start).concat(replacement, lines.slice(end + 1));
+  }
+
+  /**
+   * 行内公式写回：在块的行段里整串替换 `$旧源码$`（兼容 `\(旧源码\)`）。
+   * 找不到、或同一段里出现多处相同源码（不知道该改哪一处）都拒绝写回。
+   */
+  private spliceInlineMath(lines: string[], from: number, to: number,
+                           oldLatex: string, newLatex: string): string[] | null {
+    if (oldLatex.length === 0) {
+      this.toast('原公式源码为空，未写回');
+      return null;
+    }
+    if (newLatex.indexOf('$') >= 0) {
+      this.toast('行内公式源码里不能包含 $，未写回');
+      return null;
+    }
+    const forms: string[][] = [['$' + oldLatex + '$', '$' + newLatex + '$'],
+      ['\\(' + oldLatex + '\\)', '\\(' + newLatex + '\\)']];
+    const lo: number = Math.max(0, from);
+    const hi: number = Math.min(lines.length - 1, to);
+    for (let f = 0; f < forms.length; f++) {
+      const needle: string = forms[f][0];
+      let hitLine: number = -1;
+      let hits: number = 0;
+      for (let k = lo; k <= hi; k++) {
+        let at: number = lines[k].indexOf(needle);
+        while (at >= 0) {
+          hits += 1;
+          hitLine = k;
+          at = lines[k].indexOf(needle, at + needle.length);
+        }
+      }
+      if (hits === 0) {
+        continue;
+      }
+      if (hits > 1) {
+        this.toast('这里有不止一处相同的公式源码，无法确定改哪一处，未写回');
+        return null;
+      }
+      const fixed: string = lines[hitLine].split(needle).join(forms[f][1]);
+      const out: string[] = lines.slice(0, hitLine).concat([fixed], lines.slice(hitLine + 1));
+      return out;
+    }
+    this.toast('这条行内公式在原文里定位不到（可能写法带空格），未写回');
+    return null;
+  }
+
+  /**
+   * 批注落库（NotePanel 提交回调）。
+   * @param draft0 批注正文
+   * @param style  '' 普通批注 / 'card' 学习卡（面板里可切换，所以形态在这里定）
+   * @param sub    面板中选中的公式子串；'' = 整条公式
+   */
+  private saveNoteDraft(draft0: string, style: string, sub: string): void {
     if (this.pendingStart < 0) {
       this.sheetVisible = false;
       return;
     }
-    const draft: string = this.noteDraft.trim();
-    const isCard: boolean = this.pendingStyle === 'card';
+    const draft: string = draft0.trim();
+    const isCard: boolean = style === 'card';
+    this.pendingStyle = style;
+    // 学习卡要实色底（同 studycard 入口的口径：默认黄色索引 3）
+    this.pendingColor = isCard ? 3 : -1;
+    let aStart: number = this.pendingStart;
+    let aEnd: number = this.pendingEnd;
+    let aText: string = this.noteQuote;
+    // 公式批注：按**文档现存源码**给选中段定位（组件交回的是文本，不是偏移——
+    // 偏移属于面板，区间属于文档，写回后只有这边这份是最新的）
+    if (this.noteMathQuote.length > 0 && sub.length > 0) {
+      const at: number = this.noteMathQuote.indexOf(sub);
+      if (at >= 0) {
+        aStart = this.noteMathBase + at;
+        aEnd = aStart + sub.length;
+        aText = sub;
+      }
+    }
     const list: MdAnnotation[] = this.withoutOverlap(this.annotations, this.pendingBlockId,
-      this.pendingStart, this.pendingEnd);
-    list.push(this.buildAnnotation(this.pendingBlockId, this.pendingStart, this.pendingEnd,
-      this.noteQuote, this.pendingColor, draft, this.pendingStyle));
+      aStart, aEnd);
+    list.push(this.buildAnnotation(this.pendingBlockId, aStart, aEnd,
+      aText, this.pendingColor, draft, this.pendingStyle));
     this.commitAnnotations(list);
     this.pendingStart = -1;
     this.pendingStyle = '';
+    this.clearMathNoteContext();
     // 提交成功 → 清掉草稿（3 分钟窗口结束，避免下次打开又冒出旧内容）
     AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
     AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
@@ -3211,6 +3471,7 @@ export struct Reader {
 
   private closeNoteSheet(): void {
     this.pendingStart = -1;
+    this.clearMathNoteContext();
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
@@ -3712,9 +3973,21 @@ export struct Reader {
     return '';
   }
 
-  /** 按 activeSheet 渲染对应面板内容。 */
+  /**
+   * 面板内容 = 键盘垫高层 + 具体面板。
+   * 平台对 BindSheet 不做键盘避让（SDK 的 setKeyboardAvoidMode NOTE 里点名 BindSheet
+   * 不生效），所以统一包一层 SheetKeyboardLift，键盘弹起时把内容抬到输入法上方。
+   */
   @Builder
   currentSheet() {
+    SheetKeyboardLift() {
+      this.currentSheetBody()
+    }
+  }
+
+  /** 按 activeSheet 渲染对应面板内容（键盘垫高在外层做，见 currentSheet）。 */
+  @Builder
+  currentSheetBody() {
     if (this.activeSheet === 'settings') {
       this.settingsSheet()
     } else if (this.activeSheet === 'note') {
@@ -4160,7 +4433,34 @@ export struct Reader {
   @Builder
   noteSheet() {
     Column() {
-      this.notePanel()
+      // **面板内容自持状态**（NotePanel）：bindSheet 的 builder 不跟宿主 @State
+      // 重渲染（本工程固定坑，见 sheetEpoch / AutoScrollTile 同一套结论），而选段
+      // 预览、批注/学习卡切换、聚焦抬高都要在面板开着时刷新，状态只能住组件里。
+      // 这里传的 init* 只在"打开面板那一刻"被读一次，结果由回调交回本页面落库。
+      NotePanel({
+        initQuote: this.noteQuote,
+        initMathQuote: this.noteMathQuote,
+        initDraft: this.noteDraft,
+        initStyle: this.pendingStyle,
+        dark: this.isDark(),
+        bodySize: this.fontSize,
+        palette: this.palette(),
+        onDraft: (value: string) => {
+          this.noteDraft = value;
+          // 边输入边记草稿（带时间戳）—— 误退出后 3 分钟内可恢复
+          AppStorage.setOrCreate(NOTE_DRAFT_KEY, value);
+          AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
+        },
+        onSaveMath: (latex: string): boolean => {
+          return this.saveMathEdit(latex);
+        },
+        onSubmit: (draft: string, style: string, sub: string) => {
+          this.saveNoteDraft(draft, style, sub);
+        },
+        onCancel: () => {
+          this.closeNoteSheet();
+        }
+      })
     }
     .width('100%')
     .padding(HwSpace.lg)
@@ -7874,9 +8174,8 @@ export struct Reader {
       title: this.sheetTitle(),
       subtitle: this.sheetSubtitle(),
       surface: this.palette().surface,
-      // 批注面板**多档高度**（用户要求"支持自由调节高度"）：默认贴合内容，
-      // 拖拽条可上拉到 60% / 大屏两档。其余面板不传 detents，走默认定高。
-      detents: this.noteDetents(),
+      // 高度档位与键盘避让都由 ModalSheet 统一给（见 modalSheetOptions / SheetKeyboardLift），
+      // 这里只声明"批注面板从贴合内容起档"。
       // **网页面板近乎满屏**（用户要求：参考本地 xjau 网页登录面板）：
       // 大尺寸 + 标题区换成「刷新 / 复制链接」操作条 + 隐藏拖拽条（避免与网页内滚动打架）
       large: this.activeSheet === 'web',
@@ -7884,9 +8183,10 @@ export struct Reader {
       hideDragBar: this.activeSheet === 'web',
       // 横屏也是全宽大面板（不转 480vp 居中窗口）——「差不多屏幕一样大」
       fullWidth: this.activeSheet === 'web',
-      // **大屏横屏的批注面板**：detents 平台不支持，改贴合内容高度
-      //（其余面板仍 MEDIUM 定高）
-      fitContent: this.activeSheet === 'note' && this.rootWidth > this.rootHeight,
+      // **批注面板贴合内容起档**：手机形态下 ModalSheet 会把它排成
+      // [FIT_CONTENT, MEDIUM, LARGE] 三档（拖拽条可往上拉），横屏平台不支持多档、
+      // 退成 height=FIT_CONTENT。其余面板仍从 MEDIUM 起档、可拖到 LARGE。
+      fitContent: this.activeSheet === 'note',
       // 竖屏（含平板竖屏）按手机形态出底部面板；平板竖屏宽度收一半
       phoneLayout: this.rootWidth <= this.rootHeight,
       screenWidth: this.rootWidth,
@@ -8016,90 +8316,11 @@ export struct Reader {
   }
 
   /**
-   * 批注面板的多档高度（拖拽条切换）：贴合内容 → 60% → 大屏。
-   * ⚠️ SheetOptions.detents 是 **1~3 元元组**（不是数组）；其他面板返回
-   * undefined = 不启用 detents，走默认 MEDIUM 定高。
+   * 批注面板的多档高度已上收到 ModalSheet：手机形态由 modalSheetOptions 统一排
+   * [FIT_CONTENT, MEDIUM, LARGE] / [MEDIUM, LARGE] 档位，横屏退成定高（平台不支持
+   * 多档拖拽）。页面侧只需声明 fitContent 起档与否。
    */
-  private noteDetents(): [string | number | Resource,
-    (string | number | Resource)?, (string | number | Resource)?] | undefined {
-    if (this.activeSheet !== 'note') {
-      return undefined;
-    }
-    // **大屏横屏（非 phoneLayout）detents 不生效**（系统限制：多档拖拽仅
-    // 手机形态支持）——此时返回 undefined，改走 fitContent 贴合内容高度
-    //（见 bindSheet 选项），面板高度合理、不再是一块定高死面板
-    if (this.rootWidth > this.rootHeight) {
-      return undefined;
-    }
-    const d: [string | number | Resource,
-      (string | number | Resource)?, (string | number | Resource)?] =
-      [SheetSize.FIT_CONTENT, SheetSize.MEDIUM, SheetSize.LARGE];
-    return d;
-  }
 
-  /** 文字批注输入面板的内容（标题栏由 ModalSheet 官方标题区提供）。 */
-  @Builder
-  notePanel() {
-    Column({ space: HwSpace.md }) {
-        Column() {
-          Text('「' + this.noteQuote + '」')
-            .fontSize(HwType.label)
-            .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
-            .width('100%')
-            // 引用过长时收进 4 行（fitContent 面板高度跟内容走，不收会顶爆面板）
-            .maxLines(4)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-        .width('100%')
-        .padding(HwSpace.sm)
-        .borderRadius(HwRadius.inline)
-        .backgroundColor(this.palette().quoteBg)
-        .border({ width: { left: 3 }, color: { left: this.palette().accent } })
-
-        TextArea({ text: this.noteDraft, placeholder: '写下你的批注……' })
-          .width('100%')
-          // **不固定高度**：内容多时输入框自己长高，fitContent 面板跟着长
-          //（用户要求"面板要跟随文本框内容增加而伸长"）；
-          // 上下限防呆：空态不塌、超长内容到顶后内部滚动。
-          .constraintSize({ minHeight: 120, maxHeight: 260 })
-          .fontSize(HwType.label)
-          .fontColor(this.palette().textPrimary)
-          .placeholderColor(this.palette().textTertiary)
-          .backgroundColor(this.palette().quoteBg)
-          .borderRadius(HwRadius.inner)
-          .onChange((value: string) => {
-            this.noteDraft = value;
-            // 边输入边记草稿（带时间戳）—— 误退出后 3 分钟内可恢复
-            AppStorage.setOrCreate(NOTE_DRAFT_KEY, value);
-            AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
-          })
-
-        Row({ space: HwSpace.sm }) {
-          ImmersiveChip({
-            palette: this.palette(),
-            chipTint: '#FFD32F2F',
-            chipActive: true,
-            chipLabel: '取消',
-            chipOnTap: () => {
-              this.closeNoteSheet();
-            }
-          })
-          ImmersiveChip({
-            palette: this.palette(),
-            chipActive: true,
-            chipLabel: '保存批注',
-            chipOnTap: () => {
-              this.saveNoteDraft();
-            }
-          })
-        }
-        .width('100%')
-        .justifyContent(FlexAlign.End)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-  }
 
   @Builder
   backdrop() {

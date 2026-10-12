@@ -23,7 +23,7 @@ import { display } from '@kit.ArkUI';
 import { DocStore } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme } from '../theme/DesignTokens';
 import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 
 /** 手写画布背景候选：淡色暖色系纯色 +「跟随主题」（空串表示跟随） */
 interface SketchBgOption {
@@ -825,11 +825,24 @@ export struct Sketch {
   }
 
   /**
-   * 背景面板内容：底色（淡色暖色系 + 跟随主题）+ 底纹（无 / 小方格 / 单行线）。
-   * ⚠️ 半模态里的 @Builder 必须**单根包裹**（这里是 Column）——多根并列会渲染成空白。
+   * 半模态内容入口：键盘垫高层 + 背景面板本体。
+   * BindSheet 不参与平台的键盘避让（SDK 在 setKeyboardAvoidMode 的 NOTE 里点名
+   * 排除 Dialog/Popup/Menu/BindSheet/...），所以所有面板统一包 SheetKeyboardLift；
+   * 本面板自己不打字，垫高只在键盘因别处弹起时生效，不影响常规观感。
+   * ⚠️ 半模态里的 @Builder 必须**单根包裹**（SheetKeyboardLift 内部就是一个 Column）。
    */
   @Builder
   bgSheet() {
+    SheetKeyboardLift() {
+      this.bgSheetBody()
+    }
+  }
+
+  /**
+   * 背景面板内容：底色（淡色暖色系 + 跟随主题）+ 底纹（无 / 小方格 / 单行线）。
+   */
+  @Builder
+  bgSheetBody() {
     Column({ space: HwSpace.md }) {
       // ── ① 底色：每排 3 个大方格（31% × 3 + 均分间隙），方块大小随面板自适应 ──
       Text('底色')

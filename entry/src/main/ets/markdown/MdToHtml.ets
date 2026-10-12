@@ -24,8 +24,8 @@ const HTML_CSS: string = `
          font-size: 16px; line-height: 1.75; color: #1b1f27; background: #f3f6fb; }
   /* rich 导出的图表容器：markmap-autoloader 要求容器有确定高度 */
   .markmap { width: 100%; height: 420px; }
-  .mermaid, .ktx, .gv, .abc { width: 100%; overflow-x: auto; text-align: center; }
-  .gv svg, .abc svg { max-width: 100%; height: auto; }
+  .mermaid, .ktx, .gv, .abc, .wfx { width: 100%; overflow-x: auto; text-align: center; }
+  .gv svg, .abc svg, .wfx svg { max-width: 100%; height: auto; }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
   .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
@@ -240,7 +240,7 @@ export class MdToHtml {
 
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
-    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart'];
+    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom'];
 
   private static isChartLang(lang: string): boolean {
     const l: string = lang.trim().toLowerCase();
@@ -315,6 +315,9 @@ export class MdToHtml {
     if (lang === 'abc') {
       return '<div class="abc" data-b64="' + b64 + '"></div>';
     }
+    if (lang === 'wavedrom') {
+      return '<div class="wfx" data-b64="' + b64 + '"></div>';
+    }
     return '';
   }
 
@@ -381,6 +384,11 @@ export class MdToHtml {
     }
     if (has('abc')) {
       scripts += '<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>\n';
+    }
+    if (has('wavedrom')) {
+      // 皮肤必须先于主库：wavedrom 读全局 WaveSkin，缺皮肤直接抛 "no skins found"
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/wavedrom@3.7.0/skins/default.js"></script>\n'
+        + '<script src="https://cdn.jsdelivr.net/npm/wavedrom@3.7.0/wavedrom.min.js"></script>\n';
     }
     if (has('katex')) {
       scripts += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />\n'
@@ -532,6 +540,15 @@ export class MdToHtml {
       + (has('abc') ? '    if (window.ABCJS) {\n'
         + '      document.querySelectorAll(".abc").forEach(function(el) {\n'
         + '        tryRun(function() { ABCJS.renderAbc(el, b64u(el.dataset.b64)); });\n'
+        + '      });\n'
+        + '    }\n' : '')
+      + (has('wavedrom') ? '    if (window.WaveDrom) {\n'
+        + '      document.querySelectorAll(".wfx").forEach(function(el, i) {\n'
+        + '        try {\n'
+        + '          var src = JSON.parse(b64u(el.dataset.b64));\n'
+        + '          el.innerHTML = \'<div id="WaveDrom_Display_\' + i + \'"></div>\';\n'
+        + '          window.WaveDrom.RenderWaveForm(i, src, "WaveDrom_Display_");\n'
+        + '        } catch (e) { console.error("wavedrom render failed", e); el.textContent = b64u(el.dataset.b64); }\n'
         + '      });\n'
         + '    }\n' : '')
       + '  });\n'

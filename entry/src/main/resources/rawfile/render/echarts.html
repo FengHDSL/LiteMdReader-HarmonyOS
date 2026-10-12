@@ -69,6 +69,13 @@ var yo={},mo={};var xo,_o=function(){function t(t,e,n){var i=this;this._sleepAft
     }catch(e1){
       opt=JSON.parse(fix(src));
     }
+    // ⚠️ **必须先 dispose 旧实例**：后台预渲染池会复用同一个 Web 页面串行渲染多个
+    // 同 mode 任务（见 DiagramWeb 的 payload 热注入），而 echarts.init 在已绑定实例的
+    // DOM 上会**返回那个旧实例** —— 它的 DOM 已被清空，于是第二张及之后的图全部画到
+    // 空气里（实测：一个文档里两个 echarts 块，第二个空白）。
+    var prev = echarts.getInstanceByDom(app);
+    if (prev) { try { prev.dispose(); } catch (e0) {} }
+    app.innerHTML = '';
     // **用 SVG 渲染器**：canvas 走独立合成层，Web 整页快照抓不到内容
     //（用户实测导出图几乎空白）；SVG 是普通 DOM，预览与导出都正常
     var chart=echarts.init(app,dark?'dark':null,{renderer:'svg'});

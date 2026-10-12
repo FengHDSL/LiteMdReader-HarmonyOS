@@ -31,7 +31,7 @@ import {
   withAlpha
 } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveCard, ImmersiveChip, ImmersiveIconButton, ImmersiveSheetPanel } from '../material/ImmersiveCard';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { DocMeta, DocStore, ReaderRoute } from '../service/DocStore';
@@ -2688,10 +2688,14 @@ export struct AiChat {
 
   @Builder
   aiSheet() {
-    if (this.sheetEpoch % 2 === 0) {
-      this.aiSheetInner()
-    } else {
-      this.aiSheetInner()
+    // 键盘垫高：BindSheet 不参与平台键盘避让（SDK 的 setKeyboardAvoidMode NOTE
+    // 点名排除 BindSheet），对话面板要打字，必须在输入法上方留出可输入区
+    SheetKeyboardLift() {
+      if (this.sheetEpoch % 2 === 0) {
+        this.aiSheetInner()
+      } else {
+        this.aiSheetInner()
+      }
     }
   }
 

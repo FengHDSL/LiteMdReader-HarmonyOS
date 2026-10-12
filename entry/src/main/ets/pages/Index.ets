@@ -42,7 +42,7 @@ import {
   ImmersiveIconButton
 } from '../material/ImmersiveCard';
 import { getImmersiveMaterial } from '../material/SystemMaterial';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
@@ -4831,9 +4831,22 @@ struct Index {
     return '';
   }
 
-  /** bindSheet 内容分发：按 shelfSheet 渲染格子菜单 / 重命名 / 导出面板。 */
+  /**
+   * bindSheet 内容 = 键盘垫高层 + 面板本体。
+   * BindSheet 不参与平台的键盘避让（SDK 在 setKeyboardAvoidMode 的 NOTE 里点名
+   * 排除 Dialog/Popup/Menu/BindSheet/...），所以一律包 SheetKeyboardLift，
+   * 键盘弹起时把内容抬到输入法上方（重命名、新建文档这些都要打字）。
+   */
   @Builder
   indexSheet() {
+    SheetKeyboardLift() {
+      this.indexSheetBody()
+    }
+  }
+
+  /** 按 shelfSheet 渲染格子菜单 / 重命名 / 导出面板。 */
+  @Builder
+  indexSheetBody() {
     if (this.shelfSheet === 'starred') {
       // 同上：分支切换强制重建（收藏面板的排序 chip 选中态也依赖它刷新）
       if (this.sheetEpoch % 2 === 0) {

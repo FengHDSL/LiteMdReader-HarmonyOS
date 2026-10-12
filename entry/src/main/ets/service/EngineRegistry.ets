@@ -74,6 +74,11 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: '经典 flowchart 语法流程图（基于 Raphael）'
   },
   {
+    id: 'wavedrom', name: 'WaveDrom', version: '3.7.0', date: '2026-08-31',
+    repo: 'https://github.com/wavedrom/wavedrom',
+    desc: '数字波形图（WaveJSON 时序 / 逻辑门 / 寄存器位段），深浅主题统一浅色波形面板'
+  },
+  {
     id: 'marked', name: 'marked', version: '18.1.0', date: '2026-10-05',
     repo: 'https://github.com/markedjs/marked',
     desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析'
@@ -150,6 +155,9 @@ export class EngineRegistry {
     }
     if (l === 'flowchart') {
       return 'flowchart';
+    }
+    if (l === 'wavedrom') {
+      return 'wavedrom';
     }
     return '';
   }

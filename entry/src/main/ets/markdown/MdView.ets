@@ -44,11 +44,12 @@ import {
 } from '../theme/DesignTokens';
 import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { getImmersiveMaterial } from '../material/SystemMaterial';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { DocStore } from '../service/DocStore';
 import { MathLite, MathSeg } from './MathLite';
 import { FlowChartView } from './FlowChart';
 import { DiagramWeb } from '../components/DiagramWeb';
+import { MathFormulaText } from '../components/MathFormulaText';
 import { ChartCache } from '../service/ChartCache';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { UpdateService } from '../service/UpdateService';
@@ -462,22 +463,30 @@ export class MdViewUtil {
         continue;
       }
 
-      // 切点：片段自身边界 + 相交的批注边界 + 相交的搜索命中边界
+      // 切点：片段自身边界 + 相交的批注边界 + 相交的搜索命中边界。
+      // ⚠️ **公式与图片不切**：它们是整体渲染的一张图，按批注边界切开得到的
+      // "半截 LaTeX"既进不了公式图缓存、线性化回退也是乱码——用户想批注公式里的
+      // 一小段，反而会把正文里的整条公式弄坏。区间照旧存精确子串（抽屉、学习卡、
+      // AI 都用它），正文底纹只铺在整块图上。
+      const atomic: boolean = item.kind === MdInlineKind.MathInline
+        || item.kind === MdInlineKind.Image;
       const cuts: number[] = [itemStart, itemEnd];
-      for (let a = 0; a < mine.length; a++) {
-        const s: number = Math.max(mine[a].start, itemStart);
-        const e: number = Math.min(mine[a].end, itemEnd);
-        if (s < e) {
-          cuts.push(s);
-          cuts.push(e);
+      if (!atomic) {
+        for (let a = 0; a < mine.length; a++) {
+          const s: number = Math.max(mine[a].start, itemStart);
+          const e: number = Math.min(mine[a].end, itemEnd);
+          if (s < e) {
+            cuts.push(s);
+            cuts.push(e);
+          }
         }
-      }
-      for (let h = 0; h < hitStarts.length; h++) {
-        const s: number = Math.max(hitStarts[h], itemStart);
-        const e: number = Math.min(hitEnds[h], itemEnd);
-        if (s < e) {
-          cuts.push(s);
-          cuts.push(e);
+        for (let h = 0; h < hitStarts.length; h++) {
+          const s: number = Math.max(hitStarts[h], itemStart);
+          const e: number = Math.min(hitEnds[h], itemEnd);
+          if (s < e) {
+            cuts.push(s);
+            cuts.push(e);
+          }
         }
       }
       cuts.sort((x: number, y: number) => x - y);
@@ -495,7 +504,11 @@ export class MdViewUtil {
         let wavy: boolean = false;
         let dblLine: boolean = false;
         for (let a = 0; a < mine.length; a++) {
-          if (mine[a].start <= s && mine[a].end >= e) {
+          // 不切的片段（公式/图片）整块认相交：只要批注区间落在它里面就铺底纹
+          const covered: boolean = atomic
+            ? (mine[a].start < e && mine[a].end > s)
+            : (mine[a].start <= s && mine[a].end >= e);
+          if (covered) {
             annotated = true;
             if (mine[a].style === 'wavy') {
               // 波浪线：不铺底纹，改为在字下画波线
@@ -516,7 +529,10 @@ export class MdViewUtil {
         }
         let searchHit: boolean = false;
         for (let h = 0; h < hitStarts.length; h++) {
-          if (hitStarts[h] <= s && hitEnds[h] >= e) {
+          const hitCovered: boolean = atomic
+            ? (hitStarts[h] < e && hitEnds[h] > s)
+            : (hitStarts[h] <= s && hitEnds[h] >= e);
+          if (hitCovered) {
             searchHit = true;
             break;
           }
@@ -2154,14 +2170,32 @@ export struct MdBlockView {
       })
   }
 
-  /** 公式操作菜单（半模态：荧光笔色板 + 批注/波浪线/清除 + 学习卡/放大/发送AI/复制）。 */
+  /** 公式操作菜单外层：键盘垫高 + 菜单本体（BindSheet 不做键盘避让，见 ModalSheet）。 */
   @Builder
   mathMenuSheet() {
+    SheetKeyboardLift() {
+      this.mathMenuSheetBody()
+    }
+  }
+
+  /** 公式操作菜单（半模态：渲染预览 + 荧光笔色板 + 批注/波浪线/清除 + 学习卡/放大/发送AI/复制）。 */
+  @Builder
+  mathMenuSheetBody() {
     Column({ space: HwSpace.sm }) {
+      // **先渲染再给菜单**（用户要求）：这里此前只有一行裸 LaTeX，
+      // 点公式的人本来就想看它长什么样，源码放在下面当对照就够了。
+      MathFormulaText({
+        src: this.mathMenuText,
+        dark: this.dark,
+        fontSize: this.bodySize + 2,
+        color: this.palette.textPrimary,
+        generate: true,
+        lineMul: 1.5
+      })
       Text(this.mathMenuText)
         .fontSize(HwType.caption)
         .fontColor(this.palette.textTertiary)
-        .maxLines(3)
+        .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
 
@@ -2185,7 +2219,9 @@ export struct MdBlockView {
       .alignItems(VerticalAlign.Center)
 
       Row({ space: HwSpace.xs }) {
-        this.mathMenuAction('批注', (): void => { this.emitMathAnnotation('note', -1); })
+        // 走 'mathnote' 而不是 'note'：同一套批注系统，只是面板要多带
+        // 「公式渲染 + 可编辑源码 + 选段收窄」（点图没有文字选区，只能在这里选）
+        this.mathMenuAction('批注', (): void => { this.emitMathAnnotation('mathnote', -1); })
         this.mathMenuAction('波浪线', (): void => { this.emitMathAnnotation('wavy', 0); })
         this.mathMenuAction('清除', (): void => { this.emitMathAnnotation('remove', -1); })
       }
@@ -2195,8 +2231,10 @@ export struct MdBlockView {
         // **学习卡**（用户要求：渲染出来的公式也要能进背诵系统）——走与文字
         // 长按选择同一套 'studycard' 流程（实色底高亮落在公式图片背后 + 必填内容）；
         // 卡面由 MathFormulaText 渲染公式。AI 气泡里该回调未接线（默认空实现，无副作用）。
+        // 用 'mathstudycard'：公式进来的学习卡也要带渲染预览 / 源码编辑 / 选段收窄，
+        // 和「批注」共用同一个公式面板，只是形态预选「学习卡」。
         this.mathMenuAction('学习卡', (): void => {
-          this.emitMathAnnotation('studycard', -1);
+          this.emitMathAnnotation('mathstudycard', -1);
         })
         // 「放大查看」走 KaTeX 引擎（render/katex.html）——该引擎关闭时不出现此动作
         if (!EngineRegistry.isOff('katex', this.engineOffList)) {
@@ -2366,10 +2404,16 @@ export struct MdBlockView {
 
   /**
    * **卡片状态栏**（用户要求：所有卡片用代码块同款——操作按钮放顶部，不遮内容）：
-   * 左侧类型徽标 + 右侧（源码切换）+ 放大按钮。
+   * 左侧类型徽标 + 右侧（批注）（源码切换）+ 放大按钮。
+   *
+   * `showAnnotate`：块级公式卡片专用。公式渲染成图后**没有文字选区**，正文里
+   * "长按选字 → 批注"那条路整条走不通，所以给卡片顶部一个入口（用户要求：
+   * 在复制按钮左边加批注按钮）。点它打开的就是普通批注面板，只是带公式渲染
+   * 与源码编辑（见 Reader.notePanel 的 mathnote 分支）。
    */
   @Builder
-  cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string, showCodeToggle: boolean) {
+  cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string,
+             showCodeToggle: boolean, showAnnotate: boolean) {
     Row() {
       Text(label)
         .fontSize(HwType.caption - 1)
@@ -2378,6 +2422,25 @@ export struct MdBlockView {
         .borderRadius(HwRadius.pill)
         .backgroundColor(this.palette.quoteBg)
       Blank()
+      if (showAnnotate) {
+        ImmersiveIconButton({
+          buttonSize: 28,
+          buttonMaterialShadow: false,
+          palette: this.palette,
+          buttonOnTap: () => {
+            // 区间 = 整条公式源码（Math 块的 plain/code 就是 LaTeX 本身）；
+            // 想只批注其中一段，在面板的源码框里选中即可（Reader 侧收窄）。
+            this.annotateHandler('mathnote', this.block.id, 0, this.block.plain.length,
+              this.block.code, -1);
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.square_and_pencil'))
+            .fontSize(13)
+            .fontColor([this.palette.textTertiary])
+        }
+        Column()
+          .width(HwSpace.xs)
+      }
       if (showCodeToggle) {
         ImmersiveIconButton({
           buttonSize: 28,
@@ -2426,7 +2489,7 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true)
             // 超宽公式：按自然尺寸 + 横向滚动展示（用户要求），不再压扁
             this.blockImage('katex')
           }
@@ -2441,7 +2504,7 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false)
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true)
             DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
@@ -2467,7 +2530,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
@@ -2482,7 +2545,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             this.blockImage(this.block.lang.toLowerCase())
           }
           .width('100%')
@@ -2497,7 +2560,7 @@ export struct MdBlockView {
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             Stack({ alignContent: Alignment.TopEnd }) {
               Column() {
                 if (this.chartShowCode) {
@@ -2526,6 +2589,8 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'flowchart') {
                   DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'wavedrom') {
+                  DiagramWeb({ mode: 'wavedrom', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'html') {
                   DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else {

@@ -1,0 +1,263 @@
+# 澄笺 · 渲染能力总览
+
+> [!NOTE]
+> 这份文档是**能力清单**，不是教程（教程见「Markdown 语法教程」，功能演示见「澄笺示例 · 全功能演示」）。
+> 下面每一条都在开发机上用**应用自带的离线渲染库真跑过**，标注了「实测」；
+> 只有官方文档写着、这里没实测过的，一律标「未验证」或直接列入文末的不支持清单。
+> 版本与开关入口见每节末尾，或「设置 → 引擎管理」。
+
+---
+
+## 一、图表引擎一览
+
+正文里把围栏代码块的语言名写成下面任意一个，就会**渲染成图**而不是代码：
+
+| 语言名 | 引擎 | 版本 | 用来画 |
+| --- | --- | --- | --- |
+| `mermaid` | Mermaid | 10.9.3 | 流程图、时序图、类图、状态图、ER 图、甘特、饼图、思维导图、时间线、C4 等 |
+| `echarts` | Apache ECharts | 6.1.0 | 统计图（柱 / 折线 / 饼 / 散点 / 雷达 / 仪表盘 / 关系图 / 树 / 矩形树图 等） |
+| `markmap` | markmap | 0.18.12 | 思维导图（Markdown 大纲直接成图） |
+| `graphviz` | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
+| `flowchart` | flowchart.js | 1.17.1 | 经典 `st=>start:` 写法的流程图 |
+| `abc` | abcjs | 6.7.1 | ABC 记谱法五线谱 |
+| `wavedrom` | WaveDrom | 3.7.0 | **数字波形图**、逻辑门图、寄存器位段图 |
+| `html` | 系统 WebView | — | 可交互 HTML 预览（`<script>` 会执行） |
+| `katex` / `$$…$$` | KaTeX | 0.19.0 | 数学公式 |
+
+**关闭某个引擎**：设置 → 引擎管理。关闭后该语言的代码块在阅读页与导出 HTML 里
+都退回成**普通代码块**（不会渲染失败留白），导出的网页也不会假装能渲染。
+
+---
+
+## 二、Mermaid：实测可用的图类型
+
+Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构建**。逐个实测结果：
+
+| 图类型 | 首行写法 | 实测 |
+| --- | --- | :---: |
+| 流程图 | `graph TD` / `flowchart LR` | ✅ |
+| 时序图 | `sequenceDiagram` | ✅ |
+| 类图 | `classDiagram` | ✅ |
+| 状态图 | `stateDiagram-v2` | ✅ |
+| 实体关系图 | `erDiagram` | ✅ |
+| 用户旅程图 | `journey` | ✅ |
+| 甘特图 | `gantt` | ✅ |
+| 饼图 | `pie` | ✅ |
+| 象限图 | `quadrantChart` | ✅ |
+| 桑基图 | `sankey-beta` | ✅ |
+| 柱线混合图 | `xychart-beta` | ✅ |
+| 需求图 | `requirementDiagram` | ✅ |
+| Git 分支图 | `gitGraph` | ✅ |
+| 思维导图 | `mindmap` | ✅ |
+| 时间线 | `timeline` | ✅ |
+| 块图 | `block-beta` | ✅ |
+| C4 架构图 | `C4Context` | ✅ |
+| 数据包图 | `packet-beta` | ❌ 不在此构建内 |
+| 架构图 | `architecture-beta` | ❌ 不在此构建内 |
+
+两个实测踩到的坑：
+
+1. **象限图的标签没有冒号**。要写 `quadrant-1 We should expand`，写成 `quadrant-1: 我们要扩张` 会直接解析失败。
+2. **类图、需求图靠缩进分块**。`class Animal { +int age }` 的花括号内换行要缩进，否则报 Parse error。
+3. **象限图的坐标轴与数据点标签只认 ASCII**。`x-axis 低成本 --> 高成本` 会报 Lexical error，
+   必须写成 `x-axis Low cost --> High cost`；图标题（`title`）里可以放中文。这是 Mermaid 10.9 词法的限制。
+
+一张象限图（注意 `quadrant-1` 后面**没有**冒号，且轴标签用英文）：
+
+```mermaid
+quadrantChart
+    title 功能投入判断
+    x-axis Low effort --> High effort
+    y-axis Low value --> High value
+    quadrant-1 Do it first
+    quadrant-2 Do when free
+    quadrant-3 Skip
+    quadrant-4 Schedule it
+    Export: [0.35, 0.82]
+    Sync: [0.78, 0.60]
+```
+
+一张 ER 图：
+
+```mermaid
+erDiagram
+    FOLDER ||--o{ DOC : contains
+    DOC {
+        string name
+        int words
+    }
+```
+
+---
+
+## 三、ECharts：实测可用的系列
+
+应用内置的是 **完整构建**（不是按需裁剪版），下面 14 个系列都实测出图：
+
+`bar` 柱状 · `line` 折线 · `pie` 饼图 · `scatter` 散点 · `radar` 雷达 · `gauge` 仪表盘 ·
+`funnel` 漏斗 · `heatmap` 热力图 · `candlestick` K 线 · `sankey` 桑基 · `sunburst` 矩形树图 ·
+`themeRiver` 主题河流 · `tree` 树图 · `graph` 关系图
+
+> [!TIP]
+> 想要**脑图 / 思维导图**，两条路：ECharts 的 `tree` / `graph` 系列（适合数据结构化的场景），
+> 或者直接用 `markmap`（写 Markdown 大纲就能出图，更省事）。
+
+折线 + 柱状混合，直接贴合法 JSON：
+
+```echarts
+{
+  "title": { "text": "字数与阅读时长", "left": "center" },
+  "legend": { "bottom": 0, "data": ["字数", "阅读分钟"] },
+  "xAxis": { "type": "category", "data": ["周一", "周二", "周三", "周四"] },
+  "yAxis": [
+    { "type": "value", "name": "字" },
+    { "type": "value", "name": "分钟" }
+  ],
+  "series": [
+    { "name": "字数", "type": "bar", "barWidth": "40%", "data": [1200, 860, 1440, 700] },
+    { "name": "阅读分钟", "type": "line", "yAxisIndex": 1, "smooth": true, "data": [22, 15, 28, 12] }
+  ]
+}
+```
+
+> [!WARNING]
+> ECharts 块必须是**合法 JSON**。键名的引号可以省（`{signal: …}` 那种会被自动补上），
+> 但**字符串值必须带引号**，也不能写注释和尾逗号。
+
+---
+
+## 四、WaveDrom：数字波形（新增引擎）
+
+语言名 `wavedrom`，内容写 WaveJSON。支持 WaveDrom 的全部三种图：
+
+| 种类 | 顶层键 | 画什么 |
+| --- | --- | --- |
+| 时序波形 | `signal` | 时钟、总线、分组、箭头 |
+| 逻辑门图 | `assign` | 信号怎么被门电路合成 |
+| 寄存器位段 | `reg` | 指令 / 寄存器的位划分 |
+
+一段总线握手时序：
+
+```wavedrom
+{
+  "signal": [
+    { "name": "clk",  "wave": "p........" },
+    { "name": "req",  "wave": "01..0..10" },
+    { "name": "gnt",  "wave": "x.34x..2x", "data": ["读", "写", "中"] },
+    ["总线", { "name": "addr", "wave": "x.3..4x", "data": ["A0", "A1"] },
+             { "name": "data", "wave": "x..34.x", "data": ["D0", "D1"] }],
+    { "name": "箭头", "wave": "2........", "node": "a........" }
+  ],
+  "head": { "text": "总线握手", "tick": 0 },
+  "foot": { "text": "WaveDrom 实测", "tocks": 8 }
+}
+```
+
+寄存器位段图（指令格式最常用这个）：
+
+```wavedrom
+{
+  "reg": [
+    { "name": "opcode", "bits": 8,  "attr": "操作码" },
+    { "name": "addr",   "bits": 16 },
+    { "bits": 4, "attr": "保留" },
+    { "bits": 4, "attr": "标志" }
+  ],
+  "config": { "bits": 32 }
+}
+```
+
+逻辑门图（`assign`，一行一个表达式）：
+
+```wavedrom
+{
+  "assign": [
+    ["&", "A", "B", "=", "C"],
+    ["|", "C", "D", "=", "F"],
+    ["~", "F", "=", "Q"]
+  ]
+}
+```
+
+> [!NOTE]
+> **深浅主题都用浅色波形面板**。三种图的底色统一固定为不透明白色：
+> `signal` 的白底板是 WaveDrom 皮肤自己画的，`reg` / `assign` 两条路径**不画底板**
+> （位段框、分隔线、文字是库里硬编码的黑色描边），深色卡片里等于黑底写黑字、
+> 整块糊掉 —— 澄笺会给缺底板的图补一块白底，所以不用配置。
+> 官方 dark 皮肤同理不换：它也是白底，换过去只会变成"白底上铺浅色描边"，波形糊掉。
+
+---
+
+## 五、Graphviz
+
+语言名 `graphviz`，内容写 DOT。实测支持 `digraph` / `subgraph cluster_*` 聚类 / 边标签 /
+CJK 文字，布局引擎 `dot`：
+
+```graphviz
+digraph 渲染管线 {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  源码 -> 解析器 -> 块结构 -> 视图;
+  解析器 -> 大纲;
+  subgraph cluster_web {
+    label = "Web 渲染层";
+    KaTeX; Mermaid; ECharts; WaveDrom;
+  }
+  块结构 -> KaTeX;
+  块结构 -> Mermaid;
+  块结构 -> WaveDrom;
+}
+```
+
+---
+
+## 六、数学公式
+
+| 用途 | 引擎 | 说明 |
+| --- | --- | --- |
+| 块级公式 `$$…$$` / `\[…\]` | KaTeX 0.19.0 | 完整渲染；未就绪时先用自研 MathLite 线性化兜底，不留空白 |
+| 行内公式 `$…$` / `\(…\)` | KaTeX 渲染成图内联 | 与正文同基线，可点开放大 |
+
+覆盖范围（矩阵 / 分段 / 对齐 / 积分 / 装饰 / 字体 / 自定义宏等）在
+「澄笺示例 · 全功能演示」第四节有 17 类逐条实测样例。
+
+明确**不支持**的：`\href`（外链）、`\includegraphics`（嵌图）、`\ce{}`（mhchem 化学式）。
+
+---
+
+## 七、Markdown 扩展语法支持矩阵
+
+| 语法 | 支持 | 备注 |
+| --- | :---: | --- |
+| GFM 表格 + 列对齐 | ✅ | 单元格内可写行内标记 |
+| 围栏代码块 | ✅ | 三个反引号与三个波浪号都认，带语言名高亮 |
+| 脚注 `[^标签]` | ✅ | 标签可用中文 |
+| 提示块 `[!NOTE]` 等 | ✅ | 五类：NOTE / TIP / IMPORTANT / WARNING / CAUTION |
+| 折叠块 `<details>` | ✅ | 仅这一个标签有块级语义 |
+| 删除线 `~~x~~`、高亮 `==x==` | ✅ | |
+| 上标 `^x^`、下标 `~x~` | ✅ | |
+| Emoji 短代码 `:smile:` | ✅ | |
+| YAML Front Matter | ✅ | 首行 `---` 到 `---`/`...`，抽成信息卡片，不进正文与大纲 |
+| 引用式链接 `[a][id]` + `[id]: url` | ✅ | |
+| 裸 URL 自动链接 | ✅ | 遇到空格与中文标点自动收尾 |
+| 站内锚点 `[文字](#标题)` | ✅ | 按**标题文字**归一化匹配，忽略空格与 `-` `_` `.` `/` 等 |
+| 自动目录 `[TOC]` | ❌ | 目录是自动生成的侧栏大纲，不支持正文内联指令 |
+| 自定义标题 ID `{#custom-id}` | ❌ | 花括号会原样显示 |
+| 尖括号自动链接 `<https://…>` | ❌ | 照原样显示 |
+| 硬换行（行尾两空格 / 反斜杠） | ❌ | 段内换行会被并成空格 |
+| 4 空格缩进代码块 | ❌ | 缩进只用于列表与引用层级 |
+| 行内 HTML 标签 | ❌ | 按纯文本显示（`html` 围栏代码块例外，会渲染成可交互预览） |
+
+---
+
+## 八、渲染之外的能力
+
+- **导出**：HTML（自包含，渲染库直接内嵌，离线打开也能出图）、Markdown、EPUB、PDF 打印。
+- **图片**：文档内图片点击放大，双指缩放与拖动。
+- **公式与图表放大**：点卡片右上角的放大，进入全屏浮层，支持双指捏合、± 缩放、旋转、
+  重新自适应、切看源码。
+- **离线**：所有渲染库随应用打包，全程无网络请求；「基础模式」可彻底断网。
+
+---
+
+*清单里的版本号与实测结果对应本应用当前构建；升级渲染库后本页会同步更新。*

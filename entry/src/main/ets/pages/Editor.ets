@@ -23,7 +23,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { GenWallpaper } from '../theme/GenWallpaper';
-import { modalSheetOptions } from '../material/ModalSheet';
+import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { VersionSnapshot, VersionStore } from '../service/VersionStore';
 import { EditorDraft } from '../service/EditorDraft';
 import { UpdateService } from '../service/UpdateService';
@@ -2014,9 +2014,19 @@ export struct Editor {
     return out;
   }
 
-  /** 版本历史面板：自动保存设置 + 快照列表 / **分屏对比视图**（挂在内层 Row 的 bindSheet 上）。 */
+  /**
+   * 版本历史面板：外层是键盘垫高（BindSheet 不参与平台键盘避让，见 ModalSheet 的
+   * SheetKeyboardLift），内层是快照列表 / **分屏对比视图**（挂在内层 Row 的 bindSheet 上）。
+   */
   @Builder
   versionsSheet() {
+    SheetKeyboardLift() {
+      this.versionsSheetBody()
+    }
+  }
+
+  @Builder
+  versionsSheetBody() {
     if (this.diffFor < 0) {
       // ── 快照列表（竖向滚动）──
       Scroll() {
@@ -2213,11 +2223,19 @@ export struct Editor {
     return out;
   }
 
-  /** bindSheet 的内容包装：语法速查整页滚动。
+  /** bindSheet 的内容包装：键盘垫高（BindSheet 不参与平台键盘避让，见
+   *  ModalSheet 的 SheetKeyboardLift）+ 语法速查整页滚动。
    *  **左右内边距 + 底部留白**：之前内容铺满整宽，卡片直接贴到屏幕边缘
    *  （用户反馈）；底部留白避免最后一张卡被手势条 / 面板圆角压住。 */
   @Builder
   syntaxSheet() {
+    SheetKeyboardLift() {
+      this.syntaxSheetBody()
+    }
+  }
+
+  @Builder
+  syntaxSheetBody() {
     Scroll() {
       Column() {
         this.syntaxPanel()

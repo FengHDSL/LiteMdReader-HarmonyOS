@@ -696,7 +696,7 @@ export class MdParser {
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
-          || langLower === 'html') {
+          || langLower === 'wavedrom' || langLower === 'html') {
           blocks.push(MdBlockFactory.chart(lang, body, blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
