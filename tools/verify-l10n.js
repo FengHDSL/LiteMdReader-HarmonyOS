@@ -180,6 +180,26 @@ for (const [name, map] of [['ZH_HANT', ZH_HANT], ['ZH_TW', ZH_TW]]) {
   check('⑧ IDS 覆盖 8 个选择项', list.length === 8, 'n=' + list.length);
 }
 
+// ⑨ themeModeLabel() 之类的"返回中文标签"函数：返回值会被 this.s() 当键用，
+//    但调用点是变量，上面 ① 抓不到 —— 单独把函数体里的 return 字面量查一遍。
+{
+  const dtPath = path.join(ETS, 'theme', 'DesignTokens.ets');
+  if (fs.existsSync(dtPath)) {
+    const dt = fs.readFileSync(dtPath, 'utf8').replace(/\r\n/g, '\n');
+    const fnStart = dt.indexOf('export function themeModeLabel');
+    if (fnStart >= 0) {
+      const fnBody = dt.slice(fnStart, dt.indexOf('\n}', fnStart));
+      const labels = [...new Set((fnBody.match(/return\s+'([^']*)'/g) || [])
+        .map((x) => /'([^']*)'/.exec(x)[1]).filter((x) => /[\u4e00-\u9fa5]/.test(x)))];
+      for (const [name, map] of REQUIRED) {
+        const miss = labels.filter((k) => !map.has(k));
+        check('⑨ themeModeLabel 的返回值在 ' + name + ' 里有翻译', miss.length === 0, miss.join(' / '));
+      }
+      console.log('⑨ themeModeLabel 标签: ' + labels.join(' / '));
+    }
+  }
+}
+
 console.log(fails === 0 ? 'L10N OK' : 'L10N FAILED: ' + fails);
 if (fails === 0 ? 0 : 1) {
   for (const [name, map] of REQUIRED) {
