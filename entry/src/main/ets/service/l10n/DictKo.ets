@@ -536,3 +536,6 @@ export const KO_KR_ENTRIES: L10nEntry[] = [
   { k: '（这条批注没有写文字批注 —— 回想一下当时为什么划它）', v: '(이 주석에는 텍스트 메모가 없습니다——왜 표시했는지 떠올려 보세요)' },
   { k: '（这条批注没有写文字批注）', v: '(이 주석에는 텍스트 메모가 없습니다)' },
 ];
+
+/** 查询用 Map。 */
+export const KO_KR_MAP: Map<string, string> = toL10nMap(KO_KR_ENTRIES);

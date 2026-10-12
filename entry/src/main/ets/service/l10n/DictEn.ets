@@ -536,3 +536,6 @@ export const EN_US_ENTRIES: L10nEntry[] = [
   { k: '（这条批注没有写文字批注 —— 回想一下当时为什么划它）', v: '(This annotation has no text note — recall why you highlighted it)' },
   { k: '（这条批注没有写文字批注）', v: '(This annotation has no text note)' },
 ];
+
+/** 查询用 Map。 */
+export const EN_US_MAP: Map<string, string> = toL10nMap(EN_US_ENTRIES);

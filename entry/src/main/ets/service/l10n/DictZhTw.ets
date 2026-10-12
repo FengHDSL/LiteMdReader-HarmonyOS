@@ -459,3 +459,6 @@ export const ZH_TW_ENTRIES: L10nEntry[] = [
   { k: '（这条批注没有写文字批注 —— 回想一下当时为什么划它）', v: '（這條批註沒有寫文字批註 —— 回想一下當時為什麼劃它）' },
   { k: '（这条批注没有写文字批注）', v: '（這條批註沒有寫文字批註）' },
 ];
+
+/** 查询用 Map。 */
+export const ZH_TW_MAP: Map<string, string> = toL10nMap(ZH_TW_ENTRIES);

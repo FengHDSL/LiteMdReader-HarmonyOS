@@ -536,3 +536,6 @@ export const JA_JP_ENTRIES: L10nEntry[] = [
   { k: '（这条批注没有写文字批注 —— 回想一下当时为什么划它）', v: '（この注釈にはテキストメモがありません——なぜ線を引いたか思い出してみましょう）' },
   { k: '（这条批注没有写文字批注）', v: '（この注釈にはテキストメモがありません）' },
 ];
+
+/** 查询用 Map。 */
+export const JA_JP_MAP: Map<string, string> = toL10nMap(JA_JP_ENTRIES);
