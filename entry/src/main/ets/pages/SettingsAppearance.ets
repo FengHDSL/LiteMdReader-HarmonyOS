@@ -23,6 +23,7 @@ import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
 import { FuncExpr } from '../theme/FuncExpr';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
+import { L10n } from '../service/L10n';
 import { ThemeStore } from '../theme/ThemeStore';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -71,6 +72,11 @@ export struct SettingsAppearance {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** 用户选的语言（'system' 或内置 id）与语言刷新计数。
+   *  ⚠️ 装饰器参数写**字面量**（与全仓库一致）：键名的权威定义在 service/L10n.ets
+   *     的 KEY_CHOICE / KEY_TICK，改这里要同时改那里。 */
+  @StorageLink('appLanguage') @Watch('onLanguageChanged') appLang: string = 'system';
+  @StorageProp('languageTick') langTick: number = 0;
   /**
    * 主题色 / 灰字 / 沾色 / 蒙版这些键：**改一次就落一次镜像盘**
    * （SettingsMirror.save）。PersistentStorage 在部分设备上没真正落盘，
@@ -142,31 +148,33 @@ export struct SettingsAppearance {
   private pickWallpaper(): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(this.s('拿不到应用上下文'));
       return;
     }
     WallpaperStore.pickFor(c as common.UIAbilityContext, this.wallpaperEditMode === 'dark')
       .then((err: string) => {
+        // '未选择图片' 是 WallpaperStore 的**内部哨兵值**，不参与翻译（译文换了这里就断）
         if (err === '未选择图片') {
-          this.toast('未选择图片');
+          this.toast(this.s('未选择图片'));
         } else if (err.length > 0) {
-          this.toast('导入失败：' + err);
+          this.toast(this.s1('导入失败：%1', err));
         } else {
-          this.toast(this.wallpaperEditMode === 'dark' ? '深色壁纸已更新' : '浅色壁纸已更新');
+          this.toast(this.wallpaperEditMode === 'dark'
+            ? this.s('深色壁纸已更新') : this.s('浅色壁纸已更新'));
         }
       }).catch((e: BusinessError) => {
-      this.toast('导入失败：' + e.message);
+      this.toast(this.s1('导入失败：%1', e.message));
     });
   }
 
   private clearWallpaper(): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(this.s('拿不到应用上下文'));
       return;
     }
     WallpaperStore.clearFor(c as common.UIAbilityContext, this.wallpaperEditMode === 'dark');
-    this.toast('已清除壁纸');
+    this.toast(this.s('已清除壁纸'));
   }
 
   /**
@@ -176,20 +184,20 @@ export struct SettingsAppearance {
   private applyCustomFuncWallpaper(): void {
     const check: FuncExpr = FuncExpr.compile(this.customFuncDraft);
     if (!check.ok) {
-      this.toast('表达式有误：' + check.error);
+      this.toast(this.s1('表达式有误：%1', check.error));
       return;
     }
     const normA: string = normalizeHex8(this.customADraft);
     const normB: string = normalizeHex8(this.customBDraft);
     if (normA.length === 0 || normB.length === 0) {
-      this.toast('颜色格式：#RRGGBB');
+      this.toast(this.s('颜色格式：#RRGGBB'));
       return;
     }
     this.customFunc = this.customFuncDraft;
     this.customA = '#' + normA.substring(3, 9);
     this.customB = '#' + normB.substring(3, 9);
     this.genWallId = 'custom';
-    this.toast('已应用自定义函数壁纸');
+    this.toast(this.s('已应用自定义函数壁纸'));
   }
 
   private rememberSliderSize(area: Area): void {
@@ -210,6 +218,60 @@ export struct SettingsAppearance {
     const mode: number = this.themeMode;
     const dark: boolean = this.systemDark;
     return paletteFor(mode, dark);
+  }
+
+  /**
+   * 取当前语言的文案。
+   * ⚠️ 必须像 palette() 那样显式读一次 langTick：L10n 是静态类，它读 AppStorage
+   *    不会给这个组件登记依赖，光调 L10n.t() 的话切语言时界面不会重画。
+   */
+  private s(src: string): string {
+    const lang: number = this.langTick;
+    return L10n.t(src);
+  }
+
+  /** 带一个占位符的文案（%1）。 */
+  private s1(src: string, a: string): string {
+    const lang: number = this.langTick;
+    return L10n.f1(src, a);
+  }
+
+  /** 带两个占位符的文案（%1 %2）。 */
+  private s2(src: string, a: string, b: string): string {
+    const lang: number = this.langTick;
+    return L10n.f2(src, a, b);
+  }
+
+  /** 语言选择芯片的文案（跟随系统要翻译，其它语言用自称）。 */
+  private langChip(id: string): string {
+    const lang: number = this.langTick;
+    return L10n.chipLabel(id);
+  }
+
+  /** 当前语言说明：跟随系统时把解析到的语言一并写出来（跟随系统（当前：日本語））。 */
+  private langDescribe(): string {
+    const lang: number = this.langTick;
+    return L10n.describe();
+  }
+
+  /**
+   * 切语言：写选择 + 递增 languageTick（挂了 langTick 的节点当帧重画），
+   * 动画上下文里做，卡片高度的变化才不会"啪"地跳。
+   */
+  private applyLanguage(id: string): void {
+    if (id === this.appLang) {
+      return;
+    }
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.Friction }, () => {
+      L10n.setChoice(id);
+    });
+    this.toast(this.s1('语言已切换为 %1', L10n.endonym(L10n.current())));
+  }
+
+  /** 语言变化：把选择镜像给平台，并落一次设置镜像盘。 */
+  onLanguageChanged(): void {
+    L10n.mirrorToPlatform();
+    SettingsMirror.save(this.hostCtx());
   }
 
   /**
@@ -298,7 +360,7 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('wallpaperPath', '');
     this.themeColor = '';
     SettingsMirror.save(this.hostCtx());
-    this.toast('外观已恢复默认');
+    this.toast(this.s('外观已恢复默认'));
   }
 
   aboutToAppear(): void {
@@ -345,11 +407,11 @@ export struct SettingsAppearance {
   @Builder
   grayBlockBody(title: string, light: boolean) {
     Row() {
-      Text(title)
+      Text(this.s(title))
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
-      Text(this.grayModeOf(light) === 'auto' ? '自动'
+      Text(this.grayModeOf(light) === 'auto' ? this.s('自动')
         : (this.grayColorOf(light).length > 0 ? this.grayColorOf(light) : ''))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
@@ -362,13 +424,13 @@ export struct SettingsAppearance {
         Row() {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: item.name,
+            chipLabel: this.s(item.name),
             // 高亮读数在 builder 体内 → 点击后当帧刷新（按值传参才会滞后）
             chipActive: this.grayModeOf(light) === item.value,
             chipOnTap: () => {
               this.applyGrayMode(light, item.value);
               if (item.value !== 'custom') {
-                this.toast(title + '灰体文本：' + item.name);
+                this.toast(this.s2('%1灰体文本：%2', this.s(title), this.s(item.name)));
               }
             }
           })
@@ -384,7 +446,7 @@ export struct SettingsAppearance {
           palette: this.palette(),
           text: this.grayDraftOf(light).length > 0
             ? this.grayDraftOf(light) : this.grayColorOf(light),
-          placeholder: '自定义 #RRGGBB',
+          placeholder: this.s('自定义 #RRGGBB'),
           onInput: (value: string) => {
             if (light) {
               this.grayDraftLight = value;
@@ -397,11 +459,11 @@ export struct SettingsAppearance {
         ImmersiveChip({
           palette: this.palette(),
           chipActive: true,
-          chipLabel: '应用',
+          chipLabel: this.s('应用'),
           chipOnTap: () => {
             const norm: string = normalizeHex8(this.grayDraftOf(light));
             if (norm.length === 0) {
-              this.toast('格式：#RRGGBB，例如 #9AA0A6');
+              this.toast(this.s('格式：#RRGGBB，例如 #9AA0A6'));
               return;
             }
             if (light) {
@@ -410,7 +472,7 @@ export struct SettingsAppearance {
               this.grayColorDark = '#' + norm.substring(3);
             }
             this.broadcastAppearance();
-            this.toast(title + '灰体色已生效');
+            this.toast(this.s1('%1灰体色已生效', this.s(title)));
           }
         })
       }
@@ -452,8 +514,8 @@ export struct SettingsAppearance {
 
   build() {
     SettingsShell({
-      shellTitle: '外观设置',
-      shellSubtitle: '深色模式 · 主题色 · 应用壁纸 · 卡片与流光 · 灰体文本',
+      shellTitle: this.s('外观设置'),
+      shellSubtitle: this.s('深色模式 · 主题色 · 应用壁纸 · 卡片与流光 · 灰体文本'),
       stack: this.stack,
       life: this.life
     }) {
@@ -463,7 +525,7 @@ export struct SettingsAppearance {
       // **标题放进卡片内**（用户要求：卡片外的「主题模式」等文本移入各自卡片）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text('主题模式')
+          Text(this.s('主题模式'))
             .fontSize(HwType.label + 1)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textSecondary)
@@ -471,10 +533,10 @@ export struct SettingsAppearance {
 
           Row() {
             Column({ space: 2 }) {
-              Text('深色模式')
+              Text(this.s('深色模式'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('开启后全应用改用深色配色；羊皮纸 / 护眼绿在「阅读调整」里')
+              Text(this.s('开启后全应用改用深色配色；羊皮纸 / 护眼绿在「阅读调整」里'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -483,7 +545,7 @@ export struct SettingsAppearance {
             Toggle({ type: ToggleType.Switch, isOn: this.themeMode === ReaderThemeMode.Dark })
               .onChange((isOn: boolean) => {
                 this.themeMode = isOn ? ReaderThemeMode.Dark : ReaderThemeMode.Light;
-                this.toast(isOn ? '已切换到深色模式' : '已切换到浅色模式');
+                this.toast(isOn ? this.s('已切换到深色模式') : this.s('已切换到浅色模式'));
               })
           }
           .width('100%')
@@ -493,13 +555,13 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.themeMode === ReaderThemeMode.System,
-              chipLabel: '跟随系统',
+              chipLabel: this.s('跟随系统'),
               chipOnTap: () => {
                 this.themeMode = ReaderThemeMode.System;
-                this.toast('主题：跟随系统');
+                this.toast(this.s('主题：跟随系统'));
               }
             })
-            Text('当前：' + themeModeLabel(this.themeMode))
+            Text(this.s1('当前：%1', this.s(themeModeLabel(this.themeMode))))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
@@ -511,10 +573,60 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
+      // ── ⓪½ 应用语言（用户要求：跟随系统 + 7 种内置语言）──
+      // 语言名一律用**该语言的自称**（简体中文 / 繁體中文（台灣）/ English (US) /
+      // 日本語 / 한국어…），只有「跟随系统」这一项跟着界面语言翻译；
+      // 系统语言不在内置列表里时，L10n.match 归一到简体中文。
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.md }) {
+          Text(this.s('应用语言'))
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
+          Text(this.s('只改澄笺里的文字，不动系统语言；澄笺这个名字和拼音都不翻译。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(L10n.IDS, (id: string) => {
+              Row() {
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipLabel: this.langChip(id),
+                  chipActive: this.appLang === id,
+                  chipOnTap: () => {
+                    this.applyLanguage(id);
+                  }
+                })
+              }
+              .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+            }, (id: string) => 'lang_' + id)
+          }
+          .width('100%')
+
+          Text(this.langDescribe())
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+
+          Text(this.s('系统语言不在内置列表里时，按简体中文显示。')
+            + ' ' + this.s('应用内文字立刻生效；日期格式这类系统级文字在下次启动时同步。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.6)
+            .width('100%')
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
       // ── ① 主题色（标题已在卡片内，删掉卡片外这一份——用户要求）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text('主题色')
+          Text(this.s('主题色'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
           Row({ space: HwSpace.sm }) {
@@ -533,7 +645,8 @@ export struct SettingsAppearance {
                 })
                 .onClick(() => {
                   this.themeColor = item.value;
-                  this.toast('主题色：' + item.name);
+                  // 五色名（澄光 / 宣纸…）是品牌名，任何语言都不翻译
+                  this.toast(this.s1('主题色：%1', item.name));
                 })
             }, (item: NamedColor) => 'tp' + item.name)
           }
@@ -544,13 +657,13 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.themeColor.length === 0,
-              chipLabel: '跟随主题（默认）',
+              chipLabel: this.s('跟随主题（默认）'),
               chipOnTap: () => {
                 this.themeColor = '';
-                this.toast('已恢复默认主题色');
+                this.toast(this.s('已恢复默认主题色'));
               }
             })
-            Text('当前：' + ThemeStore.label())
+            Text(this.s1('当前：%1', ThemeStore.label()))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
@@ -562,7 +675,7 @@ export struct SettingsAppearance {
             ImmersiveInput({
               palette: this.palette(),
               text: this.customHex,
-              placeholder: '自定义 #RRGGBB',
+              placeholder: this.s('自定义 #RRGGBB'),
               onInput: (value: string) => {
                 this.customHex = value;
               }
@@ -571,15 +684,15 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: '应用',
+              chipLabel: this.s('应用'),
               chipOnTap: () => {
                 const norm: string = normalizeHex8(this.customHex);
                 if (norm.length === 0) {
-                  this.toast('格式：#RRGGBB，例如 #B07A2E');
+                  this.toast(this.s('格式：#RRGGBB，例如 #B07A2E'));
                   return;
                 }
                 this.themeColor = norm.substring(3);
-                this.toast('自定义主题色已生效');
+                this.toast(this.s('自定义主题色已生效'));
               }
             })
           }
@@ -591,10 +704,10 @@ export struct SettingsAppearance {
           // 页面背景跟随主题色（参考 xjau：内置主题色始终允许染背景）
           Row() {
             Column({ space: 2 }) {
-              Text('背景跟随主题色')
+              Text(this.s('背景跟随主题色'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('页面底色轻微染上主题色，整体更统一')
+              Text(this.s('页面底色轻微染上主题色，整体更统一'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -611,10 +724,10 @@ export struct SettingsAppearance {
           // 自定义 hex 默认只影响强调色；要看它染背景得开这个（xjau 的高权限开关）
           Row() {
             Column({ space: 2 }) {
-              Text('自定义色也染背景')
+              Text(this.s('自定义色也染背景'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('关闭时，只有澄笺 5 色会染页面背景')
+              Text(this.s('关闭时，只有澄笺 5 色会染页面背景'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -636,7 +749,7 @@ export struct SettingsAppearance {
       // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text('应用壁纸')
+          Text(this.s('应用壁纸'))
             .fontSize(HwType.label + 1)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textSecondary)
@@ -647,7 +760,7 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.wallpaperEditMode === 'light',
-              chipLabel: '浅色壁纸',
+              chipLabel: this.s('浅色壁纸'),
               chipOnTap: () => {
                 this.wallpaperEditMode = 'light';
               }
@@ -655,7 +768,7 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.wallpaperEditMode === 'dark',
-              chipLabel: '深色壁纸',
+              chipLabel: this.s('深色壁纸'),
               chipOnTap: () => {
                 this.wallpaperEditMode = 'dark';
               }
@@ -667,7 +780,7 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: '从图库选择',
+              chipLabel: this.s('从图库选择'),
               chipOnTap: () => {
                 this.pickWallpaper();
               }
@@ -675,7 +788,7 @@ export struct SettingsAppearance {
             if (this.wallpaperEditModePath().length > 0) {
               ImmersiveChip({
                 palette: this.palette(),
-                chipLabel: '清除壁纸',
+                chipLabel: this.s('清除壁纸'),
                 chipOnTap: () => {
                   this.clearWallpaper();
                 }
@@ -683,7 +796,7 @@ export struct SettingsAppearance {
             }
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '取消所有壁纸',
+              chipLabel: this.s('取消所有壁纸'),
               chipOnTap: () => {
                 const c = this.hostCtx();
                 if (c !== null) {
@@ -691,7 +804,7 @@ export struct SettingsAppearance {
                   WallpaperStore.clearFor(c, true);
                 }
                 AppStorage.setOrCreate('wallpaperPath', '');
-                this.toast('已取消所有壁纸');
+                this.toast(this.s('已取消所有壁纸'));
               }
             })
           }
@@ -699,11 +812,11 @@ export struct SettingsAppearance {
 
           Divider().strokeWidth(1).color(this.palette().divider)
 
-          Text('澄笺壁纸（程序化绘制）')
+          Text(this.s('澄笺壁纸（程序化绘制）'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
             .width('100%')
-          Text('按「澄·笺」意境生成的渐变纸墨底，无位图资源，任意分辨率都清晰')
+          Text(this.s('按「澄·笺」意境生成的渐变纸墨底，无位图资源，任意分辨率都清晰'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -717,7 +830,10 @@ export struct SettingsAppearance {
                   chipActive: this.genWallId === item.id,
                   chipOnTap: () => {
                     this.genWallId = this.genWallId === item.id ? '' : item.id;
-                    this.toast(this.genWallId.length > 0 ? '壁纸：' + item.name : '已关闭澄笺壁纸');
+                    // 壁纸款名（竹影 / 澄光…）与拼音 id 都是品牌名，不翻译
+                    this.toast(this.genWallId.length > 0
+                      ? this.s1('壁纸：%1', item.name)
+                      : this.s('已关闭澄笺壁纸'));
                   }
                 }) {
                   Column()
@@ -738,13 +854,12 @@ export struct SettingsAppearance {
           // ── 自定义函数壁纸（用户要求：支持手动写函数绘画）──
           Divider().strokeWidth(1).color(this.palette().divider)
 
-          Text('自定义函数壁纸')
+          Text(this.s('自定义函数壁纸'))
             .fontSize(HwType.label)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textPrimary)
             .width('100%')
-          Text('写一个 f(x, y) 表达式（结果 0~1），逐格上色：值越大越接近亮色。' +
-            '变量 x / y 是 0~1 的位置；可用 + - * / ^ ( ) 与 sin cos tan abs sqrt floor round min max pow、pi、e')
+          Text(this.s('写一个 f(x, y) 表达式（结果 0~1），逐格上色：值越大越接近亮色。变量 x / y 是 0~1 的位置；可用 + - * / ^ ( ) 与 sin cos tan abs sqrt floor round min max pow、pi、e'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.6)
@@ -753,7 +868,7 @@ export struct SettingsAppearance {
           ImmersiveInput({
             palette: this.palette(),
             text: this.customFuncDraft,
-            placeholder: '例如 sin(x*4)*0.25+0.75',
+            placeholder: this.s('例如 sin(x*4)*0.25+0.75'),
             onInput: (value: string) => {
               this.customFuncDraft = value;
             }
@@ -764,7 +879,7 @@ export struct SettingsAppearance {
             ImmersiveInput({
               palette: this.palette(),
               text: this.customADraft,
-              placeholder: '暗端 #1E222B',
+              placeholder: this.s('暗端 #1E222B'),
               onInput: (value: string) => {
                 this.customADraft = value;
               }
@@ -773,7 +888,7 @@ export struct SettingsAppearance {
             ImmersiveInput({
               palette: this.palette(),
               text: this.customBDraft,
-              placeholder: '亮端 #E8EDF4',
+              placeholder: this.s('亮端 #E8EDF4'),
               onInput: (value: string) => {
                 this.customBDraft = value;
               }
@@ -782,7 +897,7 @@ export struct SettingsAppearance {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.genWallId === 'custom',
-              chipLabel: '应用',
+              chipLabel: this.s('应用'),
               chipOnTap: () => {
                 this.applyCustomFuncWallpaper();
               }
@@ -792,12 +907,12 @@ export struct SettingsAppearance {
           .alignItems(VerticalAlign.Center)
 
           Row({ space: HwSpace.xs }) {
-            Text('示例')
+            Text(this.s('示例'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '波纹',
+              chipLabel: this.s('波纹'),
               chipOnTap: () => {
                 this.customFuncDraft = 'sin(x*6.28)*sin(y*6.28)*0.4+0.6';
                 this.applyCustomFuncWallpaper();
@@ -805,7 +920,7 @@ export struct SettingsAppearance {
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '对角波',
+              chipLabel: this.s('对角波'),
               chipOnTap: () => {
                 this.customFuncDraft = 'sin((x+y)*9)*0.35+0.65';
                 this.applyCustomFuncWallpaper();
@@ -813,7 +928,7 @@ export struct SettingsAppearance {
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '涟漪',
+              chipLabel: this.s('涟漪'),
               chipOnTap: () => {
                 this.customFuncDraft = 'sqrt(abs(sin(sqrt((x-0.5)*(x-0.5)+(y-0.5)*(y-0.5))*20)))*0.7+0.3';
                 this.applyCustomFuncWallpaper();
@@ -828,7 +943,7 @@ export struct SettingsAppearance {
           if (this.wallpaperPathLight.length > 0 || this.wallpaperPathDark.length > 0
             || this.wallpaperPath.length > 0) {
             Row() {
-              Text('壁纸模糊')
+              Text(this.s('壁纸模糊'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
               Blank()
@@ -853,7 +968,7 @@ export struct SettingsAppearance {
           }
 
           Row() {
-            Text('文字可读性遮罩')
+            Text(this.s('文字可读性遮罩'))
               .fontSize(HwType.label)
               .fontColor(this.palette().textPrimary)
             Blank()
@@ -879,10 +994,10 @@ export struct SettingsAppearance {
           // 壁纸原图全亮度显示；再关掉则回到默认浓度。
           Row() {
             Column({ space: 2 }) {
-              Text('取消蒙版')
+              Text(this.s('取消蒙版'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('关闭后不叠加可读性遮罩，壁纸按原样显示')
+              Text(this.s('关闭后不叠加可读性遮罩，壁纸按原样显示'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -891,13 +1006,13 @@ export struct SettingsAppearance {
             Toggle({ type: ToggleType.Switch, isOn: this.wallpaperScrim <= 0 })
               .onChange((isOn: boolean) => {
                 this.wallpaperScrim = isOn ? 0 : 42;
-                this.toast(isOn ? '已取消蒙版（壁纸原样显示）' : '已恢复可读性蒙版');
+                this.toast(isOn ? this.s('已取消蒙版（壁纸原样显示）') : this.s('已恢复可读性蒙版'));
               })
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
-          Text('壁纸越花，遮罩就要越浓，否则正文会看不清；确实不需要时可「取消蒙版」')
+          Text(this.s('壁纸越花，遮罩就要越浓，否则正文会看不清；确实不需要时可「取消蒙版」'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
         }
@@ -912,7 +1027,7 @@ export struct SettingsAppearance {
       // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text('卡片与流光')
+          Text(this.s('卡片与流光'))
             .fontSize(HwType.label + 1)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textSecondary)
@@ -921,10 +1036,10 @@ export struct SettingsAppearance {
           // 卡片沾色：卡片底色混入 10% 主题色（含材质之上的薄染层）
           Row() {
             Column({ space: 2 }) {
-              Text('卡片沾色')
+              Text(this.s('卡片沾色'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('卡片染上一成主题色，整体更协调（需先选主题色）')
+              Text(this.s('卡片染上一成主题色，整体更协调（需先选主题色）'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -941,10 +1056,10 @@ export struct SettingsAppearance {
           // 主题色流光：按压卡片的流光/光晕用主题色还是白光
           Row() {
             Column({ space: 2 }) {
-              Text('主题色流光')
+              Text(this.s('主题色流光'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('按压卡片时的流光改用主题色（关闭为白光）')
+              Text(this.s('按压卡片时的流光改用主题色（关闭为白光）'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -961,10 +1076,10 @@ export struct SettingsAppearance {
           // 卡片流光触感：关掉后按卡片不再出现任何流光
           Row() {
             Column({ space: 2 }) {
-              Text('卡片流光触感')
+              Text(this.s('卡片流光触感'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('按压卡片时出现流光；关闭后按压没有任何光效')
+              Text(this.s('按压卡片时出现流光；关闭后按压没有任何光效'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -981,10 +1096,10 @@ export struct SettingsAppearance {
           // 显示「继续阅读」卡片：书架顶部那条最近阅读提示的开关
           Row() {
             Column({ space: 2 }) {
-              Text('继续阅读卡片')
+              Text(this.s('继续阅读卡片'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text('在书架顶部显示「继续阅读」提示卡片，关闭后书架更清爽')
+              Text(this.s('在书架顶部显示「继续阅读」提示卡片，关闭后书架更清爽'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -1008,13 +1123,13 @@ export struct SettingsAppearance {
       // **标题放进卡片内**（用户要求）
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text('灰体文本显示增强')
+          Text(this.s('灰体文本显示增强'))
             .fontSize(HwType.label + 1)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
-          Text('把说明文字、时间、占位提示这类灰字统一改成选定颜色')
+          Text(this.s('把说明文字、时间、占位提示这类灰字统一改成选定颜色'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1025,13 +1140,12 @@ export struct SettingsAppearance {
           // ── 浅色模式用什么颜色 ──
           this.grayBlockLight()
 
-          Text('默认「自动」＝有背景亮度信息时按对比度选色、否则跟随主题原本的灰字；' +
-            '深浅两套各设各的，互不影响。')
+          Text(this.s('默认「自动」＝有背景亮度信息时按对比度选色、否则跟随主题原本的灰字；深浅两套各设各的，互不影响。'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
-          Text('改完立即生效（走 appearanceTick 全应用重算，无需重进页面）')
+          Text(this.s('改完立即生效（走 appearanceTick 全应用重算，无需重进页面）'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1051,7 +1165,7 @@ export struct SettingsAppearance {
 
         ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: true })
 
-        Text('恢复默认外观')
+        Text(this.s('恢复默认外观'))
           .fontSize(HwType.label + 1)
           .fontColor('#FFFFFFFF')
       }

@@ -69,6 +69,8 @@ export class SettingsMirror {
     'wallpaperCustomFunc', 'wallpaperCustomA', 'wallpaperCustomB',
     // 引擎管理：被关闭的渲染引擎列表（逗号分隔 id，空串 = 全部开启）
     'disabledEngines',
+    // 应用语言（外观设置里的选择器；languageTick 是会话内刷新计数，不进镜像）
+    'appLanguage',
     // **一次性标记与收藏名单**（第一腿 PersistentStorage 在真机强杀后不一定落盘，
     // 这三项必须有第二腿：设置页首启弹窗 / 更新弹窗 / 48h 自动检查 / 收藏恢复）
     'appMode', 'lastSeenVersion', 'lastAutoCheckAt',

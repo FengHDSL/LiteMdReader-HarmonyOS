@@ -10,6 +10,7 @@ import { systemShare } from '@kit.ShareKit';
 import { setupImmersiveWindow, applyAppColorMode, syncSystemDarkFromContext } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
+import { L10n } from '../service/L10n';
 import { DocStore } from '../service/DocStore';
 import { BackupStore } from '../service/BackupStore';
 import { WebDavStore } from '../service/WebDavStore';
@@ -163,6 +164,10 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('particleDissolve', true);
     // 设置镜像的写入时间戳（与 settings.json 里的 at 比新旧，决定启动时用哪份）
     PersistentStorage.persistProp(SettingsMirror.KEY_SAVED_AT, 0);
+    // 应用语言（外观设置里的选择器）：'system' = 跟随系统，其它是内置语言 id；
+    // languageTick 是刷新计数，页面靠它重画文案（见 service/L10n.ets）
+    PersistentStorage.persistProp('appLanguage', 'system');
+    PersistentStorage.persistProp('languageTick', 0);
 
     // **文件镜像兜底**：PersistentStorage 在部分设备上没真正落盘（表现为
     // "设置改完、退出应用重进就恢复默认"）。放在 persistProp 之后恢复，
@@ -170,6 +175,9 @@ export default class EntryAbility extends UIAbility {
     SettingsMirror.restore(this.context);
     // 收藏名单的第二腿：按镜像把收藏标记补回 shelf.json（真机上出现过重启丢收藏）
     DocStore.applyStarredMirror(this.context);
+    // 应用语言：把持久化的选择同步给平台（setAppPreferredLanguage 是冷启动生效，
+    // 应用内文案走 L10n 词典，切语言当帧就能看见）
+    L10n.init();
 
     // **应用级颜色模式跟随应用内主题**（浅色模式下系统部件出白字的根因修复）：
     // 深色 → DARK / 浅色 → LIGHT / 跟随系统 → NOT_SET
