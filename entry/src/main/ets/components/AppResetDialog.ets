@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 应用初始化确认弹窗（AppResetDialog）
  * ==========================================
@@ -68,20 +69,19 @@ export struct AppResetDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text('应用初始化')
+      Text(L10n.t('应用初始化'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor('#FFD93B3B')
         .width('100%')
 
-      Text('将清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、'
-        + '阅读设置与外观、版本历史与备份记录。')
+      Text(L10n.t('将清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。')
         .fontSize(13)
         .fontColor(this.pal().textPrimary)
         .lineHeight(20)
         .width('100%')
 
-      Text('效果等同于卸载后重装，且**无法恢复**，请谨慎操作。')
+      Text(L10n.t('效果等同于卸载后重装，且**无法恢复**，请谨慎操作。'))
         .fontSize(13)
         .fontColor('#FFD93B3B')
         .lineHeight(20)
@@ -97,7 +97,7 @@ export struct AppResetDialog {
         .animation({ duration: 200, curve: Curve.FastOutSlowIn })
 
       Row({ space: 10 }) {
-        Text('取消')
+        Text(L10n.t('取消'))
           .fontSize(14)
           .fontColor(this.pal().textPrimary)
           .textAlign(TextAlign.Center)

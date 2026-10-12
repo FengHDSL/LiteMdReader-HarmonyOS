@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 2×2 桌面卡片（最近阅读 + 新建文档）
  * ==========================================
@@ -31,12 +32,12 @@ struct RecentCard {
     Column() {
       // 标题行
       Row() {
-        Text('澄笺')
+        Text(L10n.t('澄笺'))
           .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor('#FF1F2933')
         Blank()
-        Text('最近阅读')
+        Text(L10n.t('最近阅读'))
           .fontSize(10)
           .fontColor('#FF8A93A0')
         // 刷新按钮：数据偶尔没刷出来时点一下，message 动作 → EntryFormAbility.onFormEvent
@@ -109,7 +110,7 @@ struct RecentCard {
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')
-        Text('新建文档')
+        Text(L10n.t('新建文档'))
           .fontSize(13)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')

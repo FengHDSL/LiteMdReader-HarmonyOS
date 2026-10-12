@@ -85,6 +85,7 @@ import { UpdateContentDialog } from '../components/UpdateContentDialog';
 import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { uniformDataStruct, uniformTypeDescriptor } from '@kit.ArkData';
+import { L10n } from '../service/L10n';
 
 // ══════════════ 模块级常量（⚠️ 必须位于**全部 import 之后**）══════════════
 // ArkTS 硬性规则：import 必须全部在文件顶部；夹在 import 之间声明 interface / const
@@ -695,7 +696,7 @@ struct Index {
         this.refresh();
         this.toast(readOnly ? '已切为只读：编辑入口已锁' : '已切为可写：可以编辑了');
       } else {
-        this.toast('切换失败：文档不存在');
+        this.toast(L10n.t('切换失败：文档不存在'));
       }
     } catch (err) {
       this.toast('切换失败：' + DocStore.describeError(err as BusinessError));
@@ -740,18 +741,18 @@ struct Index {
         }
         const rel: string | null = DocStore.importImageFromUri(ctx, result.photoUris[0]);
         if (rel === null) {
-          this.toast('图片导入失败：格式不支持或超过 20MB');
+          this.toast(L10n.t('图片导入失败：格式不支持或超过 20MB'));
           return;
         }
         if (DocStore.setCoverImage(ctx, kind, target, rel)) {
           this.refresh();
-          this.toast('封面图已更新');
+          this.toast(L10n.t('封面图已更新'));
         }
       }).catch((err: BusinessError) => {
         this.toast('选择图片失败：' + err.message);
       });
     } catch (err) {
-      this.toast('无法打开图片选择器');
+      this.toast(L10n.t('无法打开图片选择器'));
     }
   }
 
@@ -763,7 +764,7 @@ struct Index {
     }
     if (DocStore.setCoverImage(ctx, this.cellMenuKind, this.cellMenuFor, '')) {
       this.refresh();
-      this.toast('已移除封面图');
+      this.toast(L10n.t('已移除封面图'));
     }
   }
 
@@ -1308,7 +1309,7 @@ struct Index {
       if (jc !== null && meta !== undefined) {
         this.openDoc(meta);
       } else {
-        this.toast('文档不存在或已删除');
+        this.toast(L10n.t('文档不存在或已删除'));
       }
     }
     const jumpNew: number | undefined = AppStorage.get<number>('formJumpNewDoc');
@@ -1337,7 +1338,7 @@ struct Index {
         }
         const created: DocMeta | null = DocStore.create(gc, cName, cContent);
         if (created === null) {
-          this.toast('接续文档创建失败');
+          this.toast(L10n.t('接续文档创建失败'));
           return;
         }
         target = created.name;
@@ -1735,7 +1736,7 @@ struct Index {
     // 只读文档不给编辑入口：菜单里已把「编辑」收成提示行，这里再兜一道，
     // 免得从别的路径（如将来的快捷入口）绕进来改到只读正文。
     if (this.isDocReadOnly(name)) {
-      this.toast('该文档是只读的，先切成「可写」再编辑');
+      this.toast(L10n.t('该文档是只读的，先切成「可写」再编辑'));
       return;
     }
     const route: ReaderRoute = { name: name };
@@ -1772,7 +1773,7 @@ struct Index {
         this.pathStack.pushPath({ name: url });
       }
     } catch (err) {
-      this.toast('页面跳转失败');
+      this.toast(L10n.t('页面跳转失败'));
     }
   }
 
@@ -1820,7 +1821,7 @@ struct Index {
         this.toast('选择文件失败：' + err.message);
       });
     } catch (err) {
-      this.toast('无法打开文件选择器');
+      this.toast(L10n.t('无法打开文件选择器'));
     }
   }
 
@@ -1831,7 +1832,7 @@ struct Index {
     }
     const target: string = this.renameText.trim();
     if (target.length === 0) {
-      this.toast('名称不能为空');
+      this.toast(L10n.t('名称不能为空'));
       return;
     }
     if (target === this.renameFrom) {
@@ -1846,9 +1847,9 @@ struct Index {
         }
         this.closeRename();
         this.refresh();
-        this.toast('文件夹已重命名');
+        this.toast(L10n.t('文件夹已重命名'));
       } else {
-        this.toast('重命名失败：名称非法或已存在');
+        this.toast(L10n.t('重命名失败：名称非法或已存在'));
       }
       return;
     }
@@ -1857,7 +1858,7 @@ struct Index {
       this.refresh();
       this.toast('已重命名为「' + target + '」');
     } else {
-      this.toast('重命名失败：名称非法或已存在同名文档');
+      this.toast(L10n.t('重命名失败：名称非法或已存在同名文档'));
     }
   }
 
@@ -1870,8 +1871,8 @@ struct Index {
     // 内置教程：正文在 rawfile 里删不掉 → 做的是「从书架移除 + 设置页可恢复」
     if (DocStore.isBuiltinName(name)) {
       this.getUIContext().getPromptAction().showDialog({
-        title: '移除内置教程',
-        message: '将从书架移除《' + name + '》。正文不会被删除，随时可在「设置 → 数据管理」恢复。',
+        title: L10n.t('移除内置教程'),
+        message: L10n.t('将从书架移除《') + name + '》。正文不会被删除，随时可在「设置 → 数据管理」恢复。',
         buttons: [
           { text: '取消', color: this.palette().textSecondary },
           { text: '移除', color: '#FFD93B3B' }
@@ -1892,8 +1893,8 @@ struct Index {
       return;
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: '删除文档',
-      message: '将删除《' + name + '》，此操作不可撤销。',
+      title: L10n.t('删除文档'),
+      message: L10n.t('将删除《') + name + '》，此操作不可撤销。',
       buttons: [
         { text: '取消', color: this.palette().textSecondary },
         { text: '删除', color: '#FFD93B3B' }
@@ -1909,7 +1910,7 @@ struct Index {
           this.toast('已删除《' + name + '》');
         });
       } else {
-        this.toast('删除失败');
+        this.toast(L10n.t('删除失败'));
       }
     }).catch((err: BusinessError) => {
       this.toast('操作失败：' + err.message);
@@ -2252,12 +2253,12 @@ struct Index {
           SymbolGlyph($r('sys.symbol.book'))
             .fontSize(18)
             .fontColor([this.palette().accent])
-          Text('阅读')
+          Text(L10n.t('阅读'))
             .fontSize(HwType.label + 2)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
           Blank()
-          Text('今日 ' + ReadingLog.human(this.readToday))
+          Text(L10n.t('今日 ') + ReadingLog.human(this.readToday))
             .fontSize(HwType.caption)
             .fontColor(this.palette().accent)
         }
@@ -2300,7 +2301,7 @@ struct Index {
           }, (d: ReadDoc) => 'rt_' + d.name)
         }
 
-        Text('近 7 天有 ' + this.readWeekDays + ' 天在读 · 只统计停留在本应用的时间')
+        Text(L10n.t('近 7 天有 ') + this.readWeekDays + ' 天在读 · 只统计停留在本应用的时间')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -2502,7 +2503,7 @@ struct Index {
           SymbolGlyph($r('sys.symbol.magnifyingglass'))
             .fontSize(17)
             .fontColor([this.palette().textTertiary])
-          TextInput({ text: this.searchQuery, placeholder: '在全部文档中搜索…' })
+          TextInput({ text: this.searchQuery, placeholder: L10n.t('在全部文档中搜索…') })
             .id('shelfSearchInput')
             .layoutWeight(1)
             .height('100%')
@@ -2586,21 +2587,21 @@ struct Index {
           Column({ space: 1 }) {
             // 页名切换用**渐入渐出**（用户反馈硬切太突兀）：旧页名淡出、新页名淡入
             if (this.shelfPage === 0) {
-              Text('文房')
+              Text(L10n.t('文房'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
                   .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
             } else if (this.shelfPage === 2) {
-              Text('写作日志')
+              Text(L10n.t('写作日志'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
                   .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
             } else {
-              Text('书架')
+              Text(L10n.t('书架'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -2777,7 +2778,7 @@ struct Index {
   searchResultsBody() {
     Column({ space: HwSpace.xs }) {
       if (this.searchQuery.trim().length === 0) {
-        Text('输入关键词，搜索文件名与全部文档正文')
+        Text(L10n.t('输入关键词，搜索文件名与全部文档正文'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -2786,7 +2787,7 @@ struct Index {
         && this.searchImageHits.length === 0) {
         // **空态也放在卡片里**（用户要求：稍大的卡片、居中、正常字号）
         Column() {
-          Text('没有匹配的文件名、正文或图片')
+          Text(L10n.t('没有匹配的文件名、正文或图片'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .width('100%')
@@ -2807,7 +2808,7 @@ struct Index {
       } else {
         // ══ ① 文档（文件名命中：展示具体文档，参考系统搜索的卡片样式）══
         if (this.searchNameHits.length > 0) {
-          Text('文档')
+          Text(L10n.t('文档'))
             .fontSize(HwType.label + 5)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
@@ -2890,7 +2891,7 @@ struct Index {
 
         // ══ ② 内容（正文命中：展示出现这段内容的具体文件）══
         if (this.searchContentHits.length > 0) {
-          Text('内容')
+          Text(L10n.t('内容'))
             .fontSize(HwType.label + 5)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
@@ -2979,7 +2980,7 @@ struct Index {
 
         // ══ ③ 图片（图片文件名命中：名称 + 缩略图，横向滚动）══
         if (this.searchImageHits.length > 0) {
-          Text('图片')
+          Text(L10n.t('图片'))
             .fontSize(HwType.label + 5)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
@@ -3059,7 +3060,7 @@ struct Index {
         }
 
         if (this.searchHits.length > SEARCH_PANEL_MAX) {
-          Text('共 ' + this.searchHits.length + ' 条命中，仅显示前 ' + SEARCH_PANEL_MAX + ' 条')
+          Text(L10n.t('共 ') + this.searchHits.length + ' 条命中，仅显示前 ' + SEARCH_PANEL_MAX + ' 条')
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -3137,7 +3138,7 @@ struct Index {
                   if (this.cellMenuFor === meta.name) {
                     this.cellMenuStarred = false;
                   }
-                  this.toast('已取消收藏');
+                  this.toast(L10n.t('已取消收藏'));
                 }
               }
             }) {
@@ -3225,7 +3226,7 @@ struct Index {
               SymbolGlyph($r('sys.symbol.folder'))
                 .fontSize(30)
                 .fontColor([this.palette().accent])
-              Text('合并为文件夹')
+              Text(L10n.t('合并为文件夹'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().accent)
             }
@@ -3293,7 +3294,7 @@ struct Index {
       this.coverContent(meta, inPanel)
       // **换位就绪提示**（用户要求：悬停 1.5 秒后松手交换位置）
       if (this.swapReadyName === meta.name) {
-        Text('松手换位')
+        Text(L10n.t('松手换位'))
           .fontSize(HwType.caption - 2)
           .fontColor('#FFFFFFFF')
           .padding({ left: 7, right: 7, top: 2, bottom: 2 })
@@ -3905,7 +3906,7 @@ struct Index {
             SymbolGlyph($r('sys.symbol.plus'))
               .fontSize(30)
               .fontColor([this.palette().textTertiary])
-            Text('新建文档')
+            Text(L10n.t('新建文档'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -3993,10 +3994,10 @@ struct Index {
 
           Column({ space: 3 }) {
             Row({ space: HwSpace.xs }) {
-              Text('继续阅读')
+              Text(L10n.t('继续阅读'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().accent)
-              Text('已读 ' + Math.round(this.resumeRatio * 100) + '% · '
+              Text(L10n.t('已读 ') + Math.round(this.resumeRatio * 100) + '% · '
                 + DocStore.formatTime(this.resumeLastOpen))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
@@ -4051,13 +4052,13 @@ struct Index {
           .fontColor([this.palette().accent])
 
         Column({ space: 2 }) {
-          Text('回头看看')
+          Text(L10n.t('回头看看'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().accent)
           // **溢出时自动滚动播放**（用户要求）：这颗卡片里图标 + 两个芯片占位，
           // 窄屏上这行提示会被挤得只剩几个字，省略号看不出内容 ——
           // 改成 MARQUEE（跑马灯），长了就自己滚一遍。
-          Text('书架共 ' + this.docs.length + ' 篇 · 挑一篇旧文重读')
+          Text(L10n.t('书架共 ') + this.docs.length + ' 篇 · 挑一篇旧文重读')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .maxLines(1)
@@ -4068,7 +4069,7 @@ struct Index {
 
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '随机',
+          chipLabel: L10n.t('随机'),
           chipOnTap: () => {
             this.openRandomDoc();
           }
@@ -4082,7 +4083,7 @@ struct Index {
 
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '那年今天',
+          chipLabel: L10n.t('那年今天'),
           chipOnTap: () => {
             this.openOnThisDay();
           }
@@ -4115,7 +4116,7 @@ struct Index {
       }
     }
     if (picks.length === 0) {
-      this.toast('书架里还没有可以重读的文档');
+      this.toast(L10n.t('书架里还没有可以重读的文档'));
       return;
     }
     const idx: number = Math.floor(Math.random() * picks.length);
@@ -4214,13 +4215,13 @@ struct Index {
           SymbolGlyph($r('sys.symbol.doc_plaintext'))
             .fontSize(20)
             .fontColor([this.palette().accent])
-          Text('今日笺')
+          Text(L10n.t('今日笺'))
             .fontSize(HwType.label + 3)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
           Blank()
           Row({ space: 4 }) {
-            Text('点开看今天的安排')
+            Text(L10n.t('点开看今天的安排'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             Image($r('app.media.chevron_right'))
@@ -4282,7 +4283,7 @@ struct Index {
           SymbolGlyph($r('sys.symbol.checkmark_square'))
             .fontSize(20)
             .fontColor([this.palette().accent])
-          Text('全部待办')
+          Text(L10n.t('全部待办'))
             .fontSize(HwType.label + 3)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
@@ -4431,7 +4432,7 @@ struct Index {
       }
     }
     if (pick.length === 0) {
-      this.toast('往年的今天没有留下文档');
+      this.toast(L10n.t('往年的今天没有留下文档'));
       return;
     }
     const route: ReaderRoute = { name: pick };
@@ -4492,7 +4493,7 @@ struct Index {
   reviewSheet() {
     Column({ space: HwSpace.md }) {
       Row() {
-        Text('复习卡片')
+        Text(L10n.t('复习卡片'))
           .fontSize(HwType.label + 1)
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
@@ -4592,7 +4593,7 @@ struct Index {
     Column({ space: HwSpace.sm }) {
       Row({ space: HwSpace.xs }) {
         // **返回上一级**（用户要求）：回到封面「⋯」菜单，而不是关掉面板
-        Text('‹ 返回')
+        Text(L10n.t('‹ 返回'))
           .fontSize(HwType.label)
           .fontColor(this.palette().accent)
           .onClick(() => {
@@ -4600,7 +4601,7 @@ struct Index {
             // 面板切换靠分支变化触发重建（工程约定）
             this.sheetEpoch = this.sheetEpoch + 1;
           })
-        Text('全部待办')
+        Text(L10n.t('全部待办'))
           .fontSize(HwType.label + 1)
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
@@ -4729,11 +4730,11 @@ struct Index {
   @Builder
   newDocSheet() {
     Column({ space: HwSpace.xs }) {
-      Text('新建文档')
+      Text(L10n.t('新建文档'))
         .fontSize(HwType.label + 1)
         .fontColor(this.palette().textPrimary)
         .width('100%')
-      Text('可以直接写空白文档，也可以从模板开始 —— 模板自带小节标题与待办项。')
+      Text(L10n.t('可以直接写空白文档，也可以从模板开始 —— 模板自带小节标题与待办项。'))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .lineHeight(HwType.caption * 1.7)
@@ -4995,13 +4996,13 @@ struct Index {
   @Builder
   docModeRow() {
     Row({ space: HwSpace.xs }) {
-      Text('读写 / 只读')
+      Text(L10n.t('读写 / 只读'))
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
       ImmersiveChip({
         palette: this.palette(),
-        chipLabel: '可写',
+        chipLabel: L10n.t('可写'),
         chipActive: !this.cellMenuReadOnly,
         chipOnTap: () => {
           this.toggleDocReadOnly(false);
@@ -5009,7 +5010,7 @@ struct Index {
       })
       ImmersiveChip({
         palette: this.palette(),
-        chipLabel: '只读',
+        chipLabel: L10n.t('只读'),
         chipActive: this.cellMenuReadOnly,
         chipOnTap: () => {
           this.toggleDocReadOnly(true);
@@ -5091,7 +5092,7 @@ struct Index {
           })
         } else {
           this.menuRow('编辑 · 已锁只读', () => {
-            this.toast('该文档是只读的，先在上面切到「可写」');
+            this.toast(L10n.t('该文档是只读的，先在上面切到「可写」'));
           })
         }
         this.menuRow('重命名', () => {
@@ -5111,7 +5112,7 @@ struct Index {
             .fontColor(this.palette().textTertiary)
             .width('100%')
         } else if (this.cellMenuReadOnly) {
-          Text('只读文档不提供编辑入口；「重命名 / 删除 / 封面 / 导出」不受影响')
+          Text(L10n.t('只读文档不提供编辑入口；「重命名 / 删除 / 封面 / 导出」不受影响'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -5132,7 +5133,7 @@ struct Index {
           this.playAbsorbAnim(target, () => {
             if (DocStore.dissolveFolder(target)) {
               this.animatedRefresh();
-              this.toast('文件夹已解散，文档回到书架');
+              this.toast(L10n.t('文件夹已解散，文档回到书架'));
             }
           });
         })
@@ -5142,7 +5143,7 @@ struct Index {
       if (this.cellMenuKind === 'folder' || this.cellMenuKind === 'doc') {
         Divider().strokeWidth(1).color(this.palette().divider)
 
-        Text('封面')
+        Text(L10n.t('封面'))
           .fontSize(HwType.label)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.palette().textSecondary)
@@ -5177,7 +5178,7 @@ struct Index {
           if (this.cellMenuHasCoverImage()) {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '移除图片',
+              chipLabel: L10n.t('移除图片'),
               chipOnTap: () => {
                 this.clearCoverImage();
               }
@@ -5187,7 +5188,7 @@ struct Index {
         .width('100%')
 
         Row({ space: HwSpace.xs }) {
-          Text('封面显示名称')
+          Text(L10n.t('封面显示名称'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
             .layoutWeight(1)
@@ -5290,7 +5291,7 @@ struct Index {
     Row({ space: HwSpace.sm }) {
       this.renameCancelChip()
 
-      TextInput({ text: this.renameText, placeholder: '名称' })
+      TextInput({ text: this.renameText, placeholder: L10n.t('名称') })
         .layoutWeight(1)
         .height(44)
         .fontSize(HwType.label + 1)
@@ -5320,7 +5321,7 @@ struct Index {
       chipPaddingV: 7,
       chipTint: RENAME_CANCEL_COLOR,
       chipActive: true,
-      chipLabel: '取消',
+      chipLabel: L10n.t('取消'),
       chipOnTap: () => {
         this.closeRename();
       }
@@ -5336,7 +5337,7 @@ struct Index {
       chipPaddingV: 7,
       chipTint: RENAME_SAVE_COLOR,
       chipActive: true,
-      chipLabel: '保存',
+      chipLabel: L10n.t('保存'),
       chipOnTap: () => {
         this.doRename();
       }
@@ -5380,7 +5381,7 @@ struct Index {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       if (meta.progressRatio > 0.001) {
-        Text('已读 ' + Math.round(meta.progressRatio * 100) + '%')
+        Text(L10n.t('已读 ') + Math.round(meta.progressRatio * 100) + '%')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       } else if (!meta.builtin) {
@@ -5388,7 +5389,7 @@ struct Index {
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       } else {
-        Text('内置')
+        Text(L10n.t('内置'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       }
@@ -5584,7 +5585,7 @@ struct Index {
       }, (meta: DocMeta, idx: number) => 't' + idx + '_' + meta.name + '_' + meta.mtime)
 
       ListItem() {
-        Text('树形视图 · 文件夹来自书架拖拽归组')
+        Text(L10n.t('树形视图 · 文件夹来自书架拖拽归组'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -5621,7 +5622,7 @@ struct Index {
     ImmersiveBar({ palette: this.palette(), barPaddingH: HwSpace.sm, barPaddingV: HwSpace.xs }) {
       // 统一包一行（带间距）：此前元素直接铺在胶囊里全贴在一起（用户反馈）
       Row({ space: 6 }) {
-        Text('已选 ' + this.multiNames.length)
+        Text(L10n.t('已选 ') + this.multiNames.length)
           .fontSize(HwType.caption)
           .fontColor(this.palette().textPrimary)
           .constraintSize({ maxWidth: 64 })
@@ -5653,11 +5654,11 @@ struct Index {
         ImmersiveChip({
           palette: this.palette(),
           chipActive: true,
-          chipLabel: '合并导出',
+          chipLabel: L10n.t('合并导出'),
           chipOnTap: () => {
             if (this.multiNames.length < 2) {
               this.getUIContext().getPromptAction().showToast({
-                message: '至少选两篇才能合并', duration: 1600
+                message: L10n.t('至少选两篇才能合并'), duration: 1600
               });
               return;
             }
@@ -5668,7 +5669,7 @@ struct Index {
           palette: this.palette(),
           chipTint: '#FFD32F2F',
           chipActive: true,
-          chipLabel: '删除',
+          chipLabel: L10n.t('删除'),
           chipOnTap: () => {
             this.multiRemove();
           }
@@ -5676,7 +5677,7 @@ struct Index {
         ImmersiveChip({
           palette: this.palette(),
           chipActive: true,
-          chipLabel: '完成',
+          chipLabel: L10n.t('完成'),
           chipOnTap: () => {
             this.exitMultiSelect();
           }
@@ -5802,7 +5803,7 @@ struct Index {
       Row({ space: HwSpace.xs }) {
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '最近收藏',
+          chipLabel: L10n.t('最近收藏'),
           chipActive: this.starSort === 'starred',
           chipOnTap: () => {
             this.applyStarSort('starred');
@@ -5810,7 +5811,7 @@ struct Index {
         })
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '最近打开',
+          chipLabel: L10n.t('最近打开'),
           chipActive: this.starSort === 'recent',
           chipOnTap: () => {
             this.applyStarSort('recent');
@@ -5818,7 +5819,7 @@ struct Index {
         })
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '按名称',
+          chipLabel: L10n.t('按名称'),
           chipActive: this.starSort === 'name',
           chipOnTap: () => {
             this.applyStarSort('name');
@@ -5828,7 +5829,7 @@ struct Index {
       .width('100%')
 
       if (this.starredDocs.length === 0) {
-        Text('还没有收藏的文档：在阅读页信息卡右上角点爱心即可收藏。')
+        Text(L10n.t('还没有收藏的文档：在阅读页信息卡右上角点爱心即可收藏。'))
           .fontSize(HwType.label)
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.label * 1.6)
@@ -5854,7 +5855,7 @@ struct Index {
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
-              Text('收藏于 ' + Index.starDateLabel(doc.starredAt))
+              Text(L10n.t('收藏于 ') + Index.starDateLabel(doc.starredAt))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textSecondary)
                 .width('100%')
@@ -5935,7 +5936,7 @@ struct Index {
       lines.push('');
     }
     if (total === 0) {
-      this.toast('还没有任何批注');
+      this.toast(L10n.t('还没有任何批注'));
       return;
     }
     // 在开头说明之后插入一行统计
@@ -5943,7 +5944,7 @@ struct Index {
     const out: DocMeta | null = DocStore.create(c, '批注汇总', lines.join('\n'));
     this.refresh();
     if (out === null) {
-      this.toast('导出失败：无法写入文档');
+      this.toast(L10n.t('导出失败：无法写入文档'));
       return;
     }
     this.toast('已导出《' + out.name + '》（' + total + ' 处标注）');
@@ -5966,7 +5967,7 @@ struct Index {
       }
     }
     if (body.length === 0) {
-      this.toast('模板不存在');
+      this.toast(L10n.t('模板不存在'));
       return;
     }
     this.shelfVisible = false;
@@ -5992,7 +5993,7 @@ struct Index {
       ReviewCardStore.sync(c, seeds);
       due = ReviewCardStore.dueToday(ReviewCardStore.load(c));
     } catch (err) {
-      this.toast('读取复习卡片失败');
+      this.toast(L10n.t('读取复习卡片失败'));
       return;
     }
     if (due.length === 0) {
@@ -6054,7 +6055,7 @@ struct Index {
     ReviewCardStore.save(c, all);
     if (this.reviewIndex + 1 >= this.reviewCards.length) {
       this.shelfVisible = false;
-      this.toast('今天的卡片复习完了');
+      this.toast(L10n.t('今天的卡片复习完了'));
       return;
     }
     this.reviewIndex = this.reviewIndex + 1;
@@ -6075,7 +6076,7 @@ struct Index {
     try {
       r = KnowledgeGraph.build(c);
     } catch (err) {
-      this.toast('构建图谱失败');
+      this.toast(L10n.t('构建图谱失败'));
       return;
     }
     if (r === null) {
@@ -6083,7 +6084,7 @@ struct Index {
     }
     const res: GraphResult = r;
     if (res.nodes.length === 0) {
-      this.toast('还没有文档之间的 [[链接]]');
+      this.toast(L10n.t('还没有文档之间的 [[链接]]'));
       return;
     }
     // **图形视图**：生成 mermaid 源码，写进一篇《知识图谱》文档 ——
@@ -6123,7 +6124,7 @@ struct Index {
     const meta: DocMeta | null = DocStore.create(c, '知识图谱', lines.join('\n'));
     this.refresh();
     if (meta === null) {
-      this.toast('生成失败：无法写入文档');
+      this.toast(L10n.t('生成失败：无法写入文档'));
       return;
     }
     this.toast('已生成《' + meta.name + '》，打开即可查看图谱');
@@ -6185,7 +6186,7 @@ struct Index {
       + '【今日读过】' + (opened.length > 0 ? opened.join('、') : '无') + '\n\n'
       + '【读到一半】' + (reading.length > 0 ? reading.join('、') : '无');
     this.getUIContext().getPromptAction().showDialog({
-      title: '今日笺', message: body,
+      title: L10n.t('今日笺'), message: body,
       buttons: [{ text: '知道了', color: this.palette().accent }]
     });
   }
@@ -6205,7 +6206,7 @@ struct Index {
     }
     const data = event.getData();
     if (data === undefined || data === null) {
-      this.toast('请将 .md / .txt 文件拖到新建卡片上');
+      this.toast(L10n.t('请将 .md / .txt 文件拖到新建卡片上'));
       return;
     }
     const c = this.ctx();
@@ -6231,7 +6232,7 @@ struct Index {
       }
     }
     if (uris.length === 0) {
-      this.toast('请拖入 .md 或 .txt 文件到新建卡片');
+      this.toast(L10n.t('请拖入 .md 或 .txt 文件到新建卡片'));
       return;
     }
     let first: DocMeta | null = null;
@@ -6399,7 +6400,7 @@ struct Index {
           .alignItems(VerticalAlign.Center)
         }, (m: DocMeta, idx: number) => 'trail_' + m.name + '_' + m.lastOpen)
         if (this.trailItems.length === 0) {
-          Text('还没有阅读记录，打开一篇文档试试')
+          Text(L10n.t('还没有阅读记录，打开一篇文档试试'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -6428,7 +6429,7 @@ struct Index {
     this.shelfVisible = false;
     this.multiNames = [first];
     this.multiSelect = true;
-    this.toast('点封面勾选文档，底栏可批量操作');
+    this.toast(L10n.t('点封面勾选文档，底栏可批量操作'));
   }
 
   private exitMultiSelect(): void {
@@ -6472,7 +6473,7 @@ struct Index {
   /** 批量删除：内置文档跳过并提示；其余逐个 DocStore.remove（连本地文件）。 */
   private multiRemove(): void {
     if (this.multiNames.length === 0) {
-      this.toast('先勾选要删除的文档');
+      this.toast(L10n.t('先勾选要删除的文档'));
       return;
     }
     let builtinHit: boolean = false;
@@ -6492,7 +6493,7 @@ struct Index {
       }
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: '删除 ' + targets.length + ' 篇文档？',
+      title: L10n.t('删除 ') + targets.length + ' 篇文档？',
       message: builtinHit ? '内置文档不会删除（只能整体移除）；其余的本地文件会一并删除，不可恢复。'
         : '本地文件会一并删除，删除后不可恢复。',
       buttons: [
@@ -6522,7 +6523,7 @@ struct Index {
       this.refresh();
       this.toast('已删除 ' + ok + ' 篇' + (builtinHit ? '（内置文档已跳过）' : ''));
     }).catch(() => {
-      this.toast('操作失败');
+      this.toast(L10n.t('操作失败'));
     });
   }
 
@@ -6568,7 +6569,7 @@ struct Index {
       // 而不是直接消失 —— 用户要能看到"勾过了什么"（用户反馈改）。
       r = TaskBoard.collect(c, false);
     } catch (err) {
-      this.toast('读取任务清单失败');
+      this.toast(L10n.t('读取任务清单失败'));
       return;
     }
     if (r === null) {
@@ -6577,7 +6578,7 @@ struct Index {
     const res: TaskBoardResult = r;
     // 空态：清单里一条任务都没有（open+done 皆为 0）
     if (res.open + res.done === 0) {
-      this.toast('还没有任务清单');
+      this.toast(L10n.t('还没有任务清单'));
       return;
     }
     // **改用可滑动的面板**（用户反馈：对话框里说"另有 N 项"却看不到内容，
@@ -6603,11 +6604,11 @@ struct Index {
     try {
       items = AnnotationStore.load(c, docName);
     } catch (err) {
-      this.toast('读取批注失败');
+      this.toast(L10n.t('读取批注失败'));
       return;
     }
     if (items.length === 0) {
-      this.toast('这篇文档还没有批注');
+      this.toast(L10n.t('这篇文档还没有批注'));
       return;
     }
     // 全量统计（列表只展示前 8 条，但计数要覆盖全部）
@@ -6644,7 +6645,7 @@ struct Index {
       body += '\n\n…另有 ' + (items.length - show) + ' 处标注';
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: '批注汇总 · ' + docName, message: body,
+      title: L10n.t('批注汇总 · ') + docName, message: body,
       buttons: [{ text: '知道了', color: this.palette().accent }]
     });
   }
@@ -6660,7 +6661,7 @@ struct Index {
     }
     const meta: DocMeta | undefined = DocStore.find(c, docName);
     if (meta === undefined) {
-      this.toast('文档不存在');
+      this.toast(L10n.t('文档不存在'));
       return;
     }
     let report: LintReport | null = null;
@@ -6668,7 +6669,7 @@ struct Index {
       const content: string = DocStore.readText(c, meta, this.encodingOf(docName));
       report = DocLint.scan(c, docName, content);
     } catch (err) {
-      this.toast('体检失败：无法读取文档');
+      this.toast(L10n.t('体检失败：无法读取文档'));
       return;
     }
     if (report === null) {
@@ -6689,7 +6690,7 @@ struct Index {
       body += '\n\n…另有 ' + (r.issues.length - show) + ' 条，修完这些再看';
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: '文档体检', message: body, buttons: [{ text: '知道了', color: this.palette().accent }]
+      title: L10n.t('文档体检'), message: body, buttons: [{ text: '知道了', color: this.palette().accent }]
     });
   }
 
@@ -6838,7 +6839,7 @@ struct Index {
           }
           // **基础模式（纯离线）拦截**（用户要求）：AI 助手要走网络，离线直接挡在入口
           if (UpdateService.isOffline()) {
-            this.toast('基础模式（纯离线）下 AI 助手不可用');
+            this.toast(L10n.t('基础模式（纯离线）下 AI 助手不可用'));
             return;
           }
           if (this.pathStack !== null) {
@@ -7063,13 +7064,13 @@ struct Index {
             if (this.userDocCount === 0) {
               GridItem() {
                 Column({ space: HwSpace.xs }) {
-                  Text('书架还是空的')
+                  Text(L10n.t('书架还是空的'))
                     .fontSize(HwType.label)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(this.palette().textPrimary)
                   // **两段提示合成一段**（用户要求精简）：
                   // 原「怎么新建」与「长按合并文件夹」各占一段，空书架时显得啰嗦
-                  Text('点「新建文档」写一篇、或用文件夹按钮导入 .md 文件；长按封面拖到另一张上可合并成文件夹')
+                  Text(L10n.t('点「新建文档」写一篇、或用文件夹按钮导入 .md 文件；长按封面拖到另一张上可合并成文件夹'))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                     .textAlign(TextAlign.Center)
@@ -7085,7 +7086,7 @@ struct Index {
             // 有文档时才显示这条恒常提示（空书架时上面那段已经涵盖同样的信息）
             if (this.userDocCount > 0) {
             GridItem() {
-              Text('长按封面拖到另一张上合并为文件夹 · 封面由文档名生成')
+              Text(L10n.t('长按封面拖到另一张上合并为文件夹 · 封面由文档名生成'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .width('100%')
@@ -7221,7 +7222,7 @@ struct Index {
             if (this.isWideShelf()) {
               Column() {
                 if (this.shelfPage === 0) {
-                  Text('文房')
+                  Text(L10n.t('文房'))
                     .fontSize(24)
                     .fontWeight(FontWeight.Bold)
                     .fontColor(this.palette().textPrimary)
@@ -7229,7 +7230,7 @@ struct Index {
                     .transition(TransitionEffect.OPACITY
                       .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
                 } else if (this.shelfPage === 2) {
-                  Text('写作日志')
+                  Text(L10n.t('写作日志'))
                     .fontSize(24)
                     .fontWeight(FontWeight.Bold)
                     .fontColor(this.palette().textPrimary)
@@ -7237,7 +7238,7 @@ struct Index {
                     .transition(TransitionEffect.OPACITY
                       .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
                 } else {
-                  Text('书架')
+                  Text(L10n.t('书架'))
                     .fontSize(24)
                     .fontWeight(FontWeight.Bold)
                     .fontColor(this.palette().textPrimary)
@@ -7324,7 +7325,7 @@ struct Index {
                         .fontSize(18)
                         .fontColor([this.palette().textPrimary])
                     }
-                    Text('回到书架')
+                    Text(L10n.t('回到书架'))
                       .fontSize(HwType.label)
                       .fontColor(this.palette().textPrimary)
                       .maxLines(1)
@@ -7980,12 +7981,11 @@ export struct EncodingChoiceCard {
       palette: this.palette
     }) {
       Column({ space: HwSpace.xs }) {
-        Text('文档编码')
+        Text(L10n.t('文档编码'))
           .fontSize(HwType.label + 1)
           .fontColor(this.palette.textPrimary)
           .width('100%')
-        Text('非 UTF-8 的文档（例如 GBK 存出来的 txt）按 UTF-8 硬解会整篇乱码；'
-          + '自动识别不准时在这里手动指定。')
+        Text(L10n.t('非 UTF-8 的文档（例如 GBK 存出来的 txt）按 UTF-8 硬解会整篇乱码；') + '自动识别不准时在这里手动指定。')
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
           .lineHeight(HwType.caption * 1.7)
@@ -8015,7 +8015,7 @@ export struct EncodingChoiceCard {
             this.current = enc;
             AppStorage.setOrCreate('docEncoding_' + this.docName, enc);
             this.getUIContext().getPromptAction().showToast({
-              message: '文档编码：' + this.labelOf(enc)
+              message: L10n.t('文档编码：') + this.labelOf(enc)
             });
           })
         }, (enc: string) => 'enc_' + enc)

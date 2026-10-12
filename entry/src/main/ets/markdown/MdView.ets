@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * LiteMdReader · Markdown 渲染视图
  * ==================================
@@ -1461,7 +1462,7 @@ export struct MdBlockView {
               const text: string = (s >= 0 && e > s)
                 ? this.selectedText(s, e) : this.block.plain;
               if (text.length === 0) {
-                this.toast('没有可发送的文字');
+                this.toast(L10n.t('没有可发送的文字'));
                 return;
               }
               this.aiAskHandler(text);
@@ -1514,12 +1515,12 @@ export struct MdBlockView {
     const start: number = this.selStart;
     const end: number = this.selEnd;
     if (start < 0 || end <= start) {
-      this.toast('请先长按选中一段文字');
+      this.toast(L10n.t('请先长按选中一段文字'));
       return;
     }
     const text: string = this.selectedText(start, end);
     if (text.length === 0) {
-      this.toast('选区为空，请重新选择');
+      this.toast(L10n.t('选区为空，请重新选择'));
       return;
     }
     this.annotateHandler(action, this.block.id, start, end, text, color);
@@ -2151,7 +2152,7 @@ export struct MdBlockView {
     const text: string = this.mathMenuText;
     this.mathMenuOn = false;
     if (s < 0 || e <= s || text.length === 0) {
-      this.toast('该位置不支持此操作');
+      this.toast(L10n.t('该位置不支持此操作'));
       return;
     }
     this.annotateHandler(action, this.block.id, s, e, text, color);
@@ -2211,7 +2212,7 @@ export struct MdBlockView {
               this.emitMathAnnotation('highlight', index);
             })
         }, (item: AnnotationColor, index: number) => 'ms' + index)
-        Text('荧光笔')
+        Text(L10n.t('荧光笔'))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }
@@ -2345,7 +2346,7 @@ export struct MdBlockView {
             Text(EngineRegistry.nameOf(this.blockEngineId()))
               .fontSize(HwType.caption)
               .fontColor(this.palette.textTertiary)
-            Text('引擎已关闭 · 仅显示源码')
+            Text(L10n.t('引擎已关闭 · 仅显示源码'))
               .fontSize(HwType.caption)
               .fontColor(this.palette.accent)
             Blank()
@@ -2387,7 +2388,7 @@ export struct MdBlockView {
           .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
           .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.sm })
 
-          Text('可在「设置 → 引擎管理」中重新开启')
+          Text(L10n.t('可在「设置 → 引擎管理」中重新开启'))
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette.textTertiary)
             .width('100%')
@@ -2727,7 +2728,7 @@ export struct MdBlockView {
     // 公式操作菜单（点公式图 / 未就绪文本打开）：半模态走项目唯一实现
     // modalSheetOptions——内容自适应高度（小面板），手机形态
     .bindSheet(this.mathMenuOn, this.mathMenuSheet(), modalSheetOptions({
-      title: '公式',
+      title: L10n.t('公式'),
       subtitle: '',
       surface: this.palette.surface,
       phoneLayout: true,
@@ -2758,7 +2759,7 @@ export struct MdBlockView {
         pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.block.code);
       pasteboard.getSystemPasteboard().setData(data).then(() => {
         this.copied = true;
-        this.toast('代码已复制');
+        this.toast(L10n.t('代码已复制'));
         setTimeout(() => {
           this.copied = false;
         }, 1600);
@@ -2766,7 +2767,7 @@ export struct MdBlockView {
         this.toast('复制失败：' + err.message);
       });
     } catch (err) {
-      this.toast('复制失败');
+      this.toast(L10n.t('复制失败'));
     }
   }
 

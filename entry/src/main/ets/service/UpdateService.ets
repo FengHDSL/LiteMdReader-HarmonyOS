@@ -17,6 +17,7 @@ import { common, bundleManager } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SettingsMirror } from './SettingsMirror';
+import { L10n } from './L10n';
 
 /** HAP 资源站详情页（用户指定）：页面上有版本徽标 vX.Y.Z */
 export const UPDATE_SITE: string = 'https://www.sydxky.cn/detail.php?id=956';
@@ -113,7 +114,7 @@ export class UpdateService {
       return Promise.resolve({
         ok: false,
         remote: '',
-        message: '当前是基础模式（纯离线），检查更新不可用',
+        message: L10n.t('当前是基础模式（纯离线），检查更新不可用'),
         hasUpdate: false
       } as UpdateCheckResult);
     }
@@ -125,7 +126,7 @@ export class UpdateService {
           resolve({
             ok: false,
             remote: '',
-            message: '检查更新超时，请稍后再试',
+            message: L10n.t('检查更新超时，请稍后再试'),
             hasUpdate: false
           } as UpdateCheckResult);
         }
@@ -149,7 +150,7 @@ export class UpdateService {
           resolve({
             ok: false,
             remote: '',
-            message: '检查更新失败，请稍后再试',
+            message: L10n.t('检查更新失败，请稍后再试'),
             hasUpdate: false
           } as UpdateCheckResult);
           return;
@@ -173,7 +174,7 @@ export class UpdateService {
         resolve({
           ok: false,
           remote: '',
-          message: '检查更新失败，请检查网络后重试',
+          message: L10n.t('检查更新失败，请检查网络后重试'),
           hasUpdate: false
         } as UpdateCheckResult);
       });

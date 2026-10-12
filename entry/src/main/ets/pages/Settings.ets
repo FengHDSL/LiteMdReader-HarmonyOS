@@ -425,7 +425,7 @@ export struct Settings {
             .border({ width: 0.8, color: this.palette().divider })
 
             Column({ space: 2 }) {
-              Text('澄笺·ChéngJiān')
+              Text(L10n.t('澄笺·ChéngJiān'))
                 .fontSize(HwType.label + 4)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)

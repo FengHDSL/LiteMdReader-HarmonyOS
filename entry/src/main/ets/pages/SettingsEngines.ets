@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 引擎管理
  * ======================
@@ -56,7 +57,7 @@ export struct SettingsEngines {
     this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
       this.disabled = '';
     });
-    this.getUIContext().getPromptAction().showToast({ message: '已重新启用 ' + n + ' 个引擎' });
+    this.getUIContext().getPromptAction().showToast({ message: L10n.t('已重新启用 ') + n + ' 个引擎' });
   }
 
   private copyRepo(url: string): void {
@@ -64,7 +65,7 @@ export struct SettingsEngines {
       const data: pasteboard.PasteData =
         pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
       pasteboard.getSystemPasteboard().setDataSync(data);
-      this.getUIContext().getPromptAction().showToast({ message: '仓库地址已复制' });
+      this.getUIContext().getPromptAction().showToast({ message: L10n.t('仓库地址已复制') });
     } catch (err) {
       // 复制失败静默
     }
@@ -84,7 +85,7 @@ export struct SettingsEngines {
     try {
       (c as common.UIAbilityContext).startAbility(want).catch(() => {
         this.copyRepo(url);
-        this.getUIContext().getPromptAction().showToast({ message: '未找到浏览器，地址已复制' });
+        this.getUIContext().getPromptAction().showToast({ message: L10n.t('未找到浏览器，地址已复制') });
       });
     } catch (err) {
       this.copyRepo(url);
@@ -116,7 +117,7 @@ export struct SettingsEngines {
           .width('100%')
 
         Row({ space: 6 }) {
-          Text('发布于 ' + info.date)
+          Text(L10n.t('发布于 ') + info.date)
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette().textTertiary)
           // **GitHub 按钮（用户要求：点击跳转浏览器）**；长按仍可复制地址
@@ -168,7 +169,7 @@ export struct SettingsEngines {
     Column() {
       SettingsShell({
         shellTitle: '引擎管理',
-        shellSubtitle: '各功能使用的开源渲染引擎 · 可单独关闭',
+        shellSubtitle: L10n.t('各功能使用的开源渲染引擎 · 可单独关闭'),
         stack: this.stack,
         life: this.life
       }) {
@@ -177,8 +178,7 @@ export struct SettingsEngines {
           cardPadding: HwSpace.md,
           palette: this.palette()
         }) {
-          Text('关闭某个引擎后，对应功能将无法渲染：图表与块级公式退化为源码显示，'
-            + '行内公式不再生成图片（回落为文字），编辑器「所见即所得 / 即时渲染」入口停用。'
+          Text(L10n.t('关闭某个引擎后，对应功能将无法渲染：图表与块级公式退化为源码显示，') + '行内公式不再生成图片（回落为文字），编辑器「所见即所得 / 即时渲染」入口停用。'
             + '随时可以重新开启。引擎信息为本机常量，不联网检查更新。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textSecondary)
@@ -192,7 +192,7 @@ export struct SettingsEngines {
             ImmersiveChip({
               chipActive: false,
               palette: this.palette(),
-              chipLabel: '全部启用（' + EngineRegistry.countOff(this.disabled) + ' 个已关闭）',
+              chipLabel: L10n.t('全部启用（') + EngineRegistry.countOff(this.disabled) + ' 个已关闭）',
               chipOnTap: () => {
                 this.enableAll();
               }

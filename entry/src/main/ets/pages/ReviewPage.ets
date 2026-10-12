@@ -37,6 +37,7 @@ import { AnnotationStore } from '../service/AnnotationStore';
 import { ReviewCard, ReviewCardStore, ReviewSeed } from '../service/ReviewCard';
 import { DocCover, coverColorsOf } from '../components/DocCover';
 import { MathFormulaText } from '../components/MathFormulaText';
+import { L10n } from '../service/L10n';
 
 /** 遗忘曲线的一个分桶：区间上限（天）+ 展示名。 */
 interface DueBucket {
@@ -45,12 +46,12 @@ interface DueBucket {
 }
 
 const BUCKETS: DueBucket[] = [
-  { maxDays: 1, label: '1 天' },
-  { maxDays: 3, label: '3 天' },
-  { maxDays: 7, label: '一周内' },
-  { maxDays: 15, label: '半月内' },
-  { maxDays: 30, label: '一月内' },
-  { maxDays: 36500, label: '更久' }
+  { maxDays: 1, label: L10n.t('1 天') },
+  { maxDays: 3, label: L10n.t('3 天') },
+  { maxDays: 7, label: L10n.t('一周内') },
+  { maxDays: 15, label: L10n.t('半月内') },
+  { maxDays: 30, label: L10n.t('一月内') },
+  { maxDays: 36500, label: L10n.t('更久') }
 ];
 
 /** 掌握所需的连续「记得」次数。 */
@@ -182,7 +183,7 @@ export struct ReviewPage {
             onError: (requestId: string, errorCode: number, errorMessage: string) => {
               this.ttsBusy = false;
               this.getUIContext().getPromptAction().showToast({
-                message: '朗读失败（' + errorCode + '）：' + errorMessage,
+                message: L10n.t('朗读失败（') + errorCode + '）：' + errorMessage,
                 duration: 2000
               });
             }
@@ -190,7 +191,7 @@ export struct ReviewPage {
           this.ttsSpeakText(text);
         })
         .catch((err: BusinessError) => {
-          this.getUIContext().getPromptAction().showToast({ message: '语音引擎创建失败', duration: 2000 });
+          this.getUIContext().getPromptAction().showToast({ message: L10n.t('语音引擎创建失败'), duration: 2000 });
         });
       return;
     }
@@ -210,7 +211,7 @@ export struct ReviewPage {
       this.ttsBusy = true;
     } catch (err) {
       this.ttsBusy = false;
-      this.getUIContext().getPromptAction().showToast({ message: '朗读失败，已停止', duration: 2000 });
+      this.getUIContext().getPromptAction().showToast({ message: L10n.t('朗读失败，已停止'), duration: 2000 });
     }
   }
   @State sessionMastered: number = 0;
@@ -691,7 +692,7 @@ export struct ReviewPage {
     if (out.length === 0) {
       try {
         this.getUIContext().getPromptAction().showToast({
-          message: '暂时没有可提前的卡片', duration: 1800
+          message: L10n.t('暂时没有可提前的卡片'), duration: 1800
         });
       } catch (err) {
         // 忽略
@@ -1039,7 +1040,7 @@ export struct ReviewPage {
                   ImmersiveChip({
                     palette: this.palette(),
                     chipActive: this.tab === 0,
-                    chipLabel: '学习',
+                    chipLabel: L10n.t('学习'),
                     chipOnTap: () => {
                       this.tab = 0;
                       this.reviewSwiper.changeIndex(0, true);
@@ -1048,7 +1049,7 @@ export struct ReviewPage {
                   ImmersiveChip({
                     palette: this.palette(),
                     chipActive: this.tab === 1,
-                    chipLabel: '统计',
+                    chipLabel: L10n.t('统计'),
                     chipOnTap: () => {
                       this.tab = 1;
                       this.reviewSwiper.changeIndex(1, true);
@@ -1158,7 +1159,7 @@ export struct ReviewPage {
     }) {
       Column({ space: HwSpace.sm }) {
         if (this.docNames.length === 0) {
-          Text('还没有复习卡片 —— 在文档里划选文字，选「学习卡」并写上内容，这里就会生成卡片。')
+          Text(L10n.t('还没有复习卡片 —— 在文档里划选文字，选「学习卡」并写上内容，这里就会生成卡片。'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.label * 1.7)
@@ -1243,7 +1244,7 @@ export struct ReviewPage {
               SymbolGlyph($r('sys.symbol.checkmark'))
                 .fontSize(13)
                 .fontColor(['#FF1F9E66'])
-              Text('当日计划已完成，明天继续！想加练可点下方开始复习')
+              Text(L10n.t('当日计划已完成，明天继续！想加练可点下方开始复习'))
                 .fontSize(HwType.caption)
                 .fontColor('#FF1F9E66')
             }
@@ -1262,7 +1263,7 @@ export struct ReviewPage {
 
           // ── 每日目标（用户要求：自定义每天学习几条，计算剩余时间）──
           Row({ space: HwSpace.sm }) {
-            Text('每日复习')
+            Text(L10n.t('每日复习'))
               .fontSize(HwType.label)
               .fontColor(this.palette().textPrimary)
             Blank()
@@ -1370,11 +1371,11 @@ export struct ReviewPage {
     }) {
       Column({ space: HwSpace.sm }) {
         Row({ space: HwSpace.sm }) {
-          Text('连续签到 ' + this.streakSignDays() + ' 天')
+          Text(L10n.t('连续签到 ') + this.streakSignDays() + ' 天')
             .fontSize(HwType.label)
             .fontColor(this.palette().accent)
           Blank()
-          Text('累计 ' + this.signDays.length + ' 天')
+          Text(L10n.t('累计 ') + this.signDays.length + ' 天')
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
         }
@@ -1494,7 +1495,7 @@ export struct ReviewPage {
       palette: this.palette()
     }) {
       Column({ space: HwSpace.sm }) {
-        Text('卡片按复习间隔分布（SM-2：忘了回 1 天，记得按难度系数拉长间隔）')
+        Text(L10n.t('卡片按复习间隔分布（SM-2：忘了回 1 天，记得按难度系数拉长间隔）'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -1552,7 +1553,7 @@ export struct ReviewPage {
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 // 固定宽 + 右对齐：两列文本上下对齐（用户反馈长短不齐）
-                Text('间隔 ' + card.interval + ' 天')
+                Text(L10n.t('间隔 ') + card.interval + ' 天')
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
                   .width(70)
@@ -1616,7 +1617,7 @@ export struct ReviewPage {
               .fontColor([this.palette().textSecondary])
           }
           Blank()
-          Text('连续 ' + this.streakSignDays() + ' 天 · 累计 ' + this.signDays.length + ' 天')
+          Text(L10n.t('连续 ') + this.streakSignDays() + ' 天 · 累计 ' + this.signDays.length + ' 天')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
         }
@@ -1666,7 +1667,7 @@ export struct ReviewPage {
             .fontColor([this.palette().accent])
         }
 
-        Text('本轮复习完成')
+        Text(L10n.t('本轮复习完成'))
           .fontSize(HwType.label + 6)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -1698,13 +1699,13 @@ export struct ReviewPage {
         .backgroundColor(this.palette().quoteBg)
         .alignItems(HorizontalAlign.Start)
 
-        Text('已背的卡片按遗忘曲线排期，到期的日子会再和你见面。')
+        Text(L10n.t('已背的卡片按遗忘曲线排期，到期的日子会再和你见面。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .textAlign(TextAlign.Center)
           .width('100%')
 
-        Text('返回')
+        Text(L10n.t('返回'))
           .fontSize(HwType.label + 2)
           .fontWeight(FontWeight.Bold)
           .fontColor('#FFFFFFFF')
@@ -1718,7 +1719,7 @@ export struct ReviewPage {
           })
 
         // 继续学习：再来一遍，并**提前把明天的计划放到现在**（用户要求）
-        Text('继续学习 · 提前明天的计划')
+        Text(L10n.t('继续学习 · 提前明天的计划'))
           .fontSize(HwType.label + 1)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.palette().accent)
@@ -1818,7 +1819,7 @@ export struct ReviewPage {
                 textAlign: TextAlign.Start
               })
             } else {
-              Text('（这条批注没有写文字批注）')
+              Text(L10n.t('（这条批注没有写文字批注）'))
                 .fontSize(HwType.label + 5)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -1870,7 +1871,7 @@ export struct ReviewPage {
                 .transition(TransitionEffect.OPACITY
                   .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
               } else {
-                Text('（这条批注没有写文字批注 —— 回想一下当时为什么划它）')
+                Text(L10n.t('（这条批注没有写文字批注 —— 回想一下当时为什么划它）'))
                   .fontSize(HwType.label + 3)
                   .fontColor(this.palette().accent)
                   .lineHeight((HwType.label + 3) * 1.7)
@@ -1932,7 +1933,7 @@ export struct ReviewPage {
                   chipTint: '#FFD32F2F',
                   chipActive: true,
                   chipFontSize: 17,
-                  chipLabel: '记错了',
+                  chipLabel: L10n.t('记错了'),
                   chipOnTap: () => {
                     this.markWrong();
                   }
@@ -1947,7 +1948,7 @@ export struct ReviewPage {
                 chipTint: '#FF1F9E66',
                 chipActive: true,
                 chipFontSize: 17,
-                chipLabel: '下一个',
+                chipLabel: L10n.t('下一个'),
                 chipOnTap: () => {
                   this.confirmContinue();
                 }
@@ -2009,7 +2010,7 @@ export struct ReviewPage {
                 .fontSize(20)
                 .fontColor([this.palette().textPrimary])
             }
-            Text('剩余 ' + this.queue.length + ' 张 · 已掌握 ' + this.sessionMastered + ' 张')
+            Text(L10n.t('剩余 ') + this.queue.length + ' 张 · 已掌握 ' + this.sessionMastered + ' 张')
               .fontSize(HwType.label)
               .fontColor(this.palette().textSecondary)
               .layoutWeight(1)
@@ -2035,7 +2036,7 @@ export struct ReviewPage {
                 palette: this.palette(),
                 chipTint: '#FF2E7D32',
                 chipActive: true,
-                chipLabel: '提示',
+                chipLabel: L10n.t('提示'),
                 chipOnTap: () => {
                   this.showHint();
                 }

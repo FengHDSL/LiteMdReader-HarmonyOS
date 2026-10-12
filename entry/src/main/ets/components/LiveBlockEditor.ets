@@ -23,6 +23,7 @@ import {
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MdBlock, MdBlockKind, emptyBlock } from '../markdown/MdTypes';
 import { MdBlockView } from '../markdown/MdView';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct LiveBlockEditor {
@@ -148,7 +149,7 @@ export struct LiveBlockEditor {
             .height(13)
             .borderRadius(2)
             .backgroundColor(this.palette.accent)
-          Text('正在编辑 · ' + this.kindLabel())
+          Text(L10n.t('正在编辑 · ') + this.kindLabel())
             .fontSize(HwType.caption)
             .fontColor(this.palette.accent)
         }
@@ -158,7 +159,7 @@ export struct LiveBlockEditor {
 
         ImmersiveChip({
           palette: this.palette,
-          chipLabel: '删除',
+          chipLabel: L10n.t('删除'),
           chipOnTap: () => {
             this.onDelete(this.index);
           }
@@ -167,7 +168,7 @@ export struct LiveBlockEditor {
         ImmersiveChip({
           palette: this.palette,
           chipActive: true,
-          chipLabel: '完成',
+          chipLabel: L10n.t('完成'),
           chipOnTap: () => {
             this.onCommit();
           }
@@ -178,7 +179,7 @@ export struct LiveBlockEditor {
 
       // 输入区：**给足底色与描边**，一眼看出"这里可以打字"
       // （之前是无底色无边框的一行字，与正文长得差不多，用户根本不知道点进来了）
-      TextArea({ text: this.draft, placeholder: '在这里改这一块……' })
+      TextArea({ text: this.draft, placeholder: L10n.t('在这里改这一块……') })
         .id(this.focusId())
         .width('100%')
         // **不设高度**：由内容自适应撑开（与编辑区同一套做法，避免出现第二个滚动条）
@@ -198,11 +199,11 @@ export struct LiveBlockEditor {
       if (this.wantPreview()) {
         Column() {
           Row({ space: 5 }) {
-            Text('预览效果')
+            Text(L10n.t('预览效果'))
               .fontSize(HwType.caption)
               .fontColor(this.palette.textTertiary)
             Blank()
-            Text('以正文样式渲染')
+            Text(L10n.t('以正文样式渲染'))
               .fontSize(HwType.caption - 1)
               .fontColor(this.palette.textTertiary)
               .opacity(0.7)

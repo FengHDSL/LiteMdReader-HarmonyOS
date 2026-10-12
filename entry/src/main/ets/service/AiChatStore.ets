@@ -30,6 +30,7 @@
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { http } from '@kit.NetworkKit';
+import { L10n } from './L10n';
 
 /** 一份 API 配置（多 API 支持：不同网关各自的地址 / Key / 模型清单） */
 export interface AiApiProfile {
@@ -548,7 +549,7 @@ export class AiChatStore {
     const now: number = Date.now();
     const s: AiChatSession = {
       id: AiChatStore.newId(),
-      title: '新对话',
+      title: L10n.t('新对话'),
       created: now,
       updated: now,
       docName: docName,

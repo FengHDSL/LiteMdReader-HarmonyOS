@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 写作日志
  * ====================
@@ -491,11 +492,11 @@ export struct SettingsWriting {
 
       // 底部标识行：左统计口径说明 + 右图例（图例收紧：格 8vp、间距 3）
       Row({ space: 3 }) {
-        Text('按每日写作增量统计')
+        Text(L10n.t('按每日写作增量统计'))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
         Blank()
-        Text('少')
+        Text(L10n.t('少'))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
         ForEach(HEAT_LEGEND, (a: string) => {
@@ -505,7 +506,7 @@ export struct SettingsWriting {
             .borderRadius(2)
             .backgroundColor(withAlpha(this.palette().accent, a))
         }, (a: string) => 'lg_' + a)
-        Text('多')
+        Text(L10n.t('多'))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
       }
@@ -515,7 +516,7 @@ export struct SettingsWriting {
        // ⚠️ 说明文字必须 layoutWeight(1) 自适应收缩：定宽文字 + Select 超出
        // 行宽时，Select 会被挤出卡片内边距、直接贴到卡片边缘（真机实锤）。
        Row({ space: HwSpace.sm }) {
-         Text('切换年份，查看不同时段的写作热力')
+         Text(L10n.t('切换年份，查看不同时段的写作热力'))
            .fontSize(HwType.caption)
            .fontColor(this.palette().textTertiary)
            .layoutWeight(1)
@@ -707,7 +708,7 @@ export struct SettingsWriting {
   latestDocsCard() {
     Column({ space: HwSpace.sm }) {
       if (this.latestDocs.length === 0) {
-        Text('还没有自建笔记，去书架新建一篇吧')
+        Text(L10n.t('还没有自建笔记，去书架新建一篇吧'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -777,7 +778,7 @@ export struct SettingsWriting {
         }, (g: LatestGroup) => 'lg_' + g.monthKey)
 
         // 比例条说明（用户问"那个进度条是什么意思"）
-        Text('右侧横条表示该文档的字数多少：越长字数越多（按这一批里字数最多的一篇归一化）。')
+        Text(L10n.t('右侧横条表示该文档的字数多少：越长字数越多（按这一批里字数最多的一篇归一化）。'))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -851,7 +852,7 @@ export struct SettingsWriting {
     } else {
     SettingsShell({
       shellTitle: '写作日志',
-      shellSubtitle: '热力图 · 字数 · 阅读时长 · 本地计算',
+      shellSubtitle: L10n.t('热力图 · 字数 · 阅读时长 · 本地计算'),
       stack: this.stack,
       life: this.life
     }) {
@@ -901,7 +902,7 @@ export struct SettingsWriting {
         }
 
         // ④ "最近动态"区块标题（GitHub "Contribution activity" 式：卡外标题）
-        Text('最近动态')
+        Text(L10n.t('最近动态'))
           .fontSize(HwType.label + 4)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -919,7 +920,7 @@ export struct SettingsWriting {
         // ⑥ 书架显示：把「回头看看」卡片的开关放在这里（用户指定位置）
         // ⚠️ 1.1.0 起卡片从书架搬到书架分页的「写作日志」页顶部，开关不再有意义，
         // 设置页一并移除（卡片常驻展示）。
-        Text('数据来自本机写作记录，卸载应用或清除数据后不可恢复。')
+        Text(L10n.t('数据来自本机写作记录，卸载应用或清除数据后不可恢复。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')

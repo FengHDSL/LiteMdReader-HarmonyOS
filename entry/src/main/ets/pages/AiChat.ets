@@ -45,6 +45,7 @@ import { MdBlockView } from '../markdown/MdView';
 import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import { DiagramWeb } from '../components/DiagramWeb';
+import { L10n } from '../service/L10n';
 
 /**
  * 外部文件附件（大文件分批上传用）：
@@ -658,7 +659,7 @@ export struct AiChat {
       return;
     }
     if (!AiChatStore.isConfigured(this.cfg)) {
-      this.toast('请先在「AI 设置」里配置接口');
+      this.toast(L10n.t('请先在「AI 设置」里配置接口'));
       this.openSettings();
       return;
     }
@@ -668,7 +669,7 @@ export struct AiChat {
     }
     const text: string = this.input.trim();
     if (!this.canSend()) {
-      this.toast('先输入点什么吧');
+      this.toast(L10n.t('先输入点什么吧'));
       return;
     }
     // 组装本次用户消息正文：外部文件 + 引用 + 输入。
@@ -996,7 +997,7 @@ export struct AiChat {
             this.session.updated = Date.now();
             AiChatStore.saveSession(c, this.session);
           }
-          this.toast('已停止生成');
+          this.toast(L10n.t('已停止生成'));
           // 分批上传中止：清掉剩余批次（下次要发就在输入框重新附上文件）
           this.batchQueue = [];
           this.batchTotal = 0;
@@ -1056,7 +1057,7 @@ export struct AiChat {
           }
           this.batchQueue = [];
           this.batchTotal = 0;
-          this.toast('分批上传已中断（网络或接口报错）');
+          this.toast(L10n.t('分批上传已中断（网络或接口报错）'));
         }
       })
       .catch((err: BusinessError) => {
@@ -1091,7 +1092,7 @@ export struct AiChat {
           AiChatStore.unmarkGenerating(this.session.id);
         }
         this.getUIContext().getPromptAction().showToast({
-          message: '回复处理出错，已停止', duration: 2200
+          message: L10n.t('回复处理出错，已停止'), duration: 2200
         });
       });
   }
@@ -1171,7 +1172,7 @@ export struct AiChat {
     }
     const text: string = this.editText.trim();
     if (text.length === 0) {
-      this.toast('先输入点什么吧');
+      this.toast(L10n.t('先输入点什么吧'));
       return;
     }
     m.content = text;
@@ -1207,7 +1208,7 @@ export struct AiChat {
     this.session = AiChatStore.newSession('');
     this.sending = false;
     this.syncFormulaTasks();
-    this.toast('已开启新话题');
+    this.toast(L10n.t('已开启新话题'));
     if (this.aiWide()) {
       this.refreshSessionList();
     }
@@ -1276,7 +1277,7 @@ export struct AiChat {
     }
     const s: AiChatSession | null = AiChatStore.loadSession(c, b.id);
     if (s === null) {
-      this.toast('会话读取失败');
+      this.toast(L10n.t('会话读取失败'));
       return;
     }
     // 用户要求：生成中也允许切换历史会话（旧会话继续在后台跑，不弹「请稍候」）
@@ -1383,7 +1384,7 @@ export struct AiChat {
       this.closeSheet();
       this.toast('已附加《' + meta.name + '》');
     } catch (err) {
-      this.toast('读取文档失败');
+      this.toast(L10n.t('读取文档失败'));
     }
   }
 
@@ -1431,7 +1432,7 @@ export struct AiChat {
         // 用户取消
       });
     } catch (err) {
-      this.toast('打开文件选择器失败');
+      this.toast(L10n.t('打开文件选择器失败'));
     }
   }
 
@@ -1561,7 +1562,7 @@ export struct AiChat {
         // 用户取消
       });
     } catch (err) {
-      this.toast('打开相册失败');
+      this.toast(L10n.t('打开相册失败'));
     }
   }
 
@@ -1571,7 +1572,7 @@ export struct AiChat {
       file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
       const stat: fs.Stat = fs.statSync(file.fd);
       if (stat.size > 8 * 1024 * 1024) {
-        this.toast('图片过大（上限 8MB），已跳过');
+        this.toast(L10n.t('图片过大（上限 8MB），已跳过'));
         return '';
       }
       const buf: ArrayBuffer = new ArrayBuffer(stat.size);
@@ -1640,7 +1641,7 @@ export struct AiChat {
           const dataUrl: string = this.readImageAsDataUrl(res.resultUri);
           if (dataUrl.length > 0) {
             this.attachImages.push(dataUrl);
-            this.toast('已附加拍摄照片');
+            this.toast(L10n.t('已附加拍摄照片'));
             this.hintIfAttachLarge();
           }
         })
@@ -1648,7 +1649,7 @@ export struct AiChat {
           // 用户取消或相机不可用
         });
     } catch (err) {
-      this.toast('相机不可用');
+      this.toast(L10n.t('相机不可用'));
     }
   }
 
@@ -1874,7 +1875,7 @@ export struct AiChat {
                 .fontColor([this.palette().textPrimary])
             }
             Column({ space: 1 }) {
-              Text('AI 助手')
+              Text(L10n.t('AI 助手'))
                 .fontSize(HwType.label)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -2092,7 +2093,7 @@ export struct AiChat {
             .fontSize(11)
             .fontColor([this.palette().textTertiary])
             .rotate({ angle: 180 })
-          Text('右滑查看历史会话')
+          Text(L10n.t('右滑查看历史会话'))
             .fontSize(11)
             .fontColor(this.palette().textTertiary)
         }
@@ -2133,7 +2134,7 @@ export struct AiChat {
 
       if (AiChatStore.isConfigured(this.cfg)) {
         if (this.attachDocName.length > 0) {
-          Text('已附加《' + this.attachDocName + '》，可直接提问、让它总结或润色')
+          Text(L10n.t('已附加《') + this.attachDocName + '》，可直接提问、让它总结或润色')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -2141,16 +2142,16 @@ export struct AiChat {
       } else {
         // 未配置引导（左对齐版式）
         Column({ space: HwSpace.sm }) {
-          Text('还没有配置 AI 接口')
+          Text(L10n.t('还没有配置 AI 接口'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .width('100%')
-          Text('填入 API 地址、Key 与模型名称即可开始对话')
+          Text(L10n.t('填入 API 地址、Key 与模型名称即可开始对话'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
           Row() {
-            Text('去配置')
+            Text(L10n.t('去配置'))
               .fontSize(HwType.label)
               .fontWeight(FontWeight.Medium)
               .fontColor('#FFFFFFFF')
@@ -2188,7 +2189,7 @@ export struct AiChat {
             SymbolGlyph($r('sys.symbol.doc_text'))
               .fontSize(11)
               .fontColor([this.palette().textTertiary])
-            Text('文档《' + m.docName + '》')
+            Text(L10n.t('文档《') + m.docName + '》')
               .fontSize(11)
               .fontColor(this.palette().textTertiary)
               .maxLines(1)
@@ -2253,7 +2254,7 @@ export struct AiChat {
                 .width(16)
                 .height(16)
                 .color(this.palette().accent)
-              Text('正在思考…')
+              Text(L10n.t('正在思考…'))
                 .fontSize(13)
                 .fontColor(this.palette().textSecondary)
             }
@@ -2288,7 +2289,7 @@ export struct AiChat {
             .alignItems(HorizontalAlign.Start)
           }
           if (m.role === 'assistant' && m.err !== true && m.tokens !== undefined && m.tokens > 0) {
-            Text('本条回复 ' + fmtTokens(m.tokens) + ' 词元')
+            Text(L10n.t('本条回复 ') + fmtTokens(m.tokens) + ' 词元')
               .fontSize(10)
               .fontColor(this.palette().textTertiary)
           }
@@ -2415,7 +2416,7 @@ export struct AiChat {
           .width(13)
           .height(13)
           .fillColor(this.palette().accent)
-        Text('已深度思考 · ' + Math.max(1, Math.round((m.thinkMs === undefined ? 0 : m.thinkMs) / 1000)) + ' 秒')
+        Text(L10n.t('已深度思考 · ') + Math.max(1, Math.round((m.thinkMs === undefined ? 0 : m.thinkMs) / 1000)) + ' 秒')
           .fontSize(13)
           .fontColor(this.palette().textSecondary)
           .maxLines(1)
@@ -2526,7 +2527,7 @@ export struct AiChat {
         })
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '思考 · ' + AiChatStore.reasoningLabel(this.cfg.reasoning),
+          chipLabel: L10n.t('思考 · ') + AiChatStore.reasoningLabel(this.cfg.reasoning),
           chipOnTap: () => {
             this.openSheet('reason');
           }
@@ -2545,7 +2546,7 @@ export struct AiChat {
         barWidth: '100%'
       }) {
         Row({ space: HwSpace.xs }) {
-          TextArea({ text: this.input, placeholder: '问问 AI…' })
+          TextArea({ text: this.input, placeholder: L10n.t('问问 AI…') })
             .fontSize(HwType.bodyDefault)
             .fontColor(this.palette().textPrimary)
             .placeholderColor(this.palette().textTertiary)
@@ -2643,7 +2644,7 @@ export struct AiChat {
           .combine(TransitionEffect.translate({ y: 12 })))
       }
 
-      Text('内容由 AI 生成，仅供参考' + (this.totalTokens() > 0 ? ' · 共 ' + fmtTokens(this.totalTokens()) + ' 词元' : ''))
+      Text(L10n.t('内容由 AI 生成，仅供参考') + (this.totalTokens() > 0 ? ' · 共 ' + fmtTokens(this.totalTokens()) + ' 词元' : ''))
         .fontSize(10)
         .fontColor(this.palette().textTertiary)
         .width('100%')
@@ -2760,7 +2761,7 @@ export struct AiChat {
   historySheet() {
     if (this.sessionList.length === 0) {
       Column({ space: HwSpace.sm }) {
-        Text('还没有历史对话')
+        Text(L10n.t('还没有历史对话'))
           .fontSize(HwType.bodyDefault)
           .fontColor(this.palette().textTertiary)
       }
@@ -2834,7 +2835,7 @@ export struct AiChat {
   modelSheet() {
     Column({ space: HwSpace.xs }) {
       if (this.totalModelCount() === 0) {
-        Text('还没有配置模型，请先到「AI 设置」添加')
+        Text(L10n.t('还没有配置模型，请先到「AI 设置」添加'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .padding({ top: 12, bottom: 24 })
@@ -2962,7 +2963,7 @@ export struct AiChat {
   docSheet() {
     if (this.docList.length === 0) {
       Column() {
-        Text('书架还没有文档')
+        Text(L10n.t('书架还没有文档'))
           .fontSize(HwType.bodyDefault)
           .fontColor(this.palette().textTertiary)
       }
@@ -3084,10 +3085,10 @@ export struct AiChat {
       const data: pasteboard.PasteData =
         pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       pasteboard.getSystemPasteboard().setData(data).then(() => {
-        this.toast('已复制到剪贴板');
+        this.toast(L10n.t('已复制到剪贴板'));
       });
     } catch (err) {
-      this.toast('复制失败');
+      this.toast(L10n.t('复制失败'));
     }
   }
 
@@ -3099,7 +3100,7 @@ export struct AiChat {
     }
     const meta: DocMeta | null = DocStore.create(c, deriveDocName(m.content), m.content);
     if (meta === null) {
-      this.toast('保存失败：文档名不合法');
+      this.toast(L10n.t('保存失败：文档名不合法'));
       return;
     }
     this.toast('已保存《' + meta.name + '》');
@@ -3117,7 +3118,7 @@ export struct AiChat {
     if (c !== null) {
       AiChatStore.saveSession(c, this.session);
     }
-    this.toast('已删除这条消息');
+    this.toast(L10n.t('已删除这条消息'));
   }
 
   /** 打开 AI 生成 / 保存的文档（与书架同款路由参数） */
@@ -3179,7 +3180,7 @@ export struct AiChat {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .constraintSize({ maxWidth: this.bubbleContentMax() - 64 })
-        Text('已保存到书架 · 点击打开')
+        Text(L10n.t('已保存到书架 · 点击打开'))
           .fontSize(10)
           .fontColor(this.palette().textTertiary)
       }
@@ -3212,7 +3213,7 @@ export struct AiChat {
           this.editText = v;
         })
       Row({ space: 8 }) {
-        Text('取消')
+        Text(L10n.t('取消'))
           .fontSize(HwType.label)
           .fontColor(this.palette().textSecondary)
           .padding({ left: 16, right: 16, top: 8, bottom: 8 })
@@ -3230,7 +3231,7 @@ export struct AiChat {
           SymbolGlyph($r('sys.symbol.paperplane'))
             .fontSize(13)
             .fontColor(['#FFFFFFFF'])
-          Text('发送')
+          Text(L10n.t('发送'))
             .fontSize(HwType.label)
             .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFFFF')
@@ -3275,7 +3276,7 @@ export struct AiChat {
       Column({ space: HwSpace.sm }) {
         Row({ space: HwSpace.sm }) {
           Column({ space: 2 }) {
-            Text('历史对话')
+            Text(L10n.t('历史对话'))
               .fontSize(HwType.label + 3)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
@@ -3331,7 +3332,7 @@ export struct AiChat {
               SymbolGlyph($r('sys.symbol.plus'))
                 .fontSize(14)
                 .fontColor([this.palette().textPrimary])
-              Text('新建对话')
+              Text(L10n.t('新建对话'))
                 .fontSize(13)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -3346,7 +3347,7 @@ export struct AiChat {
 
         if (this.sessionList.length === 0) {
           Column({ space: HwSpace.sm }) {
-            Text('还没有历史对话')
+            Text(L10n.t('还没有历史对话'))
               .fontSize(HwType.bodyDefault)
               .fontColor(this.palette().textTertiary)
           }

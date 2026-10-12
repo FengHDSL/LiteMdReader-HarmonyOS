@@ -22,6 +22,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
 import { HwSpace, HwType, ReaderPalette, LIGHT_PALETTE, paletteFor, isDarkTheme } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct HtmlViewer {
@@ -211,7 +212,7 @@ export struct HtmlViewer {
           chipPaddingH: HwSpace.sm + 2,
           chipPaddingV: 7,
           palette: this.palette(),
-          chipLabel: '返回',
+          chipLabel: L10n.t('返回'),
           chipOnTap: () => {
             if (this.stack !== null) {
               this.stack.pop();

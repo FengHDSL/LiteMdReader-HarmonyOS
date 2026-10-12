@@ -17,6 +17,7 @@ import { ReadingSettingsPanel, restoreReadingDefaults } from '../settings/Readin
 import { common } from '@kit.AbilityKit';
 import { HwRadius, HwSpace, HwType, ReaderPalette, ReaderThemeMode, paletteFor } from '../theme/DesignTokens';
 import { SettingsShell } from './SettingsShell';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct SettingsReading {
@@ -47,7 +48,7 @@ export struct SettingsReading {
   build() {
     SettingsShell({
       shellTitle: '阅读调整',
-      shellSubtitle: '排版 · 主题 · 显示',
+      shellSubtitle: L10n.t('排版 · 主题 · 显示'),
       stack: this.stack,
       life: this.life
     }) {
@@ -62,12 +63,12 @@ export struct SettingsReading {
             SymbolGlyph($r('sys.symbol.eye'))
               .fontSize(16)
               .fontColor([this.palette().accent])
-            Text('实时预览')
+            Text(L10n.t('实时预览'))
               .fontSize(HwType.label + 1)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
             Blank()
-            Text('跟随下方设置')
+            Text(L10n.t('跟随下方设置'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -76,12 +77,11 @@ export struct SettingsReading {
 
           Divider().strokeWidth(0.5).color(this.palette().divider)
 
-          Text('澄笺')
+          Text(L10n.t('澄笺'))
             .fontSize(this.fontSize + 3)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
-          Text('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——'
-            + '阅读时所见即所得，不用来回试。')
+          Text(L10n.t('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——') + '阅读时所见即所得，不用来回试。')
             .fontSize(this.fontSize)
             .lineHeight(this.fontSize * this.lineMul)
             .fontColor(this.palette().textSecondary)
@@ -133,7 +133,7 @@ export struct SettingsReading {
 
         ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: true })
 
-        Text('恢复默认阅读设置')
+        Text(L10n.t('恢复默认阅读设置'))
           .fontSize(HwType.label + 1)
           .fontColor('#FFFFFFFF')
       }
@@ -152,6 +152,6 @@ export struct SettingsReading {
   private restoreReading(): void {
     const c = this.getUIContext().getHostContext();
     restoreReadingDefaults(c as common.UIAbilityContext);
-    this.getUIContext().getPromptAction().showToast({ message: '阅读设置已恢复默认', duration: 1600 });
+    this.getUIContext().getPromptAction().showToast({ message: L10n.t('阅读设置已恢复默认'), duration: 1600 });
   }
 }

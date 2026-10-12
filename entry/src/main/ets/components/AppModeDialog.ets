@@ -14,6 +14,7 @@ import {
   HwSpace, LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
 import { APP_MODE_FULL, APP_MODE_OFFLINE } from '../service/UpdateService';
+import { L10n } from '../service/L10n';
 
 @CustomDialog
 export struct AppModeDialog {
@@ -93,7 +94,7 @@ export struct AppModeDialog {
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
-      Text('两种模式随时可在「探索中心」重选，数据完全一致，只是联网能力不同。')
+      Text(L10n.t('两种模式随时可在「探索中心」重选，数据完全一致，只是联网能力不同。'))
         .fontSize(12)
         .fontColor(this.pal().textTertiary)
         .lineHeight(17)

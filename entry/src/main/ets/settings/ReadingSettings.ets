@@ -40,6 +40,7 @@ import { ImmersiveChip } from '../material/ImmersiveCard';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
+import { L10n } from '../service/L10n';
 
 /** 一键恢复阅读默认（排版 / 主题 / 批注 / 阅读背景全部回到出厂值）。 */
 export function restoreReadingDefaults(ctx: common.UIAbilityContext | null): void {
@@ -98,7 +99,7 @@ export struct ReadingSettingsPanel {
   private pickReaderBgImage(): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     const ctx = c as common.UIAbilityContext;
@@ -106,7 +107,7 @@ export struct ReadingSettingsPanel {
       if (err.length > 0) {
         this.toast(err);
       } else {
-        this.toast('阅读背景已更新');
+        this.toast(L10n.t('阅读背景已更新'));
       }
     }).catch((e: BusinessError) => {
       this.toast('选择图片失败：' + e.message);
@@ -160,7 +161,7 @@ export struct ReadingSettingsPanel {
         }
         const family: string = FontStore.importFromUri(ctx, uris[0]);
         if (family.length === 0) {
-          this.toast('字体导入失败：仅支持 .ttf / .otf，且不超过 30MB');
+          this.toast(L10n.t('字体导入失败：仅支持 .ttf / .otf，且不超过 30MB'));
           return;
         }
         this.userFonts = FontStore.list(ctx);
@@ -170,7 +171,7 @@ export struct ReadingSettingsPanel {
         this.toast('选择字体失败：' + err.message);
       });
     } catch (err) {
-      this.toast('无法打开文件选择器');
+      this.toast(L10n.t('无法打开文件选择器'));
     }
   }
 
@@ -182,8 +183,8 @@ export struct ReadingSettingsPanel {
     }
     const ctx = c as common.UIAbilityContext;
     this.getUIContext().getPromptAction().showDialog({
-      title: '删除字体',
-      message: '将删除「' + family + '」的字体文件；正在使用它的文档会回退为默认字体。',
+      title: L10n.t('删除字体'),
+      message: L10n.t('将删除「') + family + '」的字体文件；正在使用它的文档会回退为默认字体。',
       buttons: [
         { text: '取消', color: this.palette().textSecondary },
         { text: '删除', color: '#FFD93B3B' }
@@ -197,9 +198,9 @@ export struct ReadingSettingsPanel {
           this.fontKey = '';
         }
         this.userFonts = FontStore.list(ctx);
-        this.toast('已删除（正在运行的应用里可能仍可见，重启后彻底消失）');
+        this.toast(L10n.t('已删除（正在运行的应用里可能仍可见，重启后彻底消失）'));
       } else {
-        this.toast('删除失败');
+        this.toast(L10n.t('删除失败'));
       }
     }).catch((err: BusinessError) => {
       this.toast('操作失败：' + err.message);
@@ -532,11 +533,11 @@ export struct ReadingSettingsPanel {
     Column({ space: HwSpace.lg }) {
         if (this.showHeader) {
           Column({ space: 2 }) {
-            Text('阅读设置')
+            Text(L10n.t('阅读设置'))
               .fontSize(this.fontSize + 3)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
-            Text('设置会随应用记忆，切换文档同样生效')
+            Text(L10n.t('设置会随应用记忆，切换文档同样生效'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -550,7 +551,7 @@ export struct ReadingSettingsPanel {
 
         // 字体：设备自带字体不可靠，只有默认；其余都是用户导入的 .ttf/.otf
         Column({ space: HwSpace.sm }) {
-          Text('字体')
+          Text(L10n.t('字体'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
           Scroll() {
@@ -575,13 +576,13 @@ export struct ReadingSettingsPanel {
           .scrollBar(BarState.Off)
           .width('100%')
 
-          Text('长按字体可删除')
+          Text(L10n.t('长按字体可删除'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
 
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '导入字体（.ttf / .otf）',
+            chipLabel: L10n.t('导入字体（.ttf / .otf）'),
             chipOnTap: () => {
               this.importFont();
             }
@@ -596,13 +597,13 @@ export struct ReadingSettingsPanel {
 
         // ── 排版氛围预设（批 5 之氛围排版）：一键组合 行距 × 段间距 ──
         Row({ space: HwSpace.xs }) {
-          Text('排版氛围')
+          Text(L10n.t('排版氛围'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .width(64)
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '紧凑',
+            chipLabel: L10n.t('紧凑'),
             chipActive: this.lineMul <= 1.55 && this.paraSpace <= 0.9,
             chipOnTap: (): void => {
               this.lineMul = 1.5;
@@ -611,7 +612,7 @@ export struct ReadingSettingsPanel {
           })
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '标准',
+            chipLabel: L10n.t('标准'),
             chipActive: this.lineMul > 1.55 && this.lineMul <= 1.85 && this.paraSpace > 0.9
               && this.paraSpace <= 1.2,
             chipOnTap: (): void => {
@@ -621,7 +622,7 @@ export struct ReadingSettingsPanel {
           })
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '舒展',
+            chipLabel: L10n.t('舒展'),
             chipActive: this.lineMul > 1.85 || this.paraSpace > 1.2,
             chipOnTap: (): void => {
               this.lineMul = Math.min(HwType.lineMax, HwType.lineDefault + 0.4);
@@ -632,7 +633,7 @@ export struct ReadingSettingsPanel {
         .width('100%')
         .alignItems(VerticalAlign.Center)
 
-        Text('一键切捧行距与段落间距的组合，下面的滑块仍可单独微调')
+        Text(L10n.t('一键切捧行距与段落间距的组合，下面的滑块仍可单独微调'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -677,7 +678,7 @@ export struct ReadingSettingsPanel {
         Column({ space: HwSpace.sm }) {
           this.bgSwatchRow('浅色', false)
           this.bgSwatchRow('深色', true)
-          Text('色板第一格是「默认」（纸白 / 碳黑固定色，不随主题变）；选中后所有页面的背景换成所选纯色，光斑保留')
+          Text(L10n.t('色板第一格是「默认」（纸白 / 碳黑固定色，不随主题变）；选中后所有页面的背景换成所选纯色，光斑保留'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
         }
@@ -686,10 +687,10 @@ export struct ReadingSettingsPanel {
 
         // ── 阅读背景壁纸：与「设置 → 外观」的应用壁纸**互相独立**，只影响阅读页 ──
         Column({ space: HwSpace.sm }) {
-          Text('阅读背景壁纸')
+          Text(L10n.t('阅读背景壁纸'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
-          Text('只作用于阅读页正文背后；与「设置 → 外观」里的应用壁纸互不影响')
+          Text(L10n.t('只作用于阅读页正文背后；与「设置 → 外观」里的应用壁纸互不影响'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
 
@@ -735,7 +736,7 @@ export struct ReadingSettingsPanel {
             if (this.readerBgPath.length > 0) {
               ImmersiveChip({
                 palette: this.palette(),
-                chipLabel: '清除背景图',
+                chipLabel: L10n.t('清除背景图'),
                 chipOnTap: () => {
                   const c = this.getUIContext().getHostContext();
                   if (c !== undefined && c !== null) {
@@ -773,16 +774,16 @@ export struct ReadingSettingsPanel {
           this.sliderRow('brightness', '窗口亮度', 5, 100, 5,
             '只调低本应用窗口的亮度，不影响系统设置；夜间阅读不刺眼')
           if (this.brightLevel > 0) {
-            Text('正在使用固定亮度，系统亮度条暂被接管')
+            Text(L10n.t('正在使用固定亮度，系统亮度条暂被接管'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '恢复跟随系统',
+              chipLabel: L10n.t('恢复跟随系统'),
               chipOnTap: () => {
                 this.brightLevel = 0;
                 setWindowBrightnessLevel(0);
-                this.toast('亮度已恢复跟随系统');
+                this.toast(L10n.t('亮度已恢复跟随系统'));
               }
             })
           }
@@ -793,13 +794,13 @@ export struct ReadingSettingsPanel {
 
         if (this.showReadingHints) {
           Column({ space: HwSpace.xs }) {
-            Text('手势')
+            Text(L10n.t('手势'))
               .fontSize(HwType.label)
               // 用本组件的 palette()（走 paletteFor，含纸色主题的深浅孪生款），
               // 不要 paletteOf(this.isDark())：后者只给纯深/浅色板，
               // 羊皮纸/护眼绿下会拿到不匹配的灰字（截图里这两行说明发灰看不清）
               .fontColor(this.palette().textSecondary)
-            Text('阅读页右滑呼出目录，左滑呼出注释；点卡片或划一下另一半屏可收起。')
+            Text(L10n.t('阅读页右滑呼出目录，左滑呼出注释；点卡片或划一下另一半屏可收起。'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .lineHeight(HwType.caption * 1.6)

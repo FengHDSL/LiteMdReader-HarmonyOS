@@ -13,6 +13,7 @@
  */
 import { DocCover, coverColorsOf } from '../../components/DocCover';
 import { HwRadius } from '../../theme/DesignTokens';
+import { L10n } from '../service/L10n';
 
 let storage = new LocalStorage();
 
@@ -35,12 +36,12 @@ struct ShelfCard {
   build() {
     Column({ space: 8 }) {
       Row({ space: 6 }) {
-        Text('澄笺 · 最近阅读')
+        Text(L10n.t('澄笺 · 最近阅读'))
           .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor('#FF1F2933')
         Blank()
-        Text('书架')
+        Text(L10n.t('书架'))
           .fontSize(10)
           .fontColor('#FF8A93A0')
       }

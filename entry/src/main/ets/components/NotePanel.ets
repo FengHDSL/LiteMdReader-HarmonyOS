@@ -19,6 +19,7 @@
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct NotePanel {
@@ -187,7 +188,7 @@ export struct NotePanel {
             generate: true,
             lineMul: 1.5
           })
-          TextArea({ text: this.mathSrc, placeholder: '公式源码（LaTeX，可编辑）' })
+          TextArea({ text: this.mathSrc, placeholder: L10n.t('公式源码（LaTeX，可编辑）') })
             .width('100%')
             // 随源码行数长高，上限跟着可视带走（见 mathBoxMax / draftMax）
             .constraintSize({ minHeight: 64, maxHeight: this.mathBoxMax() })
@@ -208,7 +209,7 @@ export struct NotePanel {
             ImmersiveChip({
               palette: this.palette,
               chipActive: true,
-              chipLabel: '保存公式',
+              chipLabel: L10n.t('保存公式'),
               chipOnTap: () => {
                 // 宿主写回成功才把本地基准换成新源码：预览与"只批选中段"的定位
                 // 都跟着走，避免面板停留在草稿态、区间却按旧源码算
@@ -221,7 +222,7 @@ export struct NotePanel {
             })
           }
           .width('100%')
-          Text('长按选中一段就只批注那一段；改过源码点「保存公式」写回文档。')
+          Text(L10n.t('长按选中一段就只批注那一段；改过源码点「保存公式」写回文档。'))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
             .lineHeight(HwType.caption * 1.6)
@@ -229,7 +230,7 @@ export struct NotePanel {
 
           // 公式既可以标成普通批注，也可以进背诵系统（用户要求：卡片上能选）
           Row({ space: HwSpace.xs }) {
-            Text('普通批注')
+            Text(L10n.t('普通批注'))
               .fontSize(HwType.caption + 1)
               .fontWeight(this.kindWeight(''))
               .fontColor(this.kindForeground(''))
@@ -239,7 +240,7 @@ export struct NotePanel {
               .onClick(() => {
                 this.style = '';
               })
-            Text('学习卡')
+            Text(L10n.t('学习卡'))
               .fontSize(HwType.caption + 1)
               .fontWeight(this.kindWeight('card'))
               .fontColor(this.kindForeground('card'))
@@ -280,7 +281,7 @@ export struct NotePanel {
           palette: this.palette,
           chipTint: '#FFD32F2F',
           chipActive: true,
-          chipLabel: '取消',
+          chipLabel: L10n.t('取消'),
           chipOnTap: () => {
             this.onCancel();
           }

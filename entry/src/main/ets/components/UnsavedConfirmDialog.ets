@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 未保存修改确认弹窗（UnsavedConfirmDialog）
  * ==================================================
@@ -58,20 +59,20 @@ export struct UnsavedConfirmDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text('还有未保存的修改')
+      Text(L10n.t('还有未保存的修改'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
-      Text('「直接离开」会自动存一份草稿，下次打开这篇文档时自动恢复。')
+      Text(L10n.t('「直接离开」会自动存一份草稿，下次打开这篇文档时自动恢复。'))
         .fontSize(13)
         .fontColor(this.pal().textSecondary)
         .width('100%')
 
       // ── 第一行：取消 | 直接离开 ──
       Row({ space: 10 }) {
-        Text('取消')
+        Text(L10n.t('取消'))
           .fontSize(14)
           .fontColor(this.pal().textPrimary)
           .textAlign(TextAlign.Center)
@@ -83,7 +84,7 @@ export struct UnsavedConfirmDialog {
             this.onCancel();
           })
 
-        Text('直接离开')
+        Text(L10n.t('直接离开'))
           .fontSize(14)
           .fontColor(this.pal().accent)
           .textAlign(TextAlign.Center)
@@ -99,7 +100,7 @@ export struct UnsavedConfirmDialog {
 
       // ── 第二行：不保存 | 保存 ──
       Row({ space: 10 }) {
-        Text('不保存')
+        Text(L10n.t('不保存'))
           .fontSize(14)
           .fontColor('#FFD93B3B')
           .textAlign(TextAlign.Center)
@@ -111,7 +112,7 @@ export struct UnsavedConfirmDialog {
             this.onDiscard();
           })
 
-        Text('保存')
+        Text(L10n.t('保存'))
           .fontSize(14)
           .fontColor('#FFFFFFFF')
           .fontWeight(FontWeight.Medium)

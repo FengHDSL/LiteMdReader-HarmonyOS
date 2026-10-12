@@ -20,6 +20,7 @@ import { MdToPlain } from '../markdown/MdToPlain';
 import { PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct MergeExportPanel {
@@ -360,7 +361,7 @@ export struct MergeExportPanel {
       // 外层再套一个 Scroll 会让高度测量变成循环（fitContent 问内容要多高、
       // Scroll 问父级要多高 → 塌陷）。会无限变长的只有清单那一块，就只滚它。
       Column({ space: HwSpace.sm }) {
-        Text('已选 ' + this.order.length + ' 篇 · 按从上到下的顺序合并')
+        Text(L10n.t('已选 ') + this.order.length + ' 篇 · 按从上到下的顺序合并')
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
           .width('100%')
@@ -371,7 +372,7 @@ export struct MergeExportPanel {
               this.docRow(name, index)
             }, (name: string, index: number) => name + '@' + index + '#' + this.order.length)
             if (this.order.length === 0) {
-              Text('还没有选中任何文档，点下面「添加文档」。')
+              Text(L10n.t('还没有选中任何文档，点下面「添加文档」。'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette.textTertiary)
                 .width('100%')
@@ -421,7 +422,7 @@ export struct MergeExportPanel {
               })
             }, (s: MergeSource) => 'add_' + s.name)
             if (this.remaining().length === 0) {
-              Text('所有文档都已选入。')
+              Text(L10n.t('所有文档都已选入。'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette.textTertiary)
             }
@@ -437,7 +438,7 @@ export struct MergeExportPanel {
           (v: boolean) => {
             this.withDivider = v;
           })
-        Text('说明：各文档开头的 YAML Front Matter 不参与合并，会被剥掉。')
+        Text(L10n.t('说明：各文档开头的 YAML Front Matter 不参与合并，会被剥掉。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
           .width('100%')
@@ -466,7 +467,7 @@ export struct MergeExportPanel {
             .width(40)
             .height(40)
             .color(this.palette.accent)
-          Text('正在处理，请稍候…')
+          Text(L10n.t('正在处理，请稍候…'))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
         }

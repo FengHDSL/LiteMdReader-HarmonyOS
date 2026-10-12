@@ -12,6 +12,7 @@
  */
 
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { L10n } from '../service/L10n';
 
 export interface FlowNode {
   name: string;
@@ -365,7 +366,7 @@ export struct FlowChartView {
         }, (names: string[], lv: number) => 'td' + lv + '_' + names.join('_'))
       }
 
-      Text('Mermaid 流程图子集 · graph TD/LR')
+      Text(L10n.t('Mermaid 流程图子集 · graph TD/LR'))
         .fontSize(HwType.caption - 1)
         .fontColor(this.palette.textTertiary)
         .width('100%')

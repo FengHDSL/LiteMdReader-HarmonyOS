@@ -16,6 +16,7 @@
  */
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct ReadAloudTile {
@@ -49,7 +50,7 @@ export struct ReadAloudTile {
           .fontColor([this.palette.accent])
 
         Column({ space: 2 }) {
-          Text('朗读全文')
+          Text(L10n.t('朗读全文'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette.textPrimary)
           Text(this.statusText())
@@ -63,7 +64,7 @@ export struct ReadAloudTile {
         if (!this.on) {
           ImmersiveChip({
             palette: this.palette,
-            chipLabel: '开始',
+            chipLabel: L10n.t('开始'),
             chipOnTap: () => {
               this.onPlay();
             }
@@ -72,7 +73,7 @@ export struct ReadAloudTile {
           ImmersiveChip({
             palette: this.palette,
             chipActive: true,
-            chipLabel: '暂停',
+            chipLabel: L10n.t('暂停'),
             chipOnTap: () => {
               this.onPause();
             }
@@ -81,7 +82,7 @@ export struct ReadAloudTile {
           ImmersiveChip({
             palette: this.palette,
             chipActive: true,
-            chipLabel: '继续',
+            chipLabel: L10n.t('继续'),
             chipOnTap: () => {
               this.onPlay();
             }
@@ -93,7 +94,7 @@ export struct ReadAloudTile {
             palette: this.palette,
             chipTint: '#FFD32F2F',
             chipActive: true,
-            chipLabel: '结束',
+            chipLabel: L10n.t('结束'),
             chipOnTap: () => {
               this.onStop();
             }
@@ -103,8 +104,7 @@ export struct ReadAloudTile {
       .width('100%')
       .alignItems(VerticalAlign.Center)
 
-      Text('代码块、表格与图表会跳过不读；读到哪一段，屏幕会自动跟到那一段。'
-        + '朗读用系统语音，离线或设备不支持时会有提示。')
+      Text(L10n.t('代码块、表格与图表会跳过不读；读到哪一段，屏幕会自动跟到那一段。') + '朗读用系统语音，离线或设备不支持时会有提示。')
         .fontSize(HwType.caption)
         .fontColor(this.palette.textTertiary)
         .lineHeight(HwType.caption * 1.6)

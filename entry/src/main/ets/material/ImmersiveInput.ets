@@ -12,7 +12,7 @@
  * ImmersiveInput({
  *   palette: this.palette(),
  *   text: this.someValue,               // 受控文本（父组件 @State）
- *   placeholder: '提示文字',
+ *   placeholder: L10n.t('提示文字'),
  *   onInput: (v: string) => { this.someValue = v; }
  * }).layoutWeight(1)                    // 无尾随闭包，可以直接链式属性
  * ```
@@ -32,6 +32,7 @@ import {
 } from '../theme/DesignTokens';
 import { ImmersiveCardLayer } from './ImmersiveCard';
 import { getImmersiveMaterial } from './SystemMaterial';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct ImmersiveInput {

@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 数据管理
  * ====================
@@ -155,7 +156,7 @@ export struct SettingsData {
   private saveWebDavConfig(): void {
     const c = this.ctx();
     if (c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     const cfg: WebDavConfig = {
@@ -167,7 +168,7 @@ export struct SettingsData {
       lastAutoAt: this.webdavLastAt
     };
     WebDavStore.saveConfig(c, cfg);
-    this.toast('WebDAV 配置已保存');
+    this.toast(L10n.t('WebDAV 配置已保存'));
   }
 
   /** 设定自动备份间隔（用户要求：可设定多久上传一次）。 */
@@ -179,7 +180,7 @@ export struct SettingsData {
     this.webdavAutoDays = days;
     WebDavStore.setAutoDays(c, days);
     if (days <= 0) {
-      this.toast('已关闭自动备份');
+      this.toast(L10n.t('已关闭自动备份'));
     } else {
       this.toast('自动备份：每 ' + days + ' 天（应用启动时检查，到点自动上传）');
     }
@@ -252,7 +253,7 @@ export struct SettingsData {
         c.terminateSelf();
       }, 900);
     }).catch((_err: BusinessError) => {
-      this.toast('清空失败，请重试');
+      this.toast(L10n.t('清空失败，请重试'));
     });
   }
 
@@ -263,19 +264,19 @@ export struct SettingsData {
     }
     // 基础模式（纯离线）：网络备份不可用（用户要求）
     if (UpdateService.isOffline()) {
-      this.toast('当前是基础模式（纯离线），网络备份不可用');
+      this.toast(L10n.t('当前是基础模式（纯离线），网络备份不可用'));
       return;
     }
     const c = this.ctx();
     if (c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     // 先落一次配置，避免「改了没保存就备份」用了旧值
     this.saveWebDavConfig();
     const cfg: WebDavConfig = WebDavStore.loadConfig(c);
     if (!WebDavStore.isConfigured(cfg)) {
-      this.toast('请先填写服务器地址与账号');
+      this.toast(L10n.t('请先填写服务器地址与账号'));
       return;
     }
     this.backing = true;
@@ -286,13 +287,13 @@ export struct SettingsData {
       this.backing = false;
       if (result.error.length === 0) {
         this.backupStatus = '备份完成：' + result.uploaded + ' 个文件';
-        this.toast('备份完成');
+        this.toast(L10n.t('备份完成'));
         // 记一次成功时间（自动备份的到期判定以它为基准）
         this.webdavLastAt = Date.now();
         WebDavStore.markBackedUp(c);
       } else {
         this.backupStatus = '备份中断：' + result.error;
-        this.toast('备份中断');
+        this.toast(L10n.t('备份中断'));
       }
     }).catch((e: BusinessError) => {
       this.backing = false;
@@ -306,23 +307,23 @@ export struct SettingsData {
       return;
     }
     if (UpdateService.isOffline()) {
-      this.toast('当前是基础模式（纯离线），网络恢复不可用');
+      this.toast(L10n.t('当前是基础模式（纯离线），网络恢复不可用'));
       return;
     }
     const c = this.ctx();
     if (c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     const cfg: WebDavConfig = WebDavStore.loadConfig(c);
     if (!WebDavStore.isConfigured(cfg)) {
-      this.toast('请先填写服务器地址与账号');
+      this.toast(L10n.t('请先填写服务器地址与账号'));
       return;
     }
     try {
       this.getUIContext().showAlertDialog({
-        title: '从 WebDAV 恢复备份？',
-        message: '会用服务器上的完整备份包覆盖本机同名数据'
+        title: L10n.t('从 WebDAV 恢复备份？'),
+        message: L10n.t('会用服务器上的完整备份包覆盖本机同名数据')
           + '（文档、书架、AI 对话记录、批注、设置）。',
         primaryButton: {
           value: '取消',
@@ -346,12 +347,12 @@ export struct SettingsData {
   private runRestoreWebDav(): void {
     const c = this.ctx();
     if (c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     const cfg: WebDavConfig = WebDavStore.loadConfig(c);
     if (!WebDavStore.isConfigured(cfg)) {
-      this.toast('请先填写服务器地址与账号');
+      this.toast(L10n.t('请先填写服务器地址与账号'));
       return;
     }
     this.restoring = true;
@@ -585,7 +586,7 @@ export struct SettingsData {
       this.saveHiddenImages(ctx);
     }
     this.loadImageItems();
-    this.toast('已从列表移除（本地文件保留）');
+    this.toast(L10n.t('已从列表移除（本地文件保留）'));
   }
 
   /** 导出本地图片：系统另存为。 */
@@ -627,7 +628,7 @@ export struct SettingsData {
       this.loadBuiltins();
       this.toast(n > 0 ? '已恢复 ' + n + ' 篇内置教程' : '没有需要恢复的内置教程');
     } catch (err) {
-      this.toast('恢复失败');
+      this.toast(L10n.t('恢复失败'));
     }
   }
 
@@ -643,7 +644,7 @@ export struct SettingsData {
         this.loadBuiltins();
         this.toast('已删除「' + name + '」及其本地文件');
       } else {
-        this.toast('删除失败');
+        this.toast(L10n.t('删除失败'));
       }
     } catch (err) {
       this.toast('删除失败：' + DocStore.describeError(err as BusinessError));
@@ -657,7 +658,7 @@ export struct SettingsData {
   private exportMyDoc(meta: DocMeta): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
-      this.toast('拿不到应用上下文');
+      this.toast(L10n.t('拿不到应用上下文'));
       return;
     }
     const ctx = c as common.UIAbilityContext;
@@ -694,8 +695,8 @@ export struct SettingsData {
   private confirmDeleteMyDoc(name: string): void {
     try {
       this.getUIContext().showAlertDialog({
-        title: '删除「' + name + '」？',
-        message: '本地 md 文件会一并删除，删除后不可恢复。',
+        title: L10n.t('删除「') + name + '」？',
+        message: L10n.t('本地 md 文件会一并删除，删除后不可恢复。'),
         primaryButton: {
           value: '取消',
           action: () => {
@@ -724,8 +725,8 @@ export struct SettingsData {
   private confirmResetBuiltins(): void {
     try {
       this.getUIContext().showAlertDialog({
-        title: '从书架中移除内置文档？',
-        message: '内置文档**不能删除**，只能从书架上移除显示。'
+        title: L10n.t('从书架中移除内置文档？'),
+        message: L10n.t('内置文档**不能删除**，只能从书架上移除显示。')
           + '移除后书架上看不到它们，但正文仍在应用内，'
           + '随时可以在本页「已移除的内置教程」里恢复回书架。',
         primaryButton: {
@@ -889,7 +890,7 @@ export struct SettingsData {
             })
         )
 
-      Text('点此关闭')
+      Text(L10n.t('点此关闭'))
         .fontSize(HwType.caption)
         .fontColor('#FFFFFFFF')
         .padding({ left: HwSpace.md, right: HwSpace.md, top: 6, bottom: 6 })
@@ -912,15 +913,14 @@ export struct SettingsData {
   build() {
     SettingsShell({
       shellTitle: '数据管理',
-      shellSubtitle: '备份与恢复 · 书架数据 · 缓存',
+      shellSubtitle: L10n.t('备份与恢复 · 书架数据 · 缓存'),
       stack: this.stack,
       life: this.life
     }) {
       // ── ① 备份与恢复 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('把**整个应用的全部数据**打包成一个 zip 导出到你选的位置：文档正文与图片、'
-            + '书架索引与文件夹、批注与学习卡、手写笔迹、复习数据、阅读与写作日志、'
+          Text(L10n.t('把**整个应用的全部数据**打包成一个 zip 导出到你选的位置：文档正文与图片、') + '书架索引与文件夹、批注与学习卡、手写笔迹、复习数据、阅读与写作日志、'
             + 'AI 对话与配置、草稿、字体、壁纸与阅读背景、全部设置，以及 WebDAV 账号配置。'
             + '导入会覆盖同名数据，回到书架即刻生效（不必重启应用）；'
             + '导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。')
@@ -948,7 +948,7 @@ export struct SettingsData {
             }
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '导入备份',
+              chipLabel: L10n.t('导入备份'),
               chipOnTap: () => {
                 this.importZipBackup();
               }
@@ -959,7 +959,7 @@ export struct SettingsData {
             }
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '清除缓存',
+              chipLabel: L10n.t('清除缓存'),
               chipOnTap: () => {
                 this.clearAppCache();
               }
@@ -979,7 +979,7 @@ export struct SettingsData {
           }
 
           // **当前缓存大小**（用户要求：清除缓存要能看到大小）
-          Text('当前缓存大小：' + this.cacheSizeText
+          Text(L10n.t('当前缓存大小：') + this.cacheSizeText
             + '（缓存可随时清除，不影响文档 / 批注等用户数据）')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -992,10 +992,10 @@ export struct SettingsData {
       // ── ② 批注数据管理（用户要求：预览全部批注；批注随全量备份打包）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('批注数据管理')
+          Text(L10n.t('批注数据管理'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
-          Text('全部批注共 ' + this.annoTotal + ' 条，覆盖 ' + this.annoDocs + ' 篇文档。'
+          Text(L10n.t('全部批注共 ') + this.annoTotal + ' 条，覆盖 ' + this.annoDocs + ' 篇文档。'
             + '批注随「导出备份」一并打包（annotations 目录），预览最多列出 100 条。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -1065,7 +1065,7 @@ export struct SettingsData {
           }
 
           if (this.annoTotal > 100 && this.annoOpen) {
-            Text('共 ' + this.annoTotal + ' 条，仅显示前 100 条 —— 全部内容以备份文件为准。')
+            Text(L10n.t('共 ') + this.annoTotal + ' 条，仅显示前 100 条 —— 全部内容以备份文件为准。')
               .fontSize(HwType.caption - 1)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1078,10 +1078,10 @@ export struct SettingsData {
       // ── ③ 书架数据（内置文档） ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('书架数据')
+          Text(L10n.t('书架数据'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
-          Text('内置文档共 ' + this.builtinList.length + ' 篇 —— **内置文档不能删除**，'
+          Text(L10n.t('内置文档共 ') + this.builtinList.length + ' 篇 —— **内置文档不能删除**，'
             + '只能从书架上移除显示（移除后可在本页恢复）。下方「我的文档」是你的自建内容。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -1105,7 +1105,7 @@ export struct SettingsData {
                 .alignItems(HorizontalAlign.Start)
 
                 // 内置文档**不提供删除按钮**（用户要求：不支持删除）
-                Text('内置')
+                Text(L10n.t('内置'))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
                   .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 3, bottom: 3 })
@@ -1124,7 +1124,7 @@ export struct SettingsData {
               palette: this.palette(),
               chipTint: '#FFD32F2F',
               chipActive: true,
-              chipLabel: '从书架中移除',
+              chipLabel: L10n.t('从书架中移除'),
               chipOnTap: () => {
                 this.confirmResetBuiltins();
               }
@@ -1134,13 +1134,13 @@ export struct SettingsData {
           // ── 我的文档（自建）──
           Divider().strokeWidth(1).color(this.palette().divider)
 
-          Text('我的文档（' + this.myDocs.length + ' 篇）')
+          Text(L10n.t('我的文档（') + this.myDocs.length + ' 篇）')
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
             .width('100%')
 
           if (this.myDocs.length === 0) {
-            Text('还没有自建文档，去书架新建一篇试试')
+            Text(L10n.t('还没有自建文档，去书架新建一篇试试'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1166,7 +1166,7 @@ export struct SettingsData {
                   palette: this.palette(),
                   chipTint: '#FF2E9E4F',
                   chipActive: true,
-                  chipLabel: '导出',
+                  chipLabel: L10n.t('导出'),
                   chipOnTap: () => {
                     this.exportMyDoc(meta);
                   }
@@ -1176,7 +1176,7 @@ export struct SettingsData {
                   palette: this.palette(),
                   chipTint: '#FFD32F2F',
                   chipActive: true,
-                  chipLabel: '删除',
+                  chipLabel: L10n.t('删除'),
                   chipOnTap: () => {
                     this.confirmDeleteMyDoc(meta.name);
                   }
@@ -1191,11 +1191,11 @@ export struct SettingsData {
           // 支持导出与移除（移除**不删除本地文件**）──
           Divider().strokeWidth(1).color(this.palette().divider)
 
-          Text('图片管理')
+          Text(L10n.t('图片管理'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
             .width('100%')
-          Text('本地图片 ' + this.localImages.length + ' 张 · 网络图片 ' + this.netImages
+          Text(L10n.t('本地图片 ') + this.localImages.length + ' 张 · 网络图片 ' + this.netImages
             + ' 张。删除只从列表移除，**不会删除本地文件**。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -1218,7 +1218,7 @@ export struct SettingsData {
                   .fontColor(this.palette().textPrimary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text('本地图片（手写笔记 / 插图）· 点击可查看')
+                Text(L10n.t('本地图片（手写笔记 / 插图）· 点击可查看'))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
               }
@@ -1235,7 +1235,7 @@ export struct SettingsData {
                 palette: this.palette(),
                 chipTint: '#FF2E7D32',
                 chipActive: true,
-                chipLabel: '导出',
+                chipLabel: L10n.t('导出'),
                 chipOnTap: () => {
                   this.exportImage(name);
                 }
@@ -1244,7 +1244,7 @@ export struct SettingsData {
                 palette: this.palette(),
                 chipTint: '#FFD32F2F',
                 chipActive: true,
-                chipLabel: '删除',
+                chipLabel: L10n.t('删除'),
                 chipOnTap: () => {
                   this.hideImage('local', name);
                 }
@@ -1300,7 +1300,7 @@ export struct SettingsData {
                   .fontColor(this.palette().textPrimary)
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text('网络图片 · 点击可查看')
+                Text(L10n.t('网络图片 · 点击可查看'))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
               }
@@ -1317,7 +1317,7 @@ export struct SettingsData {
                 palette: this.palette(),
                 chipTint: '#FFD32F2F',
                 chipActive: true,
-                chipLabel: '删除',
+                chipLabel: L10n.t('删除'),
                 chipOnTap: () => {
                   this.hideImage('net', url);
                 }
@@ -1368,7 +1368,7 @@ export struct SettingsData {
 
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
-              Text('已移除的内置教程')
+              Text(L10n.t('已移除的内置教程'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
               Text(this.hiddenBuiltins.length > 0
@@ -1386,7 +1386,7 @@ export struct SettingsData {
               ImmersiveChip({
                 palette: this.palette(),
                 chipActive: true,
-                chipLabel: '恢复',
+                chipLabel: L10n.t('恢复'),
                 chipOnTap: () => {
                   this.restoreBuiltins();
                 }
@@ -1403,10 +1403,10 @@ export struct SettingsData {
       // ── ② WebDAV 备份 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('WebDAV 备份')
+          Text(L10n.t('WebDAV 备份'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
-          Text('上传全部文档与完整备份包（含 AI 对话记录、批注、手写、设置）到你的 WebDAV 服务器；凭据只存在本机。恢复时下载完整备份包整包还原')
+          Text(L10n.t('上传全部文档与完整备份包（含 AI 对话记录、批注、手写、设置）到你的 WebDAV 服务器；凭据只存在本机。恢复时下载完整备份包整包还原'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1421,7 +1421,7 @@ export struct SettingsData {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: '保存配置',
+              chipLabel: L10n.t('保存配置'),
               chipOnTap: () => {
                 this.saveWebDavConfig();
               }
@@ -1466,7 +1466,7 @@ export struct SettingsData {
           .animation({ duration: 200, curve: Curve.FastOutSlowIn })
 
           if (this.webdavAutoStatus.length > 0) {
-            Text('上次自动任务：' + this.webdavAutoStatus)
+            Text(L10n.t('上次自动任务：') + this.webdavAutoStatus)
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1486,12 +1486,11 @@ export struct SettingsData {
       // ── **应用初始化**（用户要求：清空全部数据，等同卸载重装；确认键倒计时 5 秒）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('应用初始化')
+          Text(L10n.t('应用初始化'))
             .fontSize(HwType.label + 1)
             .fontColor('#FFD93B3B')
             .fontWeight(FontWeight.Medium)
-          Text('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、'
-            + '阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。')
+          Text(L10n.t('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1500,7 +1499,7 @@ export struct SettingsData {
             palette: this.palette(),
             chipTint: '#FFD93B3B',
             chipActive: true,
-            chipLabel: '应用初始化…',
+            chipLabel: L10n.t('应用初始化…'),
             chipOnTap: () => {
               this.resetDialog.open();
             }

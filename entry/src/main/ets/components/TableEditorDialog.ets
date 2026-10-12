@@ -23,6 +23,7 @@ import {
 } from '../theme/DesignTokens';
 import { HwSpace, HwRadius } from '../theme/DesignTokens';
 import { MdTable, TableTool } from '../service/TableTool';
+import { L10n } from '../service/L10n';
 
 /** 单元格列宽（vp）：够放下常用短语，网格横向滚动看更多列 */
 const CELL_W: number = 132;
@@ -119,7 +120,7 @@ export struct TableEditorDialog {
     Column({ space: HwSpace.sm }) {
       // ── 标题 + 行列数 ──
       Row({ space: HwSpace.sm }) {
-        Text('编辑表格')
+        Text(L10n.t('编辑表格'))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.pal().textPrimary)
@@ -131,7 +132,7 @@ export struct TableEditorDialog {
       .width('100%')
 
       // 使用说明
-      Text('「＋ 行 / ＋ 列」在末尾追加；行尾 × 删除该行。表头与对齐样式保持原文不动。')
+      Text(L10n.t('「＋ 行 / ＋ 列」在末尾追加；行尾 × 删除该行。表头与对齐样式保持原文不动。'))
         .fontSize(12)
         .fontColor(this.pal().textTertiary)
         .width('100%')
@@ -160,7 +161,7 @@ export struct TableEditorDialog {
             Row({ space: 4 }) {
               Column().width(30).height(22)
               ForEach(this.tbl.header, (cell: string, ci: number) => {
-                Text('第' + (ci + 1) + '列')
+                Text(L10n.t('第') + (ci + 1) + '列')
                   .width(CELL_W)
                   .height(22)
                   .fontSize(11)
@@ -175,7 +176,7 @@ export struct TableEditorDialog {
             // 点击事件，onClick 不触发 → 选中列永远 -1、对齐/删列按钮一直灰，用户实测），
             // 聚焦即选中，两者不冲突
             Row({ space: 4 }) {
-              Text('头')
+              Text(L10n.t('头'))
                 .width(30)
                 .height(CELL_H)
                 .fontSize(11)
@@ -261,7 +262,7 @@ export struct TableEditorDialog {
 
       // ── 底部：取消 | 保存 ──
       Row({ space: HwSpace.sm }) {
-        Text('取消')
+        Text(L10n.t('取消'))
           .fontSize(14)
           .fontColor('#FFD32F2F')
           .textAlign(TextAlign.Center)
@@ -272,7 +273,7 @@ export struct TableEditorDialog {
           .onClick(() => {
             this.controller?.close();
           })
-        Text('保存表格')
+        Text(L10n.t('保存表格'))
           .fontSize(14)
           .fontColor('#FFFFFFFF')
           .fontWeight(FontWeight.Medium)

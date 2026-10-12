@@ -62,6 +62,7 @@ import { MdBlockView } from '../markdown/MdView';
 import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
 import { LiveBlockEditor } from '../components/LiveBlockEditor';
+import { L10n } from '../service/L10n';
 
 /** 可一键插入的 Markdown 片段 */
 interface MdSnippet {
@@ -128,37 +129,37 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'h1', label: 'H1', before: '# ', after: '', holder: '一级标题', icon: $r('app.media.tb_h1'), group: 'fmt', core: false },
   { key: 'h2', label: 'H2', before: '## ', after: '', holder: '二级标题', icon: $r('app.media.tb_h2'), group: 'fmt', core: true },
   { key: 'h3', label: 'H3', before: '### ', after: '', holder: '三级标题', icon: $r('app.media.tb_h3'), group: 'fmt', core: false },
-  { key: 'bold', label: '粗体', before: '**', after: '**', holder: '粗体文本', icon: $r('app.media.tb_bold'), group: 'fmt', core: true },
-  { key: 'italic', label: '斜体', before: '*', after: '*', holder: '斜体文本', icon: $r('app.media.tb_italic'), group: 'fmt', core: true },
-  { key: 'strike', label: '删除线', before: '~~', after: '~~', holder: '删除线', icon: $r('app.media.tb_strike'), group: 'fmt', core: false },
-  { key: 'mark', label: '高亮', before: '==', after: '==', holder: '高亮标记', icon: $r('app.media.tb_mark'), group: 'fmt', core: false },
-  { key: 'code', label: '行内代码', before: '`', after: '`', holder: 'code', icon: $r('app.media.tb_code'), group: 'fmt', core: true },
-  { key: 'codeblock', label: '代码块', before: '\n```text\n', after: '\n```\n', holder: '代码内容', icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
-  { key: 'quote', label: '引用', before: '\n> ', after: '', holder: '引用内容', icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
-  { key: 'callout', label: '提示块', before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false, tip: '插入提示块（> [!NOTE]），渲染成带色提示卡' },
-  { key: 'ul', label: '无序列表', before: '\n- ', after: '', holder: '列表项', icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
-  { key: 'ol', label: '有序列表', before: '\n1. ', after: '', holder: '列表项', icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
-  { key: 'task', label: '任务', before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false, tip: '插入未勾选的任务项 - [ ]' },
-  { key: 'table', label: '表格', before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false, tip: '插入「列 A | 列 B」两列表格模板' },
-  { key: 'link', label: '链接', before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
-  { key: 'image', label: '图片', before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
-  { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false, tip: '插入分割线 ---（单独占一行）' },
-  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false, tip: '插入脚注引用 [^1]，正文末尾再写 [^1]: 说明' },
+  { key: 'bold', label: L10n.t('粗体'), before: '**', after: '**', holder: '粗体文本', icon: $r('app.media.tb_bold'), group: 'fmt', core: true },
+  { key: 'italic', label: L10n.t('斜体'), before: '*', after: '*', holder: '斜体文本', icon: $r('app.media.tb_italic'), group: 'fmt', core: true },
+  { key: 'strike', label: L10n.t('删除线'), before: '~~', after: '~~', holder: '删除线', icon: $r('app.media.tb_strike'), group: 'fmt', core: false },
+  { key: 'mark', label: L10n.t('高亮'), before: '==', after: '==', holder: '高亮标记', icon: $r('app.media.tb_mark'), group: 'fmt', core: false },
+  { key: 'code', label: L10n.t('行内代码'), before: '`', after: '`', holder: 'code', icon: $r('app.media.tb_code'), group: 'fmt', core: true },
+  { key: 'codeblock', label: L10n.t('代码块'), before: '\n```text\n', after: '\n```\n', holder: '代码内容', icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
+  { key: 'quote', label: L10n.t('引用'), before: '\n> ', after: '', holder: '引用内容', icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
+  { key: 'callout', label: L10n.t('提示块'), before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false, tip: '插入提示块（> [!NOTE]），渲染成带色提示卡' },
+  { key: 'ul', label: L10n.t('无序列表'), before: '\n- ', after: '', holder: '列表项', icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
+  { key: 'ol', label: L10n.t('有序列表'), before: '\n1. ', after: '', holder: '列表项', icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
+  { key: 'task', label: L10n.t('任务'), before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false, tip: '插入未勾选的任务项 - [ ]' },
+  { key: 'table', label: L10n.t('表格'), before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false, tip: '插入「列 A | 列 B」两列表格模板' },
+  { key: 'link', label: L10n.t('链接'), before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
+  { key: 'image', label: L10n.t('图片'), before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
+  { key: 'divider', label: L10n.t('分割线'), before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false, tip: '插入分割线 ---（单独占一行）' },
+  { key: 'note', label: L10n.t('脚注'), before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false, tip: '插入脚注引用 [^1]，正文末尾再写 [^1]: 说明' },
   // ── 图表快捷插入（用户要求：一键插模板、占位直接改） ──
   // 模板都取"引擎能认的最小可用写法"，且经 tools/verify-chart-templates.js 用
   // **真实渲染模板**在浏览器里跑过 —— 插进去渲染不出来的模板比没有更糟。
-  { key: 'chart-mermaid', label: '流程图', before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false, tip: '插入 mermaid 流程图代码块' },
-  { key: 'chart-echarts', label: '数据图', before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false, tip: '插入 ECharts 配置（JSON），可画柱状/折线/饼图' },
-  { key: 'chart-markmap', label: '脑图', before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false, tip: '插入 markmap 大纲，标题层级即脑图分支' },
-  { key: 'chart-graphviz', label: '关系图', before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false, tip: '插入 Graphviz DOT 有向图' },
-  { key: 'chart-flowchart', label: '旧式流程', before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false, tip: '插入 flowchart.js 语法（老式流程图，新图建议用「流程图」）' },
-  { key: 'chart-wavedrom', label: '波形', before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false, tip: '插入 WaveDrom JSON，画数字时序波形' },
-  { key: 'chart-abc', label: '五线谱', before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false, tip: '插入 ABC 记谱，渲染成五线谱' },
-  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false, tip: '插入 HTML 代码块，渲染成可交互网页卡片' },
+  { key: 'chart-mermaid', label: L10n.t('流程图'), before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false, tip: '插入 mermaid 流程图代码块' },
+  { key: 'chart-echarts', label: L10n.t('数据图'), before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false, tip: '插入 ECharts 配置（JSON），可画柱状/折线/饼图' },
+  { key: 'chart-markmap', label: L10n.t('脑图'), before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false, tip: '插入 markmap 大纲，标题层级即脑图分支' },
+  { key: 'chart-graphviz', label: L10n.t('关系图'), before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false, tip: '插入 Graphviz DOT 有向图' },
+  { key: 'chart-flowchart', label: L10n.t('旧式流程'), before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false, tip: '插入 flowchart.js 语法（老式流程图，新图建议用「流程图」）' },
+  { key: 'chart-wavedrom', label: L10n.t('波形'), before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false, tip: '插入 WaveDrom JSON，画数字时序波形' },
+  { key: 'chart-abc', label: L10n.t('五线谱'), before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false, tip: '插入 ABC 记谱，渲染成五线谱' },
+  { key: 'chart-html', label: L10n.t('HTML 预览'), before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false, tip: '插入 HTML 代码块，渲染成可交互网页卡片' },
   // ── 新增格式按钮（参考常见编辑器补齐） ──
-  { key: 'taskdone', label: '已完成任务', before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false, tip: '插入已勾选的任务项 - [x]' },
-  { key: 'latex', label: '公式块', before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false, tip: '插入块级公式 $$…$$，渲染成公式卡片' },
-  { key: 'latexinline', label: '行内公式', before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false, tip: '插入行内公式 $…$，随正文排版' },
+  { key: 'taskdone', label: L10n.t('已完成任务'), before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false, tip: '插入已勾选的任务项 - [x]' },
+  { key: 'latex', label: L10n.t('公式块'), before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false, tip: '插入块级公式 $$…$$，渲染成公式卡片' },
+  { key: 'latexinline', label: L10n.t('行内公式'), before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false, tip: '插入行内公式 $…$，随正文排版' },
   // ⚠️ **下划线 <u>、居中 <div align>、颜色 <font> 三类按钮都不做**：它们只能靠行内
   //    / 块级 HTML 表达，而解析器只认 `<details>` 一种 HTML，其余按纯文本显示
   //    （见 MdParser 头注释）——插进去就是一串显示出来的标签，比没有按钮更糟。
@@ -238,7 +239,7 @@ const PREVIEW_MODE_ITEMS: PreviewModeItem[] = [
   // ⚠️ 实时预览只保留**分段预览编辑**（用户决定：WYSIWYG / IR 的 Web 表面路线
   // 罢试，编辑页回到 1.1.1 的稳定形态）。两种 Web 模式的分支保留为死代码，
   // previewMode 在进页时强制归 0。
-  { m: 0, label: '分段预览编辑', desc: '点哪块改哪块（原比例内联编辑）' }
+  { m: 0, label: L10n.t('分段预览编辑'), desc: '点哪块改哪块（原比例内联编辑）' }
 ];
 
 /** Web 编辑器（WYSIWYG / IR）与 ArkTS 的桥：Web 调 mdChanged 推送内容。 */
@@ -377,7 +378,7 @@ export struct Editor {
     // WYSIWYG / IR 依赖 marked（MD→HTML）与 turndown（HTML→MD）——
     // 「设置 → 引擎管理」里任一被关闭就停用这两个模式（关闭后无法渲染）
     if (mode >= 1 && this.webModeBlocked()) {
-      this.toast('该模式依赖 marked / turndown，已在「设置 → 引擎管理」中关闭');
+      this.toast(L10n.t('该模式依赖 marked / turndown，已在「设置 → 引擎管理」中关闭'));
       this.previewModeMenu = false;
       return;
     }
@@ -413,7 +414,7 @@ export struct Editor {
     this.syncFormulaTasks();
     if (this.previewMode >= 1 && this.webModeBlocked()) {
       this.previewMode = 0;
-      this.toast('marked / turndown 已关闭，实时预览回落为分段预览编辑');
+      this.toast(L10n.t('marked / turndown 已关闭，实时预览回落为分段预览编辑'));
     }
   }
 
@@ -454,7 +455,7 @@ export struct Editor {
         SymbolGlyph($r('sys.symbol.xmark'))
           .fontSize(15)
           .fontColor([this.palette().textSecondary])
-        Text('关闭实时预览')
+        Text(L10n.t('关闭实时预览'))
           .fontSize(15)
           .fontColor(this.palette().textSecondary)
       }
@@ -724,7 +725,7 @@ export struct Editor {
   /** 打开版本历史面板。 */
   private openVersions(): void {
     if (this.docName.length === 0) {
-      this.toast('先保存文档才有版本历史');
+      this.toast(L10n.t('先保存文档才有版本历史'));
       return;
     }
     const ctx = this.ctx();
@@ -856,7 +857,7 @@ export struct Editor {
       DocStore.init(ctx);
       const meta: DocMeta | undefined = DocStore.find(ctx, name);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       // **预置文档支持修改**（用户要求）：内置文档与普通文档同一编辑链路
@@ -879,7 +880,7 @@ export struct Editor {
           this.content = draft;
           this.dirty = true;
           setTimeout(() => {
-            this.toast('已恢复上次未保存的修改，可继续编辑或保存');
+            this.toast(L10n.t('已恢复上次未保存的修改，可继续编辑或保存'));
           }, 350);
         } else {
           EditorDraft.clear(ctx, meta.name);
@@ -1092,7 +1093,7 @@ export struct Editor {
       items.push(indent + '- [' + safe + '](#' + safe + ')');
     }
     if (items.length === 0) {
-      this.toast('文档里还没有标题，先写几个 ## 再插目录');
+      this.toast(L10n.t('文档里还没有标题，先写几个 ## 再插目录'));
       return;
     }
 
@@ -1131,7 +1132,7 @@ export struct Editor {
   private openAiChat(quote: string): void {
     // **基础模式（纯离线）拦截**（用户要求）：AI 助手要走网络，离线模式直接挡在入口
     if (UpdateService.isOffline()) {
-      this.toast('基础模式（纯离线）下 AI 助手不可用');
+      this.toast(L10n.t('基础模式（纯离线）下 AI 助手不可用'));
       return;
     }
     // **未保存先自动保存**（用户要求）：保证 AI 拿到的文档名 / 正文与磁盘一致；
@@ -1197,7 +1198,7 @@ export struct Editor {
         }
         const rel: string | null = DocStore.importImageFromUri(ctx, result.photoUris[0]);
         if (rel === null) {
-          this.toast('图片导入失败：格式不支持或超过 20MB');
+          this.toast(L10n.t('图片导入失败：格式不支持或超过 20MB'));
           return;
         }
         this.insertRaw('\n![图片](' + rel + ')\n');
@@ -1206,7 +1207,7 @@ export struct Editor {
         this.toast('选择图片失败：' + err.message);
       });
     } catch (err) {
-      this.toast('无法打开图片选择器');
+      this.toast(L10n.t('无法打开图片选择器'));
     }
   }
 
@@ -1224,7 +1225,7 @@ export struct Editor {
         this.stack.pushPath({ name: 'pages/Sketch' });
       }
     } catch (err) {
-      this.toast('无法打开手写页');
+      this.toast(L10n.t('无法打开手写页'));
     }
   }
 
@@ -1239,7 +1240,7 @@ export struct Editor {
     if (md.length > 0) {
       AppStorage.setOrCreate('sketchInsertMd', '');
       this.insertRaw(md);
-      this.toast('手写笔记已插入，预览即可查看');
+      this.toast(L10n.t('手写笔记已插入，预览即可查看'));
     }
   }
 
@@ -1255,7 +1256,7 @@ export struct Editor {
   private insertSyntax(syntax: string): void {
     this.insertRaw(syntax);
     this.showSyntax = false;
-    this.toast('已插入到光标位置');
+    this.toast(L10n.t('已插入到光标位置'));
   }
 
   /**
@@ -1271,7 +1272,7 @@ export struct Editor {
       this.previewImage = payload;
       return;
     }
-    this.toast('图表请在阅读页里放大查看');
+    this.toast(L10n.t('图表请在阅读页里放大查看'));
   }
 
   // ══════════════════════ 查找 / 替换 / 跳转行 ══════════════════════
@@ -1345,7 +1346,7 @@ export struct Editor {
     this.recomputeMatches();
     const total: number = this.findMatches.length;
     if (total === 0) {
-      this.toast('没有匹配的内容');
+      this.toast(L10n.t('没有匹配的内容'));
       return;
     }
     let next: number = this.findCursor + delta;
@@ -1364,14 +1365,14 @@ export struct Editor {
   private replaceCurrent(): void {
     this.recomputeMatches();
     if (this.findMatches.length === 0) {
-      this.toast('没有匹配的内容');
+      this.toast(L10n.t('没有匹配的内容'));
       return;
     }
     const needle: string = this.findQuery.trim();
     const at: number = this.findCursor >= 0 && this.findCursor < this.findMatches.length
       ? this.findMatches[this.findCursor] : this.findMatches[0];
     if (this.content.substring(at, at + needle.length).toLowerCase() !== needle.toLowerCase()) {
-      this.toast('请先用「上一处/下一处」定位到要替换的词');
+      this.toast(L10n.t('请先用「上一处/下一处」定位到要替换的词'));
       return;
     }
     this.content = this.content.substring(0, at) + this.replaceText
@@ -1379,7 +1380,7 @@ export struct Editor {
     this.dirty = true;
     this.caret = at + this.replaceText.length;
     this.recomputeMatches();
-    this.toast('已替换');
+    this.toast(L10n.t('已替换'));
   }
 
   private replaceAll(): void {
@@ -1390,7 +1391,7 @@ export struct Editor {
     this.recomputeMatches();
     const total: number = this.findMatches.length;
     if (total === 0) {
-      this.toast('没有匹配的内容');
+      this.toast(L10n.t('没有匹配的内容'));
       return;
     }
     // 不区分大小写的整体替换：按匹配区间从后往前拼
@@ -1410,7 +1411,7 @@ export struct Editor {
   private gotoLine(): void {
     const line: number = parseInt(this.gotoLineText.trim(), 10);
     if (isNaN(line) || line < 1) {
-      this.toast('请输入大于 0 的行号');
+      this.toast(L10n.t('请输入大于 0 的行号'));
       return;
     }
     const lines: string[] = this.content.split('\n');
@@ -1452,7 +1453,7 @@ export struct Editor {
           }
           const rel: string | null = DocStore.saveImageBytes(ctx, buf, '.png');
           if (rel === null) {
-            this.toast('图片保存失败');
+            this.toast(L10n.t('图片保存失败'));
             return;
           }
           this.insertRaw('\n![粘贴图片](' + rel + ')\n');
@@ -1563,14 +1564,14 @@ export struct Editor {
     }
     if (wanted.length === 0) {
       if (!quiet) {
-        this.toast('请先填写文档名');
+        this.toast(L10n.t('请先填写文档名'));
       }
       return false;
     }
     // 只读文档不允许回写（正常入口已隐藏编辑按钮，这里兜底挡住深层路径）
     if (this.docReadOnly && !this.isNew) {
       if (!quiet) {
-        this.toast('该文档是只读的，先切成「可写」再编辑');
+        this.toast(L10n.t('该文档是只读的，先切成「可写」再编辑'));
       }
       return false;
     }
@@ -1579,7 +1580,7 @@ export struct Editor {
       if (this.isNew) {
         const meta: DocMeta | null = DocStore.create(ctx, wanted, this.content);
         if (meta === null) {
-          this.toast('保存失败：名称非法或已存在同名文档');
+          this.toast(L10n.t('保存失败：名称非法或已存在同名文档'));
           return false;
         }
         this.isNew = false;
@@ -1596,14 +1597,14 @@ export struct Editor {
       }
       if (wanted !== this.originalName) {
         if (!DocStore.rename(ctx, this.originalName, wanted)) {
-          this.toast('重命名失败：名称非法或已存在同名文档');
+          this.toast(L10n.t('重命名失败：名称非法或已存在同名文档'));
           return false;
         }
         this.originalName = DocStore.sanitizeName(wanted);
         this.docName = this.originalName;
       }
       if (!DocStore.update(ctx, this.originalName, this.content)) {
-        this.toast('保存失败');
+        this.toast(L10n.t('保存失败'));
         return false;
       }
       this.dirty = false;
@@ -1629,7 +1630,7 @@ export struct Editor {
         this.stack.pop();
       }
     } catch (err) {
-      this.toast('返回失败');
+      this.toast(L10n.t('返回失败'));
     }
   }
 
@@ -1654,7 +1655,7 @@ export struct Editor {
     const ctx = this.ctx();
     if (ctx !== null && this.docName.length > 0) {
       if (EditorDraft.save(ctx, this.docName, this.content)) {
-        this.toast('已存草稿，下次打开自动恢复');
+        this.toast(L10n.t('已存草稿，下次打开自动恢复'));
       }
     }
     this.dirty = false;
@@ -2042,7 +2043,7 @@ export struct Editor {
         Column() {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '手写',
+            chipLabel: L10n.t('手写'),
             chipOnTap: () => {
               this.openSketch();
             }
@@ -2064,7 +2065,7 @@ export struct Editor {
         Column() {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '插图片',
+            chipLabel: L10n.t('插图片'),
             chipOnTap: () => {
               this.insertImage();
             }
@@ -2085,7 +2086,7 @@ export struct Editor {
         Column() {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: 'AI 助手',
+            chipLabel: L10n.t('AI 助手'),
             chipOnTap: () => {
               this.openAiChat('');
             }
@@ -2165,7 +2166,7 @@ export struct Editor {
   barExpandPanel() {
     Column({ space: HwSpace.xs }) {
       Row({ space: HwSpace.xs }) {
-        Text('全部编辑功能')
+        Text(L10n.t('全部编辑功能'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .layoutWeight(1)
@@ -2174,7 +2175,7 @@ export struct Editor {
             .width(16)
             .height(16)
             .fillColor(this.palette().accent)
-          Text('收起')
+          Text(L10n.t('收起'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().accent)
         }
@@ -2323,7 +2324,7 @@ export struct Editor {
         Row({ space: HwSpace.xs }) {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '专注',
+            chipLabel: L10n.t('专注'),
             chipOnTap: () => {
               // 焦点写作（批 5）：隐藏顶栏 / 底部工具层，只留正文
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
@@ -2352,7 +2353,7 @@ export struct Editor {
 
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '目录',
+            chipLabel: L10n.t('目录'),
             chipOnTap: () => {
               this.insertToc();
             }
@@ -2364,7 +2365,7 @@ export struct Editor {
 
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '大纲',
+            chipLabel: L10n.t('大纲'),
             chipOnTap: () => {
               this.openOutline();
             }
@@ -2376,7 +2377,7 @@ export struct Editor {
 
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '语法',
+            chipLabel: L10n.t('语法'),
             chipOnTap: () => {
               this.openSyntax();
             }
@@ -2436,10 +2437,10 @@ export struct Editor {
         // ── 自动保存设置 ──
         Row({ space: HwSpace.sm }) {
           Column({ space: 2 }) {
-            Text('自动保存版本')
+            Text(L10n.t('自动保存版本'))
               .fontSize(HwType.label + 1)
               .fontColor(this.palette().textPrimary)
-            Text('按下面的间隔记录快照，内容没变化不重复记')
+            Text(L10n.t('按下面的间隔记录快照，内容没变化不重复记'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -2456,13 +2457,13 @@ export struct Editor {
 
         if (this.versionAutoSave) {
           Row({ space: HwSpace.xs }) {
-            Text('间隔')
+            Text(L10n.t('间隔'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.versionInterval === 1,
-              chipLabel: '1 分钟',
+              chipLabel: L10n.t('1 分钟'),
               chipOnTap: () => {
                 this.versionInterval = 1;
               }
@@ -2470,7 +2471,7 @@ export struct Editor {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.versionInterval === 5,
-              chipLabel: '5 分钟',
+              chipLabel: L10n.t('5 分钟'),
               chipOnTap: () => {
                 this.versionInterval = 5;
               }
@@ -2478,7 +2479,7 @@ export struct Editor {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.versionInterval === 10,
-              chipLabel: '10 分钟',
+              chipLabel: L10n.t('10 分钟'),
               chipOnTap: () => {
                 this.versionInterval = 10;
               }
@@ -2486,7 +2487,7 @@ export struct Editor {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.versionInterval === 30,
-              chipLabel: '30 分钟',
+              chipLabel: L10n.t('30 分钟'),
               chipOnTap: () => {
                 this.versionInterval = 30;
               }
@@ -2498,7 +2499,7 @@ export struct Editor {
         Divider().strokeWidth(1).color(this.palette().divider)
 
         if (this.versionList.length === 0) {
-          Text('还没有快照。手动保存或自动保存后会出现在这里')
+          Text(L10n.t('还没有快照。手动保存或自动保存后会出现在这里'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -2518,14 +2519,14 @@ export struct Editor {
 
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '对比',
+              chipLabel: L10n.t('对比'),
               chipOnTap: () => {
                 this.startDiff(v.ts);
               }
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '恢复',
+              chipLabel: L10n.t('恢复'),
               chipOnTap: () => {
                 this.restoreVersion(v.ts);
               }
@@ -2551,12 +2552,12 @@ export struct Editor {
       Row({ space: HwSpace.xs }) {
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '返回列表',
+          chipLabel: L10n.t('返回列表'),
           chipOnTap: () => {
             this.diffFor = -1;
           }
         })
-        Text('红色 = 旧版独有 · 绿色 = 当前独有')
+        Text(L10n.t('红色 = 旧版独有 · 绿色 = 当前独有'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .layoutWeight(1)
@@ -2662,14 +2663,14 @@ export struct Editor {
     Column({ space: HwSpace.md }) {
         // **操作提示放在内容里**：官方标题栏的副标题在手机端只有一行、
         // 长句会被截断（用户反馈「看不到全部内容」）——这里完整显示。
-        Text('点任意一行即可插入到光标位置；末尾的「语法教程」有完整示例。')
+        Text(L10n.t('点任意一行即可插入到光标位置；末尾的「语法教程」有完整示例。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.caption * 1.6)
           .width('100%')
 
         // 语法口径与示例说明的参考来源（用户要求注明）
-        Text('语法分类与说明参考：younghz/Markdown（github.com/younghz/Markdown），' +
+        Text(L10n.t('语法分类与说明参考：younghz/Markdown（github.com/younghz/Markdown），') +
           '并按澄笺支持的范围补充了提示块 / 脚注 / 公式 / 图表等扩展语法。')
           .fontSize(HwType.caption - 0.5)
           .fontColor(this.palette().textTertiary)
@@ -2694,7 +2695,7 @@ export struct Editor {
             // **效果预览**：用应用自己的解析器 + 渲染器把该行语法真实渲染出来
             // （解析结果按 syntax 缓存，只解析一次）
             Column({ space: HwSpace.xxs }) {
-              Text('效果')
+              Text(L10n.t('效果'))
                 .fontSize(HwType.caption - 1)
                 .fontColor(this.palette().textTertiary)
               ForEach(this.syntaxBlocks(row.syntax), (b: MdBlock) => {
@@ -2784,7 +2785,7 @@ export struct Editor {
           .width('100%')
           .height(this.contentTopInset())
 
-        TextArea({ text: this.content, placeholder: '在这里写 Markdown……' })
+        TextArea({ text: this.content, placeholder: L10n.t('在这里写 Markdown……') })
           .width('100%')
           // **刻意不设高度 / layoutWeight**：由 TextArea 按内容自适应撑开，
           // 内部不再有第二个滚动条，空白才能真正"跟着滑动"
@@ -2891,7 +2892,7 @@ export struct Editor {
           + (block.task === MdTaskState.Done ? '_d' : (block.task === MdTaskState.Todo ? '_t' : ''));
       })
       ListItem() {
-        Text('—— 预览结束 ——')
+        Text(L10n.t('—— 预览结束 ——'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -2931,7 +2932,7 @@ export struct Editor {
       if (this.previewMode === 2) {
         ListItem() {
           Column({ space: HwSpace.xs }) {
-            Text('即时渲染 · 直接改源码，下方实时预览')
+            Text(L10n.t('即时渲染 · 直接改源码，下方实时预览'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             TextArea({ text: this.irDraft })
@@ -2959,7 +2960,7 @@ export struct Editor {
             SymbolGlyph($r('sys.symbol.square_and_pencil'))
               .fontSize(12)
               .fontColor([this.palette().textTertiary])
-            Text('点任意一块即可就地编辑 · 表格点开是网格 · 代码块带实时预览')
+            Text(L10n.t('点任意一块即可就地编辑 · 表格点开是网格 · 代码块带实时预览'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
@@ -3065,7 +3066,7 @@ export struct Editor {
                   SymbolGlyph($r('sys.symbol.square_and_pencil'))
                     .fontSize(12)
                     .fontColor([this.palette().textTertiary])
-                  Text('编辑')
+                  Text(L10n.t('编辑'))
                     .fontSize(HwType.caption - 1)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -3162,7 +3163,7 @@ export struct Editor {
             SymbolGlyph($r('sys.symbol.plus'))
               .fontSize(14)
               .fontColor([this.palette().textTertiary])
-            Text('点这里新建段落')
+            Text(L10n.t('点这里新建段落'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -3328,7 +3329,7 @@ export struct Editor {
       // 首次进入给一次用法提示：功能是"点块编辑"，不说明很容易以为点了没反应
       if (!this.liveTipShown) {
         this.liveTipShown = true;
-        this.toast('点正文任意一块即可编辑 · 表格点开是网格 · 代码块带实时预览');
+        this.toast(L10n.t('点正文任意一块即可编辑 · 表格点开是网格 · 代码块带实时预览'));
       }
     }
   }
@@ -3445,7 +3446,7 @@ export struct Editor {
       this.outlineEpoch = this.outlineEpoch + 1;
       this.toast('已移动《' + outline[from].text + '》这一节');
     } catch (err) {
-      this.toast('移动失败：正文结构异常');
+      this.toast(L10n.t('移动失败：正文结构异常'));
     }
   }
 
@@ -3462,7 +3463,7 @@ export struct Editor {
         p--;
       }
       if (p < 0) {
-        this.toast('已经是第一节了');
+        this.toast(L10n.t('已经是第一节了'));
         return;
       }
       this.moveSectionTo(index, p);
@@ -3473,7 +3474,7 @@ export struct Editor {
         n++;
       }
       if (n >= this.outlineItems.length) {
-        this.toast('已经是最后一节了');
+        this.toast(L10n.t('已经是最后一节了'));
         return;
       }
       // 移动到"下一节的下一节"之前 = 与下一节交换
@@ -4143,7 +4144,7 @@ export struct Editor {
     if (start + 1 >= lines.length
       || !TableTool.isTableRow(lines[start])
       || !TableTool.isDelimiterRow(lines[start + 1])) {
-      this.toast('这个表格暂不支持网格编辑（可能嵌在引用里）');
+      this.toast(L10n.t('这个表格暂不支持网格编辑（可能嵌在引用里）'));
       this.liveTableIndex = -1;
       return;
     }
@@ -4157,7 +4158,7 @@ export struct Editor {
     this.dirty = true;
     this.liveTableIndex = -1;
     this.refreshPreviewBlocks();
-    this.toast('表格已更新');
+    this.toast(L10n.t('表格已更新'));
   }
 
   /** 分屏模式：0 纯编辑/预览 1 上下 2 左右。进入分屏时立即解析一次。 */
@@ -4371,7 +4372,7 @@ export struct Editor {
       // 版本历史面板：根节点已有语法速查的 bindSheet（一节点只认一条），
       // 这里挂在内容 Row 上（用户要求：顶栏「版本历史」按钮 → 快照列表 / 对比 / 恢复）
       .bindSheet(this.showVersions, this.versionsSheet(), modalSheetOptions({
-        title: '版本历史',
+        title: L10n.t('版本历史'),
         subtitle: this.docName.length > 0 ? '《' + this.docName + '》的编辑快照' : '',
         surface: this.palette().surface,
         phoneLayout: this.rootWidth <= this.rootHeight,
@@ -4431,7 +4432,7 @@ export struct Editor {
               SymbolGlyph($r('sys.symbol.xmark'))
                 .fontSize(15)
                 .fontColor([this.palette().textSecondary])
-              Text('关闭实时预览')
+              Text(L10n.t('关闭实时预览'))
                 .fontSize(15)
                 .fontColor(this.palette().textSecondary)
             }
@@ -4517,7 +4518,7 @@ export struct Editor {
         Stack() {
           ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
           Row({ space: 6 }) {
-            Text('专注中')
+            Text(L10n.t('专注中'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveIconButton({
@@ -4563,7 +4564,7 @@ export struct Editor {
             SymbolGlyph($r('sys.symbol.magnifyingglass'))
               .fontSize(14)
               .fontColor([this.palette().textTertiary])
-            TextInput({ text: this.findQuery, placeholder: '查找内容' })
+            TextInput({ text: this.findQuery, placeholder: L10n.t('查找内容') })
               .layoutWeight(1)
               .height('100%')
               .fontSize(HwType.label)
@@ -4642,7 +4643,7 @@ export struct Editor {
               barHeight: HwBar.pill,
               barWidth: '100%'
             }) {
-              TextInput({ text: this.replaceText, placeholder: '替换为' })
+              TextInput({ text: this.replaceText, placeholder: L10n.t('替换为') })
                 .layoutWeight(1)
                 .height('100%')
                 .fontSize(HwType.label)
@@ -4656,14 +4657,14 @@ export struct Editor {
                 })
               ImmersiveChip({
                 palette: this.palette(),
-                chipLabel: '替换',
+                chipLabel: L10n.t('替换'),
                 chipOnTap: () => {
                   this.replaceCurrent();
                 }
               })
               ImmersiveChip({
                 palette: this.palette(),
-                chipLabel: '全部替换',
+                chipLabel: L10n.t('全部替换'),
                 chipOnTap: () => {
                   this.replaceAll();
                 }
@@ -4677,7 +4678,7 @@ export struct Editor {
               barHeight: HwBar.pill,
               barWidth: '100%'
             }) {
-              TextInput({ text: this.gotoLineText, placeholder: '行号' })
+              TextInput({ text: this.gotoLineText, placeholder: L10n.t('行号') })
                 .layoutWeight(1)
                 .height('100%')
                 .fontSize(HwType.label)
@@ -4692,7 +4693,7 @@ export struct Editor {
                 })
               ImmersiveChip({
                 palette: this.palette(),
-                chipLabel: '跳转到行',
+                chipLabel: L10n.t('跳转到行'),
                 chipOnTap: () => {
                   this.gotoLine();
                 }
@@ -4724,7 +4725,7 @@ export struct Editor {
               SymbolGlyph($r('sys.symbol.square_and_pencil'))
                 .fontSize(16)
                 .fontColor([this.palette().accent])
-              Text('编辑这一块')
+              Text(L10n.t('编辑这一块'))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -4758,7 +4759,7 @@ export struct Editor {
 
             Row({ space: HwSpace.sm }) {
               Blank()
-              Text('取消')
+              Text(L10n.t('取消'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textSecondary)
                 .padding({ left: 16, right: 16, top: 8, bottom: 8 })
@@ -4767,7 +4768,7 @@ export struct Editor {
                 .onClick(() => {
                   this.wysOpen = false;
                 })
-              Text('保存')
+              Text(L10n.t('保存'))
                 .fontSize(HwType.label)
                 .fontColor('#FFFFFF')
                 .padding({ left: 20, right: 20, top: 8, bottom: 8 })
@@ -4808,7 +4809,7 @@ export struct Editor {
               SymbolGlyph($r('sys.symbol.list_bullet'))
                 .fontSize(16)
                 .fontColor([this.palette().accent])
-              Text('大纲重排')
+              Text(L10n.t('大纲重排'))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -4829,13 +4830,13 @@ export struct Editor {
             .width('100%')
             .alignItems(VerticalAlign.Center)
 
-            Text('长按拖动可整节换序（连同它的子标题一起搬）· 也可用 ↑↓ 微调')
+            Text(L10n.t('长按拖动可整节换序（连同它的子标题一起搬）· 也可用 ↑↓ 微调'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
 
             if (this.outlineItems.length === 0) {
-              Text('这篇还没有标题。先写几个 `##` 小节，再回来整理顺序。')
+              Text(L10n.t('这篇还没有标题。先写几个 `##` 小节，再回来整理顺序。'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textSecondary)
                 .width('100%')
@@ -4928,11 +4929,11 @@ export struct Editor {
               SymbolGlyph($r('sys.symbol.doc_plaintext'))
                 .fontSize(13)
                 .fontColor([this.palette().accent])
-              Text('链接到文档')
+              Text(L10n.t('链接到文档'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().accent)
               Blank()
-              Text('点一条插入 [[名称]]')
+              Text(L10n.t('点一条插入 [[名称]]'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -5026,7 +5027,7 @@ export struct Editor {
               )
             )
 
-          Text('点此关闭')
+          Text(L10n.t('点此关闭'))
             .fontSize(HwType.caption)
             .fontColor('#FFFFFFFF')
             .padding({ left: HwSpace.md, right: HwSpace.md, top: 6, bottom: 6 })
@@ -5058,8 +5059,8 @@ export struct Editor {
     // 语法速查：**官方规范半模态面板**（material/ModalSheet.ets：模态型 + MEDIUM 高
     // + 官方标题栏 / 关闭按钮 / 拖拽条，内部滚动）
     .bindSheet(this.showSyntax, this.syntaxSheet(), modalSheetOptions({
-      title: 'Markdown 语法速查',
-      subtitle: '点任意一行即可插入到光标位置',
+      title: L10n.t('Markdown 语法速查'),
+      subtitle: L10n.t('点任意一行即可插入到光标位置'),
       surface: this.palette().surface,
       // 竖屏（含平板竖屏）按手机形态出底部面板；平板竖屏宽度收一半
       phoneLayout: this.rootWidth <= this.rootHeight,

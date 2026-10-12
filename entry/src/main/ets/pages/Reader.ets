@@ -89,6 +89,7 @@ import { MdViewUtil } from '../markdown/MdView';
 import { MdBlockView } from '../markdown/MdView';
 import { ExportService } from '../service/ExportService';
 import { EpubExport } from '../service/EpubExport';
+import { L10n } from '../service/L10n';
 
 // ══ 乐谱音频合成（后台线程）：音符事件 → 16bit WAV ══
 /**
@@ -214,7 +215,7 @@ interface EncodingChoice {
 }
 
 const ENCODING_CHOICES: EncodingChoice[] = [
-  { label: '自动', value: 'auto' },
+  { label: L10n.t('自动'), value: 'auto' },
   { label: 'UTF-8', value: 'utf-8' },
   { label: 'GBK', value: 'gbk' },
   { label: 'GB18030', value: 'gb18030' },
@@ -577,7 +578,7 @@ export struct Reader {
     // 直接拿相对路径给 Image 组件会是一片空白 —— 用户实测）
     const resolved: string = DocStore.resolveImagePath(rel);
     if (resolved.length === 0) {
-      this.toast('找不到手写批注图片');
+      this.toast(L10n.t('找不到手写批注图片'));
       return;
     }
     const uri: string = resolved;
@@ -613,13 +614,13 @@ export struct Reader {
     AppStorage.setOrCreate('sketchAnnotationImage', '');
     AppStorage.setOrCreate('sketchMode', '');
     if (end <= start) {
-      this.toast('没有可标注的选区');
+      this.toast(L10n.t('没有可标注的选区'));
       return;
     }
     const list: MdAnnotation[] = this.withoutOverlap(this.annotations, blockId, start, end);
     list.push(this.buildAnnotation(blockId, start, end, text, -1, 'hw:' + rel, 'dbl'));
     this.commitAnnotations(list);
-    this.toast('已添加手写批注');
+    this.toast(L10n.t('已添加手写批注'));
   }
 
   /** 关闭所有放大浮层（图表 / 图片）并复位缩放、旋转等临时状态。 */
@@ -1163,7 +1164,7 @@ export struct Reader {
         this.stack.pop();
       }
     } catch (err) {
-      this.toast('返回失败');
+      this.toast(L10n.t('返回失败'));
     }
   }
 
@@ -1618,7 +1619,7 @@ export struct Reader {
     }
     try {
       if (!DocStore.setReadOnly(ctx, this.docName, readOnly)) {
-        this.toast('切换失败：文档不存在');
+        this.toast(L10n.t('切换失败：文档不存在'));
         return;
       }
       this.docReadOnly = readOnly;
@@ -1784,7 +1785,7 @@ export struct Reader {
           this.heroExit();
         });
       } catch (err) {
-        this.toast('返回失败');
+        this.toast(L10n.t('返回失败'));
       }
       return;
     }
@@ -1816,7 +1817,7 @@ export struct Reader {
         this.heroExit();
       });
     } catch (err) {
-      this.toast('返回失败');
+      this.toast(L10n.t('返回失败'));
     }
   }
 
@@ -1824,7 +1825,7 @@ export struct Reader {
   private reloadActiveDoc(): void {
     this.closeTabMenu();
     this.loadDoc();
-    this.toast('已重新加载');
+    this.toast(L10n.t('已重新加载'));
   }
 
   private openTabMenu(name: string): void {
@@ -1880,7 +1881,7 @@ export struct Reader {
       base = base.substring(0, base.length - 4);
     }
     if (base.length === 0) {
-      this.toast('链接没有指向任何文档');
+      this.toast(L10n.t('链接没有指向任何文档'));
       return;
     }
     const meta: DocMeta | undefined = DocStore.findByLinkTarget(ctx, base);
@@ -2045,7 +2046,7 @@ export struct Reader {
       if (this.stack !== null) {
         this.stack.pushPath({ name: 'pages/Sketch' });
       } else {
-        this.toast('当前环境无法打开手写页');
+        this.toast(L10n.t('当前环境无法打开手写页'));
       }
       return;
     }
@@ -2054,13 +2055,13 @@ export struct Reader {
       const list: MdAnnotation[] = this.withoutOverlap(this.annotations, blockId, start, end);
       list.push(this.buildAnnotation(blockId, start, end, text, -1, '', 'wavy'));
       this.commitAnnotations(list);
-      this.toast('已添加波浪线');
+      this.toast(L10n.t('已添加波浪线'));
       return;
     }
     // sysselect：该块进入"系统选择模式"（恢复系统原生长按菜单，方便复制 / 翻译 / 唤起小艺）
     if (action === 'sysselect') {
       this.systemSelectBlock = blockId;
-      this.toast('长按文字可复制 / 翻译 / 唤起小艺；点一下正文退出');
+      this.toast(L10n.t('长按文字可复制 / 翻译 / 唤起小艺；点一下正文退出'));
       return;
     }
     // highlight：同一区间先清掉旧批注再写入，避免反复涂抹层层叠加
@@ -2120,7 +2121,7 @@ export struct Reader {
       kept.push(a);
     }
     if (removed === 0) {
-      this.toast('这一段没有批注');
+      this.toast(L10n.t('这一段没有批注'));
       return;
     }
     this.commitAnnotations(kept);
@@ -2166,23 +2167,23 @@ export struct Reader {
     }
     const newLatex: string = edited.trim();
     if (newLatex.length === 0) {
-      this.toast('公式源码是空的，未写回');
+      this.toast(L10n.t('公式源码是空的，未写回'));
       return false;
     }
     if (newLatex === this.noteMathQuote) {
-      this.toast('源码没有变化');
+      this.toast(L10n.t('源码没有变化'));
       return false;
     }
     const idx: number = this.blockIndexOf(this.noteMathBlockId);
     if (idx < 0) {
-      this.toast('找不到对应的公式块，未写回');
+      this.toast(L10n.t('找不到对应的公式块，未写回'));
       return false;
     }
     const block: MdBlock = this.blocks[idx];
     try {
       const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return false;
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
@@ -2204,7 +2205,7 @@ export struct Reader {
         this.noteMathBlockId = this.blocks[idx].id;
       }
       this.pendingEnd = this.noteMathBase + newLatex.length;
-      this.toast('公式已写回文档');
+      this.toast(L10n.t('公式已写回文档'));
       return true;
     } catch (err) {
       this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
@@ -2220,7 +2221,7 @@ export struct Reader {
   private spliceMathBlock(lines: string[], block: MdBlock, newLatex: string): string[] | null {
     const start: number = block.srcLine;
     if (start < 0 || start >= lines.length) {
-      this.toast('该公式所在位置无法定位，未写回');
+      this.toast(L10n.t('该公式所在位置无法定位，未写回'));
       return null;
     }
     const head: string = lines[start].trim();
@@ -2233,7 +2234,7 @@ export struct Reader {
       delim = '\\[';
       close = '\\]';
     } else {
-      this.toast('该公式所在位置无法定位，未写回');
+      this.toast(L10n.t('该公式所在位置无法定位，未写回'));
       return null;
     }
     if (newLatex.indexOf(delim) >= 0 || newLatex.indexOf(close) >= 0) {
@@ -2255,7 +2256,7 @@ export struct Reader {
       }
     }
     if (end < 0) {
-      this.toast('没找到这条公式的闭合行，未写回');
+      this.toast(L10n.t('没找到这条公式的闭合行，未写回'));
       return null;
     }
     // 按解析口径重取正文，与 block.code 比对。**要和 MdParser 逐行同构**（首行余量
@@ -2276,7 +2277,7 @@ export struct Reader {
       }
     }
     if (body.join('\n').trim() !== block.code) {
-      this.toast('文档已改动，位置对不上了，未写回');
+      this.toast(L10n.t('文档已改动，位置对不上了，未写回'));
       return null;
     }
     const replacement: string[] = single
@@ -2292,11 +2293,11 @@ export struct Reader {
   private spliceInlineMath(lines: string[], from: number, to: number,
                            oldLatex: string, newLatex: string): string[] | null {
     if (oldLatex.length === 0) {
-      this.toast('原公式源码为空，未写回');
+      this.toast(L10n.t('原公式源码为空，未写回'));
       return null;
     }
     if (newLatex.indexOf('$') >= 0) {
-      this.toast('行内公式源码里不能包含 $，未写回');
+      this.toast(L10n.t('行内公式源码里不能包含 $，未写回'));
       return null;
     }
     const forms: string[][] = [['$' + oldLatex + '$', '$' + newLatex + '$'],
@@ -2319,14 +2320,14 @@ export struct Reader {
         continue;
       }
       if (hits > 1) {
-        this.toast('这里有不止一处相同的公式源码，无法确定改哪一处，未写回');
+        this.toast(L10n.t('这里有不止一处相同的公式源码，无法确定改哪一处，未写回'));
         return null;
       }
       const fixed: string = lines[hitLine].split(needle).join(forms[f][1]);
       const out: string[] = lines.slice(0, hitLine).concat([fixed], lines.slice(hitLine + 1));
       return out;
     }
-    this.toast('这条行内公式在原文里定位不到（可能写法带空格），未写回');
+    this.toast(L10n.t('这条行内公式在原文里定位不到（可能写法带空格），未写回'));
     return null;
   }
 
@@ -2517,14 +2518,14 @@ export struct Reader {
       }
     }
     this.commitAnnotations(kept);
-    this.toast('已删除批注');
+    this.toast(L10n.t('已删除批注'));
   }
 
   /** 按块 id 跳转；正文被改过导致找不到时给出提示而不是静默失败。 */
   private jumpToBlockId(blockId: string): void {
     const index: number = this.blockIndexOf(blockId);
     if (index < 0) {
-      this.toast('这段正文已被修改，位置已失效');
+      this.toast(L10n.t('这段正文已被修改，位置已失效'));
       return;
     }
     this.jumpTo(index);
@@ -2570,7 +2571,7 @@ export struct Reader {
         this.toast(m);
       });
     } catch (err) {
-      this.toast('导出失败');
+      this.toast(L10n.t('导出失败'));
     }
   }
 
@@ -2586,9 +2587,9 @@ export struct Reader {
       try {
         file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
         fs.writeSync(file.fd, html);
-        this.toast('已导出 HTML');
+        this.toast(L10n.t('已导出 HTML'));
       } catch (err) {
-        this.toast('写入文件失败');
+        this.toast(L10n.t('写入文件失败'));
       } finally {
         if (file !== null) {
           try {
@@ -2612,7 +2613,7 @@ export struct Reader {
   /** 打开表格编辑：从块上的解析结果构造 MdTable（rows[0]=表头，分隔行不在块里）。 */
   private openTableEdit(blockId: string): void {
     if (this.docReadOnly) {
-      this.toast('只读文档不能编辑表格，先在「更多」里切成可写');
+      this.toast(L10n.t('只读文档不能编辑表格，先在「更多」里切成可写'));
       return;
     }
     const idx: number = this.blockIndexOf(blockId);
@@ -2664,7 +2665,7 @@ export struct Reader {
     try {
       const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
@@ -2676,7 +2677,7 @@ export struct Reader {
         || lines[srcLine].trim().startsWith('>')
         || !TableTool.isTableRow(lines[srcLine])
         || !TableTool.isDelimiterRow(lines[srcLine + 1])) {
-        this.toast('该表格所在位置暂不支持直接写回（如引用内的表格）');
+        this.toast(L10n.t('该表格所在位置暂不支持直接写回（如引用内的表格）'));
         return;
       }
       // 行段终点：分隔行下一行起**连续的表格行**（与解析口径一致；不依赖编辑后的行数，
@@ -2691,7 +2692,7 @@ export struct Reader {
       this.tableEditBlockId = '';
       this.skipRestoreOnce = true;
       this.loadDoc();
-      this.toast('表格已更新');
+      this.toast(L10n.t('表格已更新'));
     } catch (err) {
       this.toast('保存失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -2743,7 +2744,7 @@ export struct Reader {
       const lines: string[] = text.split('\n');
       const lineNo: number = block.srcLine;
       if (lineNo < 0 || lineNo >= lines.length) {
-        this.toast('无法定位原文行');
+        this.toast(L10n.t('无法定位原文行'));
         return;
       }
       const line: string = lines[lineNo];
@@ -2755,7 +2756,7 @@ export struct Reader {
         const atUpper: number = line.indexOf('[X]');
         const atX: number = atLower >= 0 && (atUpper < 0 || atLower < atUpper) ? atLower : atUpper;
         if (atX < 0) {
-          this.toast('无法定位勾选框');
+          this.toast(L10n.t('无法定位勾选框'));
           return;
         }
         lines[lineNo] = line.substring(0, atX) + '[ ]' + line.substring(atX + 3);
@@ -2827,7 +2828,7 @@ export struct Reader {
   private stepSearch(delta: number): void {
     const total: number = this.searchHits.length;
     if (total === 0) {
-      this.toast('没有匹配的内容');
+      this.toast(L10n.t('没有匹配的内容'));
       return;
     }
     let next: number = this.searchCursor + delta;
@@ -3345,7 +3346,7 @@ export struct Reader {
   private openAiChat(quote: string): void {
     // **基础模式（纯离线）拦截**（用户要求）：AI 助手要走网络，离线模式直接挡在入口
     if (UpdateService.isOffline()) {
-      this.toast('基础模式（纯离线）下 AI 助手不可用');
+      this.toast(L10n.t('基础模式（纯离线）下 AI 助手不可用'));
       return;
     }
     AppStorage.setOrCreate('aiChatDocName', this.docName);
@@ -3555,7 +3556,7 @@ export struct Reader {
   private jumpToSourceLine(line: number): void {
     const bi: number = this.blockIndexOfLine(line);
     if (bi < 0) {
-      this.toast('这一行在正文里找不到对应内容');
+      this.toast(L10n.t('这一行在正文里找不到对应内容'));
       return;
     }
     this.jumpTo(bi);
@@ -3667,7 +3668,7 @@ export struct Reader {
       // 用 priorityGesture：顶栏胶囊自己带手势，普通 gesture 会被父级先消费掉。
       .priorityGesture(TapGesture({ count: 2 }).onAction(() => {
         this.scroller.scrollEdge(Edge.Top);
-        this.toast('已回到顶部');
+        this.toast(L10n.t('已回到顶部'));
       }))
 
       // 导出入口（用户要求）：搜索按钮左边，弹出 HTML / MD / 分享。
@@ -3742,7 +3743,7 @@ export struct Reader {
         .fontColor([this.palette().textTertiary])
         .margin({ left: HwSpace.xs })
 
-      TextInput({ text: this.searchQuery, placeholder: '在本文中查找' })
+      TextInput({ text: this.searchQuery, placeholder: L10n.t('在本文中查找') })
         .layoutWeight(1)
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
@@ -4109,7 +4110,7 @@ export struct Reader {
   private refreshWebPage(): void {
     try {
       this.webCtrl.refresh();
-      this.toast('已刷新');
+      this.toast(L10n.t('已刷新'));
     } catch (err) {
       // Web 尚未挂载 / 已销毁：无操作
     }
@@ -4123,12 +4124,12 @@ export struct Reader {
     try {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.webUrl);
       pasteboard.getSystemPasteboard().setData(data).then(() => {
-        this.toast('链接已复制');
+        this.toast(L10n.t('链接已复制'));
       }).catch(() => {
-        this.toast('复制失败');
+        this.toast(L10n.t('复制失败'));
       });
     } catch (err) {
-      this.toast('复制失败');
+      this.toast(L10n.t('复制失败'));
     }
   }
 
@@ -4143,7 +4144,7 @@ export struct Reader {
         SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
           .fontSize(13)
           .fontColor([this.palette().textPrimary])
-        Text('刷新')
+        Text(L10n.t('刷新'))
           .fontSize(12.5)
           .fontColor(this.palette().textPrimary)
       }
@@ -4159,7 +4160,7 @@ export struct Reader {
           .width(13)
           .height(13)
           .fillColor(this.palette().textPrimary)
-        Text('复制链接')
+        Text(L10n.t('复制链接'))
           .fontSize(12.5)
           .fontColor(this.palette().textPrimary)
       }
@@ -4213,7 +4214,7 @@ export struct Reader {
     try {
       const meta: DocMeta | undefined = DocStore.find(ctx, name);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       const content: string = DocStore.readText(ctx, meta);
@@ -4234,7 +4235,7 @@ export struct Reader {
         Row({ space: HwSpace.xs }) {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: '‹ 换一篇',
+            chipLabel: L10n.t('‹ 换一篇'),
             chipOnTap: () => {
               this.compareDoc = '';
               this.compareBlocks = [];
@@ -4243,7 +4244,7 @@ export struct Reader {
           ImmersiveChip({
             palette: this.palette(),
             chipActive: true,
-            chipLabel: '左右分屏',
+            chipLabel: L10n.t('左右分屏'),
             chipOnTap: () => {
               // 进入**左右分屏**：正文左半、对照文档右半。
               // ⚠️ 只翻 sheetVisible（activeSheet 留给 onDismiss 清）——同一帧里
@@ -4302,7 +4303,7 @@ export struct Reader {
         .width('100%')
         .layoutWeight(1)
       } else {
-        Text('选一篇文档与《' + this.docName + '》对照（译文 / 原文 / 笔记）；选定后可进左右分屏。')
+        Text(L10n.t('选一篇文档与《') + this.docName + '》对照（译文 / 原文 / 笔记）；选定后可进左右分屏。')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -4397,7 +4398,7 @@ export struct Reader {
       palette: this.palette()
     }) {
       Column({ space: HwSpace.sm }) {
-        Text('文档编码')
+        Text(L10n.t('文档编码'))
           .fontSize(HwType.label + 1)
           .fontColor(this.palette().textPrimary)
           .width('100%')
@@ -4573,7 +4574,7 @@ export struct Reader {
       }
       .width('100%')
 
-      Text('复制路径 / 打开所在文件夹是桌面端能力，应用沙箱内无对应概念')
+      Text(L10n.t('复制路径 / 打开所在文件夹是桌面端能力，应用沙箱内无对应概念'))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')
@@ -4643,25 +4644,25 @@ export struct Reader {
 
           // 信息标签行（图二的 chips 形态）
           Row({ space: HwSpace.xs }) {
-            Text('字数 ' + this.docWordCount)
+            Text(L10n.t('字数 ') + this.docWordCount)
               .fontSize(HwType.caption)
               .fontColor(this.palette().textSecondary)
               .padding({ left: 9, right: 9, top: 3, bottom: 3 })
               .borderRadius(HwRadius.pill)
               .backgroundColor(this.palette().quoteBg)
-            Text('标题 ' + this.docHeadingCount)
+            Text(L10n.t('标题 ') + this.docHeadingCount)
               .fontSize(HwType.caption)
               .fontColor(this.palette().textSecondary)
               .padding({ left: 9, right: 9, top: 3, bottom: 3 })
               .borderRadius(HwRadius.pill)
               .backgroundColor(this.palette().quoteBg)
-            Text('代码块 ' + this.docCodeCount)
+            Text(L10n.t('代码块 ') + this.docCodeCount)
               .fontSize(HwType.caption)
               .fontColor(this.palette().textSecondary)
               .padding({ left: 9, right: 9, top: 3, bottom: 3 })
               .borderRadius(HwRadius.pill)
               .backgroundColor(this.palette().quoteBg)
-            Text('批注 ' + this.annotations.length)
+            Text(L10n.t('批注 ') + this.annotations.length)
               .fontSize(HwType.caption)
               .fontColor(this.palette().textSecondary)
               .padding({ left: 9, right: 9, top: 3, bottom: 3 })
@@ -4686,7 +4687,7 @@ export struct Reader {
           // ── 文件信息（用户要求）：文件大小 + MD5（字数已在上方 chips 里）──
           Column({ space: HwSpace.xxs }) {
             Row({ space: HwSpace.xs }) {
-              Text('文件大小')
+              Text(L10n.t('文件大小'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
               Blank()
@@ -4716,7 +4717,7 @@ export struct Reader {
 
             // 创建 / 修改日期（用户要求；内置文档没有独立创建时间，显示 —）
             Row({ space: HwSpace.xs }) {
-              Text('创建日期')
+              Text(L10n.t('创建日期'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
               Blank()
@@ -4727,7 +4728,7 @@ export struct Reader {
             .width('100%')
 
             Row({ space: HwSpace.xs }) {
-              Text('修改日期')
+              Text(L10n.t('修改日期'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
               Blank()
@@ -4766,7 +4767,7 @@ export struct Reader {
             .padding({ top: HwSpace.xxs })
           }
 
-          Text('右滑目录 · 左滑注释 · 底部工具条可调字号与亮度 · 长按选中可荧光笔/批注')
+          Text(L10n.t('右滑目录 · 左滑注释 · 底部工具条可调字号与亮度 · 长按选中可荧光笔/批注'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -5094,7 +5095,7 @@ export struct Reader {
       .alignItems(VerticalAlign.Center)
 
       Row({ space: HwSpace.xs }) {
-        Text('屏幕常亮')
+        Text(L10n.t('屏幕常亮'))
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
@@ -5129,13 +5130,13 @@ export struct Reader {
     Column({ space: HwSpace.sm }) {
       // ── 读写 / 只读开关（与书架「选择操作」面板同一个标记）──
       Row({ space: HwSpace.xs }) {
-        Text('读写 / 只读')
+        Text(L10n.t('读写 / 只读'))
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '可写',
+          chipLabel: L10n.t('可写'),
           chipActive: !this.docReadOnly,
           chipOnTap: () => {
             this.toggleDocReadOnly(false);
@@ -5143,7 +5144,7 @@ export struct Reader {
         })
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: '只读',
+          chipLabel: L10n.t('只读'),
           chipActive: this.docReadOnly,
           chipOnTap: () => {
             this.toggleDocReadOnly(true);
@@ -5164,10 +5165,10 @@ export struct Reader {
       // 关闭维持「点击复制地址」。开关持久化在 readerWebOpen。
       Row({ space: HwSpace.xs }) {
         Column({ space: 2 }) {
-          Text('网页开放')
+          Text(L10n.t('网页开放'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
-          Text('开启后点击正文链接直接在面板内打开；关闭则点击复制链接地址')
+          Text(L10n.t('开启后点击正文链接直接在面板内打开；关闭则点击复制链接地址'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
         }
@@ -5189,10 +5190,10 @@ export struct Reader {
         Column({ space: HwSpace.sm }) {
           Row({ space: HwSpace.xs }) {
             Column({ space: 2 }) {
-              Text('目录侧边栏默认展开')
+              Text(L10n.t('目录侧边栏默认展开'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
-              Text('进入阅读时目录停靠在左侧；运行中仍可手动收放')
+              Text(L10n.t('进入阅读时目录停靠在左侧；运行中仍可手动收放'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -5210,10 +5211,10 @@ export struct Reader {
 
           Row({ space: HwSpace.xs }) {
             Column({ space: 2 }) {
-              Text('批注侧边栏默认展开')
+              Text(L10n.t('批注侧边栏默认展开'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
-              Text('进入阅读时批注停靠在右侧；运行中仍可手动收放')
+              Text(L10n.t('进入阅读时批注停靠在右侧；运行中仍可手动收放'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -5340,7 +5341,7 @@ export struct Reader {
       Row({ space: HwSpace.xs }) {
         this.moreTile('重新加载', $r('sys.symbol.arrow_counterclockwise'), (): void => {
           this.loadDoc();
-          this.toast('已重新加载');
+          this.toast(L10n.t('已重新加载'));
         })
         ReaderFlagTile({
           kind: 'drawer',
@@ -5405,7 +5406,7 @@ export struct Reader {
       DocStore.init(ctx);
       const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
@@ -5413,10 +5414,10 @@ export struct Reader {
       pasteboard.getSystemPasteboard().setData(data).then(() => {
         this.toast('已复制全文（' + text.length + ' 字）');
       }).catch(() => {
-        this.toast('复制失败');
+        this.toast(L10n.t('复制失败'));
       });
     } catch (err) {
-      this.toast('复制失败');
+      this.toast(L10n.t('复制失败'));
     }
   }
 
@@ -5434,9 +5435,9 @@ export struct Reader {
     const text: string = gb + '\n\n' + apa + '\n\n' + bib;
     const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
     pasteboard.getSystemPasteboard().setData(data).then(() => {
-      this.toast('已复制 GB/T 7714 / APA / BibTeX 三种引用');
+      this.toast(L10n.t('已复制 GB/T 7714 / APA / BibTeX 三种引用'));
     }).catch(() => {
-      this.toast('复制失败');
+      this.toast(L10n.t('复制失败'));
     });
   }
 
@@ -5563,7 +5564,7 @@ export struct Reader {
     }
     this.ttsBuildQueue();
     if (this.ttsQueue.length === 0) {
-      this.toast('这篇没有可朗读的正文');
+      this.toast(L10n.t('这篇没有可朗读的正文'));
       return;
     }
     // 起点 = 当前读到的那一段（找不到就从第一段开始）
@@ -5674,7 +5675,7 @@ export struct Reader {
       this.ttsSpeaking = true;
     } catch (err) {
       this.stopReadAloud();
-      this.toast('朗读失败，已停止');
+      this.toast(L10n.t('朗读失败，已停止'));
     }
   }
 
@@ -5763,7 +5764,7 @@ export struct Reader {
   private ttsNext(): void {
     this.ttsPos = this.ttsPos + 1;
     if (this.ttsPos >= this.ttsQueue.length) {
-      this.toast('已读完这篇');
+      this.toast(L10n.t('已读完这篇'));
       this.stopReadAloud();
       return;
     }
@@ -5938,11 +5939,11 @@ export struct Reader {
       return;
     }
     if (item.net) {
-      this.toast('网络图片请长按图片保存，或先替换成本地图片');
+      this.toast(L10n.t('网络图片请长按图片保存，或先替换成本地图片'));
       return;
     }
     if (!item.exists) {
-      this.toast('本地图片不存在，无法另存');
+      this.toast(L10n.t('本地图片不存在，无法另存'));
       return;
     }
     ExportService.shareFile(ctx, DocStore.resolveAbsImagePath(item.href), (m: string): void => {
@@ -5956,7 +5957,7 @@ export struct Reader {
    */
   private replaceDocImage(index: number): void {
     if (this.docReadOnly || this.docBuiltin) {
-      this.toast('只读 / 内置文档不能改图片引用');
+      this.toast(L10n.t('只读 / 内置文档不能改图片引用'));
       return;
     }
     if (index < 0 || index >= this.docImages.length) {
@@ -5979,7 +5980,7 @@ export struct Reader {
         }
         const rel: string | null = DocStore.importImageFromUri(ctx, result.photoUris[0]);
         if (rel === null) {
-          this.toast('图片导入失败：格式不支持或超过 20MB');
+          this.toast(L10n.t('图片导入失败：格式不支持或超过 20MB'));
           return;
         }
         this.replaceInDoc(item.raw, item.raw.replace(item.href, rel), '已替换为 ' + rel);
@@ -5987,14 +5988,14 @@ export struct Reader {
         this.toast('选择图片失败：' + err.message);
       });
     } catch (err) {
-      this.toast('无法打开图片选择器');
+      this.toast(L10n.t('无法打开图片选择器'));
     }
   }
 
   /** 删除这一张的引用（只动正文里那一处，图片文件保留，可到数据管理清理）。 */
   private removeDocImage(index: number): void {
     if (this.docReadOnly || this.docBuiltin) {
-      this.toast('只读 / 内置文档不能修改正文');
+      this.toast(L10n.t('只读 / 内置文档不能修改正文'));
       return;
     }
     if (index < 0 || index >= this.docImages.length) {
@@ -6002,8 +6003,8 @@ export struct Reader {
     }
     const item: DocImage = this.docImages[index];
     this.getUIContext().showAlertDialog({
-      title: '删除这张图片的引用？',
-      message: '只从正文里移除 `' + item.label + '` 这一处引用，图片文件仍保留在应用里'
+      title: L10n.t('删除这张图片的引用？'),
+      message: L10n.t('只从正文里移除 `') + item.label + '` 这一处引用，图片文件仍保留在应用里'
         + '（可在「设置 → 数据管理 → 图片管理」清理）。',
       primaryButton: {
         value: '取消',
@@ -6029,18 +6030,18 @@ export struct Reader {
     try {
       const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
       const at: number = text.indexOf(from);
       if (at < 0) {
-        this.toast('正文里找不到这张图片的原始写法，可能已被编辑过');
+        this.toast(L10n.t('正文里找不到这张图片的原始写法，可能已被编辑过'));
         return;
       }
       const next: string = text.substring(0, at) + to + text.substring(at + from.length);
       if (!DocStore.update(ctx, this.docName, next)) {
-        this.toast('保存失败');
+        this.toast(L10n.t('保存失败'));
         return;
       }
       this.skipRestoreOnce = true;
@@ -6057,16 +6058,16 @@ export struct Reader {
   imagesSheet() {
     Column({ space: HwSpace.sm }) {
       if (this.docImages.length === 0) {
-        Text('这篇文档里还没有图片。')
+        Text(L10n.t('这篇文档里还没有图片。'))
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .width('100%')
-        Text('在编辑页用「插图片」从相册选图，或手写笔记导出后插入，都会出现在这里。')
+        Text(L10n.t('在编辑页用「插图片」从相册选图，或手写笔记导出后插入，都会出现在这里。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
       } else {
-        Text('共 ' + this.docImages.length + ' 张 · 点缩略图放大查看')
+        Text(L10n.t('共 ') + this.docImages.length + ' 张 · 点缩略图放大查看')
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .width('100%')
@@ -6116,7 +6117,7 @@ export struct Reader {
               palette: this.palette(),
               chipTint: '#FF2E7D32',
               chipActive: true,
-              chipLabel: '另存',
+              chipLabel: L10n.t('另存'),
               chipOnTap: () => {
                 this.saveDocImage(index);
               }
@@ -6125,7 +6126,7 @@ export struct Reader {
               palette: this.palette(),
               chipTint: '#FF2F63E8',
               chipActive: true,
-              chipLabel: '替换',
+              chipLabel: L10n.t('替换'),
               chipOnTap: () => {
                 this.replaceDocImage(index);
               }
@@ -6134,7 +6135,7 @@ export struct Reader {
               palette: this.palette(),
               chipTint: '#FFD32F2F',
               chipActive: true,
-              chipLabel: '删除',
+              chipLabel: L10n.t('删除'),
               chipOnTap: () => {
                 this.removeDocImage(index);
               }
@@ -6161,11 +6162,11 @@ export struct Reader {
   backlinksSheet() {
     Column({ space: HwSpace.sm }) {
       if (this.backlinks.length === 0) {
-        Text('还没有别的文档引用《' + this.docName + '》。')
+        Text(L10n.t('还没有别的文档引用《') + this.docName + '》。')
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .width('100%')
-        Text('在别的文档里写 [[《' + this.docName + '》]] 就能建立连接，连好之后这里会自动列出来。')
+        Text(L10n.t('在别的文档里写 [[《') + this.docName + '》]] 就能建立连接，连好之后这里会自动列出来。')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -6259,7 +6260,7 @@ export struct Reader {
     try {
       const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
       if (meta === undefined) {
-        this.toast('文档不存在');
+        this.toast(L10n.t('文档不存在'));
         return;
       }
       const content: string = DocStore.readText(ctx, meta, this.docEncoding);
@@ -6428,7 +6429,7 @@ export struct Reader {
     if (atEnd) {
       // 到底了：停表但**保留浮钮**（用户可能想回看上一段再继续），图标自动变「继续」
       this.pauseAutoScroll();
-      this.toast('已到文末');
+      this.toast(L10n.t('已到文末'));
       return;
     }
     try {
@@ -6545,7 +6546,7 @@ export struct Reader {
       this.mergeSources = src;
       this.mergePreselect = pre;
     } catch (err) {
-      this.toast('读取文档清单失败');
+      this.toast(L10n.t('读取文档清单失败'));
       return;
     }
     this.getUIContext().animateTo(this.animateParam(), () => {
@@ -6600,7 +6601,7 @@ export struct Reader {
         Column({ space: HwSpace.md }) {
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
-              Text('目录')
+              Text(L10n.t('目录'))
                 .fontSize(HwType.label + 3)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -6663,14 +6664,14 @@ export struct Reader {
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '展开全部',
+              chipLabel: L10n.t('展开全部'),
               chipOnTap: () => {
                 this.setAllCollapsed(false);
               }
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '折叠到二级',
+              chipLabel: L10n.t('折叠到二级'),
               chipOnTap: () => {
                 this.setAllCollapsed(true);
               }
@@ -6682,7 +6683,7 @@ export struct Reader {
           // 挂 tocScroller：打开目录 / 章节变化时自动滚到当前所在的那一节
           Scroll(this.tocScroller) {
             if (this.docOutline.length === 0) {
-              Text('这份文档没有标题，无法生成目录。')
+              Text(L10n.t('这份文档没有标题，无法生成目录。'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textTertiary)
                 .width('100%')
@@ -6790,7 +6791,7 @@ export struct Reader {
           // ── 固定区 1：标题 + 搜索钮 / 关闭钮 ──
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
-              Text('注释与批注')
+              Text(L10n.t('注释与批注'))
                 .fontSize(HwType.label + 3)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -6839,7 +6840,7 @@ export struct Reader {
               SymbolGlyph($r('sys.symbol.magnifyingglass'))
                 .fontSize(14)
                 .fontColor([this.palette().textTertiary])
-              TextInput({ text: this.notesQuery, placeholder: '搜索批注内容 / 备注 / 分类…' })
+              TextInput({ text: this.notesQuery, placeholder: L10n.t('搜索批注内容 / 备注 / 分类…') })
                 .id('notesSearchInput')
                 .layoutWeight(1)
                 .height('100%')
@@ -6886,7 +6887,7 @@ export struct Reader {
 
           // ── 固定区 3：我的批注标题 + 分类筛选（**不随列表滚动**）──
           if (this.annotations.length > 0) {
-            Text('我的批注')
+            Text(L10n.t('我的批注'))
               .fontSize(HwType.label)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textSecondary)
@@ -6946,7 +6947,7 @@ export struct Reader {
                         .fontSize(12)
                         .fontColor([this.palette().textTertiary])
                     }
-                    Text('第 ' + (this.blockIndexOf(ann.blockId) + 1) + ' 段')
+                    Text(L10n.t('第 ') + (this.blockIndexOf(ann.blockId) + 1) + ' 段')
                       .fontSize(HwType.caption)
                       .fontColor(this.palette().textTertiary)
                       .layoutWeight(1)
@@ -6954,7 +6955,7 @@ export struct Reader {
                     if (ann.note.startsWith('hw:')) {
                       ImmersiveChip({
                         palette: this.palette(),
-                        chipLabel: '查看',
+                        chipLabel: L10n.t('查看'),
                         chipOnTap: () => {
                           this.openHandwriteAnno(ann);
                         }
@@ -6964,7 +6965,7 @@ export struct Reader {
                       palette: this.palette(),
                       chipTint: '#FFD32F2F',
                       chipActive: true,
-                      chipLabel: '删除',
+                      chipLabel: L10n.t('删除'),
                       chipOnTap: () => {
                         // **包在 animateTo 里**：卡片淡出（transition），其余卡片滑动补位
                         this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
@@ -6990,7 +6991,7 @@ export struct Reader {
 
                   if (ann.note.length > 0) {
                     if (ann.note.startsWith('hw:')) {
-                      Text('手写批注（点「查看」看手写图）')
+                      Text(L10n.t('手写批注（点「查看」看手写图）'))
                         .fontSize(HwType.caption)
                         .fontColor(this.palette().textSecondary)
                         .lineHeight(HwType.caption * 1.6)
@@ -7024,7 +7025,7 @@ export struct Reader {
                 .transition(TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.FastOutSlowIn }))
               }, (ann: MdAnnotation) => 'ann_' + ann.id + '_t' + this.drawerFormulaTick)
 
-              Text('脚注')
+              Text(L10n.t('脚注'))
                 .fontSize(HwType.label)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textSecondary)
@@ -7032,13 +7033,13 @@ export struct Reader {
                 .padding({ top: HwSpace.xs })
 
               if (this.notes.length === 0) {
-                Text('在正文里用 [^标签] 引用、用 [^标签]: 内容 定义，注释就会出现在这里。语法教程第 10 节有示例。')
+                Text(L10n.t('在正文里用 [^标签] 引用、用 [^标签]: 内容 定义，注释就会出现在这里。语法教程第 10 节有示例。'))
                   .fontSize(HwType.label)
                   .fontColor(this.palette().textTertiary)
                   .lineHeight(HwType.label * 1.7)
                   .width('100%')
               } else if (this.searchedNotes().length === 0) {
-                Text('没有匹配「' + this.notesQuery.trim() + '」的脚注')
+                Text(L10n.t('没有匹配「') + this.notesQuery.trim() + '」的脚注')
                   .fontSize(HwType.label)
                   .fontColor(this.palette().textTertiary)
                   .width('100%')
@@ -7168,7 +7169,7 @@ export struct Reader {
    */
   private openEditorFromBar(): void {
     if (this.docReadOnly) {
-      this.toast('该文档是只读的，先在「更多」里切成「可写」');
+      this.toast(L10n.t('该文档是只读的，先在「更多」里切成「可写」'));
       return;
     }
     if (this.stack === null || this.docName.length === 0) {
@@ -7179,7 +7180,7 @@ export struct Reader {
     try {
       this.stack.pushPath({ name: 'pages/Editor', param: route });
     } catch (err) {
-      this.toast('打不开编辑页');
+      this.toast(L10n.t('打不开编辑页'));
     }
   }
 
@@ -7409,7 +7410,7 @@ export struct Reader {
             if (this.blocks.length > this.visibleBlocks) {
               ListItem() {
                 Row() {
-                  Text('正在加载更多…（已显示 ' + this.visibleBlocks + ' / ' + this.blocks.length + ' 块）')
+                  Text(L10n.t('正在加载更多…（已显示 ') + this.visibleBlocks + ' / ' + this.blocks.length + ' 块）')
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -7429,7 +7430,7 @@ export struct Reader {
             }
 
             ListItem() {
-              Text('—— 文档结束 ——')
+              Text(L10n.t('—— 文档结束 ——'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .width('100%')
@@ -7488,7 +7489,7 @@ export struct Reader {
           if (this.compareSplit) {
             Column({ space: HwSpace.xs }) {
               Row({ space: HwSpace.xs }) {
-                Text('对照 · 《' + this.compareDoc + '》')
+                Text(L10n.t('对照 · 《') + this.compareDoc + '》')
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textSecondary)
                   .layoutWeight(1)
@@ -7814,7 +7815,7 @@ export struct Reader {
         Stack() {
           ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
           Row({ space: 6 }) {
-            Text('专注中')
+            Text(L10n.t('专注中'))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveIconButton({
@@ -7905,7 +7906,7 @@ export struct Reader {
           // 退出即重置位置：下次进入恢复初始贴边（用户要求）
           this.sysTabX = -1;
           this.sysTabY = -1;
-          this.toast('已恢复批注菜单');
+          this.toast(L10n.t('已恢复批注菜单'));
         })
         .transition(TransitionEffect.asymmetric(
           TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })

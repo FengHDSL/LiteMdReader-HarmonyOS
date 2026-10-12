@@ -27,6 +27,7 @@ import {
 } from '../service/AiChatStore';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { L10n } from '../service/L10n';
 
 const TAG: string = 'AiSettings';
 
@@ -263,19 +264,19 @@ export struct AiSettings {
     this.profiles.push(p);
     this.activeIdx = this.profiles.length - 1;
     this.loadProfileToForm(this.activeIdx);
-    this.toast('已添加，填写后按「保存」生效');
+    this.toast(L10n.t('已添加，填写后按「保存」生效'));
   }
 
   /** 删除当前编辑的 API 配置（至少保留一份；按「保存」落盘） */
   private removeProfile(): void {
     if (this.profiles.length <= 1) {
-      this.toast('至少保留一份配置');
+      this.toast(L10n.t('至少保留一份配置'));
       return;
     }
     this.profiles.splice(this.activeIdx, 1);
     this.activeIdx = Math.min(this.activeIdx, this.profiles.length - 1);
     this.loadProfileToForm(this.activeIdx);
-    this.toast('已删除，按「保存」生效');
+    this.toast(L10n.t('已删除，按「保存」生效'));
   }
 
   /** 由表单构造配置（不做落盘）：当前表单写回 profile，顶层镜像生效 profile。
@@ -308,15 +309,15 @@ export struct AiSettings {
     try {
       this.ensureLoadedBeforeAction();
       if (this.apiUrl.trim().length === 0) {
-        this.toast('请填写 API 地址');
+        this.toast(L10n.t('请填写 API 地址'));
         return;
       }
       if (this.apiKey.trim().length === 0) {
-        this.toast('请填写 API Key');
+        this.toast(L10n.t('请填写 API Key'));
         return;
       }
       if (AiChatStore.parseModels(this.modelsText).length === 0) {
-        this.toast('请至少填写一个模型名称');
+        this.toast(L10n.t('请至少填写一个模型名称'));
         return;
       }
       const c: common.UIAbilityContext | null = this.ctx();
@@ -329,7 +330,7 @@ export struct AiSettings {
       const t: number | undefined = AppStorage.get<number>('aiCfgTick');
       AppStorage.setOrCreate('aiCfgTick', (t === undefined ? 0 : t) + 1);
       this.refreshStats();
-      this.toast('已保存');
+      this.toast(L10n.t('已保存'));
       // 不自动 pop：嵌入形态（分栏右栏）pop 会误弹整个设置页；全屏态用户自行返回
     } catch (err) {
       // **兜底**（用户反馈：横屏保存 / 测试连接时闪退 —— 宁可提示也不让进程挂掉），
@@ -347,7 +348,7 @@ export struct AiSettings {
     this.ensureLoadedBeforeAction();
     if (this.apiUrl.trim().length === 0 || this.apiKey.trim().length === 0
       || AiChatStore.parseModels(this.modelsText).length === 0) {
-      this.toast('请先填写完整地址 / Key / 模型');
+      this.toast(L10n.t('请先填写完整地址 / Key / 模型'));
       return;
     }
     try {
@@ -357,7 +358,7 @@ export struct AiSettings {
         try {
           this.testing = false;
           if (r.ok) {
-            this.toast('连接成功 ✓');
+            this.toast(L10n.t('连接成功 ✓'));
           } else {
             this.toast(r.text);
           }
@@ -384,7 +385,7 @@ export struct AiSettings {
         // 嵌入形态（设置分栏 / 设置入口）：与其他设置项同一套 SettingsShell 外壳
         SettingsShell({
           shellTitle: '助手设置',
-          shellSubtitle: 'API 地址 · 模型 · 思考强度 · 词元消耗',
+          shellSubtitle: L10n.t('API 地址 · 模型 · 思考强度 · 词元消耗'),
           stack: this.stack,
           life: this.life
         }) {
@@ -449,7 +450,7 @@ export struct AiSettings {
                   .fontSize(20)
                   .fontColor([this.palette().textPrimary])
               }
-              Text('助手设置')
+              Text(L10n.t('助手设置'))
                 .fontSize(17)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -479,13 +480,13 @@ export struct AiSettings {
             Column({ space: HwSpace.sm }) {
               // ── API 配置选择（多 API；chips 横向滚动 + 添加 / 删除）──
               Row({ space: HwSpace.sm }) {
-                Text('API 配置')
+                Text(L10n.t('API 配置'))
                   .fontSize(13)
                   .fontWeight(FontWeight.Medium)
                   .fontColor(this.palette().textPrimary)
                 Blank()
                 if (this.profiles.length > 1) {
-                  Text('删除当前')
+                  Text(L10n.t('删除当前'))
                     .fontSize(12)
                     .fontColor('#FFD32F2F')
                     .padding({ left: 8, right: 8, top: 4, bottom: 4 })
@@ -516,7 +517,7 @@ export struct AiSettings {
                       })
                   }, (p: AiApiProfile, i: number) => 'api' + i + '_'
                     + (p.name !== undefined ? p.name : ''))
-                  Text('+ 新增')
+                  Text(L10n.t('+ 新增'))
                     .fontSize(12.5)
                     .fontColor(this.palette().accent)
                     .border({ width: 1, color: this.palette().accent })
@@ -564,7 +565,7 @@ export struct AiSettings {
                 cardMaterialShadow: false
               }) {
                 TextInput({ text: this.apiUrl,
-                  placeholder: 'https://api.deepseek.com/v1 或 https://api.anthropic.com' })
+                  placeholder: L10n.t('https://api.deepseek.com/v1 或 https://api.anthropic.com') })
                   .width('100%')
                   .height(46)
                   .fontSize(15)
@@ -638,7 +639,7 @@ export struct AiSettings {
                 cardMaterialShadow: false
               }) {
                 TextArea({ text: this.systemPrompt,
-                  placeholder: '例：你是我的阅读助手，回答简洁准确，用中文。' })
+                  placeholder: L10n.t('例：你是我的阅读助手，回答简洁准确，用中文。') })
                   .width('100%')
                   .fontSize(15)
                   .fontColor(this.palette().textPrimary)
@@ -658,7 +659,7 @@ export struct AiSettings {
                 ImmersiveChip({
                   palette: this.palette(),
                   chipActive: this.reasoning === 0,
-                  chipLabel: '关闭',
+                  chipLabel: L10n.t('关闭'),
                   chipOnTap: () => {
                     this.reasoning = 0;
                   }
@@ -666,7 +667,7 @@ export struct AiSettings {
                 ImmersiveChip({
                   palette: this.palette(),
                   chipActive: this.reasoning === 1,
-                  chipLabel: '标准',
+                  chipLabel: L10n.t('标准'),
                   chipOnTap: () => {
                     this.reasoning = 1;
                   }
@@ -674,7 +675,7 @@ export struct AiSettings {
                 ImmersiveChip({
                   palette: this.palette(),
                   chipActive: this.reasoning === 2,
-                  chipLabel: '深度',
+                  chipLabel: L10n.t('深度'),
                   chipOnTap: () => {
                     this.reasoning = 2;
                   }
@@ -724,7 +725,7 @@ export struct AiSettings {
               }
             }) {
               Row() {
-                Text('保 存')
+                Text(L10n.t('保 存'))
                   .fontSize(16)
                   .fontWeight(FontWeight.Medium)
                   .fontColor(this.palette().accent)
@@ -740,13 +741,13 @@ export struct AiSettings {
           ImmersiveCard({ palette: this.palette() }) {
             Column({ space: HwSpace.sm }) {
               Row({ space: HwSpace.sm }) {
-                Text('词元消耗')
+                Text(L10n.t('词元消耗'))
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
                   .fontColor(this.palette().textPrimary)
                 Blank()
                 if (this.usage.totalReplies > 0) {
-                  Text('共 ' + this.usage.totalReplies + ' 次 · '
+                  Text(L10n.t('共 ') + this.usage.totalReplies + ' 次 · '
                     + this.fmtStatNum(this.usage.totalTokens) + ' 词元')
                     .fontSize(12.5)
                     .fontColor(this.palette().textTertiary)
@@ -755,7 +756,7 @@ export struct AiSettings {
               .width('100%')
               .alignItems(VerticalAlign.Center)
               if (this.usage.totalReplies === 0) {
-                Text('暂无记录 · 与 AI 对话后这里会按时间与模型统计')
+                Text(L10n.t('暂无记录 · 与 AI 对话后这里会按时间与模型统计'))
                   .fontSize(12.5)
                   .fontColor(this.palette().textTertiary)
               }
@@ -778,7 +779,7 @@ export struct AiSettings {
                 Divider()
                   .strokeWidth(0.6)
                   .color(this.palette().divider)
-                Text('历年')
+                Text(L10n.t('历年'))
                   .fontSize(12)
                   .fontColor(this.palette().textTertiary)
                 ForEach(this.usage.years, (ys: AiTokenYearStat) => {
@@ -797,7 +798,7 @@ export struct AiSettings {
                 Divider()
                   .strokeWidth(0.6)
                   .color(this.palette().divider)
-                Text('按模型')
+                Text(L10n.t('按模型'))
                   .fontSize(12)
                   .fontColor(this.palette().textTertiary)
                 ForEach(this.usage.models, (st: AiTokenStat) => {

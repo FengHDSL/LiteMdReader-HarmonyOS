@@ -15,6 +15,7 @@ import { ExportService } from '../service/ExportService';
 import { MdToPlain } from '../markdown/MdToPlain';
 import { DocStore, PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct ExportOptionsPanel {
@@ -274,7 +275,7 @@ export struct ExportOptionsPanel {
             .width(40)
             .height(40)
             .color(this.palette.accent)
-          Text('正在处理，请稍候…')
+          Text(L10n.t('正在处理，请稍候…'))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
         }

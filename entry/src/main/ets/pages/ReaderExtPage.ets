@@ -5,6 +5,7 @@
  * 独立 UI 实例，不复用主页面组件（Extension 进程隔离）。
  */
 import { DocStore } from '../service/DocStore';
+import { L10n } from '../service/L10n';
 
 @Entry
 @Component
@@ -62,7 +63,7 @@ struct ReaderExtPage {
       Scroll(this.scroller) {
         Column({ space: 6 }) {
           if (this.lines().length === 0) {
-            Text('暂无接续内容。请先在手机端打开一篇文档，再通过多设备流转迁移到本端。')
+            Text(L10n.t('暂无接续内容。请先在手机端打开一篇文档，再通过多设备流转迁移到本端。'))
               .fontSize(14)
               .fontColor('#99666666')
               .padding(16)

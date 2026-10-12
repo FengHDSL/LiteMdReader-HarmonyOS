@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 探索中心
  * ====================
@@ -244,7 +245,7 @@ export struct SettingsExplore {
     }
     // 基础模式（纯离线）：一切联网能力关停
     if (UpdateService.isOffline()) {
-      this.toast('当前是基础模式（纯离线），检查更新不可用');
+      this.toast(L10n.t('当前是基础模式（纯离线），检查更新不可用'));
       return;
     }
     this.checkingUpdate = true;
@@ -253,7 +254,7 @@ export struct SettingsExplore {
       if (!finished) {
         finished = true;
         this.checkingUpdate = false;
-        this.toast('检查更新超时，请稍后再试');
+        this.toast(L10n.t('检查更新超时，请稍后再试'));
       }
     }, UPDATE_TIMEOUT);
     const httpRequest = http.createHttp();
@@ -273,14 +274,14 @@ export struct SettingsExplore {
       const html: string = typeof resp.result === 'string' ? resp.result : '';
       const remote: string = this.parseRemoteVersion(html);
       if (remote.length === 0) {
-        this.toast('检查更新失败，请稍后再试');
+        this.toast(L10n.t('检查更新失败，请稍后再试'));
         return;
       }
       const cmp: number = this.compareVersion(this.versionName, remote);
       if (cmp < 0) {
         this.getUIContext().getPromptAction().showDialog({
-          title: '发现新版本',
-          message: '发现新版本 v' + remote + '（当前 v' + this.versionName + '）。' +
+          title: L10n.t('发现新版本'),
+          message: L10n.t('发现新版本 v') + remote + '（当前 v' + this.versionName + '）。' +
             '可前往 HAP 资源站查看更新说明并下载安装包。',
           buttons: [
             { text: '前往更新', color: this.palette().accent },
@@ -295,8 +296,8 @@ export struct SettingsExplore {
         });
       } else if (cmp > 0) {
         this.getUIContext().getPromptAction().showDialog({
-          title: '版本超前',
-          message: '当前版本（v' + this.versionName + '）比最新版本（v' + remote + '）更高！',
+          title: L10n.t('版本超前'),
+          message: L10n.t('当前版本（v') + this.versionName + '）比最新版本（v' + remote + '）更高！',
           buttons: [
             { text: '知道了', color: this.palette().accent }
           ]
@@ -314,7 +315,7 @@ export struct SettingsExplore {
       clearTimeout(timer);
       httpRequest.destroy();
       this.checkingUpdate = false;
-      this.toast('检查更新失败，请检查网络后重试');
+      this.toast(L10n.t('检查更新失败，请检查网络后重试'));
     });
   }
 
@@ -360,7 +361,7 @@ export struct SettingsExplore {
     Column() {
       SettingsShell({
         shellTitle: '探索中心',
-        shellSubtitle: '功能帮助 · 关于应用 · 参考与致谢',
+        shellSubtitle: L10n.t('功能帮助 · 关于应用 · 参考与致谢'),
         stack: this.stack,
         life: this.life
       }) {
@@ -383,11 +384,11 @@ export struct SettingsExplore {
             .border({ width: 0.8, color: this.palette().divider })
 
             Column({ space: 2 }) {
-              Text('澄笺·ChéngJiān')
+              Text(L10n.t('澄笺·ChéngJiān'))
                 .fontSize(HwType.label + 6)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
-              Text('版本 ' + this.versionName + ' · HarmonyOS 原生')
+              Text(L10n.t('版本 ') + this.versionName + ' · HarmonyOS 原生')
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -397,14 +398,14 @@ export struct SettingsExplore {
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
-          Text('一款沉浸光感 Markdown 阅读器：卡片化排版、荧光笔批注、多标签阅读、' +
+          Text(L10n.t('一款沉浸光感 Markdown 阅读器：卡片化排版、荧光笔批注、多标签阅读、') +
             '函数绘制壁纸，数据留在本机。')
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
 
-          Text('「澄」是澄澈透光——磨砂与光感玻璃；「笺」是文人读写的纸笺。')
+          Text(L10n.t('「澄」是澄澈透光——磨砂与光感玻璃；「笺」是文人读写的纸笺。'))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
@@ -414,7 +415,7 @@ export struct SettingsExplore {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: '项目主页',
+              chipLabel: L10n.t('项目主页'),
               chipOnTap: () => {
                 this.openLink('https://github.com/FengHDSL/LiteMdReader-HarmonyOS');
               }
@@ -432,7 +433,7 @@ export struct SettingsExplore {
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '更新日志',
+              chipLabel: L10n.t('更新日志'),
               chipOnTap: () => {
                 // **平板分栏嵌入模式**：不进新页，回设置中心右栏展示
                 //（与其它设置板块一致 —— 用户要求）
@@ -461,11 +462,11 @@ export struct SettingsExplore {
               .fontSize(20)
               .fontColor([this.palette().accent])
             Column({ space: 2 }) {
-              Text('功能帮助')
+              Text(L10n.t('功能帮助'))
                 .fontSize(HwType.label + 3)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
-              Text('全部功能 · 使用方法 · 常见问题')
+              Text(L10n.t('全部功能 · 使用方法 · 常见问题'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -475,8 +476,7 @@ export struct SettingsExplore {
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
-          Text('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、'
-            + '「点了段落为什么改不了」这类。支持关键词搜索。')
+          Text(L10n.t('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、') + '「点了段落为什么改不了」这类。支持关键词搜索。')
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
@@ -486,7 +486,7 @@ export struct SettingsExplore {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: '打开功能帮助',
+              chipLabel: L10n.t('打开功能帮助'),
               chipOnTap: () => {
                 this.openHelp();
               }
@@ -501,14 +501,13 @@ export struct SettingsExplore {
       // ── 参考与致谢 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('设计与实现参考')
+          Text(L10n.t('设计与实现参考'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
             .width('100%')
 
           // **致谢**（用户要求）：标题下方一句，向参考项目致意
-          Text('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，'
-            + '在此向这些付出致意。')
+          Text(L10n.t('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，') + '在此向这些付出致意。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -532,7 +531,7 @@ export struct SettingsExplore {
             .alignItems(VerticalAlign.Center)
           }, (item: CreditItem) => item.url)
 
-          Text('澄心执笔，笺上生光')
+          Text(L10n.t('澄心执笔，笺上生光'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -549,14 +548,14 @@ export struct SettingsExplore {
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '隐私政策',
+              chipLabel: L10n.t('隐私政策'),
               chipOnTap: () => {
                 this.openLegal('privacy');
               }
             })
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: '用户协议',
+              chipLabel: L10n.t('用户协议'),
               chipOnTap: () => {
                 this.openLegal('terms');
               }
@@ -574,7 +573,7 @@ export struct SettingsExplore {
               palette: this.palette(),
               chipTint: this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53',
               chipActive: true,
-              chipLabel: '使用模式：' + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'),
+              chipLabel: L10n.t('使用模式：') + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'),
               chipOnTap: () => {
                 this.modeTitle = '重新选择使用模式';
                 this.modeCurrent = this.appMode;

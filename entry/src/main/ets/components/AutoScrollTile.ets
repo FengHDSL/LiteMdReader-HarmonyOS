@@ -15,6 +15,7 @@
  */
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct AutoScrollTile {
@@ -39,7 +40,7 @@ export struct AutoScrollTile {
           .fontColor([this.palette.accent])
 
         Column({ space: 2 }) {
-          Text('自动滚屏')
+          Text(L10n.t('自动滚屏'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette.textPrimary)
           Text(this.running ? '正在匀速下滚 · 点正文任意处即停' : '免手滑匀速下滚，长文校对用')
@@ -62,7 +63,7 @@ export struct AutoScrollTile {
       .alignItems(VerticalAlign.Center)
 
       Row({ space: HwSpace.xs }) {
-        Text('慢')
+        Text(L10n.t('慢'))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
         Slider({ value: this.speed, min: 1, max: 10, step: 1, style: SliderStyle.OutSet })
@@ -74,7 +75,7 @@ export struct AutoScrollTile {
             this.speed = n < 1 ? 1 : (n > 10 ? 10 : n);
             this.onSpeed(this.speed);
           })
-        Text('快')
+        Text(L10n.t('快'))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }

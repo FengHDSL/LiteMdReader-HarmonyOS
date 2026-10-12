@@ -24,6 +24,7 @@ import { DocStore } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme } from '../theme/DesignTokens';
 import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
+import { L10n } from '../service/L10n';
 
 /** 手写画布背景候选：淡色暖色系纯色 +「跟随主题」（空串表示跟随） */
 interface SketchBgOption {
@@ -225,7 +226,7 @@ export struct Sketch {
     // （首版只换 key、不改结构，实测组件根本不重建，所以"清空没生效"。）
     this.controller = new HandwriteController();
     this.canvasEpoch = this.canvasEpoch + 1;
-    this.toast('已清空画布');
+    this.toast(L10n.t('已清空画布'));
   }
 
   /**
@@ -618,7 +619,7 @@ export struct Sketch {
             const c = this.getUIContext().getHostContext();
             if (c === undefined || c === null) {
               this.saving = false;
-              this.toast('无法获取应用上下文');
+              this.toast(L10n.t('无法获取应用上下文'));
               return;
             }
             const rel: string | null =
@@ -627,7 +628,7 @@ export struct Sketch {
             pm.release();
             if (rel === null) {
               this.saving = false;
-              this.toast('手写图保存失败');
+              this.toast(L10n.t('手写图保存失败'));
               return;
             }
             // 交付完成：标记（退出时清空笔迹 → 下次是空画布）
@@ -688,7 +689,7 @@ export struct Sketch {
           chipPaddingV: 7,
           chipActive: false,
           palette: this.palette(),
-          chipLabel: '清空',
+          chipLabel: L10n.t('清空'),
           chipOnTap: () => {
             this.clearCanvas();
           }
@@ -700,7 +701,7 @@ export struct Sketch {
           // 选了纯色底或底纹时高亮，一眼看出"画布被改过"
           chipActive: this.bgColor.length > 0 || this.bgPattern !== 'none',
           palette: this.palette(),
-          chipLabel: '背景',
+          chipLabel: L10n.t('背景'),
           chipOnTap: () => {
             this.bgSheetOpen = true;
           }
@@ -810,7 +811,7 @@ export struct Sketch {
     })
     // 背景选择面板：统一走应用内唯一的半模态实现（material/ModalSheet.ets）
     .bindSheet(this.bgSheetOpen, this.bgSheet(), modalSheetOptions({
-      title: '画布背景',
+      title: L10n.t('画布背景'),
       // 副标题留空（用户要求删掉"底色与底纹只作书写参考…"那句）
       subtitle: '',
       surface: this.palette().surface,
@@ -845,7 +846,7 @@ export struct Sketch {
   bgSheetBody() {
     Column({ space: HwSpace.md }) {
       // ── ① 底色：每排 3 个大方格（31% × 3 + 均分间隙），方块大小随面板自适应 ──
-      Text('底色')
+      Text(L10n.t('底色'))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
@@ -890,7 +891,7 @@ export struct Sketch {
       .width('100%')
 
       // ── ② 底纹：同样每排 3 个大方格，方块里是「当前底色 + 该底纹」的小样 ──
-      Text('底纹')
+      Text(L10n.t('底纹'))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
@@ -942,7 +943,7 @@ export struct Sketch {
       .width('100%')
 
       // ── ③ 线条粗细：三档，同样用大方格预览（方块里三条横线，粗细即该档） ──
-      Text('线条粗细')
+      Text(L10n.t('线条粗细'))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
