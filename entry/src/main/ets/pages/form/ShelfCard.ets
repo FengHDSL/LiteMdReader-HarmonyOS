@@ -91,7 +91,7 @@ struct ShelfCard {
         coverBottom: coverColorsOf(name, builtin).bottom,
         coverInk: coverColorsOf(name, builtin).ink,
         edgeColor: '#FFD8DDE3',
-        coverBadge: '澄笺'
+        coverBadge: L10n.t('澄笺')
       })
       .width('100%')
       .layoutWeight(1)
@@ -105,7 +105,7 @@ struct ShelfCard {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .width('100%')
 
-      Text(percent.length > 0 ? percent : '刚开始读')
+      Text(percent.length > 0 ? percent : L10n.t('刚开始读'))
         .fontSize(9)
         .fontColor('#FF8A93A0')
         .maxLines(1)

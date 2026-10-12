@@ -196,11 +196,11 @@ export struct HtmlViewer {
     }
     try {
       await PrintService.printWithWeb(ctx, this.controller,
-        this.docName.length > 0 ? this.docName : '澄笺文档');
+        this.docName.length > 0 ? this.docName : L10n.t('澄笺文档'));
       this.status = '已交给系统打印';
     } catch (err) {
       const e = err as BusinessError;
-      this.status = '打印失败：' + (e.message !== undefined ? e.message : '未知错误');
+      this.status = '打印失败：' + (e.message !== undefined ? e.message : L10n.t('未知错误'));
     }
     this.printing = false;
   }
@@ -226,7 +226,7 @@ export struct HtmlViewer {
             .fontColor([this.palette().textPrimary])
         }
 
-        Text(this.docName.length > 0 ? this.docName : '网页预览')
+        Text(this.docName.length > 0 ? this.docName : L10n.t('网页预览'))
           .fontSize(HwType.label)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.palette().textPrimary)
@@ -241,7 +241,7 @@ export struct HtmlViewer {
           chipPaddingV: 7,
           chipActive: this.ready && !this.printing,
           palette: this.palette(),
-          chipLabel: this.printing ? '调起中' : '打印',
+          chipLabel: this.printing ? L10n.t('调起中') : L10n.t('打印'),
           chipOnTap: () => {
             this.doPrint();
           }

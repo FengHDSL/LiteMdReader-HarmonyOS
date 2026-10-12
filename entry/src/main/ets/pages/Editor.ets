@@ -126,40 +126,40 @@ const BAR_PAD_LEFT: number = 6;
 const BAR_PAD_RIGHT: number = 16;
 
 const SNIPPETS: MdSnippet[] = [
-  { key: 'h1', label: 'H1', before: '# ', after: '', holder: '一级标题', icon: $r('app.media.tb_h1'), group: 'fmt', core: false },
-  { key: 'h2', label: 'H2', before: '## ', after: '', holder: '二级标题', icon: $r('app.media.tb_h2'), group: 'fmt', core: true },
-  { key: 'h3', label: 'H3', before: '### ', after: '', holder: '三级标题', icon: $r('app.media.tb_h3'), group: 'fmt', core: false },
-  { key: 'bold', label: L10n.t('粗体'), before: '**', after: '**', holder: '粗体文本', icon: $r('app.media.tb_bold'), group: 'fmt', core: true },
-  { key: 'italic', label: L10n.t('斜体'), before: '*', after: '*', holder: '斜体文本', icon: $r('app.media.tb_italic'), group: 'fmt', core: true },
-  { key: 'strike', label: L10n.t('删除线'), before: '~~', after: '~~', holder: '删除线', icon: $r('app.media.tb_strike'), group: 'fmt', core: false },
-  { key: 'mark', label: L10n.t('高亮'), before: '==', after: '==', holder: '高亮标记', icon: $r('app.media.tb_mark'), group: 'fmt', core: false },
+  { key: 'h1', label: 'H1', before: '# ', after: '', holder: L10n.t('一级标题'), icon: $r('app.media.tb_h1'), group: 'fmt', core: false },
+  { key: 'h2', label: 'H2', before: '## ', after: '', holder: L10n.t('二级标题'), icon: $r('app.media.tb_h2'), group: 'fmt', core: true },
+  { key: 'h3', label: 'H3', before: '### ', after: '', holder: L10n.t('三级标题'), icon: $r('app.media.tb_h3'), group: 'fmt', core: false },
+  { key: 'bold', label: L10n.t('粗体'), before: '**', after: '**', holder: L10n.t('粗体文本'), icon: $r('app.media.tb_bold'), group: 'fmt', core: true },
+  { key: 'italic', label: L10n.t('斜体'), before: '*', after: '*', holder: L10n.t('斜体文本'), icon: $r('app.media.tb_italic'), group: 'fmt', core: true },
+  { key: 'strike', label: L10n.t('删除线'), before: '~~', after: '~~', holder: L10n.t('删除线'), icon: $r('app.media.tb_strike'), group: 'fmt', core: false },
+  { key: 'mark', label: L10n.t('高亮'), before: '==', after: '==', holder: L10n.t('高亮标记'), icon: $r('app.media.tb_mark'), group: 'fmt', core: false },
   { key: 'code', label: L10n.t('行内代码'), before: '`', after: '`', holder: 'code', icon: $r('app.media.tb_code'), group: 'fmt', core: true },
-  { key: 'codeblock', label: L10n.t('代码块'), before: '\n```text\n', after: '\n```\n', holder: '代码内容', icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
-  { key: 'quote', label: L10n.t('引用'), before: '\n> ', after: '', holder: '引用内容', icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
-  { key: 'callout', label: L10n.t('提示块'), before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false, tip: '插入提示块（> [!NOTE]），渲染成带色提示卡' },
-  { key: 'ul', label: L10n.t('无序列表'), before: '\n- ', after: '', holder: '列表项', icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
-  { key: 'ol', label: L10n.t('有序列表'), before: '\n1. ', after: '', holder: '列表项', icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
-  { key: 'task', label: L10n.t('任务'), before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false, tip: '插入未勾选的任务项 - [ ]' },
-  { key: 'table', label: L10n.t('表格'), before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false, tip: '插入「列 A | 列 B」两列表格模板' },
-  { key: 'link', label: L10n.t('链接'), before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
-  { key: 'image', label: L10n.t('图片'), before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
-  { key: 'divider', label: L10n.t('分割线'), before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false, tip: '插入分割线 ---（单独占一行）' },
-  { key: 'note', label: L10n.t('脚注'), before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false, tip: '插入脚注引用 [^1]，正文末尾再写 [^1]: 说明' },
+  { key: 'codeblock', label: L10n.t('代码块'), before: '\n```text\n', after: '\n```\n', holder: L10n.t('代码内容'), icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
+  { key: 'quote', label: L10n.t('引用'), before: '\n> ', after: '', holder: L10n.t('引用内容'), icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
+  { key: 'callout', label: L10n.t('提示块'), before: '\n> [!NOTE]\n> ', after: '', holder: L10n.t('提示内容'), icon: $r('app.media.tb_callout'), group: 'fmt', core: false, tip: L10n.t('插入提示块（> [!NOTE]），渲染成带色提示卡') },
+  { key: 'ul', label: L10n.t('无序列表'), before: '\n- ', after: '', holder: L10n.t('列表项'), icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
+  { key: 'ol', label: L10n.t('有序列表'), before: '\n1. ', after: '', holder: L10n.t('列表项'), icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
+  { key: 'task', label: L10n.t('任务'), before: '\n- [ ] ', after: '', holder: L10n.t('待办事项'), icon: $r('app.media.tb_task'), group: 'fmt', core: false, tip: L10n.t('插入未勾选的任务项 - [ ]') },
+  { key: 'table', label: L10n.t('表格'), before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: L10n.t('内容'), icon: $r('app.media.tb_table'), group: 'fmt', core: false, tip: L10n.t('插入「列 A | 列 B」两列表格模板') },
+  { key: 'link', label: L10n.t('链接'), before: '[', after: '](https://)', holder: L10n.t('链接文字'), icon: $r('app.media.tb_link'), group: 'fmt', core: true },
+  { key: 'image', label: L10n.t('图片'), before: '![', after: L10n.t('](路径)'), holder: L10n.t('替代文字'), icon: $r('app.media.tb_image'), group: 'fmt', core: true },
+  { key: 'divider', label: L10n.t('分割线'), before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false, tip: L10n.t('插入分割线 ---（单独占一行）') },
+  { key: 'note', label: L10n.t('脚注'), before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false, tip: L10n.t('插入脚注引用 [^1]，正文末尾再写 [^1]: 说明') },
   // ── 图表快捷插入（用户要求：一键插模板、占位直接改） ──
   // 模板都取"引擎能认的最小可用写法"，且经 tools/verify-chart-templates.js 用
   // **真实渲染模板**在浏览器里跑过 —— 插进去渲染不出来的模板比没有更糟。
-  { key: 'chart-mermaid', label: L10n.t('流程图'), before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false, tip: '插入 mermaid 流程图代码块' },
+  { key: 'chart-mermaid', label: L10n.t('流程图'), before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false, tip: L10n.t('插入 mermaid 流程图代码块') },
   { key: 'chart-echarts', label: L10n.t('数据图'), before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false, tip: '插入 ECharts 配置（JSON），可画柱状/折线/饼图' },
-  { key: 'chart-markmap', label: L10n.t('脑图'), before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false, tip: '插入 markmap 大纲，标题层级即脑图分支' },
-  { key: 'chart-graphviz', label: L10n.t('关系图'), before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false, tip: '插入 Graphviz DOT 有向图' },
-  { key: 'chart-flowchart', label: L10n.t('旧式流程'), before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false, tip: '插入 flowchart.js 语法（老式流程图，新图建议用「流程图」）' },
-  { key: 'chart-wavedrom', label: L10n.t('波形'), before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false, tip: '插入 WaveDrom JSON，画数字时序波形' },
-  { key: 'chart-abc', label: L10n.t('五线谱'), before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false, tip: '插入 ABC 记谱，渲染成五线谱' },
-  { key: 'chart-html', label: L10n.t('HTML 预览'), before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false, tip: '插入 HTML 代码块，渲染成可交互网页卡片' },
+  { key: 'chart-markmap', label: L10n.t('脑图'), before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false, tip: L10n.t('插入 markmap 大纲，标题层级即脑图分支') },
+  { key: 'chart-graphviz', label: L10n.t('关系图'), before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false, tip: L10n.t('插入 Graphviz DOT 有向图') },
+  { key: 'chart-flowchart', label: L10n.t('旧式流程'), before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false, tip: L10n.t('插入 flowchart.js 语法（老式流程图，新图建议用「流程图」）') },
+  { key: 'chart-wavedrom', label: L10n.t('波形'), before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false, tip: L10n.t('插入 WaveDrom JSON，画数字时序波形') },
+  { key: 'chart-abc', label: L10n.t('五线谱'), before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false, tip: L10n.t('插入 ABC 记谱，渲染成五线谱') },
+  { key: 'chart-html', label: L10n.t('HTML 预览'), before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false, tip: L10n.t('插入 HTML 代码块，渲染成可交互网页卡片') },
   // ── 新增格式按钮（参考常见编辑器补齐） ──
-  { key: 'taskdone', label: L10n.t('已完成任务'), before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false, tip: '插入已勾选的任务项 - [x]' },
-  { key: 'latex', label: L10n.t('公式块'), before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false, tip: '插入块级公式 $$…$$，渲染成公式卡片' },
-  { key: 'latexinline', label: L10n.t('行内公式'), before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false, tip: '插入行内公式 $…$，随正文排版' },
+  { key: 'taskdone', label: L10n.t('已完成任务'), before: '\n- [x] ', after: '', holder: L10n.t('已完成事项'), icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false, tip: L10n.t('插入已勾选的任务项 - [x]') },
+  { key: 'latex', label: L10n.t('公式块'), before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false, tip: L10n.t('插入块级公式 $$…$$，渲染成公式卡片') },
+  { key: 'latexinline', label: L10n.t('行内公式'), before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false, tip: L10n.t('插入行内公式 $…$，随正文排版') },
   // ⚠️ **下划线 <u>、居中 <div align>、颜色 <font> 三类按钮都不做**：它们只能靠行内
   //    / 块级 HTML 表达，而解析器只认 `<details>` 一种 HTML，其余按纯文本显示
   //    （见 MdParser 头注释）——插进去就是一串显示出来的标签，比没有按钮更糟。
@@ -170,10 +170,10 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'sym-endash', label: '–', before: '–', after: '', holder: '', group: 'symcn', core: false },
   { key: 'sym-ellipsis', label: '…', before: '…', after: '', holder: '', group: 'symcn', core: false },
   { key: 'sym-dun', label: '、', before: '、', after: '', holder: '', group: 'symcn', core: false },
-  { key: 'sym-dq', label: '“”', before: '“', after: '”', holder: '引用', group: 'symcn', core: false },
-  { key: 'sym-sq', label: '‘’', before: '‘', after: '’', holder: '引用', group: 'symcn', core: false },
+  { key: 'sym-dq', label: '“”', before: '“', after: '”', holder: L10n.t('引用'), group: 'symcn', core: false },
+  { key: 'sym-sq', label: '‘’', before: '‘', after: '’', holder: L10n.t('引用'), group: 'symcn', core: false },
   { key: 'sym-lpar', label: '（）', before: '（', after: '）', holder: '', group: 'symcn', core: false },
-  { key: 'sym-book', label: '《》', before: '《', after: '》', holder: '书名', group: 'symcn', core: false },
+  { key: 'sym-book', label: '《》', before: '《', after: '》', holder: L10n.t('书名'), group: 'symcn', core: false },
   { key: 'sym-tort', label: '【】', before: '【', after: '】', holder: '', group: 'symcn', core: false },
   // ── 英文符号组 ──
   { key: 'sym-pipe', label: '|', before: '|', after: '', holder: '', group: 'symben', core: false },
@@ -205,24 +205,24 @@ const CORE_SNIPPETS: MdSnippet[] = SNIPPETS.filter((it: MdSnippet) => it.core);
  * 并按澄笺支持的范围（含 callout / 脚注 / 公式 / 图表等扩展）做了补充。
  */
 const SYNTAX_ROWS: SyntaxRow[] = [
-  { syntax: '# 一级标题\n## 二级标题\n### 三级标题', desc: '标题：一到六个 # 表示一到六级；# 后要有空格' },
-  { syntax: '**粗体** 与 *斜体* 与 ***粗斜体***', desc: '强调：两侧各一个 * 是斜体、两个是粗体（_ 写法等价）' },
-  { syntax: '~~删除线~~  与  ==高亮==', desc: '删除线与高亮标记（扩展语法，两个波浪线 / 两个等号）' },
-  { syntax: '`行内代码`', desc: '行内代码：一个反引号包裹，底纹带圆角' },
-  { syntax: '> 区块引用\n>> 嵌套引用', desc: '引用：行首写 > ；连续 >> 表示嵌套一层' },
+  { syntax: '# 一级标题\n## 二级标题\n### 三级标题', desc: L10n.t('标题：一到六个 # 表示一到六级；# 后要有空格') },
+  { syntax: L10n.t('**粗体** 与 *斜体* 与 ***粗斜体***'), desc: L10n.t('强调：两侧各一个 * 是斜体、两个是粗体（_ 写法等价）') },
+  { syntax: L10n.t('~~删除线~~  与  ==高亮=='), desc: '删除线与高亮标记（扩展语法，两个波浪线 / 两个等号）' },
+  { syntax: L10n.t('`行内代码`'), desc: L10n.t('行内代码：一个反引号包裹，底纹带圆角') },
+  { syntax: '> 区块引用\n>> 嵌套引用', desc: L10n.t('引用：行首写 > ；连续 >> 表示嵌套一层') },
   { syntax: '> [!NOTE]\n> 提示块的正文写在这里', desc: '提示块：NOTE / TIP / IMPORTANT / WARNING / CAUTION 五种' },
-  { syntax: '- 第一项\n- 第二项\n  - 缩进两格表示嵌套', desc: '无序列表：- + * 均可，标记后至少一个空格' },
-  { syntax: '1. 第一项\n2. 第二项', desc: '有序列表：数字 + . + 空格' },
-  { syntax: '- [ ] 待办事项\n- [x] 已完成事项', desc: '任务列表：渲染成勾选框，阅读页可直接点选' },
-  { syntax: '| 语法 | 说明 |\n| --- | --- |\n| 表格 | 第二行用 --- 分隔 |', desc: '表格：用 | 分隔单元格，第二行用 --- 分隔表头；用 :-: 控制列对齐' },
-  { syntax: '---', desc: '分割线：三个及以上的 - * _ 均可' },
-  { syntax: '[链接文字](https://www.harmonyos.com)', desc: '链接：行内式 [文字](地址)；点击链接会复制地址' },
-  { syntax: '`![替代文字](图片地址)`', desc: '图片：与链接同理、前面多加一个 !；网络图与本地图（工具条「插图片」）都会真实加载' },
-  { syntax: '`[^1]` 与 `[^1]: 脚注内容`', desc: '脚注：引用呈上标，定义在文末成注释卡，阅读页左滑可查看' },
+  { syntax: '- 第一项\n- 第二项\n  - 缩进两格表示嵌套', desc: L10n.t('无序列表：- + * 均可，标记后至少一个空格') },
+  { syntax: '1. 第一项\n2. 第二项', desc: L10n.t('有序列表：数字 + . + 空格') },
+  { syntax: '- [ ] 待办事项\n- [x] 已完成事项', desc: L10n.t('任务列表：渲染成勾选框，阅读页可直接点选') },
+  { syntax: '| 语法 | 说明 |\n| --- | --- |\n| 表格 | 第二行用 --- 分隔 |', desc: L10n.t('表格：用 | 分隔单元格，第二行用 --- 分隔表头；用 :-: 控制列对齐') },
+  { syntax: '---', desc: L10n.t('分割线：三个及以上的 - * _ 均可') },
+  { syntax: '[链接文字](https://www.harmonyos.com)', desc: L10n.t('链接：行内式 [文字](地址)；点击链接会复制地址') },
+  { syntax: L10n.t('`![替代文字](图片地址)`'), desc: L10n.t('图片：与链接同理、前面多加一个 !；网络图与本地图（工具条「插图片」）都会真实加载') },
+  { syntax: L10n.t('`[^1]` 与 `[^1]: 脚注内容`'), desc: L10n.t('脚注：引用呈上标，定义在文末成注释卡，阅读页左滑可查看') },
   { syntax: '\\*转义\\*', desc: '反斜杠转义：让 * / # / ` 等符号按普通文字显示' },
   // 公式：**用行内写法做预览**——它走 MathLite 同步自绘，一定能显示；
   // 块级 $$ 在面板里要挂 Web 渲染（体积大、首帧空白），只放在说明里讲写法
-  { syntax: '行内公式：$a^2 + b^2 = c^2$ 直接写在句子里', desc: '数学公式：行内用一对 $ 包住（开 $ 后不能紧跟空格）；块级单独起一行、用 $$ 包起来。分数 / 上下标 / 根号 / 矩阵 / 希腊字母等常用子集真实渲染' },
+  { syntax: L10n.t('行内公式：$a^2 + b^2 = c^2$ 直接写在句子里'), desc: '数学公式：行内用一对 $ 包住（开 $ 后不能紧跟空格）；块级单独起一行、用 $$ 包起来。分数 / 上下标 / 根号 / 矩阵 / 希腊字母等常用子集真实渲染' },
   { syntax: '```mermaid\ngraph TD\n  A[打开澄笺] --> B[开始阅读]\n```', desc: '流程图：graph TD / LR 真实布局渲染，其余图表语言按代码块显示' }
 ];
 
@@ -239,7 +239,7 @@ const PREVIEW_MODE_ITEMS: PreviewModeItem[] = [
   // ⚠️ 实时预览只保留**分段预览编辑**（用户决定：WYSIWYG / IR 的 Web 表面路线
   // 罢试，编辑页回到 1.1.1 的稳定形态）。两种 Web 模式的分支保留为死代码，
   // previewMode 在进页时强制归 0。
-  { m: 0, label: L10n.t('分段预览编辑'), desc: '点哪块改哪块（原比例内联编辑）' }
+  { m: 0, label: L10n.t('分段预览编辑'), desc: L10n.t('点哪块改哪块（原比例内联编辑）') }
 ];
 
 /** Web 编辑器（WYSIWYG / IR）与 ArkTS 的桥：Web 调 mdChanged 推送内容。 */
@@ -394,7 +394,7 @@ export struct Editor {
     }
     this.previewModeMenu = false;
     const labels: string[] = ['分段预览编辑', '所见即所得（WYSIWYG）', '即时渲染（IR）'];
-    this.toast('已切换：' + labels[mode] + (this.previewMode === 2 ? ' · 在上方源码区直接修改' : ''));
+    this.toast('已切换：' + labels[mode] + (this.previewMode === 2 ? L10n.t(' · 在上方源码区直接修改') : ''));
   }
 
   /** WYSIWYG / IR 的序列化引擎（marked 解析 + turndown 反序列化）是否已被关闭。 */
@@ -1117,7 +1117,7 @@ export struct Editor {
     if (this.liveMode || this.splitMode > 0) {
       this.refreshPreviewBlocks();
     }
-    this.toast(end > at ? '已刷新目录（' + items.length + ' 条）' : '已插入目录（' + items.length + ' 条）');
+    this.toast(end > at ? L10n.t('已刷新目录（') + items.length + ' 条）' : L10n.t('已插入目录（') + items.length + ' 条）');
   }
 
   // ══════════════════════ 插入图片 ══════════════════════
@@ -1160,20 +1160,20 @@ export struct Editor {
   @Builder
   aiChipMenu() {
     Menu() {
-      MenuItem({ content: '进入 AI 对话' })
+      MenuItem({ content: L10n.t('进入 AI 对话') })
         .onClick(() => {
           this.openAiChat('');
         })
       if (this.aiReady) {
-        MenuItem({ content: '生成摘要' })
+        MenuItem({ content: L10n.t('生成摘要') })
           .onClick(() => {
             this.sendAiPreset('请为这篇文档生成一份摘要，要点清晰、语言简洁。');
           })
-        MenuItem({ content: '续写' })
+        MenuItem({ content: L10n.t('续写') })
           .onClick(() => {
             this.sendAiPreset('请接着这篇文档的结尾续写一段，保持原文的风格与语气。');
           })
-        MenuItem({ content: '润色' })
+        MenuItem({ content: L10n.t('润色') })
           .onClick(() => {
             this.sendAiPreset('请润色这篇文档的语言表达，保持原意与整体结构，并给出修改后的完整全文。');
           })
@@ -1741,7 +1741,7 @@ export struct Editor {
           .fontColor([this.palette().textPrimary])
       }
 
-      TextInput({ text: this.docName, placeholder: this.isNew ? '给文档起个名字' : '文档名' })
+      TextInput({ text: this.docName, placeholder: this.isNew ? L10n.t('给文档起个名字') : L10n.t('文档名') })
         .layoutWeight(1)
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
@@ -2114,7 +2114,7 @@ export struct Editor {
           Column() {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: item.label,
+              chipLabel: L10n.t(item.label),
               chipPaddingH: 10,
               // 符号组没有图标：字符本身就是脸，字号放大一点才看得清
               chipFontSize: item.icon === undefined ? 15 : 0,
@@ -2261,7 +2261,7 @@ export struct Editor {
     Column() {
       ImmersiveChip({
         palette: this.palette(),
-        chipLabel: item.label,
+        chipLabel: L10n.t(item.label),
         chipPaddingH: 8,
         chipWidth: cellVp,
         chipFontSize: item.icon === undefined ? 15 : 0,
@@ -2338,7 +2338,7 @@ export struct Editor {
           ImmersiveChip({
             palette: this.palette(),
             chipActive: this.dirty,
-            chipLabel: this.dirty ? '未保存' : (this.isNew ? '新文档' : '已保存'),
+            chipLabel: this.dirty ? L10n.t('未保存') : (this.isNew ? L10n.t('新文档') : L10n.t('已保存')),
             chipOnTap: () => {
               this.save();
             }
@@ -2347,7 +2347,7 @@ export struct Editor {
           ImmersiveChip({
             palette: this.palette(),
             chipActive: this.splitMode > 0,
-            chipLabel: this.splitMode === 1 ? '上下分屏' : (this.splitMode === 2 ? '左右分屏' : '分屏'),
+            chipLabel: this.splitMode === 1 ? L10n.t('上下分屏') : (this.splitMode === 2 ? L10n.t('左右分屏') : L10n.t('分屏')),
             chipOnTap: () => {
               this.cycleSplit();
             }
@@ -4615,7 +4615,7 @@ export struct Editor {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.replaceRowOpen,
-              chipLabel: this.replaceRowOpen ? '收起' : '替换',
+              chipLabel: this.replaceRowOpen ? L10n.t('收起') : L10n.t('替换'),
               chipOnTap: () => {
                 this.replaceRowOpen = !this.replaceRowOpen;
               }

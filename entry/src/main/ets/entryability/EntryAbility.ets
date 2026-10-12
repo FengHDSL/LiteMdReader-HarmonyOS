@@ -360,7 +360,7 @@ export default class EntryAbility extends UIAbility {
       let name: string = title.trim();
       if (name.length === 0) {
         const firstLine: string = content.split('\n')[0].trim().replace(/^#+\s*/, '');
-        name = firstLine.length > 0 ? firstLine.substring(0, 20) : '分享内容';
+        name = firstLine.length > 0 ? firstLine.substring(0, 20) : L10n.t('分享内容');
       }
       name = DocStore.sanitizeName(name);
       if (name.length === 0) {
@@ -451,7 +451,7 @@ export default class EntryAbility extends UIAbility {
       }
       break;
     }
-    return out.length > 0 ? out : '外部文档';
+    return out.length > 0 ? out : L10n.t('外部文档');
   }
 
   private handleOpenFile(want: Want): void {

@@ -195,7 +195,7 @@ export struct SettingsData {
     }
     const c = this.ctx();
     const line: string = '自动备份：每 ' + this.webdavAutoDays + ' 天'
-      + (this.webdavLastAt > 0 ? ' · 上次 ' + this.stampOf(this.webdavLastAt) : ' · 尚未备份');
+      + (this.webdavLastAt > 0 ? L10n.t(' · 上次 ') + this.stampOf(this.webdavLastAt) : L10n.t(' · 尚未备份'));
     if (c === null) {
       return line;
     }
@@ -328,13 +328,13 @@ export struct SettingsData {
         message: L10n.t('会用服务器上的完整备份包覆盖本机同名数据')
           + '（文档、书架、AI 对话记录、批注、设置）。',
         primaryButton: {
-          value: '取消',
+          value: L10n.t('取消'),
           action: () => {
             // 什么都不做
           }
         },
         secondaryButton: {
-          value: '恢复',
+          value: L10n.t('恢复'),
           action: () => {
             this.runRestoreWebDav();
           }
@@ -364,7 +364,7 @@ export struct SettingsData {
     }).then((msg: string) => {
       this.restoring = false;
       this.backupStatus = msg;
-      this.toast(msg.indexOf('失败') >= 0 || msg.indexOf('没有') >= 0 ? '恢复未完成' : '恢复完成');
+      this.toast(msg.indexOf('失败') >= 0 || msg.indexOf('没有') >= 0 ? L10n.t('恢复未完成') : L10n.t('恢复完成'));
     }).catch((e: BusinessError) => {
       this.restoring = false;
       this.backupStatus = '恢复失败：' + e.message;
@@ -414,7 +414,7 @@ export struct SettingsData {
     if (a.style === 'dbl') {
       return '手写批注';
     }
-    return a.note.length > 0 ? '文字批注' : '荧光笔';
+    return a.note.length > 0 ? L10n.t('文字批注') : L10n.t('荧光笔');
   }
 
   /** 跨文档收集全部批注做预览（上限 100 条，超出提示总数）。 */
@@ -440,7 +440,7 @@ export struct SettingsData {
         out.push({
           docName: list[k].name,
           kind: this.annoKindLabel(a),
-          text: a.text.length > 0 ? a.text : '（无划选文字）'
+          text: a.text.length > 0 ? a.text : L10n.t('（无划选文字）')
         } as AnnoPreviewItem);
       }
     }
@@ -628,7 +628,7 @@ export struct SettingsData {
     try {
       const n: number = DocStore.restoreBuiltins(ctx);
       this.loadBuiltins();
-      this.toast(n > 0 ? '已恢复 ' + n + ' 篇内置教程' : '没有需要恢复的内置教程');
+      this.toast(n > 0 ? L10n.t('已恢复 ') + n + ' 篇内置教程' : L10n.t('没有需要恢复的内置教程'));
     } catch (err) {
       this.toast(L10n.t('恢复失败'));
     }
@@ -700,13 +700,13 @@ export struct SettingsData {
         title: L10n.t('删除「') + name + '」？',
         message: L10n.t('本地 md 文件会一并删除，删除后不可恢复。'),
         primaryButton: {
-          value: '取消',
+          value: L10n.t('取消'),
           action: () => {
             // 什么都不做
           }
         },
         secondaryButton: {
-          value: '删除',
+          value: L10n.t('删除'),
           action: () => {
             this.deleteBuiltin(name);
           }
@@ -732,13 +732,13 @@ export struct SettingsData {
           + '移除后书架上看不到它们，但正文仍在应用内，'
           + '随时可以在本页「已移除的内置教程」里恢复回书架。',
         primaryButton: {
-          value: '取消',
+          value: L10n.t('取消'),
           action: () => {
             // 什么都不做
           }
         },
         secondaryButton: {
-          value: '从书架中移除',
+          value: L10n.t('从书架中移除'),
           action: () => {
             this.resetBuiltins();
           }
@@ -774,8 +774,8 @@ export struct SettingsData {
     this.pendingDeleteDoc = '';
     this.loadBuiltins();
     this.toast(n > 0
-      ? '已从书架移除 ' + n + ' 篇内置文档，可在本页恢复'
-      : '内置文档本来就已全部移除');
+      ? L10n.t('已从书架移除 ') + n + ' 篇内置文档，可在本页恢复'
+      : L10n.t('内置文档本来就已全部移除'));
   }
 
   // ══════════════════════ ① zip 备份 / 恢复 / 清缓存 ══════════════════════
@@ -914,7 +914,7 @@ export struct SettingsData {
 
   build() {
     SettingsShell({
-      shellTitle: '数据管理',
+      shellTitle: L10n.t('数据管理'),
       shellSubtitle: L10n.t('备份与恢复 · 书架数据 · 缓存'),
       stack: this.stack,
       life: this.life
@@ -939,7 +939,7 @@ export struct SettingsData {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
-              chipLabel: this.zipBusy ? '处理中…' : '导出备份',
+              chipLabel: this.zipBusy ? L10n.t('处理中…') : L10n.t('导出备份'),
               chipOnTap: () => {
                 this.exportZipBackup();
               }
@@ -1007,7 +1007,7 @@ export struct SettingsData {
           ImmersiveChip({
             palette: this.palette(),
             chipActive: this.annoOpen,
-            chipLabel: this.annoOpen ? '收起预览' : '预览全部批注',
+            chipLabel: this.annoOpen ? L10n.t('收起预览') : L10n.t('预览全部批注'),
             chipOnTap: () => {
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
                 this.annoOpen = !this.annoOpen;
@@ -1374,8 +1374,8 @@ export struct SettingsData {
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
               Text(this.hiddenBuiltins.length > 0
-                ? '书架上看不到：' + this.hiddenBuiltins.join('、')
-                : '没有移除过内置教程')
+                ? L10n.t('书架上看不到：') + this.hiddenBuiltins.join('、')
+                : L10n.t('没有移除过内置教程'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
@@ -1432,7 +1432,7 @@ export struct SettingsData {
               palette: this.palette(),
               chipTint: '#FF2E7D32',
               chipActive: !this.backing && !this.restoring,
-              chipLabel: this.backing ? '备份中…' : '立即备份',
+              chipLabel: this.backing ? L10n.t('备份中…') : L10n.t('立即备份'),
               chipOnTap: () => {
                 this.runBackup();
               }
@@ -1441,7 +1441,7 @@ export struct SettingsData {
               palette: this.palette(),
               chipTint: '#FF1565C0',
               chipActive: !this.backing && !this.restoring,
-              chipLabel: this.restoring ? '恢复中…' : '恢复备份',
+              chipLabel: this.restoring ? L10n.t('恢复中…') : L10n.t('恢复备份'),
               chipOnTap: () => {
                 this.confirmRestoreWebDav();
               }

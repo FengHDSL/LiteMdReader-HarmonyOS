@@ -386,7 +386,7 @@ export struct AiSettings {
       if (this.embedded) {
         // 嵌入形态（设置分栏 / 设置入口）：与其他设置项同一套 SettingsShell 外壳
         SettingsShell({
-          shellTitle: '助手设置',
+          shellTitle: L10n.t('助手设置'),
           shellSubtitle: L10n.t('API 地址 · 模型 · 思考强度 · 词元消耗'),
           stack: this.stack,
           life: this.life
@@ -695,7 +695,7 @@ export struct AiSettings {
             this.test();
           } }) {
             Row({ space: HwSpace.sm }) {
-              Text(this.testing ? '正在测试…' : '测试连接')
+              Text(this.testing ? L10n.t('正在测试…') : L10n.t('测试连接'))
                 .fontSize(15)
                 .fontColor(this.palette().accent)
               Blank()

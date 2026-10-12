@@ -153,7 +153,7 @@ export class DocLint {
     }
     if (openFence !== null) {
       issues.push({
-        level: 'error', line: openLine, kind: '围栏未闭合',
+        level: 'error', line: openLine, kind: L10n.t('围栏未闭合'),
         message: L10n.t('第 ') + openLine + ' 行的围栏代码块没有闭合，后面的内容都会被当成代码'
       } as LintIssue);
     }
@@ -186,7 +186,7 @@ export class DocLint {
       }
       if (!hasBody) {
         issues.push({
-          level: 'warn', line: start + 1, kind: '空章节',
+          level: 'warn', line: start + 1, kind: L10n.t('空章节'),
           message: '「' + headings[k].text + '」标题下没有任何内容'
         } as LintIssue);
       }
@@ -197,7 +197,7 @@ export class DocLint {
       if (headings[k].level === headings[k - 1].level
         && headings[k].text === headings[k - 1].text && headings[k].text.length > 0) {
         issues.push({
-          level: 'warn', line: headingLines[k] + 1, kind: '重复标题',
+          level: 'warn', line: headingLines[k] + 1, kind: L10n.t('重复标题'),
           message: L10n.t('与第 ') + (headingLines[k - 1] + 1) + ' 行标题重复：「' + headings[k].text + '」'
         } as LintIssue);
       }
@@ -243,7 +243,7 @@ export class DocLint {
             }
             if (!exists) {
               issues.push({
-                level: 'warn', line: i + 1, kind: '图片缺失',
+                level: 'warn', line: i + 1, kind: L10n.t('图片缺失'),
                 message: L10n.t('图片 ') + rel + ' 在本地找不到（可能移动或删除了）'
               } as LintIssue);
             }
@@ -266,7 +266,7 @@ export class DocLint {
         }
         if (!hit && target.length > 0) {
           issues.push({
-            level: 'warn', line: i + 1, kind: '锚点失效',
+            level: 'warn', line: i + 1, kind: L10n.t('锚点失效'),
             message: L10n.t('跳转目标「#') + a[1] + '」在本篇里找不到对应标题'
           } as LintIssue);
         }
@@ -280,7 +280,7 @@ export class DocLint {
         const name: string = w[1].trim();
         if (name.length > 0 && DocStore.find(ctx, name) === undefined) {
           issues.push({
-            level: 'warn', line: i + 1, kind: '文档链接失效',
+            level: 'warn', line: i + 1, kind: L10n.t('文档链接失效'),
             message: L10n.t('链接的文档「') + name + '」不存在'
           } as LintIssue);
         }
@@ -290,7 +290,7 @@ export class DocLint {
       // 超长行
       if (line.length > 2000) {
         issues.push({
-          level: 'warn', line: i + 1, kind: '超长行',
+          level: 'warn', line: i + 1, kind: L10n.t('超长行'),
           message: L10n.t('这一行有 ') + line.length + ' 个字符，编辑与渲染都会吃力，建议手动换行'
         } as LintIssue);
       }
@@ -304,7 +304,7 @@ export class DocLint {
         if (!prevIsTable && DocLint.isTableLine(nextLine)
           && !DocLint.isDelimiterLike(nextLine)) {
           issues.push({
-            level: 'warn', line: i + 1, kind: '表格缺少分隔行',
+            level: 'warn', line: i + 1, kind: L10n.t('表格缺少分隔行'),
             message: L10n.t('这一行像是表头，但下一行不是 | --- | 分隔行；补一行分隔行才会渲染成表格')
               + '（也可以直接删掉竖线，改成普通文字）'
           } as LintIssue);
@@ -320,7 +320,7 @@ export class DocLint {
           tableCols = cols;
         } else if (cols !== tableCols) {
           issues.push({
-            level: 'warn', line: i + 1, kind: '表格列数不一致',
+            level: 'warn', line: i + 1, kind: L10n.t('表格列数不一致'),
             message: L10n.t('第 ') + tableStart + ' 行开始的表格是 ' + tableCols + ' 列，这一行是 ' + cols + ' 列'
           } as LintIssue);
         }
@@ -345,7 +345,7 @@ export class DocLint {
     }
     if (todoOpen > 0) {
       issues.push({
-        level: 'info', line: 0, kind: '任务清单',
+        level: 'info', line: 0, kind: L10n.t('任务清单'),
         message: L10n.t('还有 ') + todoOpen + ' 项待办未完成（已完成 ' + todoDone + ' 项）'
       } as LintIssue);
       infoCount++;

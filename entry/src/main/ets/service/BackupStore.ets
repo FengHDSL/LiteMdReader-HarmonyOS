@@ -434,7 +434,7 @@ export class BackupStore {
     } catch (err) {
       // 删不到就不管（下次启动仍是默认空配置）
     }
-    return failed === 0 ? '已清空应用数据' : '已清空（' + failed + ' 项未能删除）';
+    return failed === 0 ? L10n.t('已清空应用数据') : L10n.t('已清空（') + failed + ' 项未能删除）';
   }
 
   static async clearCache(ctx: common.UIAbilityContext): Promise<string> {
@@ -460,6 +460,6 @@ export class BackupStore {
       }
     }
     const kb: number = Math.round(freed / 1024);
-    return kb > 0 ? '已清除缓存 ' + kb + ' KB' : '缓存已经是最干净的状态';
+    return kb > 0 ? L10n.t('已清除缓存 ') + kb + ' KB' : L10n.t('缓存已经是最干净的状态');
   }
 }

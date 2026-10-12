@@ -9,6 +9,7 @@
 
 import { CoverStyle, HwSpace, coverStyleOf } from '../theme/DesignTokens';
 import { ImmersiveCardLayer } from '../material/ImmersiveCard';
+import { L10n } from '../service/L10n';
 
 /**
  * 由自定义底色推出一组封面配色：
@@ -226,6 +227,6 @@ export struct DocCover {
 
 /** 取文档封面的三色（内置教程固定用第一组）。 */
 export function coverColorsOf(name: string, builtin: boolean): CoverStyle {
-  const style: CoverStyle = coverStyleOf(builtin ? 'LiteMdReader·内置' : name);
+  const style: CoverStyle = coverStyleOf(builtin ? L10n.t('LiteMdReader·内置') : name);
   return style;
 }

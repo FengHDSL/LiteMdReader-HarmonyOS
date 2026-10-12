@@ -47,20 +47,20 @@ import {
  * ThemeStore 里做兼容解析，只是不再出现在选择项中）。
  */
 const THEME_PRESETS: NamedColor[] = [
-  { name: '澄光', value: 'cheng' },
-  { name: '宣纸', value: 'xuan' },
-  { name: '砚青', value: 'yan' },
-  { name: '竹影', value: 'zhu' },
-  { name: '霞笺', value: 'xia' }
+  { name: L10n.t('澄光'), value: 'cheng' },
+  { name: L10n.t('宣纸'), value: 'xuan' },
+  { name: L10n.t('砚青'), value: 'yan' },
+  { name: L10n.t('竹影'), value: 'zhu' },
+  { name: L10n.t('霞笺'), value: 'xia' }
 ];
 
 /** 灰体文本显示增强的模式（移植自 xjau 的灰字覆盖） */
 const GRAY_MODES: NamedColor[] = [
-  { name: '自动', value: 'auto' },
-  { name: '灰', value: 'gray' },
-  { name: '黑', value: 'black' },
-  { name: '白', value: 'white' },
-  { name: '自定义', value: 'custom' }
+  { name: L10n.t('自动'), value: 'auto' },
+  { name: L10n.t('灰'), value: 'gray' },
+  { name: L10n.t('黑'), value: 'black' },
+  { name: L10n.t('白'), value: 'white' },
+  { name: L10n.t('自定义'), value: 'custom' }
 ];
 
 @Component

@@ -1,3 +1,4 @@
+import { L10n } from './L10n';
 /**
  * 澄笺 · 渲染引擎注册表（引擎管理数据源 + 开关判定）
  * ======================================================
@@ -41,7 +42,7 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'mathjax', name: 'MathJax', version: '3.2.2', date: '2022-06-08',
     repo: 'https://github.com/mathjax/MathJax',
-    desc: '行内公式排版为矢量图（正文内联显示；v4 需专项离线适配，暂缓升级）'
+    desc: L10n.t('行内公式排版为矢量图（正文内联显示；v4 需专项离线适配，暂缓升级）')
   },
   {
     id: 'mermaid', name: 'Mermaid', version: '10.9.3', date: '2024-10-22',
@@ -51,7 +52,7 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'markmap', name: 'markmap', version: '0.18.12', date: '2025-06-12',
     repo: 'https://github.com/markmap/markmap',
-    desc: 'Markdown 思维导图（脑图，可缩放可折叠）'
+    desc: L10n.t('Markdown 思维导图（脑图，可缩放可折叠）')
   },
   {
     id: 'echarts', name: 'Apache ECharts', version: '6.1.0', date: '2026-05-19',
@@ -61,17 +62,17 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'abc', name: 'abcjs', version: '6.7.1', date: '2026-09-21',
     repo: 'https://github.com/paulrosen/abcjs',
-    desc: 'ABC 记谱法乐谱（五线谱，可播放）'
+    desc: L10n.t('ABC 记谱法乐谱（五线谱，可播放）')
   },
   {
     id: 'graphviz', name: 'Viz.js (Graphviz)', version: '3.31.0', date: '2026-09-28',
     repo: 'https://github.com/mdaines/viz-js',
-    desc: 'Graphviz DOT 关系图（内嵌 Graphviz 16.1.0）'
+    desc: L10n.t('Graphviz DOT 关系图（内嵌 Graphviz 16.1.0）')
   },
   {
     id: 'flowchart', name: 'flowchart.js', version: '1.17.1', date: '2022-02-02',
     repo: 'https://github.com/adrai/flowchart.js',
-    desc: '经典 flowchart 语法流程图（基于 Raphael）'
+    desc: L10n.t('经典 flowchart 语法流程图（基于 Raphael）')
   },
   {
     id: 'wavedrom', name: 'WaveDrom', version: '3.7.0', date: '2026-08-31',
@@ -86,7 +87,7 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'turndown', name: 'turndown', version: '7.2.4', date: '2026-04-03',
     repo: 'https://github.com/mixmark-io/turndown',
-    desc: '编辑器 HTML → Markdown 序列化（保存实时同步）'
+    desc: L10n.t('编辑器 HTML → Markdown 序列化（保存实时同步）')
   }
 ];
 

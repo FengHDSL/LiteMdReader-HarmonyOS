@@ -23,6 +23,7 @@ import { MdParseResult } from '../markdown/MdTypes';
 import { MdParser } from '../markdown/MdParser';
 import { SettingsMirror } from './SettingsMirror';
 import { WritingLog } from './WritingLog';
+import { L10n } from './L10n';
 
 /** 书架里的一条文档记录 */
 /** Web 阅读器 / 打印路由参数：文档名 + 全文（HTML 在页内构建）；htmlPath 非空时直接打开该文件。 */
@@ -217,9 +218,9 @@ export class DocStore {
    *  coverColor = 预置封面色（用户要求：教程蓝、示例绿、能力总览紫；用户改封面会覆盖此值）。
    *  知识图谱 / 待办的演示文档已删除——两个功能用自建文档即可体验，无内置依赖。 */
   static readonly BUILTINS: DocBuiltin[] = [
-    { name: 'Markdown 语法教程', raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: '澄笺示例 · 全功能演示', raw: 'chengjian.md', coverColor: '#4E8E7E' },
-    { name: '澄笺 · 渲染能力总览', raw: 'capabilities.md', coverColor: '#7A5FA8' }
+    { name: L10n.t('Markdown 语法教程'), raw: 'README.md', coverColor: '#5B7FBF' },
+    { name: L10n.t('澄笺示例 · 全功能演示'), raw: 'chengjian.md', coverColor: '#4E8E7E' },
+    { name: L10n.t('澄笺 · 渲染能力总览'), raw: 'capabilities.md', coverColor: '#7A5FA8' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
@@ -2245,6 +2246,6 @@ export class DocStore {
   /** 供界面显示的错误文案。 */
   static describeError(err: BusinessError): string {
     return err.message !== undefined && err.message !== null && err.message.length > 0
-      ? err.message : '未知错误';
+      ? err.message : L10n.t('未知错误');
   }
 }

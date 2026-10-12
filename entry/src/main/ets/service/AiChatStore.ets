@@ -571,7 +571,7 @@ export class AiChatStore {
       const raw: AiChatSession = JSON.parse(fs.readTextSync(path)) as AiChatSession;
       const s: AiChatSession = {
         id: raw.id === undefined ? id : raw.id,
-        title: raw.title === undefined ? '对话' : raw.title,
+        title: raw.title === undefined ? L10n.t('对话') : raw.title,
         created: raw.created === undefined ? Date.now() : raw.created,
         updated: raw.updated === undefined ? Date.now() : raw.updated,
         docName: raw.docName === undefined ? '' : raw.docName,
@@ -714,7 +714,7 @@ export class AiChatStore {
           if (m.role !== 'assistant' || m.tokens === undefined || m.tokens <= 0) {
             continue;
           }
-          const key: string = m.model !== undefined && m.model.length > 0 ? m.model : '更早的回复';
+          const key: string = m.model !== undefined && m.model.length > 0 ? m.model : L10n.t('更早的回复');
           let hit: AiTokenStat | null = null;
           for (let j = 0; j < out.length; j++) {
             if (out[j].model === key) {
@@ -825,7 +825,7 @@ export class AiChatStore {
           yHit.replies += 1;
           yHit.tokens += m.tokens;
           // 按模型聚合（旧消息无 model 记录归入「更早的回复」）
-          const key: string = m.model !== undefined && m.model.length > 0 ? m.model : '更早的回复';
+          const key: string = m.model !== undefined && m.model.length > 0 ? m.model : L10n.t('更早的回复');
           let mHit: AiTokenStat | null = null;
           for (let j = 0; j < usage.models.length; j++) {
             if (usage.models[j].model === key) {
@@ -955,7 +955,7 @@ export class AiChatStore {
     docContent: string, docNames: string[]): Promise<AiChatResult> {
     const url: string = AiChatStore.normalizeUrl(cfg.apiUrl);
     if (url.length === 0 || model.length === 0) {
-      const bad: AiChatResult = { ok: false, text: '请先完成 AI 接口配置' };
+      const bad: AiChatResult = { ok: false, text: L10n.t('请先完成 AI 接口配置') };
       return new Promise<AiChatResult>((resolve: (v: AiChatResult) => void) => {
         resolve(bad);
       });
@@ -1007,7 +1007,7 @@ export class AiChatStore {
         if (content.length === 0) {
           const empty: AiChatResult = {
             ok: false,
-            text: '模型返回了空内容，请检查模型名称是否正确（或换一个模型试试）'
+            text: L10n.t('模型返回了空内容，请检查模型名称是否正确（或换一个模型试试）')
           };
           resolve(empty);
           return;
@@ -1030,7 +1030,7 @@ export class AiChatStore {
         const msg: string = err.message !== undefined ? err.message : '';
         const net: AiChatResult = {
           ok: false,
-          text: '请求失败' + (msg.length > 0 ? '：' + msg : '，请检查网络与 API 地址')
+          text: L10n.t('请求失败') + (msg.length > 0 ? '：' + msg : L10n.t('，请检查网络与 API 地址'))
             + '（' + AiChatStore.whereOf(url, model) + '）'
         };
         resolve(net);
@@ -1177,7 +1177,7 @@ export class AiChatStore {
         if (content.length === 0) {
           const empty: AiChatResult = {
             ok: false,
-            text: '模型返回了空内容，请检查模型名称是否正确（或换一个模型试试）'
+            text: L10n.t('模型返回了空内容，请检查模型名称是否正确（或换一个模型试试）')
           };
           resolve(empty);
           return;
@@ -1200,7 +1200,7 @@ export class AiChatStore {
         const msg: string = err.message !== undefined ? err.message : '';
         const net: AiChatResult = {
           ok: false,
-          text: '请求失败' + (msg.length > 0 ? '：' + msg : '，请检查网络与 API 地址')
+          text: L10n.t('请求失败') + (msg.length > 0 ? '：' + msg : L10n.t('，请检查网络与 API 地址'))
             + '（' + AiChatStore.whereOf(url, model) + '）'
         };
         resolve(net);

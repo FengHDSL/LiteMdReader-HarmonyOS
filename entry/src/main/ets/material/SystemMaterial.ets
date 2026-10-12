@@ -26,6 +26,7 @@
 import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
 import { uiMaterial } from '@kit.ArkUI';
 import { materialLevelLabel, isHdsMaterialUsable } from '../theme/Appearance';
+import { L10n } from '../service/L10n';
 
 /** 应用内沉浸光感总开关的 AppStorage 键。 */
 export const IMMERSIVE_KEY: string = 'immersiveLightEnabled';
@@ -363,18 +364,18 @@ export function materialDiagnostics(enabledOn: boolean): string {
   const api: number = isApi26OrAbove() ? 26 : 24;
   const material: uiMaterial.Material | null = getImmersiveMaterial();
   const type: number = appearanceMaterialType();
-  const typeText: string = type === 0 ? '沉浸' : (type === 1 ? '自适应' : '无材质');
+  const typeText: string = type === 0 ? L10n.t('沉浸') : (type === 1 ? L10n.t('自适应') : L10n.t('无材质'));
   const materialText: string = material === null
-    ? (type === 2 ? '已关闭' : '构造失败') : '已构造';
+    ? (type === 2 ? L10n.t('已关闭') : L10n.t('构造失败')) : L10n.t('已构造');
   const err: string = materialError.length > 0 ? materialError : deviceError;
-  const tail: string = err.length > 0 ? ' 错误=' + err : '';
+  const tail: string = err.length > 0 ? L10n.t(' 错误=') + err : '';
   return 'API=' + api
-    + ' 引擎=' + (appearanceMaterialEngine() === 1 ? 'HDS' : '自绘')
+    + ' 引擎=' + (appearanceMaterialEngine() === 1 ? 'HDS' : L10n.t('自绘'))
     + ' 类型=' + typeText
     + ' 等级=' + materialLevelLabel(appearanceNumber('appearanceMaterialLevel', 1))
-    + ' HDS=' + (isHdsMaterialUsable() ? '可用' : '不可用')
+    + ' HDS=' + (isHdsMaterialUsable() ? L10n.t('可用') : L10n.t('不可用'))
     + ' 材质=' + materialText
     + ' 状态=' + systemMaterialStateText()
-    + ' 开关=' + (enabledOn ? '开' : '关')
+    + ' 开关=' + (enabledOn ? L10n.t('开') : L10n.t('关'))
     + tail;
 }

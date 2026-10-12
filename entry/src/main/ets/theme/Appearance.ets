@@ -19,6 +19,7 @@
  */
 
 import { hdsMaterial } from '@kit.UIDesignKit';
+import { L10n } from '../service/L10n';
 
 /** 材质引擎 */
 export enum MaterialEngine {
@@ -36,11 +37,11 @@ export const MATERIAL_LEVEL_LABELS: string[] = ['精致', '温和', '平滑'];
 export const MATERIAL_ENGINE_LABELS: string[] = ['自绘云母', '官方 HDS'];
 
 export function materialTypeLabel(index: number): string {
-  return index >= 0 && index < MATERIAL_TYPE_LABELS.length ? MATERIAL_TYPE_LABELS[index] : '自适应';
+  return index >= 0 && index < MATERIAL_TYPE_LABELS.length ? MATERIAL_TYPE_LABELS[index] : L10n.t('自适应');
 }
 
 export function materialLevelLabel(index: number): string {
-  return index >= 0 && index < MATERIAL_LEVEL_LABELS.length ? MATERIAL_LEVEL_LABELS[index] : '温和';
+  return index >= 0 && index < MATERIAL_LEVEL_LABELS.length ? MATERIAL_LEVEL_LABELS[index] : L10n.t('温和');
 }
 
 export function materialEngineLabel(index: number): string {

@@ -39,6 +39,7 @@ import preferences from '@ohos.data.preferences';
 import { DocMeta, DocStore } from './DocStore';
 import { BackupStore } from './BackupStore';
 import { SettingsMirror } from './SettingsMirror';
+import { L10n } from './L10n';
 
 /** 完整备份包在 WebDAV 上的文件名（固定名覆盖写，恢复时按名下载） */
 const FULL_ZIP_NAME: string = 'litemdreader_full.zip';
@@ -413,7 +414,7 @@ export class WebDavStore {
       onProgress(result.total, result.total, result.error);
       return result;
     } else {
-      result.error = FULL_ZIP_NAME + ' 上传失败（' + (up === -1 ? '网络异常' : 'HTTP ' + up) + '）';
+      result.error = FULL_ZIP_NAME + ' 上传失败（' + (up === -1 ? L10n.t('网络异常') : 'HTTP ' + up) + '）';
       onProgress(result.total, result.total, result.error);
       return result;
     }

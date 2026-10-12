@@ -47,7 +47,7 @@ export struct SettingsReading {
 
   build() {
     SettingsShell({
-      shellTitle: '阅读调整',
+      shellTitle: L10n.t('阅读调整'),
       shellSubtitle: L10n.t('排版 · 主题 · 显示'),
       stack: this.stack,
       life: this.life

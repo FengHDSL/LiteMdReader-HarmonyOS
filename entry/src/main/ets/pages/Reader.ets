@@ -592,7 +592,7 @@ export struct Reader {
       this.enlargeMode = 'image';
       this.enlargePayload = uri;
       this.enlargeGeo = '';
-      this.enlargeTitle = ann.text.length > 0 ? ann.text : '手写批注';
+      this.enlargeTitle = ann.text.length > 0 ? ann.text : L10n.t('手写批注');
       this.enlargeWebId = 'enlarge_' + Date.now();
       this.enlargeWebMounted = true;
       this.enlargeRefitTick = 0;
@@ -1601,13 +1601,13 @@ export struct Reader {
 
   /** 详情头那行状态文案（内置 / 自建 + 当前读写状态）。 */
   private docStatusLine(): string {
-    const kind: string = this.docBuiltin ? '内置语法教程' : '自建文档';
+    const kind: string = this.docBuiltin ? L10n.t('内置语法教程') : L10n.t('自建文档');
     // 用户要求：徽标后带上文档**格式**（md / txt）
     const fmt: string = this.docName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
     if (this.docReadOnly) {
       return kind + ' · ' + fmt + ' · 只读 · 可在「更多」里切换';
     }
-    return kind + ' · ' + fmt + ' · 可写' + (this.docBuiltin ? ' · 常驻第一格' : '');
+    return kind + ' · ' + fmt + ' · 可写' + (this.docBuiltin ? L10n.t(' · 常驻第一格') : '');
   }
 
   /** 切换读写 / 只读（写 shelf.json，切当前这篇）。 */
@@ -1625,7 +1625,7 @@ export struct Reader {
         return;
       }
       this.docReadOnly = readOnly;
-      this.toast(readOnly ? '已切为只读：编辑入口已锁' : '已切为可写：可以编辑了');
+      this.toast(readOnly ? L10n.t('已切为只读：编辑入口已锁') : L10n.t('已切为可写：可以编辑了'));
     } catch (err) {
       this.toast('切换失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -2376,7 +2376,7 @@ export struct Reader {
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
-    this.toast(isCard ? '已添加学习卡，可在书架「文房」复习' : '已添加批注');
+    this.toast(isCard ? L10n.t('已添加学习卡，可在书架「文房」复习') : L10n.t('已添加批注'));
   }
 
   /** 批注形态分类文字（用户要求：四类标识独立展示，不串）。 */
@@ -2390,7 +2390,7 @@ export struct Reader {
     if (ann.style === 'dbl') {
       return '手写批注';
     }
-    return ann.note.length > 0 ? '文字批注' : '荧光笔';
+    return ann.note.length > 0 ? L10n.t('文字批注') : L10n.t('荧光笔');
   }
 
   /** 当前实际存在的形态种类（固定顺序，没有的过滤掉 —— 用户要求）。 */
@@ -2724,13 +2724,13 @@ export struct Reader {
     if (this.docReadOnly) {
       this.blocks[idx].task = done ? MdTaskState.Todo : MdTaskState.Done;
       this.renderEpoch++;
-      this.toast(done ? '已取消勾选（只读文档，不写盘）' : '已完成（只读文档，不写盘）');
+      this.toast(done ? L10n.t('已取消勾选（只读文档，不写盘）') : L10n.t('已完成（只读文档，不写盘）'));
       return;
     }
     if (this.docBuiltin) {
       this.blocks[idx].task = done ? MdTaskState.Todo : MdTaskState.Done;
       this.renderEpoch++;
-      this.toast(done ? '已取消勾选（演示状态，重载后还原）' : '已完成（演示状态，重载后还原）');
+      this.toast(done ? L10n.t('已取消勾选（演示状态，重载后还原）') : L10n.t('已完成（演示状态，重载后还原）'));
       return;
     }
     const ctx = this.ctx();
@@ -2766,7 +2766,7 @@ export struct Reader {
       DocStore.update(ctx, this.docName, lines.join('\n'));
       this.skipRestoreOnce = true;
       this.loadDoc();
-      this.toast(done ? '已取消勾选' : '已完成');
+      this.toast(done ? L10n.t('已取消勾选') : L10n.t('已完成'));
     } catch (err) {
       this.toast('勾选失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -2846,7 +2846,7 @@ export struct Reader {
 
   private searchLabel(): string {
     if (this.searchHits.length === 0) {
-      return this.searchQuery.trim().length > 0 ? '无匹配' : '';
+      return this.searchQuery.trim().length > 0 ? L10n.t('无匹配') : '';
     }
     return (this.searchCursor + 1) + ' / ' + this.searchHits.length;
   }
@@ -3651,13 +3651,13 @@ export struct Reader {
       }
 
       Column({ space: 1 }) {
-        Text(this.docName.length > 0 ? this.docName : '未命名文档')
+        Text(this.docName.length > 0 ? this.docName : L10n.t('未命名文档'))
           .fontSize(HwType.label)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.palette().textPrimary)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(this.activeHeading.length > 0 ? this.activeHeading : '右滑目录 · 左滑注释')
+        Text(this.activeHeading.length > 0 ? this.activeHeading : L10n.t('右滑目录 · 左滑注释'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .maxLines(1)
@@ -3922,7 +3922,7 @@ export struct Reader {
     const next: boolean = !this.docStarred;
     if (DocStore.setStarred(ctx, this.docName, next)) {
       this.docStarred = next;
-      this.toast(next ? '已收藏' : '已取消收藏');
+      this.toast(next ? L10n.t('已收藏') : L10n.t('已取消收藏'));
     }
   }
 
@@ -4323,7 +4323,7 @@ export struct Reader {
                   .textAlign(TextAlign.Center)
                   .width('100%')
                 Text(m.progressRatio > 0.005
-                  ? '已读 ' + Math.round(m.progressRatio * 100) + '%' : '未读')
+                  ? L10n.t('已读 ') + Math.round(m.progressRatio * 100) + '%' : L10n.t('未读'))
                   .fontSize(HwType.caption - 2)
                   .fontColor(this.palette().textTertiary)
               }
@@ -4406,8 +4406,8 @@ export struct Reader {
           .width('100%')
 
         Text(this.docEncoding === 'auto'
-          ? '自动识别：先按 UTF-8 解码，出现乱码则按 GB18030 重试；识别不准时可手动指定。'
-          : '当前手动指定为 ' + this.encodingLabel(this.docEncoding) + '。切换后正文会重新解析。')
+          ? L10n.t('自动识别：先按 UTF-8 解码，出现乱码则按 GB18030 重试；识别不准时可手动指定。')
+          : L10n.t('当前手动指定为 ') + this.encodingLabel(this.docEncoding) + '。切换后正文会重新解析。')
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.caption * 1.7)
@@ -4417,7 +4417,7 @@ export struct Reader {
           ForEach(ENCODING_CHOICES, (item: EncodingChoice) => {
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: item.label,
+              chipLabel: L10n.t(item.label),
               chipActive: this.docEncoding === item.value,
               chipOnTap: () => {
                 this.switchEncoding(item.value);
@@ -4614,7 +4614,7 @@ export struct Reader {
                 coverTop: coverColorsOf(this.docName, this.docBuiltin).top,
                 coverBottom: coverColorsOf(this.docName, this.docBuiltin).bottom,
                 coverInk: coverColorsOf(this.docName, this.docBuiltin).ink,
-                coverBadge: this.docBuiltin ? '内置教程' : '澄笺',
+                coverBadge: this.docBuiltin ? L10n.t('内置教程') : L10n.t('澄笺'),
                 edgeColor: this.palette().divider,
                 coverColor: this.docCoverColor,
                 coverImage: this.docCoverImage,
@@ -5072,7 +5072,7 @@ export struct Reader {
   brightPanel() {
     Column({ space: HwSpace.md }) {
       Row() {
-        Text(this.brightLevel <= 0 ? '跟随系统' : Math.round(this.brightLevel * 100) + '%')
+        Text(this.brightLevel <= 0 ? L10n.t('跟随系统') : Math.round(this.brightLevel * 100) + '%')
           .fontSize(HwType.label)
           .fontColor(this.palette().accent)
           .width(64)
@@ -5158,7 +5158,7 @@ export struct Reader {
 
       Text(this.docReadOnly
         ? '只读：编辑入口已锁、任务勾选不写盘；批注 / 导出 / 封面设置照常'
-        : '可写：正文可以在编辑页里修改')
+        : L10n.t('可写：正文可以在编辑页里修改'))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')
@@ -5334,7 +5334,7 @@ export struct Reader {
           kind: 'meta',
           palette: this.palette(),
           onChanged: (on: boolean) => {
-            this.toast(on ? '已显示信息卡' : '已隐藏信息卡');
+            this.toast(on ? L10n.t('已显示信息卡') : L10n.t('已隐藏信息卡'));
           }
         })
       }
@@ -5349,7 +5349,7 @@ export struct Reader {
           kind: 'drawer',
           palette: this.palette(),
           onChanged: (on: boolean) => {
-            this.toast(on ? '侧边栏已开启沉浸光感' : '侧边栏改用阅读背景色');
+            this.toast(on ? L10n.t('侧边栏已开启沉浸光感') : L10n.t('侧边栏改用阅读背景色'));
           }
         })
       }
@@ -5362,7 +5362,7 @@ export struct Reader {
           kind: 'tabbar',
           palette: this.palette(),
           onChanged: (on: boolean) => {
-            this.toast(on ? '标签栏已移到底部悬浮栏上方' : '标签栏已移回顶部');
+            this.toast(on ? L10n.t('标签栏已移到底部悬浮栏上方') : L10n.t('标签栏已移回顶部'));
           }
         })
         // 新增功能（补位）：亮度与主题面板入口（原来只能从底部工具条进）
@@ -5924,7 +5924,7 @@ export struct Reader {
     }
     const item: DocImage = this.docImages[index];
     if (item.src.length === 0) {
-      this.toast(item.net ? '网络图片地址不可用' : '本地图片不存在：' + item.href);
+      this.toast(item.net ? L10n.t('网络图片地址不可用') : L10n.t('本地图片不存在：') + item.href);
       return;
     }
     this.openZoomImage('docimg_' + index, item.src);
@@ -6009,13 +6009,13 @@ export struct Reader {
       message: L10n.t('只从正文里移除 `') + item.label + '` 这一处引用，图片文件仍保留在应用里'
         + '（可在「设置 → 数据管理 → 图片管理」清理）。',
       primaryButton: {
-        value: '取消',
+        value: L10n.t('取消'),
         action: () => {
           // 什么都不做
         }
       },
       secondaryButton: {
-        value: '删除引用',
+        value: L10n.t('删除引用'),
         action: () => {
           this.replaceInDoc(item.raw, '', '已删除该图片引用');
         }
@@ -6107,7 +6107,7 @@ export struct Reader {
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
-              Text(item.net ? '网络图片' : (item.exists ? '本地图片' : '文件不存在'))
+              Text(item.net ? L10n.t('网络图片') : (item.exists ? L10n.t('本地图片') : L10n.t('文件不存在')))
                 .fontSize(HwType.caption)
                 .fontColor(item.exists ? this.palette().textTertiary : '#FFD93B3B')
             }
@@ -6919,8 +6919,8 @@ export struct Reader {
             Column({ space: HwSpace.sm }) {
               if (this.searchedAnnotations().length === 0 && this.annotations.length > 0) {
                 Text(this.notesQuery.trim().length > 0
-                  ? '没有匹配「' + this.notesQuery.trim() + '」的批注'
-                  : '当前分类下没有批注')
+                  ? L10n.t('没有匹配「') + this.notesQuery.trim() + '」的批注'
+                  : L10n.t('当前分类下没有批注'))
                   .fontSize(HwType.label)
                   .fontColor(this.palette().textTertiary)
                   .width('100%')
@@ -7656,7 +7656,7 @@ export struct Reader {
               const wasReading: boolean = this.ttsOn;
               this.stopReadAloud();
               this.stopAutoScroll();
-              this.toast(wasReading ? '已停止朗读' : '已退出自动滚屏');
+              this.toast(wasReading ? L10n.t('已停止朗读') : L10n.t('已退出自动滚屏'));
             }),
           // ⚠️ 单指拖动必须写 fingers: 1（工程铁律）
           PanGesture({ fingers: 1 })

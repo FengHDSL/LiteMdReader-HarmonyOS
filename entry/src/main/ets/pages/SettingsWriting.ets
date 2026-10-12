@@ -186,7 +186,7 @@ export struct SettingsWriting {
       this.monthWords = 0;
       const e = err as BusinessError;
       this.loadError = '数据加载失败：' + (e.message && e.message.length > 0
-        ? e.message : (e.code !== undefined ? 'code ' + e.code : '未知错误'));
+        ? e.message : (e.code !== undefined ? 'code ' + e.code : L10n.t('未知错误')));
     }
   }
 
@@ -671,7 +671,7 @@ export struct SettingsWriting {
     const words: number = this.dayWordsOf(day);
     try {
       this.getUIContext().getPromptAction().showToast({
-        message: day + (words > 0 ? ' · 写了 ' + this.fmt(words) + ' 字' : ' · 没有写作'),
+        message: day + (words > 0 ? L10n.t(' · 写了 ') + this.fmt(words) + ' 字' : L10n.t(' · 没有写作')),
         duration: 1400
       });
     } catch (err) {
@@ -853,7 +853,7 @@ export struct SettingsWriting {
       .width('100%')
     } else {
     SettingsShell({
-      shellTitle: '写作日志',
+      shellTitle: L10n.t('写作日志'),
       shellSubtitle: L10n.t('热力图 · 字数 · 阅读时长 · 本地计算'),
       stack: this.stack,
       life: this.life

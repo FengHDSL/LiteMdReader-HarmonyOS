@@ -1255,10 +1255,10 @@ export struct ReviewPage {
           }
 
           Text(this.selected.length > 0
-            ? '已选 ' + this.selected.length + ' 篇 · ' + this.queue.length + ' 张到期'
+            ? L10n.t('已选 ') + this.selected.length + ' 篇 · ' + this.queue.length + ' 张到期'
             : (this.queue.length === 0 && this.statTodayCount > 0
-              ? '开始下一轮加练，或明天继续！'
-              : '未筛选：全部 ' + this.docNames.length + ' 篇 · ' + this.queue.length + ' 张到期'))
+              ? L10n.t('开始下一轮加练，或明天继续！')
+              : L10n.t('未筛选：全部 ') + this.docNames.length + ' 篇 · ' + this.queue.length + ' 张到期'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1324,8 +1324,8 @@ export struct ReviewPage {
             chipPaddingH: HwSpace.lg + 4,
             chipPaddingV: HwSpace.sm + 2,
             chipLabel: this.queue.length > 0
-              ? '开始复习 · ' + this.queue.length + ' 张到期'
-              : '开始复习',
+              ? L10n.t('开始复习 · ') + this.queue.length + ' 张到期'
+              : L10n.t('开始复习'),
             chipOnTap: () => {
               this.startReview();
             }
@@ -1779,8 +1779,8 @@ export struct ReviewPage {
             // 标题行：记得才有**竖向 3 灯**（记得一次亮一颗，3 颗全亮 = 通过）
             Row({ space: HwSpace.sm }) {
               Text(this.pendingKind === 2
-                ? '记忆确认 · 连续第 ' + this.confirmStreak + ' 次「记得」'
-                : (this.pendingKind === 1 ? '模糊 · 再看一遍内容' : '忘了 · 再学一遍内容'))
+                ? L10n.t('记忆确认 · 连续第 ') + this.confirmStreak + ' 次「记得」'
+                : (this.pendingKind === 1 ? L10n.t('模糊 · 再看一遍内容') : L10n.t('忘了 · 再学一遍内容')))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textSecondary)
               Blank()
@@ -1831,8 +1831,8 @@ export struct ReviewPage {
 
             if (this.pendingKind === 2) {
               Text(this.pendingMastered
-                ? '✓ 3 灯全亮，已通过！之后按遗忘曲线排期'
-                : '还差 ' + (3 - this.confirmStreak) + ' 次「记得」通过，先继续下一张')
+                ? L10n.t('✓ 3 灯全亮，已通过！之后按遗忘曲线排期')
+                : L10n.t('还差 ') + (3 - this.confirmStreak) + ' 次「记得」通过，先继续下一张')
                 .fontSize(HwType.caption)
                 .fontColor(this.pendingMastered ? '#FF1F9E66' : this.palette().textTertiary)
                 .width('100%')

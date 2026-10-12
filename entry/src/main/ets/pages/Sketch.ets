@@ -37,29 +37,29 @@ interface SketchBgOption {
 const SKETCH_BG_ACCENT: string = '@accent';
 
 const SKETCH_BG_COLORS: SketchBgOption[] = [
-  { name: '跟随主题', color: '' },
+  { name: L10n.t('跟随主题'), color: '' },
   // 动态：跟随「主题色」设置（accent），深浅模式各自混出合适的淡底
-  { name: '主题色', color: SKETCH_BG_ACCENT },
-  { name: '米白', color: '#FFFDF8F1' },
-  { name: '暖沙', color: '#FFF6EBD9' },
-  { name: '浅杏', color: '#FFFAEFE2' },
-  { name: '藕粉', color: '#FFF9EDEA' },
-  { name: '淡黄', color: '#FFFBF4DA' },
-  { name: '天蓝', color: '#FFE9F2F9' },
-  { name: '嫩绿', color: '#FFEDF7E8' },
-  { name: '阴天灰', color: '#FFEFF0F2' },
-  { name: '夕阳红', color: '#FFFCEFE7' },
+  { name: L10n.t('主题色'), color: SKETCH_BG_ACCENT },
+  { name: L10n.t('米白'), color: '#FFFDF8F1' },
+  { name: L10n.t('暖沙'), color: '#FFF6EBD9' },
+  { name: L10n.t('浅杏'), color: '#FFFAEFE2' },
+  { name: L10n.t('藕粉'), color: '#FFF9EDEA' },
+  { name: L10n.t('淡黄'), color: '#FFFBF4DA' },
+  { name: L10n.t('天蓝'), color: '#FFE9F2F9' },
+  { name: L10n.t('嫩绿'), color: '#FFEDF7E8' },
+  { name: L10n.t('阴天灰'), color: '#FFEFF0F2' },
+  { name: L10n.t('夕阳红'), color: '#FFFCEFE7' },
   // 后两款由需求方留白：「雾紫」偏冷、与藕粉同族但更清透；「浅茶」是低饱和茶褐，
   // 写钢笔字（黑墨）时纸感最接近真实便签。12 款正好每排 3 个、排满 4 行。
-  { name: '雾紫', color: '#FFF0EDF6' },
-  { name: '浅茶', color: '#FFF3ECE3' },
+  { name: L10n.t('雾紫'), color: '#FFF0EDF6' },
+  { name: L10n.t('浅茶'), color: '#FFF3ECE3' },
   // **澄笺壁纸色系**：取自 GEN_WALLPAPERS 浅色款的 top 值（澄光 / 宣纸 / 砚青 /
   // 竹影 / 霞笺），与主题色同名 —— 手写笔记的底子与所选壁纸同源，一眼能对上。
-  { name: '澄光', color: '#FFEEF3F8' },
-  { name: '宣纸', color: '#FFF6F1E7' },
-  { name: '砚青', color: '#FFDCE3E4' },
-  { name: '竹影', color: '#FFE7EFE6' },
-  { name: '霞笺', color: '#FFFBEDE4' }
+  { name: L10n.t('澄光'), color: '#FFEEF3F8' },
+  { name: L10n.t('宣纸'), color: '#FFF6F1E7' },
+  { name: L10n.t('砚青'), color: '#FFDCE3E4' },
+  { name: L10n.t('竹影'), color: '#FFE7EFE6' },
+  { name: L10n.t('霞笺'), color: '#FFFBEDE4' }
 ];
 
 /** 底纹候选：无 / 小方格 / 单行线 / 点阵（全部由 Canvas 自绘）。 */
@@ -69,10 +69,10 @@ interface SketchPatternOption {
 }
 
 const SKETCH_PATTERNS: SketchPatternOption[] = [
-  { name: '无底纹', value: 'none' },
-  { name: '小方格', value: 'grid' },
-  { name: '单行线', value: 'lines' },
-  { name: '点阵', value: 'dots' }
+  { name: L10n.t('无底纹'), value: 'none' },
+  { name: L10n.t('小方格'), value: 'grid' },
+  { name: L10n.t('单行线'), value: 'lines' },
+  { name: L10n.t('点阵'), value: 'dots' }
 ];
 
 /** 底纹线条粗细候选（vp）：方格 / 单行线 / 点阵共用同一档。 */
@@ -82,9 +82,9 @@ interface SketchLineOption {
 }
 
 const SKETCH_LINE_WIDTHS: SketchLineOption[] = [
-  { name: '细', value: 1 },
-  { name: '标准', value: 2 },
-  { name: '粗', value: 3 }
+  { name: L10n.t('细'), value: 1 },
+  { name: L10n.t('标准'), value: 2 },
+  { name: L10n.t('粗'), value: 3 }
 ];
 
 /** 底纹间距（vp）：方格与点阵 26、单行线 34 */
@@ -678,7 +678,7 @@ export struct Sketch {
             .fontColor([this.palette().textPrimary])
         }
 
-        Text(this.sketchMode === 'annotate' ? '手写批注' : '手写笔记')
+        Text(this.sketchMode === 'annotate' ? L10n.t('手写批注') : L10n.t('手写笔记'))
           .fontSize(HwType.label + 3)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -714,8 +714,8 @@ export struct Sketch {
           chipPaddingV: 7,
           chipActive: !this.saving,
           palette: this.palette(),
-          chipLabel: this.saving ? '处理中…'
-            : (this.sketchMode === 'annotate' ? '完成批注' : '插入'),
+          chipLabel: this.saving ? L10n.t('处理中…')
+            : (this.sketchMode === 'annotate' ? L10n.t('完成批注') : L10n.t('插入')),
           chipOnTap: () => {
             if (!this.saving) {
               this.insertToDoc();

@@ -40,6 +40,7 @@
 import { curves } from '@kit.ArkUI';
 import { ThemeStore } from './ThemeStore';
 import { GenWallpaperDef, genWallpaperById } from './GenWallpaper';
+import { L10n } from '../service/L10n';
 
 /**
  * 弹簧动画曲线：文件夹展开、标签切换这类「要 Q 弹」的过渡统一用它。
@@ -637,25 +638,25 @@ export interface NamedColor {
  * readerCustomBgLight / readerCustomBgDark。
  */
 export const LIGHT_BG_PRESETS: NamedColor[] = [
-  { name: '默认', value: '' },
-  { name: '纸白', value: '#FFFEFEFC' },
-  { name: '米黄', value: '#FFFAF3E3' },
-  { name: '浅杏', value: '#FFF8EDE2' },
-  { name: '豆绿', value: '#FFE7F0E4' },
-  { name: '雾蓝', value: '#FFE8EFF7' },
-  { name: '浅灰', value: '#FFF1F2F4' },
-  { name: '樱粉', value: '#FFF9ECEE' }
+  { name: L10n.t('默认'), value: '' },
+  { name: L10n.t('纸白'), value: '#FFFEFEFC' },
+  { name: L10n.t('米黄'), value: '#FFFAF3E3' },
+  { name: L10n.t('浅杏'), value: '#FFF8EDE2' },
+  { name: L10n.t('豆绿'), value: '#FFE7F0E4' },
+  { name: L10n.t('雾蓝'), value: '#FFE8EFF7' },
+  { name: L10n.t('浅灰'), value: '#FFF1F2F4' },
+  { name: L10n.t('樱粉'), value: '#FFF9ECEE' }
 ];
 
 export const DARK_BG_PRESETS: NamedColor[] = [
-  { name: '默认', value: '' },
-  { name: '纯黑', value: '#FF000000' },
-  { name: '碳灰', value: '#FF121417' },
-  { name: '暖黑', value: '#FF1A1611' },
-  { name: '墨绿', value: '#FF0F1A14' },
-  { name: '藏蓝', value: '#FF0E1420' },
-  { name: '深棕', value: '#FF181310' },
-  { name: '暗紫', value: '#FF151221' }
+  { name: L10n.t('默认'), value: '' },
+  { name: L10n.t('纯黑'), value: '#FF000000' },
+  { name: L10n.t('碳灰'), value: '#FF121417' },
+  { name: L10n.t('暖黑'), value: '#FF1A1611' },
+  { name: L10n.t('墨绿'), value: '#FF0F1A14' },
+  { name: L10n.t('藏蓝'), value: '#FF0E1420' },
+  { name: L10n.t('深棕'), value: '#FF181310' },
+  { name: L10n.t('暗紫'), value: '#FF151221' }
 ];
 
 /**
@@ -909,10 +910,10 @@ export interface AnnotationColor {
 }
 
 export const ANNOTATION_COLORS: AnnotationColor[] = [
-  { name: '红', light: '#66FF5A5A', dark: '#59D95B5B' },
-  { name: '绿', light: '#6600E08A', dark: '#59009E5F' },
-  { name: '蓝', light: '#6600B4FF', dark: '#59007FB8' },
-  { name: '黄', light: '#66FFE066', dark: '#59C9A83C' }
+  { name: L10n.t('红'), light: '#66FF5A5A', dark: '#59D95B5B' },
+  { name: L10n.t('绿'), light: '#6600E08A', dark: '#59009E5F' },
+  { name: L10n.t('蓝'), light: '#6600B4FF', dark: '#59007FB8' },
+  { name: L10n.t('黄'), light: '#66FFE066', dark: '#59C9A83C' }
 ];
 
 /** 取某个荧光笔颜色在当前主题下的色值。索引越界时退回首色。 */

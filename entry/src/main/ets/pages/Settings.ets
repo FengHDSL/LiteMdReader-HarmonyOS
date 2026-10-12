@@ -49,39 +49,39 @@ interface SectionItem {
 
 const SECTIONS: SectionItem[] = [
   {
-    name: '写作日志',
+    name: L10n.t('写作日志'),
     route: 'pages/SettingsWriting',
-    note: '热力图 · 字数 · 阅读时长'
+    note: L10n.t('热力图 · 字数 · 阅读时长')
   },
   {
-    name: '外观设置',
+    name: L10n.t('外观设置'),
     route: 'pages/SettingsAppearance',
-    note: '主题色 · 应用壁纸 · 卡片与流光'
+    note: L10n.t('主题色 · 应用壁纸 · 卡片与流光')
   },
   {
-    name: '阅读调整',
+    name: L10n.t('阅读调整'),
     route: 'pages/SettingsReading',
-    note: '排版 · 主题 · 批注 · 阅读背景 · 显示'
+    note: L10n.t('排版 · 主题 · 批注 · 阅读背景 · 显示')
   },
   {
-    name: '数据管理',
+    name: L10n.t('数据管理'),
     route: 'pages/SettingsData',
     note: 'zip / WebDAV 备份恢复 · 书架数据 · 缓存'
   },
   {
-    name: '助手设置',
+    name: L10n.t('助手设置'),
     route: 'pages/AiSettingsEmbedded',
-    note: 'API 地址 · 模型 · 思考强度 · 词元消耗'
+    note: L10n.t('API 地址 · 模型 · 思考强度 · 词元消耗')
   },
   {
-    name: '引擎管理',
+    name: L10n.t('引擎管理'),
     route: 'pages/SettingsEngines',
-    note: '渲染引擎版本 · 可单独关闭'
+    note: L10n.t('渲染引擎版本 · 可单独关闭')
   },
   {
-    name: '探索中心',
+    name: L10n.t('探索中心'),
     route: 'pages/SettingsExplore',
-    note: '关于应用 · 隐私政策与用户协议 · 参考致谢'
+    note: L10n.t('关于应用 · 隐私政策与用户协议 · 参考致谢')
   }
 ];
 

@@ -43,7 +43,7 @@ export struct AutoScrollTile {
           Text(L10n.t('自动滚屏'))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette.textPrimary)
-          Text(this.running ? '正在匀速下滚 · 点正文任意处即停' : '免手滑匀速下滚，长文校对用')
+          Text(this.running ? L10n.t('正在匀速下滚 · 点正文任意处即停') : L10n.t('免手滑匀速下滚，长文校对用'))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
         }
@@ -53,7 +53,7 @@ export struct AutoScrollTile {
         ImmersiveChip({
           palette: this.palette,
           chipActive: this.running,
-          chipLabel: this.running ? '暂停' : '开始',
+          chipLabel: this.running ? L10n.t('暂停') : L10n.t('开始'),
           chipOnTap: () => {
             this.onToggle(!this.running);
           }

@@ -392,7 +392,7 @@ export struct MergeExportPanel {
           ImmersiveChip({
             palette: this.palette,
             chipActive: true,
-            chipLabel: this.addOpen ? '收起添加' : '添加文档',
+            chipLabel: this.addOpen ? L10n.t('收起添加') : L10n.t('添加文档'),
             chipOnTap: () => {
               this.addOpen = !this.addOpen;
             }

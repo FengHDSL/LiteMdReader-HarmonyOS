@@ -89,8 +89,8 @@ export struct AppResetDialog {
 
       // 倒计时提示（每秒刷新；动画过渡避免数字硬切）
       Text(this.left > 0
-        ? '为防止误触，请等待 ' + this.left + ' 秒后再确认'
-        : '已可确认：此操作不可撤销')
+        ? L10n.t('为防止误触，请等待 ') + this.left + ' 秒后再确认'
+        : L10n.t('已可确认：此操作不可撤销'))
         .fontSize(HwTypeLabel())
         .fontColor(this.left > 0 ? this.pal().textTertiary : '#FFD93B3B')
         .width('100%')
@@ -109,7 +109,7 @@ export struct AppResetDialog {
             this.onCancel();
           })
 
-        Text(this.left > 0 ? '确认清除（' + this.left + 's）' : '确认清除')
+        Text(this.left > 0 ? L10n.t('确认清除（') + this.left + 's）' : L10n.t('确认清除'))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')

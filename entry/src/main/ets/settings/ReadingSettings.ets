@@ -186,8 +186,8 @@ export struct ReadingSettingsPanel {
       title: L10n.t('删除字体'),
       message: L10n.t('将删除「') + family + '」的字体文件；正在使用它的文档会回退为默认字体。',
       buttons: [
-        { text: '取消', color: this.palette().textSecondary },
-        { text: '删除', color: '#FFD93B3B' }
+        { text: L10n.t('取消'), color: this.palette().textSecondary },
+        { text: L10n.t('删除'), color: '#FFD93B3B' }
       ]
     }).then((result) => {
       if (result.index !== 1) {
@@ -728,7 +728,7 @@ export struct ReadingSettingsPanel {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: this.readerBgPath.length > 0,
-              chipLabel: this.readerBgPath.length > 0 ? '更换背景图' : '导入背景图',
+              chipLabel: this.readerBgPath.length > 0 ? L10n.t('更换背景图') : L10n.t('导入背景图'),
               chipOnTap: () => {
                 this.pickReaderBgImage();
               }

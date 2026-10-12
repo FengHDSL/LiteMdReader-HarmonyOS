@@ -10,6 +10,7 @@
  */
 
 import { FuncExpr } from './FuncExpr';
+import { L10n } from '../service/L10n';
 
 /** 一款程序化壁纸的定义 */
 export interface GenWallpaperDef {
@@ -73,8 +74,8 @@ function hex2(v: number): string {
 export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   {
     id: 'cheng',
-    name: '澄光',
-    hint: '冷调纸白 · 两团冷暖环境光',
+    name: L10n.t('澄光'),
+    hint: L10n.t('冷调纸白 · 两团冷暖环境光'),
     top: '#EEF3F8', bottom: '#DCE5EE',
     glowA: '#8FC4F0', glowB: '#F0D9B8',
     weave: '#0F5A7A99',
@@ -83,8 +84,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'xuan',
-    name: '宣纸',
-    hint: '暖白宣纸 · 极淡纤维纹',
+    name: L10n.t('宣纸'),
+    hint: L10n.t('暖白宣纸 · 极淡纤维纹'),
     top: '#F6F1E7', bottom: '#E9DFCE',
     glowA: '#E8C89A', glowB: '#CFE0D8',
     weave: '#12857A5A',
@@ -93,8 +94,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'yan',
-    name: '砚青',
-    hint: '砚台青灰 · 一点冷光',
+    name: L10n.t('砚青'),
+    hint: L10n.t('砚台青灰 · 一点冷光'),
     top: '#DCE3E4', bottom: '#BFCBCD',
     glowA: '#6FA6B8', glowB: '#DDE7E5',
     weave: '#12344B55',
@@ -103,8 +104,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'song',
-    name: '松烟',
-    hint: '墨色深底 · 暗光斑',
+    name: L10n.t('松烟'),
+    hint: L10n.t('墨色深底 · 暗光斑'),
     top: '#2A2E36', bottom: '#171A20',
     glowA: '#4E6B8A', glowB: '#7A6A55',
     weave: '#14FFFFFF',
@@ -113,8 +114,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'zhu',
-    name: '竹影',
-    hint: '淡青竹叶色 · 竖纹如竹',
+    name: L10n.t('竹影'),
+    hint: L10n.t('淡青竹叶色 · 竖纹如竹'),
     top: '#E7EFE6', bottom: '#CFDECC',
     glowA: '#8FBF8A', glowB: '#E6EFC9',
     weave: '#10507A44',
@@ -123,8 +124,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'xia',
-    name: '霞笺',
-    hint: '晚霞粉橙 · 暖光晕',
+    name: L10n.t('霞笺'),
+    hint: L10n.t('晚霞粉橙 · 暖光晕'),
     top: '#FBEDE4', bottom: '#F0D3C4',
     glowA: '#F2A98A', glowB: '#F6D9A8',
     weave: '#128A5B44',
@@ -133,8 +134,8 @@ export const GEN_WALLPAPERS: GenWallpaperDef[] = [
   },
   {
     id: 'ye',
-    name: '夜笺',
-    hint: '夜读深蓝 · 冷月白',
+    name: L10n.t('夜笺'),
+    hint: L10n.t('夜读深蓝 · 冷月白'),
     top: '#262B3C', bottom: '#171C26',
     glowA: '#4A5F9E', glowB: '#8E9BC4',
     weave: '#12FFFFFF',

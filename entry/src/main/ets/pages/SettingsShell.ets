@@ -33,7 +33,7 @@ import {
 /**
  * 4 个设置子页共用的外壳。
  *
- * 用法：`SettingsShell({ shellTitle: '外观设置', shellSubtitle: '...', stack: this.stack }) { ...内容... }`
+ * 用法：`SettingsShell({ shellTitle: L10n.t('外观设置'), shellSubtitle: '...', stack: this.stack }) { ...内容... }`
  * —— ArkTS 不允许「自定义组件 + 尾随闭包」之后再链式调属性，
  * 所以尺寸/内边距一律走构造参数。
  */

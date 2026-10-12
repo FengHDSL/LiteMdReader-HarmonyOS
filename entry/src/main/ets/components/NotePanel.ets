@@ -258,7 +258,7 @@ export struct NotePanel {
       }
 
       TextArea({ text: this.draft, placeholder: this.style === 'card'
-        ? '要记的内容（学习卡必填题干）……' : '写下你的批注……' })
+        ? L10n.t('要记的内容（学习卡必填题干）……') : L10n.t('写下你的批注……') })
         .width('100%')
         // **随文本内容继续长高**（用户要求）：不写死 height，内容多行时输入框自己
         // 长，长到 draftMax 就内部滚动；draftMax 跟着"键盘之外的可视高度"走，
@@ -289,7 +289,7 @@ export struct NotePanel {
         ImmersiveChip({
           palette: this.palette,
           chipActive: true,
-          chipLabel: this.style === 'card' ? '存为学习卡' : '保存批注',
+          chipLabel: this.style === 'card' ? L10n.t('存为学习卡') : L10n.t('保存批注'),
           chipOnTap: () => {
             this.submitNow();
           }

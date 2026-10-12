@@ -23,6 +23,7 @@ import {
   isDarkTheme,
   paletteFor
 } from '../theme/DesignTokens';
+import { L10n } from '../service/L10n';
 
 /** 路由参数（navPageBuilder 注入）：doc = 'privacy' | 'terms' */
 export interface LegalDocRoute {
@@ -70,13 +71,13 @@ export struct LegalDoc {
   }
 
   private shellTitle(): string {
-    return this.doc === 'terms' ? '用户协议' : '隐私政策';
+    return this.doc === 'terms' ? L10n.t('用户协议') : L10n.t('隐私政策');
   }
 
   private shellSubtitle(): string {
     return this.doc === 'terms'
-      ? '使用澄笺前请阅读并同意本协议'
-      : '澄笺如何处理你的数据与权限';
+      ? L10n.t('使用澄笺前请阅读并同意本协议')
+      : L10n.t('澄笺如何处理你的数据与权限');
   }
 
   build() {

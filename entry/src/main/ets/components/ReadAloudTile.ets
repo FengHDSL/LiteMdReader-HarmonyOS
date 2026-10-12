@@ -39,7 +39,7 @@ export struct ReadAloudTile {
     if (!this.on) {
       return '从当前阅读位置开始，一段一段读下去';
     }
-    return this.speaking ? '正在朗读 · 点浮钮可暂停' : '已暂停 · 点「继续」接着读';
+    return this.speaking ? L10n.t('正在朗读 · 点浮钮可暂停') : L10n.t('已暂停 · 点「继续」接着读');
   }
 
   build() {

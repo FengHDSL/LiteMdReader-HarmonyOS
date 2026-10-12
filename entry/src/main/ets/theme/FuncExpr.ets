@@ -1,3 +1,4 @@
+import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 自定义函数壁纸的表达式求值器
  * =====================================
@@ -47,7 +48,7 @@ export class FuncExpr {
       f.ok = true;
     } catch (err) {
       f.ok = false;
-      f.error = err instanceof Error ? err.message : '表达式错误';
+      f.error = err instanceof Error ? err.message : L10n.t('表达式错误');
     }
     return f;
   }

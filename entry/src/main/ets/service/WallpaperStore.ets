@@ -19,6 +19,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { L10n } from './L10n';
 
 /** AppStorage 键：壁纸在沙箱里的绝对路径；空串 = 没有壁纸（旧全局键，保留兜底） */
 export const WALLPAPER_PATH_KEY: string = 'wallpaperPath';
@@ -150,7 +151,7 @@ export class WallpaperStore {
       return '';
     } catch (err) {
       const e: BusinessError = err as BusinessError;
-      return e.message !== undefined ? e.message : '选择图片失败';
+      return e.message !== undefined ? e.message : L10n.t('选择图片失败');
     }
   }
 
@@ -286,7 +287,7 @@ export class WallpaperStore {
       return '';
     } catch (err) {
       const e: BusinessError = err as BusinessError;
-      return e.message !== undefined ? e.message : '选择图片失败';
+      return e.message !== undefined ? e.message : L10n.t('选择图片失败');
     }
   }
 

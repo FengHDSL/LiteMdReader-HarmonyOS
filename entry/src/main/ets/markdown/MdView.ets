@@ -1097,8 +1097,8 @@ export struct MdBlockView {
         Column({ space: HwSpace.xs }) {
           if (this.resolvedImageSrc(this.blockHref()).length === 0 || this.isImgFailed(this.blockHref())) {
             this.imageFallback(this.isOfflineNetImage(this.blockHref())
-              ? '基础模式（纯离线）下不加载网络图片'
-              : (this.isImgFailed(this.blockHref()) ? '图片加载失败' : '找不到本地图片文件'))
+              ? L10n.t('基础模式（纯离线）下不加载网络图片')
+              : (this.isImgFailed(this.blockHref()) ? L10n.t('图片加载失败') : L10n.t('找不到本地图片文件')))
           } else {
             // **右上角放大按钮**（用户要求：手写笔记等图片与图表一样有放大入口），
             // 复用图表放大浮层（支持缩放 / 旋转 / 双指）
@@ -1129,7 +1129,7 @@ export struct MdBlockView {
                   buttonOnTap: () => {
                     this.enlargeHandler('image', this.resolvedImageSrc(this.blockHref()),
                       'mdimg_' + this.block.id,
-                      this.blockAlt().length > 0 ? this.blockAlt() : '图片');
+                      this.blockAlt().length > 0 ? this.blockAlt() : L10n.t('图片'));
                   }
                 }) {
                   SymbolGlyph($r('sys.symbol.arrow_up_left_and_arrow_down_right'))
@@ -1178,7 +1178,7 @@ export struct MdBlockView {
         .fontSize(22)
         .fontColor([this.palette.textTertiary])
       Column({ space: 2 }) {
-        Text(this.blockAlt().length > 0 ? this.blockAlt() : '图片')
+        Text(this.blockAlt().length > 0 ? this.blockAlt() : L10n.t('图片'))
           .fontSize(HwType.label)
           .fontColor(this.palette.textSecondary)
           .maxLines(1)
@@ -1670,8 +1670,8 @@ export struct MdBlockView {
         if (this.block.codeLines.length > 10) {
           Row() {
             Text(this.codeExpanded
-              ? '收起代码'
-              : '展开全部 ' + this.block.codeLines.length + ' 行')
+              ? L10n.t('收起代码')
+              : L10n.t('展开全部 ') + this.block.codeLines.length + ' 行')
               .fontSize(HwType.caption)
               .fontColor(this.palette.accent)
           }
@@ -2783,7 +2783,7 @@ export struct MdBlockView {
       this.toast(hint);
     } catch (err) {
       const e: BusinessError = err as BusinessError;
-      const msg: string = (e.message !== undefined && e.message !== null) ? e.message : '未知错误';
+      const msg: string = (e.message !== undefined && e.message !== null) ? e.message : L10n.t('未知错误');
       this.toast('复制失败：' + msg);
     }
   }

@@ -160,8 +160,8 @@ export class UpdateService {
           ok: true,
           remote: remote,
           message: cmp < 0
-            ? '发现新版本 v' + remote + '（当前 v' + current + '）'
-            : (cmp > 0 ? '当前版本比最新版本更高' : '已是最新版本（v' + current + '）'),
+            ? L10n.t('发现新版本 v') + remote + '（当前 v' + current + '）'
+            : (cmp > 0 ? L10n.t('当前版本比最新版本更高') : L10n.t('已是最新版本（v') + current + '）'),
           hasUpdate: cmp < 0
         } as UpdateCheckResult);
       }).catch((err: Error) => {

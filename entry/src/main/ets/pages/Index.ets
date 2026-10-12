@@ -99,30 +99,30 @@ interface DocTemplate {
 
 const DOC_TEMPLATES: DocTemplate[] = [
   {
-    name: '读书笔记',
+    name: L10n.t('读书笔记'),
     body: '# 《书名》\n\n- 作者：\n- 读完日期：\n\n## 核心论点\n\n1. \n\n'
       + '## 摘录\n\n> \n\n## 我的思考\n\n- [ ] 提炼一句话总结\n'
   },
   {
-    name: '会议记录',
+    name: L10n.t('会议记录'),
     body: '# 会议记录\n\n- 时间：\n- 参会：\n\n## 议题\n\n1. \n\n## 结论\n\n- \n\n## 待办\n\n- [ ] \n'
   },
   {
-    name: '周报',
+    name: L10n.t('周报'),
     body: '# 周报\n\n## 本周完成\n\n- [x] \n\n## 下周计划\n\n- [ ] \n\n## 风险与需要支持\n\n- \n'
   },
   {
-    name: '康奈尔笔记',
+    name: L10n.t('康奈尔笔记'),
     body: '# 主题\n\n| 线索 / 问题 | 笔记 |\n| --- | --- |\n|  |  |\n\n## 总结\n\n'
   },
   {
-    name: '每日复盘',
+    name: L10n.t('每日复盘'),
     body: '# 复盘\n\n## 今天做成了什么\n\n- \n\n## 卡在哪里\n\n- \n\n## 明天第一件事\n\n- [ ] \n'
   },
   {
     // 这个模板是**给批注与复习卡片练手**用的：新建出来是可编辑的自建文档，
     // 可以自由划荧光笔、写批注，再去看「批注汇总」「复习卡片」的效果。
-    name: '复习素材',
+    name: L10n.t('复习素材'),
     body: '# 复习素材\n\n'
       + '> 用自己的话复述一遍，划上荧光笔或加上批注；'
       + '再到书架「⋯ → 批注汇总 / 复习卡片」看效果。\n\n'
@@ -300,7 +300,7 @@ struct Index {
         AppStorage.setOrCreate('appMode', mode);
         // 第二腿落盘（同 lastSeenVersion：PersistentStorage 在部分设备不可靠）
         SettingsMirror.save(this.ctx());
-        this.toast(mode === APP_MODE_OFFLINE ? '已切换为基础模式（纯离线）' : '已切换为全量模式');
+        this.toast(mode === APP_MODE_OFFLINE ? L10n.t('已切换为基础模式（纯离线）') : L10n.t('已切换为全量模式'));
       }
     }),
     autoCancel: false,
@@ -586,7 +586,7 @@ struct Index {
     this.imgPreviewSrc = 'file://' + encodeURI(img.path);
     this.imgPreviewName = img.name;
     const dim: string = (img.width > 0 && img.height > 0)
-      ? (img.width + ' × ' + img.height) : '尺寸未知';
+      ? (img.width + ' × ' + img.height) : L10n.t('尺寸未知');
     this.imgPreviewMeta = DocStore.formatSize(img.size) + ' · ' + dim;
   }
 
@@ -696,7 +696,7 @@ struct Index {
         // 按钮也已经在正确的选中态上。
         this.cellMenuReadOnly = readOnly;
         this.refresh();
-        this.toast(readOnly ? '已切为只读：编辑入口已锁' : '已切为可写：可以编辑了');
+        this.toast(readOnly ? L10n.t('已切为只读：编辑入口已锁') : L10n.t('已切为可写：可以编辑了'));
       } else {
         this.toast(L10n.t('切换失败：文档不存在'));
       }
@@ -719,7 +719,7 @@ struct Index {
     }
     if (DocStore.setCoverColor(ctx, this.cellMenuKind, this.cellMenuFor, color)) {
       this.refresh();
-      this.toast(color.length === 0 ? '已恢复默认配色' : '封面颜色已更新');
+      this.toast(color.length === 0 ? L10n.t('已恢复默认配色') : L10n.t('封面颜色已更新'));
     }
   }
 
@@ -778,7 +778,7 @@ struct Index {
     }
     if (DocStore.setCoverHideName(ctx, this.cellMenuKind, this.cellMenuFor, !show)) {
       this.refresh();
-      this.toast(show ? '封面显示名称' : '封面只留图形、隐藏名称');
+      this.toast(show ? L10n.t('封面显示名称') : L10n.t('封面只留图形、隐藏名称'));
     }
   }
 
@@ -1876,8 +1876,8 @@ struct Index {
         title: L10n.t('移除内置教程'),
         message: L10n.t('将从书架移除《') + name + '》。正文不会被删除，随时可在「设置 → 数据管理」恢复。',
         buttons: [
-          { text: '取消', color: this.palette().textSecondary },
-          { text: '移除', color: '#FFD93B3B' }
+          { text: L10n.t('取消'), color: this.palette().textSecondary },
+          { text: L10n.t('移除'), color: '#FFD93B3B' }
         ]
       }).then((result) => {
         if (result.index !== 1) {
@@ -1898,8 +1898,8 @@ struct Index {
       title: L10n.t('删除文档'),
       message: L10n.t('将删除《') + name + '》，此操作不可撤销。',
       buttons: [
-        { text: '取消', color: this.palette().textSecondary },
-        { text: '删除', color: '#FFD93B3B' }
+        { text: L10n.t('取消'), color: this.palette().textSecondary },
+        { text: L10n.t('删除'), color: '#FFD93B3B' }
       ]
     }).then((result) => {
       if (result.index !== 1) {
@@ -2384,13 +2384,13 @@ struct Index {
           reading.push(m.name + ' ' + Math.round(m.progressRatio * 100) + '%');
         }
       }
-      lines.push('今日修改：' + (changed.length > 0 ? changed.join('、') : '无'));
-      lines.push('今日读过：' + (opened.length > 0 ? opened.join('、') : '无'));
-      lines.push('读到一半：' + (reading.length > 0 ? reading.join('、') : '无'));
+      lines.push('今日修改：' + (changed.length > 0 ? changed.join('、') : L10n.t('无')));
+      lines.push('今日读过：' + (opened.length > 0 ? opened.join('、') : L10n.t('无')));
+      lines.push('读到一半：' + (reading.length > 0 ? reading.join('、') : L10n.t('无')));
       // 下拉展开时的完整版（与原「今日笺」弹窗同一套口径）
-      full.push('【今日修改】' + (changed.length > 0 ? changed.join('、') : '无'));
-      full.push('【今日读过】' + (opened.length > 0 ? opened.join('、') : '无'));
-      full.push('【读到一半】' + (reading.length > 0 ? reading.join('、') : '无'));
+      full.push('【今日修改】' + (changed.length > 0 ? changed.join('、') : L10n.t('无')));
+      full.push('【今日读过】' + (opened.length > 0 ? opened.join('、') : L10n.t('无')));
+      full.push('【读到一半】' + (reading.length > 0 ? reading.join('、') : L10n.t('无')));
     } catch (err) {
       lines.push('书架数据读取失败');
     }
@@ -2839,7 +2839,7 @@ struct Index {
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(hit.builtin ? '内置文档' : '我的文档')
+                  Text(hit.builtin ? L10n.t('内置文档') : L10n.t('我的文档'))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
@@ -3014,7 +3014,7 @@ struct Index {
                   // 大小 · 分辨率（读不到尺寸时写「尺寸未知」，不留空行）
                   Text(DocStore.formatSize(img.size)
                     + ' · ' + ((img.width > 0 && img.height > 0)
-                      ? (img.width + ' × ' + img.height) : '尺寸未知'))
+                      ? (img.width + ' × ' + img.height) : L10n.t('尺寸未知')))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
@@ -3260,7 +3260,7 @@ struct Index {
       }
 
       // 日期行：Front Matter 的 `date:` 优先（作者写死的日期比"最后修改时间"更稳定）
-      Text(meta.builtin ? '内置教程'
+      Text(meta.builtin ? L10n.t('内置教程')
         : (meta.fmDate !== undefined && meta.fmDate.length > 0
           ? meta.fmDate : DocStore.formatTime(meta.mtime)))
         .fontSize(HwType.caption)
@@ -3936,7 +3936,7 @@ struct Index {
       }
       .width('100%')
 
-      Text(this.dragOverNewCard ? '释放导入 .md/.txt' : '或长按导入')
+      Text(this.dragOverNewCard ? '释放导入 .md/.txt' : L10n.t('或长按导入'))
         .fontSize(HwType.caption)
         .fontColor(this.dragOverNewCard ? this.palette().accent : this.palette().textTertiary)
         .fontWeight(this.dragOverNewCard ? FontWeight.Medium : FontWeight.Regular)
@@ -4291,7 +4291,7 @@ struct Index {
             .fontColor(this.palette().textPrimary)
           Blank()
           Row({ space: 4 }) {
-            Text(this.studyTaskCount > 0 ? this.studyTaskCount + ' 条未完成' : '全部完成')
+            Text(this.studyTaskCount > 0 ? this.studyTaskCount + ' 条未完成' : L10n.t('全部完成'))
               .fontSize(HwType.caption)
               .fontColor(this.studyTaskCount > 0 ? this.palette().accent : this.palette().textTertiary)
             Image($r('app.media.chevron_right'))
@@ -4397,7 +4397,7 @@ struct Index {
       this.toast(msg);
       return;
     }
-    this.toast(item.done ? '已取消完成' : '已完成');
+    this.toast(item.done ? L10n.t('已取消完成') : L10n.t('已完成'));
     this.refreshStudy();
   }
 
@@ -4454,7 +4454,7 @@ struct Index {
       return '阅读轨迹';
     }
     if (this.shelfSheet === 'rename') {
-      return this.renameKind === 'folder' ? '重命名文件夹' : '重命名文档';
+      return this.renameKind === 'folder' ? L10n.t('重命名文件夹') : L10n.t('重命名文档');
     }
     if (this.shelfSheet === 'export') {
       return '导出与分享';
@@ -4474,7 +4474,7 @@ struct Index {
     }
     if (this.shelfSheet === 'rename') {
       return this.renameKind === 'folder'
-        ? '文件夹只是归组，不影响文档本身'
+        ? L10n.t('文件夹只是归组，不影响文档本身')
         : '名称不能包含 / \\ : * ? " < > | 等字符';
     }
     if (this.shelfSheet === 'export') {
@@ -4622,7 +4622,7 @@ struct Index {
               // 同时影响到文件内的"）；点整行仍是跳进那篇文档的待办所在行。
               this.taskCheckBox(it)
               Column({ space: 2 }) {
-                Text(it.text.length > 0 ? it.text : '（空任务）')
+                Text(it.text.length > 0 ? it.text : L10n.t('（空任务）'))
                   .fontSize(HwType.label)
                   // 已完成：划线 + 置灰（条目**保留在列表里**，用户要能看到勾过了什么）
                   .decoration({
@@ -4632,7 +4632,7 @@ struct Index {
                   .fontColor(it.done ? this.palette().textTertiary : this.palette().textPrimary)
                   .width('100%')
                 Text('《' + it.docName + '》第 ' + it.line + ' 行'
-                  + (it.builtin ? ' · 内置只读' : (it.readOnly ? ' · 只读' : '')))
+                  + (it.builtin ? L10n.t(' · 内置只读') : (it.readOnly ? L10n.t(' · 只读') : '')))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
                   .width('100%')
@@ -4720,7 +4720,7 @@ struct Index {
     const r: TaskBoardResult = TaskBoard.collect(c, false);
     this.taskItems = r.items;
     this.taskSummary = TaskBoard.summary(r) + ' · ' + r.docs + ' 篇'
-      + (r.truncated ? '（已达上限）' : '');
+      + (r.truncated ? L10n.t('（已达上限）') : '');
   }
 
   /**
@@ -4772,11 +4772,11 @@ struct Index {
         .backgroundColor(this.templateBadgeColor(index))
 
       Column({ space: 2 }) {
-        Text(index === 0 ? '空白文档' : DOC_TEMPLATES[index - 1].name)
+        Text(index === 0 ? L10n.t('空白文档') : DOC_TEMPLATES[index - 1].name)
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
           .width('100%')
-        Text(index === 0 ? '从零开始写' : this.templateHint(index - 1))
+        Text(index === 0 ? L10n.t('从零开始写') : this.templateHint(index - 1))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -5068,7 +5068,7 @@ struct Index {
           })
         }
         // 收藏 / 取消收藏（书架也能收；信息卡的爱心之外多一个入口——用户反馈自带文件不好收藏）
-        this.menuRow(this.cellMenuStarred ? '取消收藏' : '收藏', () => {
+        this.menuRow(this.cellMenuStarred ? L10n.t('取消收藏') : L10n.t('收藏'), () => {
           const c = this.ctx();
           if (c === null) {
             return;
@@ -5080,7 +5080,7 @@ struct Index {
             // **面板内容不跟随宿主状态刷新**（工程已知问题）→ 递增 sheetEpoch
             // 强制重建面板，否则「收藏 / 取消收藏」文案要点开第二次才变（用户实测）。
             this.sheetEpoch = this.sheetEpoch + 1;
-            this.toast(next ? '已收藏' : '已取消收藏');
+            this.toast(next ? L10n.t('已收藏') : L10n.t('已取消收藏'));
           }
         })
         // （文档编码已改为卡片样式，移到面板最底部 —— 见本 builder 末尾）
@@ -5103,12 +5103,12 @@ struct Index {
         this.menuRow('导出 / 分享', () => {
           this.openCellExport();
         })
-        this.menuRow(this.cellMenuBuiltin ? '移除教程' : '删除', () => {
+        this.menuRow(this.cellMenuBuiltin ? L10n.t('移除教程') : L10n.t('删除'), () => {
           this.askDeleteDoc(this.cellMenuFor);
         })
         if (this.cellMenuBuiltin) {
           Text(this.cellMenuReadOnly
-            ? '内置教程默认只读，可在上面切到「可写」后编辑；移除后可在「设置 → 数据管理」恢复'
+            ? L10n.t('内置教程默认只读，可在上面切到「可写」后编辑；移除后可在「设置 → 数据管理」恢复')
             : '内置教程已解锁为可写；「重命名 / 删除」对内置文档仍然受限')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
@@ -5172,7 +5172,7 @@ struct Index {
         Row({ space: HwSpace.xs }) {
           ImmersiveChip({
             palette: this.palette(),
-            chipLabel: this.cellMenuHasCoverImage() ? '换封面图' : '导入封面图',
+            chipLabel: this.cellMenuHasCoverImage() ? L10n.t('换封面图') : L10n.t('导入封面图'),
             chipOnTap: () => {
               this.pickCoverImage();
             }
@@ -5631,7 +5631,7 @@ struct Index {
           .maxLines(1)
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: this.multiNames.length >= this.docs.length ? '全不选' : '全选',
+          chipLabel: this.multiNames.length >= this.docs.length ? L10n.t('全不选') : L10n.t('全选'),
           chipOnTap: () => {
             this.toggleMultiAll();
           }
@@ -6001,8 +6001,8 @@ struct Index {
     if (due.length === 0) {
       const s: ReviewStats = ReviewCardStore.stats(ReviewCardStore.load(c));
       this.toast(s.total === 0
-        ? '还没有卡片：先在文档里划几处荧光笔或写批注'
-        : '今天没有到期卡片（共 ' + s.total + ' 张，已掌握 ' + s.learned + ' 张）');
+        ? L10n.t('还没有卡片：先在文档里划几处荧光笔或写批注')
+        : L10n.t('今天没有到期卡片（共 ') + s.total + ' 张，已掌握 ' + s.learned + ' 张）');
       return;
     }
     this.reviewCards = due;
@@ -6184,12 +6184,12 @@ struct Index {
     const body: string = '书架共 ' + list.length + ' 篇 · ' + chars + ' 字\n\n'
       + '【待办】' + taskLine + '\n\n'
       + '【复习】' + reviewLine + '\n\n'
-      + '【今日修改】' + (changed.length > 0 ? changed.join('、') : '无') + '\n\n'
-      + '【今日读过】' + (opened.length > 0 ? opened.join('、') : '无') + '\n\n'
-      + '【读到一半】' + (reading.length > 0 ? reading.join('、') : '无');
+      + '【今日修改】' + (changed.length > 0 ? changed.join('、') : L10n.t('无')) + '\n\n'
+      + '【今日读过】' + (opened.length > 0 ? opened.join('、') : L10n.t('无')) + '\n\n'
+      + '【读到一半】' + (reading.length > 0 ? reading.join('、') : L10n.t('无'));
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('今日笺'), message: body,
-      buttons: [{ text: '知道了', color: this.palette().accent }]
+      buttons: [{ text: L10n.t('知道了'), color: this.palette().accent }]
     });
   }
 
@@ -6256,7 +6256,7 @@ struct Index {
       }
     }
     if (ok === 0) {
-      this.toast(fail > 0 ? '导入失败（只支持 md / txt 文件）' : '没有导入任何文件');
+      this.toast(fail > 0 ? '导入失败（只支持 md / txt 文件）' : L10n.t('没有导入任何文件'));
       return;
     }
     this.refresh();
@@ -6365,7 +6365,7 @@ struct Index {
               ImmersiveCardLayer({ layerRadius: 12, layerShadow: false })
               Row({ space: 8 }) {
                 Text(m.progressRatio > 0.005
-                  ? Math.round(m.progressRatio * 100) + '%' : '未读')
+                  ? Math.round(m.progressRatio * 100) + '%' : L10n.t('未读'))
                   .width(30)
                   .height(30)
                   .borderRadius(15)
@@ -6496,11 +6496,11 @@ struct Index {
     }
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('删除 ') + targets.length + ' 篇文档？',
-      message: builtinHit ? '内置文档不会删除（只能整体移除）；其余的本地文件会一并删除，不可恢复。'
-        : '本地文件会一并删除，删除后不可恢复。',
+      message: builtinHit ? L10n.t('内置文档不会删除（只能整体移除）；其余的本地文件会一并删除，不可恢复。')
+        : L10n.t('本地文件会一并删除，删除后不可恢复。'),
       buttons: [
-        { text: '取消', color: this.palette().textSecondary },
-        { text: '删除', color: '#FFD93B3B' }
+        { text: L10n.t('取消'), color: this.palette().textSecondary },
+        { text: L10n.t('删除'), color: '#FFD93B3B' }
       ]
     }).then((result) => {
       if (result.index !== 1) {
@@ -6523,7 +6523,7 @@ struct Index {
       this.multiNames = [];
       this.multiSelect = false;
       this.refresh();
-      this.toast('已删除 ' + ok + ' 篇' + (builtinHit ? '（内置文档已跳过）' : ''));
+      this.toast('已删除 ' + ok + ' 篇' + (builtinHit ? L10n.t('（内置文档已跳过）') : ''));
     }).catch(() => {
       this.toast(L10n.t('操作失败'));
     });
@@ -6587,7 +6587,7 @@ struct Index {
     // 等于让人猜）。面板里列出**全部**条目，可滚动、点条目直接进那篇文档。
     this.taskItems = res.items;
     this.taskSummary = TaskBoard.summary(res) + ' · ' + res.docs + ' 篇'
-      + (res.truncated ? '（已达上限）' : '');
+      + (res.truncated ? L10n.t('（已达上限）') : '');
     this.shelfSheet = 'tasks';
     this.shelfVisible = true;
   }
@@ -6648,7 +6648,7 @@ struct Index {
     }
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('批注汇总 · ') + docName, message: body,
-      buttons: [{ text: '知道了', color: this.palette().accent }]
+      buttons: [{ text: L10n.t('知道了'), color: this.palette().accent }]
     });
   }
 
@@ -6686,13 +6686,13 @@ struct Index {
     const show: number = Math.min(6, r.issues.length);
     for (let k = 0; k < show; k++) {
       const it: LintIssue = r.issues[k];
-      body += '\n\n' + (it.line > 0 ? '第 ' + it.line + ' 行 · ' : '') + it.kind + '\n' + it.message;
+      body += '\n\n' + (it.line > 0 ? L10n.t('第 ') + it.line + ' 行 · ' : '') + it.kind + '\n' + it.message;
     }
     if (r.issues.length > show) {
       body += '\n\n…另有 ' + (r.issues.length - show) + ' 条，修完这些再看';
     }
     this.getUIContext().getPromptAction().showDialog({
-      title: L10n.t('文档体检'), message: body, buttons: [{ text: '知道了', color: this.palette().accent }]
+      title: L10n.t('文档体检'), message: body, buttons: [{ text: L10n.t('知道了'), color: this.palette().accent }]
     });
   }
 
@@ -6923,8 +6923,8 @@ struct Index {
                 // 复习卡片：点击进入独立复习页（图标用用户指定的自定义 SVG）
                 this.studyCard('复习卡片', $r('app.media.study_word_card'),
                   [this.studyDue > 0
-                    ? '今天到期 ' + this.studyDue + ' 张，该翻卡了'
-                    : '今天没有到期的卡片', this.studyReviewSummary],
+                    ? L10n.t('今天到期 ') + this.studyDue + ' 张，该翻卡了'
+                    : L10n.t('今天没有到期的卡片'), this.studyReviewSummary],
                   '进入复习', (): void => {
                     this.pushPage('pages/Review');
                   }, true)
@@ -7747,7 +7747,7 @@ struct Index {
   /** 空书架时第二格的占位（避免 GridItem 空内容）。 */
   private emptyMeta(): DocMeta {
     const meta: DocMeta = {
-      name: 'Markdown 语法教程',
+      name: L10n.t('Markdown 语法教程'),
       fileName: 'README.md',
       builtin: true,
       size: 0,

@@ -16,6 +16,7 @@
  *                     图标用 chevron_up.svg / chevron_down_l.svg，跟随状态实时切换）
  */
 import { HwRadius, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { L10n } from '../service/L10n';
 
 @Component
 export struct ReaderFlagTile {
@@ -39,12 +40,12 @@ export struct ReaderFlagTile {
   /** 磁贴文案（读数在本组件内，切换当帧刷新）。 */
   private label(): string {
     if (this.kind === 'meta') {
-      return this.showMeta ? '隐藏信息卡' : '显示信息卡';
+      return this.showMeta ? L10n.t('隐藏信息卡') : L10n.t('显示信息卡');
     }
     if (this.kind === 'drawer') {
-      return this.drawerOn ? '侧边栏光感：开' : '侧边栏光感：关';
+      return this.drawerOn ? L10n.t('侧边栏光感：开') : L10n.t('侧边栏光感：关');
     }
-    return this.tabBarBottom ? '标签栏：底部' : '标签栏：顶部';
+    return this.tabBarBottom ? L10n.t('标签栏：底部') : L10n.t('标签栏：顶部');
   }
 
   build() {

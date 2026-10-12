@@ -29,6 +29,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { DocMeta, DocStore } from './DocStore';
+import { L10n } from './L10n';
 
 const TAG: string = 'FormSync';
 
@@ -233,7 +234,7 @@ export class FormSync {
     const percents: string[] = ['去书架挑一篇吧', '', ''];
     for (let k = 0; k < recents.length; k++) {
       names[k] = recents[k].name;
-      percents[k] = recents[k].percent > 0 ? '已读 ' + recents[k].percent + '%' : '刚开始读';
+      percents[k] = recents[k].percent > 0 ? L10n.t('已读 ') + recents[k].percent + '%' : L10n.t('刚开始读');
     }
     // 2×2 卡片（最近阅读一篇 + 新建文档按钮）：与 2×4 共用一次 recentDocs
     const hasRecent: string = recents.length > 0 ? '1' : '0';
@@ -252,8 +253,8 @@ export class FormSync {
       'builtin2': recents.length > 1 && recents[1].builtin ? '1' : '0',
       'builtin3': recents.length > 2 && recents[2].builtin ? '1' : '0',
       // ── 2×2 卡片键 ──
-      'recentName': hasRecent === '1' ? recents[0].name : '暂无阅读记录',
-      'recentPercent': hasRecent === '1' ? percents[0] : '去书架挑一篇吧',
+      'recentName': hasRecent === '1' ? recents[0].name : L10n.t('暂无阅读记录'),
+      'recentPercent': hasRecent === '1' ? percents[0] : L10n.t('去书架挑一篇吧'),
       'hasRecent': hasRecent,
       // 卡片点击路由参数：要打开的文档名（postCardAction params 用）
       'docName': hasRecent === '1' ? recents[0].name : ''

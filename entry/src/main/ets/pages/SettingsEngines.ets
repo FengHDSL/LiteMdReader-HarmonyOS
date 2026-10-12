@@ -168,7 +168,7 @@ export struct SettingsEngines {
   build() {
     Column() {
       SettingsShell({
-        shellTitle: '引擎管理',
+        shellTitle: L10n.t('引擎管理'),
         shellSubtitle: L10n.t('各功能使用的开源渲染引擎 · 可单独关闭'),
         stack: this.stack,
         life: this.life

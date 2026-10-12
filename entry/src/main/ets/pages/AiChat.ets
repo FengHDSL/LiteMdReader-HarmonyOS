@@ -702,7 +702,7 @@ export struct AiChat {
         }
       }
     }
-    const tail: string = text.length > 0 ? text : '（请看附件内容）';
+    const tail: string = text.length > 0 ? text : L10n.t('（请看附件内容）');
     if (steps.length > 0) {
       // 首批 = 输入 + 引用 + 小文件 + 第一个分片
       const s0: AiBatchStep = steps[0];
@@ -748,7 +748,7 @@ export struct AiChat {
     // 标题：取第一条用户消息前 20 字
     if (this.session.title === '新对话') {
       const base: string = text.length > 0 ? text
-        : (this.attachDocName.length > 0 ? '关于《' + this.attachDocName + '》' : '新对话');
+        : (this.attachDocName.length > 0 ? L10n.t('关于《') + this.attachDocName + '》' : L10n.t('新对话'));
       this.session.title = base.length > 20 ? base.substring(0, 20) : base;
     }
     this.session.messages.push(msg);
@@ -1079,7 +1079,7 @@ export struct AiChat {
         if (pos >= 0) {
           const errBubble: AiChatMessage = {
             role: 'assistant',
-            content: '处理回复时出错：' + (err.message !== undefined ? err.message : '未知异常'),
+            content: L10n.t('处理回复时出错：') + (err.message !== undefined ? err.message : L10n.t('未知异常')),
             ts: Date.now(),
             err: true
           };
@@ -1257,7 +1257,7 @@ export struct AiChat {
       return '附加应用内文档';
     }
     if (this.sheetKind === 'code') {
-      return this.codeSheetLang.length > 0 ? this.codeSheetLang : '代码块';
+      return this.codeSheetLang.length > 0 ? this.codeSheetLang : L10n.t('代码块');
     }
     return '';
   }
@@ -2522,7 +2522,7 @@ export struct AiChat {
       Row({ space: HwSpace.xs }) {
         ImmersiveChip({
           palette: this.palette(),
-          chipLabel: this.currentModel().length > 0 ? this.currentModel() : '未选模型',
+          chipLabel: this.currentModel().length > 0 ? this.currentModel() : L10n.t('未选模型'),
           chipOnTap: () => {
             this.openSheet('model');
           }
@@ -2646,7 +2646,7 @@ export struct AiChat {
           .combine(TransitionEffect.translate({ y: 12 })))
       }
 
-      Text(L10n.t('内容由 AI 生成，仅供参考') + (this.totalTokens() > 0 ? ' · 共 ' + fmtTokens(this.totalTokens()) + ' 词元' : ''))
+      Text(L10n.t('内容由 AI 生成，仅供参考') + (this.totalTokens() > 0 ? L10n.t(' · 共 ') + fmtTokens(this.totalTokens()) + ' 词元' : ''))
         .fontSize(10)
         .fontColor(this.palette().textTertiary)
         .width('100%')

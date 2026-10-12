@@ -67,7 +67,7 @@ struct RecentCard {
 
       // 最近阅读文档区（点击进阅读页）
       Column({ space: 3 }) {
-        Text(this.hasRecent === '1' ? this.recentName : '还没有阅读记录')
+        Text(this.hasRecent === '1' ? this.recentName : L10n.t('还没有阅读记录'))
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.hasRecent === '1' ? '#FF1F2933' : '#FFA6ADB5')
@@ -76,8 +76,8 @@ struct RecentCard {
           .lineHeight(20)
           .width('100%')
         Text(this.hasRecent === '1'
-          ? (this.recentPercent.length > 0 ? this.recentPercent : '刚开始读')
-          : '去书架挑一篇吧')
+          ? (this.recentPercent.length > 0 ? this.recentPercent : L10n.t('刚开始读'))
+          : L10n.t('去书架挑一篇吧'))
           .fontSize(10)
           .fontColor('#FF8A93A0')
           .maxLines(1)

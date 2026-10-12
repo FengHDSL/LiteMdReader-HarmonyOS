@@ -57,7 +57,7 @@ const CREDITS: CreditItem[] = [
   {
     name: 'skadjhljhas / zhumo-reader',
     url: 'https://github.com/skadjhljhas/zhumo-reader',
-    note: '注释卡片式阅读形态参考'
+    note: L10n.t('注释卡片式阅读形态参考')
   },
   {
     name: 'Vanessa219 / vditor',
@@ -116,7 +116,7 @@ export struct SettingsExplore {
         AppStorage.setOrCreate('appMode', mode);
         // 第二腿落盘（PersistentStorage 在部分设备不真正落盘）
         SettingsMirror.save(this.hostCtx());
-        this.toast(mode === APP_MODE_OFFLINE ? '已切换为基础模式（纯离线）' : '已切换为全量模式');
+        this.toast(mode === APP_MODE_OFFLINE ? L10n.t('已切换为基础模式（纯离线）') : L10n.t('已切换为全量模式'));
       }
     }),
     autoCancel: false,
@@ -286,8 +286,8 @@ export struct SettingsExplore {
           message: L10n.t('发现新版本 v') + remote + '（当前 v' + this.versionName + '）。' +
             '可前往 HAP 资源站查看更新说明并下载安装包。',
           buttons: [
-            { text: '前往更新', color: this.palette().accent },
-            { text: '稍后再说', color: this.palette().textSecondary }
+            { text: L10n.t('前往更新'), color: this.palette().accent },
+            { text: L10n.t('稍后再说'), color: this.palette().textSecondary }
           ]
         }).then((res: promptAction.ShowDialogSuccessResponse) => {
           if (res.index === 0) {
@@ -301,7 +301,7 @@ export struct SettingsExplore {
           title: L10n.t('版本超前'),
           message: L10n.t('当前版本（v') + this.versionName + '）比最新版本（v' + remote + '）更高！',
           buttons: [
-            { text: '知道了', color: this.palette().accent }
+            { text: L10n.t('知道了'), color: this.palette().accent }
           ]
         }).catch(() => {
           // 关闭失败无副作用
@@ -362,7 +362,7 @@ export struct SettingsExplore {
   build() {
     Column() {
       SettingsShell({
-        shellTitle: '探索中心',
+        shellTitle: L10n.t('探索中心'),
         shellSubtitle: L10n.t('功能帮助 · 关于应用 · 参考与致谢'),
         stack: this.stack,
         life: this.life
@@ -428,7 +428,7 @@ export struct SettingsExplore {
               palette: this.palette(),
               chipTint: '#FF2E7D32',
               chipActive: true,
-              chipLabel: this.checkingUpdate ? '检查中…' : '检查更新',
+              chipLabel: this.checkingUpdate ? L10n.t('检查中…') : L10n.t('检查更新'),
               chipOnTap: () => {
                 this.checkUpdate();
               }
@@ -575,7 +575,7 @@ export struct SettingsExplore {
               palette: this.palette(),
               chipTint: this.appMode === APP_MODE_OFFLINE ? '#FF2F63E8' : '#FF2E7D53',
               chipActive: true,
-              chipLabel: L10n.t('使用模式：') + (this.appMode === APP_MODE_OFFLINE ? '基础（纯离线）' : '全量'),
+              chipLabel: L10n.t('使用模式：') + (this.appMode === APP_MODE_OFFLINE ? L10n.t('基础（纯离线）') : L10n.t('全量')),
               chipOnTap: () => {
                 this.modeTitle = '重新选择使用模式';
                 this.modeCurrent = this.appMode;
