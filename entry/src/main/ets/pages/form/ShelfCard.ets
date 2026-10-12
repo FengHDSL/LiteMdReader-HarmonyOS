@@ -13,7 +13,7 @@
  */
 import { DocCover, coverColorsOf } from '../../components/DocCover';
 import { HwRadius } from '../../theme/DesignTokens';
-import { L10n } from '../service/L10n';
+import { L10n } from '../../service/L10n';
 
 let storage = new LocalStorage();
 
