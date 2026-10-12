@@ -36,8 +36,9 @@ for (const line of body.split('\n')) {
   const core = /core:\s*(true|false)/.exec(t);
   const label = /label:\s*'([^']*)'/.exec(t);
   const grp = group ? group[1] : '';
-  // 符号组的按钮**刻意不配 SVG**：字符本身就是脸，画个图标反而看不出要点的是哪个
-  const needIcon = grp !== 'sym';
+  // 符号组（中文 / 英文两组的组名就是 symcn / symben）的按钮**刻意不配 SVG**：
+  // 字符本身就是脸，画个图标反而看不出要点的是哪个字符
+  const needIcon = grp !== 'symcn' && grp !== 'symben';
   check('entry fields ok: ' + (key ? key[1] : t.slice(0, 20)),
     !!(key && group && core) && (!needIcon || !!icon));
   if (key && group && core && (!needIcon || icon)) {
@@ -96,8 +97,8 @@ const coreCount = entries.filter(e => e.core).length;
 console.log('收起常驻胶囊的常用按钮: ' + coreCount + ' 个');
 check('⑤ 收起态有常用按钮但不爆量', coreCount >= 5 && coreCount <= 10, 'core=' + coreCount);
 
-// ── 展开钮图标必须是已存在的资源 ──
-for (const n of ['chevron_up', 'chevron_down_l']) {
+// ── 展开 / 收起钮必须是用户指定的那对圆框箭头 ──
+for (const n of ['chevron_up_circle', 'chevron_down_circle']) {
   check('toggle icon present: ' + n, fs.existsSync(path.join(MEDIA, n + '.svg')));
 }
 // $r() 必须字面量：出现拼接或三元就是回归。

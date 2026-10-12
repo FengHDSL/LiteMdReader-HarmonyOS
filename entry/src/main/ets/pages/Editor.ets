@@ -20,7 +20,7 @@ import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { KeyboardAvoidMode, LengthMetrics } from '@kit.ArkUI';
+import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
@@ -139,27 +139,29 @@ const SNIPPETS: MdSnippet[] = [
   //    （见 MdParser 头注释）——插进去就是一串显示出来的标签，比没有按钮更糟。
   //    要给就得先在解析器 + 渲染 + 导出三处真正支持，不能只摆个按钮。
   // ── 符号组：字符本身就是图标，不另配 SVG（icon 省略） ──
-  { key: 'sym-mdash', label: '—', before: '—', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-endash', label: '–', before: '–', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-ellipsis', label: '…', before: '…', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-dun', label: '、', before: '、', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-dq', label: '“”', before: '“', after: '”', holder: '引用', group: 'sym', core: false },
-  { key: 'sym-sq', label: '‘’', before: '‘', after: '’', holder: '引用', group: 'sym', core: false },
-  { key: 'sym-lpar', label: '（）', before: '（', after: '）', holder: '', group: 'sym', core: false },
-  { key: 'sym-book', label: '《》', before: '《', after: '》', holder: '书名', group: 'sym', core: false },
-  { key: 'sym-tort', label: '【】', before: '【', after: '】', holder: '', group: 'sym', core: false },
-  { key: 'sym-pipe', label: '|', before: '|', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-tilde', label: '~', before: '~', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-at', label: '@', before: '@', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-hash', label: '#', before: '#', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-pct', label: '%', before: '%', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-amp', label: '&', before: '&', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-bslash', label: '\\', before: '\\', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-semi', label: ';', before: ';', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-colon', label: ':', before: ':', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-comma', label: ',', before: ',', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-quest', label: '?', before: '?', after: '', holder: '', group: 'sym', core: false },
-  { key: 'sym-bang', label: '!', before: '!', after: '', holder: '', group: 'sym', core: false }
+  // ── 中文符号组（字符本身就是图标，icon 省略）──
+  { key: 'sym-mdash', label: '—', before: '—', after: '', holder: '', group: 'symcn', core: false },
+  { key: 'sym-endash', label: '–', before: '–', after: '', holder: '', group: 'symcn', core: false },
+  { key: 'sym-ellipsis', label: '…', before: '…', after: '', holder: '', group: 'symcn', core: false },
+  { key: 'sym-dun', label: '、', before: '、', after: '', holder: '', group: 'symcn', core: false },
+  { key: 'sym-dq', label: '“”', before: '“', after: '”', holder: '引用', group: 'symcn', core: false },
+  { key: 'sym-sq', label: '‘’', before: '‘', after: '’', holder: '引用', group: 'symcn', core: false },
+  { key: 'sym-lpar', label: '（）', before: '（', after: '）', holder: '', group: 'symcn', core: false },
+  { key: 'sym-book', label: '《》', before: '《', after: '》', holder: '书名', group: 'symcn', core: false },
+  { key: 'sym-tort', label: '【】', before: '【', after: '】', holder: '', group: 'symcn', core: false },
+  // ── 英文符号组 ──
+  { key: 'sym-pipe', label: '|', before: '|', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-tilde', label: '~', before: '~', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-at', label: '@', before: '@', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-hash', label: '#', before: '#', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-pct', label: '%', before: '%', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-amp', label: '&', before: '&', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-bslash', label: '\\', before: '\\', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-semi', label: ';', before: ';', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-colon', label: ':', before: ':', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-comma', label: ',', before: ',', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-quest', label: '?', before: '?', after: '', holder: '', group: 'symben', core: false },
+  { key: 'sym-bang', label: '!', before: '!', after: '', holder: '', group: 'symben', core: false }
 ];
 
 /** 收起状态下常驻胶囊条的片段（常用集）。 */
@@ -1885,15 +1887,16 @@ export struct Editor {
         }) {
           // ⚠️ `$r()` 的参数必须是**字面量**，写成 $r(cond ? 'a' : 'b') 取不到资源
           //（上一版工具栏就是这么编译不过的）——所以两个图标各写一份。
+          // 圆框上下箭头（用户指定的图标）：收起时朝上=可展开，展开时朝下=可收起。
           if (this.barExpanded) {
-            Image($r('app.media.chevron_down_l'))
-              .width(16)
-              .height(16)
+            Image($r('app.media.chevron_down_circle'))
+              .width(21)
+              .height(21)
               .fillColor(this.palette().accent)
           } else {
-            Image($r('app.media.chevron_up'))
-              .width(16)
-              .height(16)
+            Image($r('app.media.chevron_up_circle'))
+              .width(21)
+              .height(21)
               .fillColor(this.palette().accent)
           }
         }
@@ -2020,19 +2023,54 @@ export struct Editor {
   }
 
   /**
-   * 展开面板：所有编辑功能按钮按组分节摊开（格式 / 图表 / 符号），点一下即插入。
-   * 用 Flex(wrap) 而不是 Grid：按钮宽度随文案不等，Grid 的列宽要固定值。
-   * 动画 = 外层 animateTo（toggleBarExpanded）+ 本面板的 opacity/上移 transition。
+   * 展开面板：**限高 + 内部滚动**（用户要求"面板不用太高，能滑动选择就行"——
+   * 面板一高就把正文挡住了）。顶部一行放「收起」按钮，展开态也能就地收回。
    */
   @Builder
   barExpandPanel() {
     Column({ space: HwSpace.xs }) {
-      this.barGroupRow('格式', SNIPPETS.filter((it: MdSnippet) => it.group === 'fmt'))
-      this.barGroupRow('图表', SNIPPETS.filter((it: MdSnippet) => it.group === 'chart'))
-      this.barGroupRow('符号', SNIPPETS.filter((it: MdSnippet) => it.group === 'sym'))
+      Row({ space: HwSpace.xs }) {
+        Text('全部编辑功能')
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .layoutWeight(1)
+        Row({ space: 4 }) {
+          Image($r('app.media.chevron_down_circle'))
+            .width(16)
+            .height(16)
+            .fillColor(this.palette().accent)
+          Text('收起')
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().accent)
+        }
+        .padding({ left: 10, right: 12, top: 5, bottom: 5 })
+        .borderRadius(HwRadius.pill)
+        .backgroundColor(this.palette().quoteBg)
+        .onClick(() => {
+          this.toggleBarExpanded();
+        })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Scroll() {
+        Column({ space: 6 }) {
+          this.barGroupRows('格式', SNIPPETS.filter((it: MdSnippet) => it.group === 'fmt'))
+          this.barGroupRows('图表', SNIPPETS.filter((it: MdSnippet) => it.group === 'chart'))
+          this.barGroupRows('中文符号', SNIPPETS.filter((it: MdSnippet) => it.group === 'symcn'))
+          this.barGroupRows('英文符号', SNIPPETS.filter((it: MdSnippet) => it.group === 'symben'))
+        }
+        .width('100%')
+      }
+      .scrollable(ScrollDirection.Vertical)
+      .scrollBar(BarState.Auto)
+      .align(Alignment.Top)
+      .width('100%')
+      // 约 4 行按钮 + 组标题：够滑动挑，又不至于盖住大半屏正文
+      .constraintSize({ maxHeight: 208 })
     }
     .width('100%')
-    .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     .borderRadius(HwRadius.card)
     .backgroundColor(withAlpha(this.palette().surface, 'FF'))
     .border({ width: 1, color: this.palette().divider })
@@ -2043,40 +2081,80 @@ export struct Editor {
       .combine(TransitionEffect.translate({ y: 16 })))
   }
 
-  /** 一组（标题 + 按钮流式排布）。空组不渲染，免得留一条空标题。 */
+  /**
+   * 一组按钮：标题 + **每行 4 颗、每颗 layoutWeight(1)**。
+   * 用"分行 + 等分权重"而不是 Flex 百分比宽度：百分比加固定间隙在窄屏会溢出，
+   * 溢出后列就错位了（用户要求按钮对齐排版）。
+   */
   @Builder
-  barGroupRow(title: string, items: MdSnippet[]) {
+  barGroupRows(title: string, items: MdSnippet[]) {
     if (items.length > 0) {
-      Column({ space: 4 }) {
+      Column({ space: 6 }) {
         Text(title)
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
-        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
-          ForEach(items, (item: MdSnippet) => {
-            ImmersiveChip({
-              palette: this.palette(),
-              chipLabel: item.label,
-              chipPaddingH: 10,
-              chipFontSize: item.icon === undefined ? 15 : 0,
-              chipOnTap: (): void => {
-                this.insertSnippet(item);
+        ForEach(this.chunkRows(items, 4), (row: MdSnippet[]) => {
+          Row({ space: 6 }) {
+            ForEach(row, (item: MdSnippet) => {
+              Column() {
+                this.barCell(item)
               }
-            }) {
-              if (item.icon !== undefined) {
-                Image(item.icon)
-                  .width(15)
-                  .height(15)
-                  .fillColor(this.palette().accent)
-              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Center)
+            }, (item: MdSnippet) => item.key)
+            // 补齐空位：最后一行不满 4 颗时也要保持等宽，否则那几颗会被拉宽
+            if (row.length < 4) {
+              ForEach(this.padIds(row), (id: string) => {
+                Column().layoutWeight(1)
+              }, (id: string) => id)
             }
-          }, (item: MdSnippet) => item.key)
-        }
-        .width('100%')
+          }
+          .width('100%')
+        }, (row: MdSnippet[]) => row.map((it: MdSnippet) => it.key).join('+'))
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
     }
+  }
+
+  /** 单颗按钮（图标 + 文案；符号组无图标，字符本身放大当脸）。 */
+  @Builder
+  barCell(item: MdSnippet) {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipLabel: item.label,
+      chipPaddingH: 8,
+      chipFontSize: item.icon === undefined ? 15 : 0,
+      chipOnTap: (): void => {
+        this.insertSnippet(item);
+      }
+    }) {
+      if (item.icon !== undefined) {
+        Image(item.icon)
+          .width(15)
+          .height(15)
+          .fillColor(this.palette().accent)
+      }
+    }
+  }
+
+  /** 按 size 切行。 */
+  private chunkRows(items: MdSnippet[], size: number): MdSnippet[][] {
+    const rows: MdSnippet[][] = [];
+    for (let i = 0; i < items.length; i += size) {
+      rows.push(items.slice(i, i + size));
+    }
+    return rows;
+  }
+
+  /** 最后一行的补位占位 key（只为让 ForEach 有稳定 key）。 */
+  private padIds(row: MdSnippet[]): string[] {
+    const out: string[] = [];
+    for (let i = row.length; i < 4; i++) {
+      out.push('pad_' + i);
+    }
+    return out;
   }
 
   // ══════════════════════ 底部状态栏 ══════════════════════
