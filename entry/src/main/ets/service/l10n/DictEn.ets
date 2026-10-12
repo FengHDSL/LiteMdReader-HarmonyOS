@@ -8,6 +8,12 @@
 import { L10nEntry, toL10nMap } from './L10nEntries';
 
 export const EN_US_ENTRIES: L10nEntry[] = [
+  { k: '遗忘曲线 · 预测与标准', v: 'Forgetting curve · Predicted vs standard' },
+  { k: '你的预测', v: 'Your prediction' },
+  { k: '标准遗忘曲线', v: 'Standard forgetting curve' },
+  { k: '横轴：天后', v: 'X-axis: days after' },
+  { k: '纵轴：记忆保持率', v: 'Y-axis: retention' },
+  { k: '预测基于当前卡片的间隔与难度系数聚合；复习会让曲线整体抬升。', v: 'The prediction aggregates your cards’ intervals and ease factors; reviewing lifts the whole curve.' },
   { k: '互换', v: 'Swap sides' },
   { k: '拼写', v: 'Spelling' },
   { k: '提交', v: 'Submit' },

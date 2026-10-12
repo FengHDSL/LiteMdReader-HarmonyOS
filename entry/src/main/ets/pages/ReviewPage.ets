@@ -546,6 +546,157 @@ export struct ReviewPage {
    *   · **记得**：streak + 1 点灯；不满 3 次 → 确认后排队尾再出现；
    *     满 3 次 → 掌握，按艾宾浩斯曲线拉长间隔，今天不再出现。
    */
+  /**
+   * 遗忘曲线卡片：**预测曲线**（按当前卡片 SM-2 数据聚合）vs **标准艾宾浩斯曲线**（参考线）。
+   * 保留模型：R(t) = exp(-t / S)，S ≈ 间隔天数 × 3（间隔即复习计划点，此处按经验系数放大）。
+   */
+  @Builder
+  forgettingCurveCard() {
+    this.sectionHead(L10n.t('遗忘曲线 · 预测与标准'))
+    ImmersiveCard({
+      cardRadius: HwRadius.card,
+      cardPadding: HwSpace.lg,
+      palette: this.palette()
+    }) {
+      Column({ space: HwSpace.xs }) {
+        Canvas(this.forgetCtx)
+          .width('100%')
+          .height(190)
+          .onReady(() => {
+            this.drawForgetCurve();
+          })
+        Row({ space: HwSpace.md }) {
+          Row({ space: 6 }) {
+            Column()
+              .width(16).height(3).borderRadius(2)
+              .backgroundColor(this.palette().accent)
+            Text(L10n.t('你的预测'))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textSecondary)
+          }
+          .alignItems(VerticalAlign.Center)
+          Row({ space: 6 }) {
+            Column()
+              .width(16).height(3).borderRadius(2)
+              .backgroundColor(this.palette().textTertiary)
+            Text(L10n.t('标准遗忘曲线'))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textSecondary)
+          }
+          .alignItems(VerticalAlign.Center)
+          Blank()
+          Text(L10n.t('横轴：天后') + ' · ' + L10n.t('纵轴：记忆保持率'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+        Text(L10n.t('预测基于当前卡片的间隔与难度系数聚合；复习会让曲线整体抬升。'))
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+    }
+  }
+
+  /** 遗忘曲线画布上下文 */
+  private forgetCtx: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true))
+
+  /** 绘制预测遗忘曲线与标准艾宾浩斯参考线 */
+  private drawForgetCurve(): void {
+    const ctx = this.forgetContext;
+    const w: number = ctx.width;
+    const h: number = ctx.height;
+    if (w <= 0 || h <= 0) {
+      return;
+    }
+    const DAYS: number = 30;
+    const ml: number = 34;
+    const mr: number = 10;
+    const mt: number = 10;
+    const mb: number = 20;
+    const gw: number = w - ml - mr;
+    const gh: number = h - mt - mb;
+    const pal = this.palette();
+    ctx.clearRect(0, 0, w, h);
+    // 网格与坐标轴
+    ctx.strokeStyle = pal.divider;
+    ctx.lineWidth = 1;
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = pal.textTertiary;
+    for (let g = 0; g <= 4; g++) {
+      const gy: number = mt + gh * g / 4;
+      ctx.beginPath();
+      ctx.moveTo(ml, gy);
+      ctx.lineTo(ml + gw, gy);
+      ctx.stroke();
+      ctx.fillText(String(100 - g * 25) + '%', 2, gy + 4);
+    }
+    for (let d = 0; d <= DAYS; d += 10) {
+      const gx: number = ml + gw * d / DAYS;
+      ctx.beginPath();
+      ctx.moveTo(gx, mt);
+      ctx.lineTo(gx, mt + gh);
+      ctx.stroke();
+      ctx.fillText(d + 'd', gx - 6, h - 6);
+    }
+    // 标准艾宾浩斯参考线：R(t) = exp(-t / 0.35)（无复习的自然遗忘，陡峭）
+    ctx.strokeStyle = pal.textTertiary;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let d = 0; d <= DAYS * 2; d++) {
+      const t: number = d / 2;
+      const r: number = Math.exp(-t / 0.35);
+      const x: number = ml + gw * t / DAYS;
+      const y: number = mt + gh * (1 - r);
+      if (d === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    // 预测曲线：按卡片聚合 R_i(t) = exp(-t / S_i)，S_i = max(间隔,0.5) × 3（经验系数）
+    const studied: ReviewCard[] = this.cards.filter((c: ReviewCard) => c.lastReview > 0 && c.interval > 0);
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    if (studied.length > 0) {
+      for (let d = 0; d <= DAYS * 2; d++) {
+        const t: number = d / 2;
+        let sum: number = 0;
+        for (let i = 0; i < studied.length; i++) {
+          const sN: number = Math.max(studied[i].interval, 0.5) * 3 * Math.max(studied[i].ease, 1.3) / 2.5;
+          sum += Math.exp(-t / sN);
+        }
+        const r: number = sum / studied.length;
+        const x: number = ml + gw * t / DAYS;
+        const y: number = mt + gh * (1 - r);
+        if (d === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    } else {
+      // 没有学过的卡片：画标准曲线的浅色占位（与参考线重合的表达）
+      for (let d = 0; d <= DAYS * 2; d++) {
+        const t: number = d / 2;
+        const r: number = Math.exp(-t / 0.35);
+        const x: number = ml + gw * t / DAYS;
+        const y: number = mt + gh * (1 - r);
+        if (d === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
   private grade(gradeValue: number): void {
     const c = this.ctx();
     if (c === null || this.queueIndex >= this.queue.length) {
@@ -1576,6 +1727,8 @@ export struct ReviewPage {
       .width('100%')
       .alignItems(HorizontalAlign.Start)
     }
+
+    this.forgettingCurveCard()
 
     this.sectionHead('每张卡的下次到期')
     ImmersiveCard({
