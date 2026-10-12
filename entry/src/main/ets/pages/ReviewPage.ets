@@ -606,7 +606,7 @@ export struct ReviewPage {
 
   /** 绘制预测遗忘曲线与标准艾宾浩斯参考线 */
   private drawForgetCurve(): void {
-    const ctx = this.forgetContext;
+    const ctx = this.forgetCtx;
     const w: number = ctx.width;
     const h: number = ctx.height;
     if (w <= 0 || h <= 0) {
@@ -2207,7 +2207,7 @@ export struct ReviewPage {
               .fontSize(HwType.label + 1)
               .fontColor(this.palette().textPrimary)
               .placeholderColor(this.palette().textTertiary)
-              .backgroundColor(this.palette().cardBg)
+              .backgroundColor(this.palette().codeBlockBg)
               .borderRadius(HwRadius.pill)
               .onChange((value: string) => {
                 this.typeInput = value;
