@@ -134,11 +134,10 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'taskdone', label: '已完成任务', before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false },
   { key: 'latex', label: '公式块', before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false },
   { key: 'latexinline', label: '行内公式', before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false },
-  { key: 'underline', label: '下划线', before: '\n<u>', after: '</u>\n', holder: '下划线文字', icon: $r('app.media.tb_underline'), group: 'fmt', core: false },
-  { key: 'center', label: '居中', before: '\n<div align="center">\n', after: '\n</div>\n', holder: '居中内容', icon: $r('app.media.tb_center'), group: 'fmt', core: false },
-  // ⚠️ **没做「文字颜色」按钮**：颜色只能靠 `<font color>` / `<span style>` 这类行内
-  //    HTML，而解析器刻意不支持行内 HTML（按纯文本显示，见 MdParser 头注释）——
-  //    插进去就是一串显示出来的标签，宁可不给。
+  // ⚠️ **下划线 <u>、居中 <div align>、颜色 <font> 三类按钮都不做**：它们只能靠行内
+  //    / 块级 HTML 表达，而解析器只认 `<details>` 一种 HTML，其余按纯文本显示
+  //    （见 MdParser 头注释）——插进去就是一串显示出来的标签，比没有按钮更糟。
+  //    要给就得先在解析器 + 渲染 + 导出三处真正支持，不能只摆个按钮。
   // ── 符号组：字符本身就是图标，不另配 SVG（icon 省略） ──
   { key: 'sym-mdash', label: '—', before: '—', after: '', holder: '', group: 'sym', core: false },
   { key: 'sym-endash', label: '–', before: '–', after: '', holder: '', group: 'sym', core: false },
