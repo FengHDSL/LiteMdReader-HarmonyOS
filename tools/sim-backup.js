@@ -14,6 +14,10 @@
  * 已由旧版真机验证），比对的就是「进了包的相对路径」与「恢复后的相对路径」。
  *
  * 用法：node tools/sim-backup.js
+ *
+ * 顺带跑两件事：① 内置演示文档的**死副本**（update() 写进 docs/<rawfile 名>、readText()
+ * 对 builtin 却永不读那份）不进包；② 包里少了 shelf.json 时文档虽在盘上、书架却看不见，
+ * 靠「找回未登记的文档」按目录登记回来（DocStore.adoptOrphans 的语义端口）。
  */
 'use strict';
 
@@ -240,6 +244,27 @@ function restore(stage, sb2) {
   return categorized;
 }
 
+// ── DocStore.adoptOrphans 的语义端口（找回"文件在、索引里没有"的文档）──
+// 口径与 ArkTS 版一致：只认 .md/.markdown/.txt、跳过内置死副本与索引里已有的文件名、
+// 空正文不登记、目录不登记。
+const DOC_EXTS = ['.markdown', '.md', '.txt'];
+function adoptOrphans(sb, indexFileNames) {
+  const residue = builtinResidue(sb);
+  const added = [];
+  for (const fn of listNames(sb.files + '/docs')) {
+    const lower = fn.toLowerCase();
+    const ext = DOC_EXTS.find((e) => lower.endsWith(e) && fn.length > e.length);
+    if (ext === undefined) { continue; }
+    const stem = fn.substring(0, fn.length - ext.length);
+    const full = sb.files + '/docs/' + fn;
+    if (residue.includes(full) || indexFileNames.includes(fn)) { continue; }
+    if (isDir(full)) { continue; }
+    if (fs.readFileSync(full, 'utf8').length === 0) { continue; }
+    added.push({ name: stem, fileName: fn });
+  }
+  return added;
+}
+
 // ── 假沙箱：造数据 → 打包 → 恢复进一个**全新的空沙箱** → 逐文件比对 ──
 function scenario(fixParent) {
   FIX_PARENT = fixParent;
@@ -368,6 +393,21 @@ function scenario(fixParent) {
   const F = mkSandbox('F');
   restore(oldish, F);
 
+  // 事故复原：旧构建导出的包里 docs 有正文、shelf.json 却没进包 → 导入后文档全部"隐身"
+  // （书架按索引显示、不扫描目录）。数据管理页的「找回未登记的文档」按目录把它们登记回来。
+  const holey = P('holey');
+  w(holey + '/backup/manifest.json', '{"app":"澄笺"}');
+  w(holey + '/backup/docs/docs/旧笔记.md', 'OLD-1');
+  w(holey + '/backup/docs/docs/说明.markdown', 'OLD-2');
+  w(holey + '/backup/docs/docs/子目录/嵌套.md', 'OLD-3');
+  w(holey + '/backup/docs/docs/images/a.png', 'PNG');
+  w(holey + '/backup/docs/docs/空文件.md', '');
+  const G = mkSandbox('G');
+  restore(holey, G);
+  // 沙箱里再放一份内置演示文档的死副本：找回时**不该**把它登记成用户文档
+  w(G.files + '/docs/' + BUILTIN_RAW[0], 'DEMO-COPY');
+  const adopted = adoptOrphans(G, []);
+
   const out = {
     tmp: tmp, pack: afterPack, failed: stat.failed, emptyDirs: emptyDirs,
     missing: expected.filter((x) => !got.includes(x)),
@@ -389,7 +429,10 @@ function scenario(fixParent) {
     bareOk: exists(E.files + '/shelf.json') && exists(E.files + '/docs/笔记.md')
       && exists(E.files + '/settings.json'),
     oldishOk: exists(F.files + '/docs/' + BUILTIN_RAW[0])
-      && fs.readFileSync(F.files + '/docs/' + BUILTIN_RAW[0], 'utf8') === 'MAYBE-USER-DOC'
+      && fs.readFileSync(F.files + '/docs/' + BUILTIN_RAW[0], 'utf8') === 'MAYBE-USER-DOC',
+    // 找回未登记文档：登记回来的名单 + 目录/图片/空文件/内置死副本都不该在里面
+    adoptedNames: adopted.map((a) => a.name),
+    holeyRestored: exists(G.files + '/docs/旧笔记.md')
   };
   fs.rmSync(tmp, { recursive: true, force: true });
   return out;
@@ -438,6 +481,17 @@ check('死副本没进包 → 恢复出来的新沙箱里也就没有它们',
   residueRestored.length === 0, residueRestored.join(', '));
 check('老包里夹着的同名文件导入时照原样写回（导入侧不排除：它可能是用户文档）',
   R.oldishOk);
+// 另一半病因：书架按索引显示、不扫描目录 → 索引丢了文档就"隐身"，但文件仍在包里。
+// 数据管理页的「找回未登记的文档」按目录重新登记（只加不删、不改文件名）。
+check('没有 shelf.json 的包恢复后文档仍在盘上（只是书架看不见）——这正是"包里一堆没的文件"的另一半',
+  R.holeyRestored);
+check('找回未登记文档：.md 与 .markdown 都登记回来',
+  R.adoptedNames.includes('旧笔记') && R.adoptedNames.includes('说明'),
+  R.adoptedNames.join(', '));
+check('找回时不登记子目录 / 图片 / 空文件 / 内置演示文档的死副本',
+  !R.adoptedNames.includes('子目录') && !R.adoptedNames.includes('images')
+  && !R.adoptedNames.includes('空文件') && !R.adoptedNames.includes(BUILTIN_RAW[0]),
+  R.adoptedNames.join(', '));
 check('用户自己的文档与图片照常进包（排除名单没有误伤）',
   R.packed.includes('docs/docs/笔记.md') && R.packed.includes('docs/docs/子目录/嵌套.md')
   && R.packed.includes('docs/docs/images/a.png'));

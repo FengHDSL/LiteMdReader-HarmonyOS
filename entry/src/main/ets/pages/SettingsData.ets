@@ -634,6 +634,32 @@ export struct SettingsData {
     }
   }
 
+  /**
+   * **找回未登记的文档**：把 docs 目录里躺着、书架索引里却没有的文档重新登记回书架。
+   * 索引与目录脱节时（旧版备份导入没把 shelf.json 写回来、用文件管理器往 docs 里塞了
+   * 文件、索引被写坏），那些文档在应用里**永久隐身**，却会被备份的整目录扫描捞进包里
+   * —— 用户看到的就是"压缩包里一堆我根本没有的文件"。
+   */
+  private adoptOrphanDocs(): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      this.toast(L10n.t('拿不到应用上下文'));
+      return;
+    }
+    try {
+      const names: string[] = DocStore.adoptOrphans(ctx);
+      this.loadBuiltins();
+      if (names.length === 0) {
+        this.toast(L10n.t('没有需要找回的文档：目录里的文件都已在书架上'));
+        return;
+      }
+      this.toast('找回 ' + names.length + ' 篇：' + names.slice(0, 3).join('、')
+        + (names.length > 3 ? '…' : ''));
+    } catch (err) {
+      this.toast('找回失败：' + DocStore.describeError(err as BusinessError));
+    }
+  }
+
   /** 删除内置文档：确认后连本地文件一起删（DocStore.remove 的语义） */
   private deleteBuiltin(name: string): void {
     const ctx = this.ctx();
@@ -1199,6 +1225,32 @@ export struct SettingsData {
               .alignItems(VerticalAlign.Center)
             }, (meta: DocMeta) => 'my_' + meta.name)
           }
+
+          // ── 找回未登记的文档（索引与 docs 目录脱节时的自救入口）──
+          Divider().strokeWidth(1).color(this.palette().divider)
+
+          Text(L10n.t('书架按索引显示、不扫描目录：索引里没登记的文档，即使文件还在 docs 目录里也看不见（却会被备份打包，看起来就像"包里多出一堆没有的文件"）。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
+          ImmersiveChip({
+            palette: this.palette(),
+            chipActive: true,
+            chipLabel: L10n.t('找回未登记的文档'),
+            chipOnTap: () => {
+              this.adoptOrphanDocs();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+              .fontSize(13)
+              .fontColor([this.palette().accent])
+          }
+          Text(L10n.t('按目录重新登记一遍：只加不删、不改文件名，内置演示文档的残留副本不会被登记。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
 
           // ── 图片管理（用户要求）：展示手写笔记 / 插入的本地图片 / 网络图片，
           // 支持导出与移除（移除**不删除本地文件**）──

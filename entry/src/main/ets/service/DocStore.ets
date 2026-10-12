@@ -266,6 +266,107 @@ export class DocStore {
     DocStore.init(ctx);
   }
 
+  /**
+   * **找回未登记的文档**：把 docs/ 里真实存在、但书架索引（shelf.json）里没有的文档
+   * 重新登记回书架，返回找回的文档名（空数组 = 没有可找回的）。
+   *
+   * 为什么需要：书架是**索引驱动**的 —— `list()` 只遍历索引里的条目，磁盘校正是单向的
+   * （文件没了就把条目剔掉），从不反过来把"文件在、索引里没有"的捡回来。所以只要索引与
+   * 目录脱节（旧版备份导入时 shelf.json 没写回来、用文件管理器往 docs/ 里塞了文件、
+   * 索引被写坏），那些文档就**永久隐身**：应用里看不见，却会被备份的整目录扫描捞进包里
+   * —— 用户看到的就是"压缩包里一堆我根本没有的文件"。
+   *
+   * 口径：
+   *  · 只认 `.md / .markdown / .txt`（与"打开方式"导入文档的白名单一致），
+   *    images/ 之类的子目录与点文件自然落选；
+   *  · 内置演示文档的死副本不登记（那不是用户文档，见 builtinResidue）；
+   *  · 索引里已有同名文档时**不动它**（名字撞车多半是改名改到一半，猜哪份是准的只会更糟）；
+   *  · 读不出正文的不登记（登记了也只是一条打不开的空壳）；
+   *  · **绝不改文件名**：改名会让别处对这篇的引用（文档内链接、按文档名存档的批注 /
+   *    版本 / 草稿）全部对不上。
+   */
+  static adoptOrphans(ctx: common.UIAbilityContext): string[] {
+    DocStore.init(ctx);
+    const added: string[] = [];
+    let names: string[] = [];
+    try {
+      names = fs.listFileSync(DocStore.dir);
+    } catch (err) {
+      return added;
+    }
+    const residue: string[] = DocStore.builtinResidue(ctx);
+    for (let k = 0; k < names.length; k++) {
+      const fileName: string = names[k];
+      if (fileName.startsWith('.')) {
+        continue;
+      }
+      const stem: string = DocStore.stripDocExt(fileName);
+      if (stem.length === 0) {
+        continue;                      // 不是文档扩展名（images/ 目录、图片等都落在这里）
+      }
+      const full: string = DocStore.pathOf(fileName);
+      if (residue.indexOf(full) >= 0 || DocStore.indexedFileName(fileName)
+        || DocStore.exists(ctx, stem)) {
+        continue;
+      }
+      let mtime: number = Date.now();
+      let content: string = '';
+      try {
+        const st: fs.Stat = fs.statSync(full);
+        if (st.isDirectory()) {
+          continue;
+        }
+        if (st.mtime > 0) {
+          mtime = st.mtime * 1000;     // fs.Stat 的时间是秒，索引里存毫秒（见 fileTimes）
+        }
+        content = DocStore.readBytesAs(full, 'utf-8');
+      } catch (err) {
+        continue;
+      }
+      if (content.length === 0) {
+        continue;                      // 空文件不登记：书架上多一张打不开的空卡没有意义
+      }
+      // 显示名与内置文档、或同批找回的另一篇撞车时加扩展名区分（**只改显示名、不改文件名**）：
+      // find() 是按名字取的，重名会让后面那篇永远打不开
+      let name: string = stem;
+      if (DocStore.isBuiltinName(stem) || added.indexOf(stem) >= 0) {
+        name = stem + '（' + fileName.substring(stem.length + 1) + '）';
+      }
+      if (DocStore.exists(ctx, name)) {
+        continue;
+      }
+      DocStore.docs.push(DocStore.buildMeta(name, fileName, content, mtime));
+      added.push(name);
+    }
+    if (added.length > 0) {
+      // 排序表由 normalizeOrder() 归一化：新条目自动追加到末尾，不用手工塞
+      DocStore.persist();
+    }
+    return added;
+  }
+
+  /** 去掉文档扩展名；不是 `.md / .markdown / .txt` 就返回空串（用来筛掉目录与图片） */
+  private static stripDocExt(fileName: string): string {
+    const lower: string = fileName.toLowerCase();
+    const exts: string[] = ['.markdown', '.md', '.txt'];
+    for (let k = 0; k < exts.length; k++) {
+      if (lower.endsWith(exts[k]) && fileName.length > exts[k].length) {
+        return fileName.substring(0, fileName.length - exts[k].length);
+      }
+    }
+    return '';
+  }
+
+  /** 索引里是否已有文档正用着这个文件名 */
+  private static indexedFileName(fileName: string): boolean {
+    for (let k = 0; k < DocStore.docs.length; k++) {
+      if (DocStore.docs[k].fileName === fileName) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** 初始化。必须在任何其它方法之前调用一次；重复调用是安全的。 */
   static init(ctx: common.UIAbilityContext): void {
     if (DocStore.ready) {

@@ -29,6 +29,8 @@
  * ⑤ 每一个 persistProp 键都必须在 SettingsMirror.KEYS 里，否则备份带不走这项设置。
  * ⑥ WebDAV：逐文件只传用户自己的文档 + 完整包复用同一条链路。
  * ⑦ 文案不许再骗用户"重启才生效"。
+ * ⑧ 索引驱动的书架必须有「按目录找回未登记文档」的入口——另一半病因：文件在、索引里
+ *    没有 → 应用里永久隐身，却会被备份的整目录扫描捞进 zip（用户："一堆根本没有的文件"）。
  *
  * 用法：node tools/verify-backup.js
  */
@@ -437,6 +439,34 @@ check('⑦ 界面文案说清了包内按文件夹分类 + manifest 清单',
   /manifest\.json/.test(settingsData) && /按文件夹分类/.test(settingsData));
 check('⑦ 界面文案说清了缓存也在备份里',
   /图表与导出缓存/.test(settingsData));
+
+// ══════════════════ ⑧ 索引驱动的书架必须有"按目录找回"的自救入口 ══════════════════
+// 另一半病因：`DocStore.list()` 只遍历 shelf.json 里的条目，磁盘校正是**单向**的
+// （文件没了剔掉条目），从不反过来把"文件在、索引里没有"的捡回来。所以索引与目录一旦
+// 脱节（旧版导入没写回 shelf.json / 用户用文件管理器塞文件进 docs/ / 索引被写坏），
+// 文档就在应用里永久隐身，却会被备份的整目录扫描捞进包里 ——
+// 用户的原话：「压缩包里一堆根本没有的文件」。
+const adoptBody = methodBody(docStore, 'static adoptOrphans(');
+check('⑧ DocStore 提供 adoptOrphans()：按 docs 目录把未登记的文档找回书架',
+  adoptBody !== null && /fs\.listFileSync\(DocStore\.dir\)/.test(adoptBody)
+  && /DocStore\.persist\(\)/.test(adoptBody));
+check('⑧ 找回时跳过内置演示文档的死副本（不然演示文档会以"用户文档"身份复活）',
+  adoptBody !== null && /DocStore\.builtinResidue\(ctx\)/.test(adoptBody)
+  && /residue\.indexOf\(full\) >= 0/.test(adoptBody));
+check('⑧ 只认 .md / .markdown / .txt（与"打开方式"导入的白名单一致），目录与图片不登记',
+  /private static stripDocExt/.test(docStore)
+  && /\['\.markdown', '\.md', '\.txt'\]/.test(docStore));
+check('⑧ 找回**只加不删、不改文件名**（改名会让文档内链接与按名存档的批注全部对不上）',
+  adoptBody !== null && !/unlinkSync|renameSync|rmdirSync/.test(adoptBody)
+  && !/DocStore\.docs = /.test(adoptBody)
+  && /DocStore\.docs\.push\(/.test(adoptBody));
+check('⑧ 空正文 / 读不出来的文件不登记（免得书架上多一张打不开的空卡）',
+  adoptBody !== null && /content\.length === 0/.test(adoptBody));
+check('⑧ 数据管理页有「找回未登记的文档」入口',
+  /DocStore\.adoptOrphans\(ctx\)/.test(settingsData)
+  && /找回未登记的文档/.test(settingsData));
+check('⑧ 文案讲清了"书架按索引显示、不扫描目录"这件事（否则用户只会觉得包里有鬼）',
+  /书架按索引显示、不扫描目录/.test(settingsData));
 
 console.log(fails === 0 ? 'BACKUP OK' : 'BACKUP FAILED: ' + fails);
 process.exit(fails === 0 ? 0 : 1);
