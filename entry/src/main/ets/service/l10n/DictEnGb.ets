@@ -11,6 +11,7 @@ export const EN_GB_ENTRIES: L10nEntry[] = [
   { k: '深色模式 · 主题色 · 应用壁纸 · 卡片与流光 · 灰体文本',
     v: 'Dark mode · Accent colour · Wallpaper · Cards and glow · Grey text' },
   { k: '主题色', v: 'Accent colour' },
+  { k: '主题色 · 应用壁纸 · 卡片与流光', v: 'Accent colour · Wallpaper · Cards and glow' },
   { k: '已恢复默认主题色', v: 'Default accent colour restored' },
   { k: '自定义主题色已生效', v: 'Custom accent colour applied' },
   { k: '页面底色轻微染上主题色，整体更统一',

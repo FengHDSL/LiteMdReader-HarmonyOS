@@ -26,6 +26,7 @@ import { Changelog } from './Changelog';
 import { SettingsHelp } from './SettingsHelp';
 import { AiSettings } from './AiSettings';
 import { DocStore } from '../service/DocStore';
+import { L10n } from '../service/L10n';
 import { bundleManager, common } from '@kit.AbilityKit';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -183,6 +184,19 @@ export struct Settings {
 
   /** 外观刷新计数：主题色 / 灰字 / 沾色这类派生色改完后，页面靠它重算（见 SettingsMirror） */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** 语言刷新计数：切语言时本页文案要跟着重画（见 service/L10n.ets） */
+  @StorageProp('languageTick') langTick: number = 0;
+  /** 取当前语言文案：显式读一次 langTick，ArkUI 才会把该节点登记成"语言变了要重画" */
+  private s(src: string): string {
+    const lang: number = this.langTick;
+    return L10n.t(src);
+  }
+
+  /** 带一个占位符（%1）的文案。 */
+  private s1(src: string, a: string): string {
+    const lang: number = this.langTick;
+    return L10n.f1(src, a);
+  }
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：纯函数 paletteFor 里读 AppStorage 不登记依赖，
     // 这里不登记的话主题切换会被 ArkUI 跳过重算（文字变黑、退出重进才恢复）
@@ -216,7 +230,7 @@ export struct Settings {
     try {
       this.stack.pushPath({ name: route });
     } catch (err) {
-      this.toast('页面跳转失败');
+      this.toast(this.s('页面跳转失败'));
     }
   }
 
@@ -249,7 +263,7 @@ export struct Settings {
             })
           } else {
             Column({ space: HwSpace.sm }) {
-              Text('从左侧选择一个设置板块')
+              Text(this.s('从左侧选择一个设置板块'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textTertiary)
             }
@@ -387,8 +401,8 @@ export struct Settings {
   @Builder
   hubShell() {
     SettingsShell({
-      shellTitle: '设置',
-      shellSubtitle: '按板块进入，各自独立成页',
+      shellTitle: this.s('设置'),
+      shellSubtitle: this.s('按板块进入，各自独立成页'),
       stack: this.stack,
       life: this.life
     }) {
@@ -415,7 +429,7 @@ export struct Settings {
                 .fontSize(HwType.label + 4)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
-              Text('版本 ' + this.versionName + ' · 沉浸光感 Markdown 阅读器')
+              Text(this.s1('版本 %1', this.versionName) + ' · ' + this.s('沉浸光感 Markdown 阅读器'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -434,11 +448,11 @@ export struct Settings {
         ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
           Row({ space: HwSpace.sm }) {
             Column({ space: 3 }) {
-              Text(item.name)
+              Text(this.s(item.name))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
-              Text(item.note)
+              Text(this.s(item.note))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
@@ -472,7 +486,7 @@ export struct Settings {
       }, (item: SectionItem) => item.route)
 
       // ── 页脚 ──
-      Text('澄心执笔，笺上生光')
+      Text(this.s('澄心执笔，笺上生光'))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')

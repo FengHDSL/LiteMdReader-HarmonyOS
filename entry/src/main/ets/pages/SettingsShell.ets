@@ -16,6 +16,7 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveBar, ImmersiveIconButton, ImmersiveCard } from '../material/ImmersiveCard';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { L10n } from '../service/L10n';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import {
@@ -42,6 +43,14 @@ export struct SettingsShell {
   @Prop shellTitle: string = '';
   /** 标题下的说明 */
   @Prop shellSubtitle: string = '';
+  /** 语言刷新计数：外壳自己的文案（占位提示）也要跟着切语言重画 */
+  @StorageProp('languageTick') langTick: number = 0;
+
+  /** 取当前语言文案（显式读一次 langTick，见 service/L10n.ets）。 */
+  private s(src: string): string {
+    const lang: number = this.langTick;
+    return L10n.t(src);
+  }
   /** 导航栈：返回用 */
   stack: NavPathStack | null = null;
   /**
@@ -338,7 +347,7 @@ export struct SettingsShell {
   @Builder
   placeholderContent() {
     ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
-      Text('这一板块的内容正在迁入…')
+      Text(this.s('这一板块的内容正在迁入…'))
         .fontSize(HwType.label)
         .fontColor(this.palette().textSecondary)
         .width('100%')

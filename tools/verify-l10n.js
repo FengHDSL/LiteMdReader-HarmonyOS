@@ -130,6 +130,10 @@ for (const [name, map] of [['EN_US', EN_US], ['EN_GB', EN_GB], ['ZH_HANT', ZH_HA
   const brandBad = [];
   for (const [k, v] of map) {
     if (v.trim().length === 0) { empties.push(k); }
+    // 前后空白必须与键一致：拼接文案（如 '版本 ' + name）依赖它，多一个空格就是排版 bug
+    if ((/^\s/.test(k) !== /^\s/.test(v)) || (/\s$/.test(k) !== /\s$/.test(v))) {
+      phBad.push('空白不一致: ' + k + ' → [' + v + ']');
+    }
     if (placeholders(k) !== placeholders(v)) { phBad.push(k + ' → ' + v); }
     const want = (k.match(/澄笺/g) || []).length;
     const got = (v.match(/澄笺/g) || []).length;
