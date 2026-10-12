@@ -65,6 +65,8 @@ export class SettingsMirror {
     'shelfResumeBanner', 'shelfMemoryCard',
     // 版本历史（自动保存与间隔）
     'versionAutoSave', 'versionAutoSaveInterval',
+    // 学习卡的显示偏好：正反面互换 / 拼写记忆（复习页顶部芯片，换机后应保持一致）
+    'reviewSwapMode', 'reviewTypingMode',
     // 自定义函数壁纸
     'wallpaperCustomFunc', 'wallpaperCustomA', 'wallpaperCustomB',
     // 引擎管理：被关闭的渲染引擎列表（逗号分隔 id，空串 = 全部开启）
