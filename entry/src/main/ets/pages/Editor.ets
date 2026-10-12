@@ -20,7 +20,7 @@ import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
+import { KeyboardAvoidMode, LengthMetrics } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
@@ -70,6 +70,19 @@ interface MdSnippet {
   before: string;
   after: string;
   holder: string;
+  /**
+   * 工具栏图标。
+   * ⚠️ 存的是 **Resource 而不是文件名字符串**：`$r()` 的参数必须是编译期字面量，
+   *    `$r('app.media.' + item.icon)` 这种拼接取不到资源（上一版工具栏就栽在这里）。
+   *    所以字面量写在数据定义处，用的时候直接 `Image(item.icon)`。
+   * 图标是**纯直线填充路径**（不用 stroke、不写 fill），这样 `Image.fillColor()`
+   * 才能染色、跟随深浅主题；带 stroke 的 SVG 在 ArkUI 里换不了色。
+   */
+  icon: Resource;
+  /** 分组：fmt=格式 chart=图表 sym=符号（展开面板按组分节展示） */
+  group: string;
+  /** 收起状态下也常驻胶囊条（常用那几颗） */
+  core: boolean;
 }
 
 /** 版本对比的一行：tag = same（两边都有）/ del（旧版独有）/ add（当前独有） */
@@ -85,26 +98,29 @@ interface SyntaxRow {
 }
 
 const SNIPPETS: MdSnippet[] = [
-  { key: 'h1', label: 'H1', before: '# ', after: '', holder: '一级标题' },
-  { key: 'h2', label: 'H2', before: '## ', after: '', holder: '二级标题' },
-  { key: 'h3', label: 'H3', before: '### ', after: '', holder: '三级标题' },
-  { key: 'bold', label: '粗体', before: '**', after: '**', holder: '粗体文本' },
-  { key: 'italic', label: '斜体', before: '*', after: '*', holder: '斜体文本' },
-  { key: 'strike', label: '删除线', before: '~~', after: '~~', holder: '删除线' },
-  { key: 'mark', label: '高亮', before: '==', after: '==', holder: '高亮标记' },
-  { key: 'code', label: '行内代码', before: '`', after: '`', holder: 'code' },
-  { key: 'codeblock', label: '代码块', before: '\n```text\n', after: '\n```\n', holder: '代码内容' },
-  { key: 'quote', label: '引用', before: '\n> ', after: '', holder: '引用内容' },
-  { key: 'callout', label: '提示块', before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容' },
-  { key: 'ul', label: '无序列表', before: '\n- ', after: '', holder: '列表项' },
-  { key: 'ol', label: '有序列表', before: '\n1. ', after: '', holder: '列表项' },
-  { key: 'task', label: '任务', before: '\n- [ ] ', after: '', holder: '待办事项' },
-  { key: 'table', label: '表格', before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容' },
-  { key: 'link', label: '链接', before: '[', after: '](https://)', holder: '链接文字' },
-  { key: 'image', label: '图片', before: '![', after: '](路径)', holder: '替代文字' },
-  { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '' },
-  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1' }
+  { key: 'h1', label: 'H1', before: '# ', after: '', holder: '一级标题', icon: $r('app.media.tb_h1'), group: 'fmt', core: false },
+  { key: 'h2', label: 'H2', before: '## ', after: '', holder: '二级标题', icon: $r('app.media.tb_h2'), group: 'fmt', core: true },
+  { key: 'h3', label: 'H3', before: '### ', after: '', holder: '三级标题', icon: $r('app.media.tb_h3'), group: 'fmt', core: false },
+  { key: 'bold', label: '粗体', before: '**', after: '**', holder: '粗体文本', icon: $r('app.media.tb_bold'), group: 'fmt', core: true },
+  { key: 'italic', label: '斜体', before: '*', after: '*', holder: '斜体文本', icon: $r('app.media.tb_italic'), group: 'fmt', core: true },
+  { key: 'strike', label: '删除线', before: '~~', after: '~~', holder: '删除线', icon: $r('app.media.tb_strike'), group: 'fmt', core: false },
+  { key: 'mark', label: '高亮', before: '==', after: '==', holder: '高亮标记', icon: $r('app.media.tb_mark'), group: 'fmt', core: false },
+  { key: 'code', label: '行内代码', before: '`', after: '`', holder: 'code', icon: $r('app.media.tb_code'), group: 'fmt', core: true },
+  { key: 'codeblock', label: '代码块', before: '\n```text\n', after: '\n```\n', holder: '代码内容', icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
+  { key: 'quote', label: '引用', before: '\n> ', after: '', holder: '引用内容', icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
+  { key: 'callout', label: '提示块', before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false },
+  { key: 'ul', label: '无序列表', before: '\n- ', after: '', holder: '列表项', icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
+  { key: 'ol', label: '有序列表', before: '\n1. ', after: '', holder: '列表项', icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
+  { key: 'task', label: '任务', before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false },
+  { key: 'table', label: '表格', before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false },
+  { key: 'link', label: '链接', before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
+  { key: 'image', label: '图片', before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
+  { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false },
+  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false }
 ];
+
+/** 收起状态下常驻胶囊条的片段（常用集）。 */
+const CORE_SNIPPETS: MdSnippet[] = SNIPPETS.filter((it: MdSnippet) => it.core);
 
 /**
  * 语法速查的行定义。
@@ -1731,6 +1747,18 @@ export struct Editor {
   private chipWidths: number[] = [];
   /** 每颗芯片的透明度（滚动时逐帧重算） */
   @State chipAlphas: number[] = [];
+  /**
+   * 工具条是否展开。收起 = 胶囊条只放常用几颗；展开 = 胶囊条上方再多出一块
+   * **分组网格面板**，所有编辑功能按钮一次性摊开供快速点选（用户要求）。
+   */
+  @State barExpanded: boolean = false;
+
+  /** 展开 / 收起：状态翻转包在 animateTo 里，面板的 transition 才会有动画。 */
+  private toggleBarExpanded(): void {
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+      this.barExpanded = !this.barExpanded;
+    });
+  }
 
   /** 工具条横向滚动：更新滚动量并重算边缘淡出。 */
   private onBarScroll(): void {
@@ -1759,9 +1787,9 @@ export struct Editor {
     this.updateChipFade();
   }
 
-  /** 芯片总数（手写 + 插图片 + AI 助手 + SNIPPETS）。 */
+  /** 胶囊条里的芯片总数（手写 + 插图片 + AI 助手 + 常用片段）。 */
   private chipCount(): number {
-    return 3 + SNIPPETS.length;
+    return 3 + CORE_SNIPPETS.length;
   }
 
   /**
@@ -1803,7 +1831,30 @@ export struct Editor {
     // 按"已滑出胶囊边缘的量"逐帧变化（见上方 chipAlphas 一组方法），
     // 静止时的缩进由 Row 自己的 padding 承担。
     ImmersiveBar({ palette: this.palette(), barPaddingH: 0, barPaddingV: 4, barHeight: HwBar.pill }) {
-      Scroll(this.barScroller) {
+      // 展开钮**钉在最左边**：它在 Scroll 外面，横向滚动时不会跟着滑走（用户要求）。
+      Row({ space: HwSpace.xs }) {
+        ImmersiveChip({
+          palette: this.palette(),
+          chipActive: this.barExpanded,
+          chipOnTap: (): void => {
+            this.toggleBarExpanded();
+          }
+        }) {
+          // ⚠️ `$r()` 的参数必须是**字面量**，写成 $r(cond ? 'a' : 'b') 取不到资源
+          //（上一版工具栏就是这么编译不过的）——所以两个图标各写一份。
+          if (this.barExpanded) {
+            Image($r('app.media.chevron_down_l'))
+              .width(16)
+              .height(16)
+              .fillColor(this.palette().accent)
+          } else {
+            Image($r('app.media.chevron_up'))
+              .width(16)
+              .height(16)
+              .fillColor(this.palette().accent)
+          }
+        }
+        Scroll(this.barScroller) {
         Row({ space: HwSpace.xs }) {
         // **手写**（用户要求）：进入独立手写页（Pen Kit 官方 HandwriteComponent 画布），
         // 完成后 PNG 落进 docs/images/、Markdown 片段经 AppStorage 传回，光标处插入
@@ -1871,14 +1922,26 @@ export struct Editor {
         })
         .bindContextMenu(this.aiChipMenu.bind(this), ResponseType.LongPress)
 
-        ForEach(SNIPPETS, (item: MdSnippet, index: number) => {
-          ImmersiveChip({
-            palette: this.palette(),
-            chipLabel: item.label,
-            chipOnTap: () => {
-              this.insertSnippet(item);
+        // 常用片段（收起状态也都在条里）：每颗都带图标。
+        // ⚠️ ImmersiveChip 带尾随闭包后**不能再链式属性**（编译错误），
+        //    所以淡出用的 opacity/blur/onAreaChange 挂在外层包装 Column 上——
+        //    与上面手写 / 插图片 / AI 三颗同一写法。
+        ForEach(CORE_SNIPPETS, (item: MdSnippet, index: number) => {
+          Column() {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: item.label,
+              chipPaddingH: 10,
+              chipOnTap: (): void => {
+                this.insertSnippet(item);
+              }
+            }) {
+              Image(item.icon)
+                .width(15)
+                .height(15)
+                .fillColor(this.palette().accent)
             }
-          })
+          }
           .opacity(this.chipAlphaAt(index + 3))
           .blur(this.chipBlurAt(index + 3))
           .onAreaChange((oldValue: Area, newValue: Area) => {
@@ -1901,6 +1964,68 @@ export struct Editor {
     // 不再是直角切断（与底栏胶囊的弧线同语言）
     .borderRadius(HwRadius.pill)
     .clip(true)
+    .layoutWeight(1)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .padding({ left: 8, right: 8 })
+    }
+  }
+
+  /**
+   * 展开面板：所有编辑功能按钮按组分节摊开（格式 / 图表 / 符号），点一下即插入。
+   * 用 Flex(wrap) 而不是 Grid：按钮宽度随文案不等，Grid 的列宽要固定值。
+   * 动画 = 外层 animateTo（toggleBarExpanded）+ 本面板的 opacity/上移 transition。
+   */
+  @Builder
+  barExpandPanel() {
+    Column({ space: HwSpace.xs }) {
+      this.barGroupRow('格式', SNIPPETS.filter((it: MdSnippet) => it.group === 'fmt'))
+      this.barGroupRow('图表', SNIPPETS.filter((it: MdSnippet) => it.group === 'chart'))
+      this.barGroupRow('符号', SNIPPETS.filter((it: MdSnippet) => it.group === 'sym'))
+    }
+    .width('100%')
+    .padding({ left: 10, right: 10, top: 10, bottom: 10 })
+    .borderRadius(HwRadius.card)
+    .backgroundColor(withAlpha(this.palette().surface, 'FF'))
+    .border({ width: 1, color: this.palette().divider })
+    .shadow({ radius: 20, color: this.palette().shadow, offsetY: 4 })
+    .alignItems(HorizontalAlign.Start)
+    .transition(TransitionEffect.OPACITY
+      .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+      .combine(TransitionEffect.translate({ y: 16 })))
+  }
+
+  /** 一组（标题 + 按钮流式排布）。空组不渲染，免得留一条空标题。 */
+  @Builder
+  barGroupRow(title: string, items: MdSnippet[]) {
+    if (items.length > 0) {
+      Column({ space: 4 }) {
+        Text(title)
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(6), cross: LengthMetrics.vp(6) } }) {
+          ForEach(items, (item: MdSnippet) => {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: item.label,
+              chipPaddingH: 10,
+              chipOnTap: (): void => {
+                this.insertSnippet(item);
+              }
+            }) {
+              Image(item.icon)
+                .width(15)
+                .height(15)
+                .fillColor(this.palette().accent)
+            }
+          }, (item: MdSnippet) => item.key)
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
     }
   }
 
@@ -4062,6 +4187,9 @@ export struct Editor {
       if (this.focusMode && this.liveMode && this.liveEditing >= 0) {
         Stack({ alignContent: Alignment.BottomStart }) {
           Column({ space: HwSpace.xs }) {
+            if (this.barExpanded) {
+              this.barExpandPanel()
+            }
             this.snippetBar()
           }
           .width('100%')
@@ -4083,6 +4211,9 @@ export struct Editor {
         Stack({ alignContent: Alignment.BottomStart }) {
           Column({ space: HwSpace.xs }) {
             if (!this.preview) {
+              if (this.barExpanded) {
+                this.barExpandPanel()
+              }
               this.snippetBar()
             }
             this.bottomBar()
