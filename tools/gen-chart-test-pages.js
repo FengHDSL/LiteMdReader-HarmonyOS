@@ -7,13 +7,20 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const RAW = path.join(ROOT, 'entry/src/main/resources/rawfile');
 const OUT = path.join(ROOT, '.workbuddy/charttest');
-const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.workbuddy/doc-charts.json'), 'utf8'));
+// 清单路径可以传：默认用内置文档抽出来的块，verify-chart-templates.js 会生成
+// 工具栏模板的清单走同一条浏览器验证通道（不复制一份驱动代码）。
+const manifestPath = process.argv[2]
+  ? path.resolve(ROOT, process.argv[2])
+  : path.join(ROOT, '.workbuddy/doc-charts.json');
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
-const LANGS = ['wavedrom', 'mermaid', 'graphviz', 'echarts'];
+const LANGS = ['wavedrom', 'mermaid', 'graphviz', 'echarts', 'flowchart', 'markmap', 'abc', 'html'];
+// 语言名 → 模板文件名。脑图的实时模板叫 markmap-card（markmap.html 只服务导出内联）
+const TEMPLATE = { markmap: 'markmap-card' };
 fs.mkdirSync(OUT, { recursive: true });
 
 for (const lang of LANGS) {
-  const tplPath = path.join(RAW, 'render', lang + '.html');
+  const tplPath = path.join(RAW, 'render', (TEMPLATE[lang] || lang) + '.html');
   if (!fs.existsSync(tplPath)) { console.error('missing template ' + lang); continue; }
   let html = fs.readFileSync(tplPath, 'utf8').replace(/\r\n/g, '\n');
   const blocks = manifest[lang] || [];

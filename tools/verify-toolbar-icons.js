@@ -24,17 +24,29 @@ const start = src.indexOf('const SNIPPETS: MdSnippet[] = [');
 const end = src.indexOf('];', start);
 check('SNIPPETS array found', start > 0 && end > start);
 const body = src.slice(start, end);
+// 逐行解析：每个片段占一行。⚠️ 别用 `[^}]*?` 跨字段匹配——echarts / graphviz 的
+// 模板本身就带 `}`，会把匹配截断、条目静默漏掉（实测漏 4 条，连带 4 个图标没查）。
 const entries = [];
-const entryRe = /\{\s*key:\s*'([^']+)'[^}]*?icon:\s*\$r\('app\.media\.([a-z0-9_]+)'\)[^}]*?group:\s*'([^']*)'[^}]*?core:\s*(true|false)/g;
-let m;
-while ((m = entryRe.exec(body)) !== null) {
-  entries.push({ key: m[1], icon: m[2], group: m[3], core: m[4] === 'true' });
+for (const line of body.split('\n')) {
+  const t = line.trim();
+  if (!t.startsWith('{ key:')) { continue; }
+  const key = /key:\s*'([^']+)'/.exec(t);
+  const icon = /icon:\s*\$r\('app\.media\.([a-z0-9_]+)'\)/.exec(t);
+  const group = /group:\s*'([^']*)'/.exec(t);
+  const core = /core:\s*(true|false)/.exec(t);
+  const label = /label:\s*'([^']*)'/.exec(t);
+  check('entry has key/icon/group/core: ' + (key ? key[1] : t.slice(0, 20)),
+    !!(key && icon && group && core));
+  if (key && icon && group && core) {
+    entries.push({ key: key[1], icon: icon[1], group: group[1],
+      core: core[1] === 'true', label: label ? label[1] : '' });
+  }
 }
 console.log('SNIPPETS 条目: ' + entries.length + '，图标引用: ' +
   new Set(entries.map(e => e.icon)).size + ' 个');
-check('每个片段都有 icon/group/core', entries.length > 0 &&
-  (src.slice(start, end).match(/key: '/g) || []).length === entries.length,
-  'entries=' + entries.length);
+check('条目数与源码里的 { key: 行数一致',
+  entries.length === (body.match(/^\s*\{ key:/gm) || []).length,
+  'parsed=' + entries.length + ' lines=' + (body.match(/^\s*\{ key:/gm) || []).length);
 
 // ── ① 资源文件存在 ──
 for (const e of entries) {

@@ -116,7 +116,18 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'link', label: '链接', before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
   { key: 'image', label: '图片', before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
   { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false },
-  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false }
+  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false },
+  // ── 图表快捷插入（用户要求：一键插模板、占位直接改） ──
+  // 模板都取"引擎能认的最小可用写法"，且经 tools/verify-chart-templates.js 用
+  // **真实渲染模板**在浏览器里跑过 —— 插进去渲染不出来的模板比没有更糟。
+  { key: 'chart-mermaid', label: '流程图', before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false },
+  { key: 'chart-echarts', label: '数据图', before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false },
+  { key: 'chart-markmap', label: '脑图', before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false },
+  { key: 'chart-graphviz', label: '关系图', before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false },
+  { key: 'chart-flowchart', label: '旧式流程', before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false },
+  { key: 'chart-wavedrom', label: '波形', before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false },
+  { key: 'chart-abc', label: '五线谱', before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false },
+  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false }
 ];
 
 /** 收起状态下常驻胶囊条的片段（常用集）。 */
