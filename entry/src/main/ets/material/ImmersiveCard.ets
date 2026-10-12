@@ -527,6 +527,11 @@ export struct ImmersiveIconButton {
 export struct ImmersiveChip {
   @Prop chipPaddingH: number = HwSpace.sm;
   @Prop chipPaddingV: number = 6;
+  /**
+   * 固定宽度（编辑页展开面板用）：传了就所有芯片同宽、文案居中，
+   * 一列列对得齐；不传 = 'auto' 随内容伸缩（其它页面的既有观感不变）。
+   */
+  @Prop chipWidth: Length = 'auto';
   @Prop chipActive: boolean = false;
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
@@ -594,9 +599,13 @@ export struct ImmersiveChip {
           .fontSize(this.chipFontSize > 0 ? this.chipFontSize : 13)
           .fontColor(this.chipTextColor())
           .fontWeight(this.chipActive ? FontWeight.Medium : FontWeight.Normal)
+          .maxLines(1)
       }
       .padding({ left: this.chipPaddingH, right: this.chipPaddingH, top: this.chipPaddingV, bottom: this.chipPaddingV })
+      // 定宽时内容居中，左对齐会让每列文字起点不齐
+      .justifyContent(FlexAlign.Center)
     }
+    .width(this.chipWidth)
     .borderRadius(HwRadius.pill)
     .onClick(() => {
       this.chipOnTap();

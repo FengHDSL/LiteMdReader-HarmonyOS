@@ -85,6 +85,11 @@ interface MdSnippet {
   group: string;
   /** 收起状态下也常驻胶囊条（常用那几颗） */
   core: boolean;
+  /**
+   * 长按气泡说明（可选）。不写时由 tipFor() 从 before/after/holder 自动生成，
+   * 所以每个按钮都一定有说明，不会漏。
+   */
+  tip?: string;
 }
 
 /** 版本对比的一行：tag = same（两边都有）/ del（旧版独有）/ add（当前独有） */
@@ -99,6 +104,26 @@ interface SyntaxRow {
   desc: string;
 }
 
+/**
+ * 展开面板一组的排版结果（一次算好，避免每个格子都重算一遍最长标签）。
+ * cellVp = 组内**最长标签**所需的统一宽度；cols = 当前可用宽放得下的列数；
+ * rows = 按 cols 切好的行（放不下自动换到下一行）。
+ */
+interface GroupLayout {
+  cellVp: number;
+  cols: number;
+  rows: MdSnippet[][];
+}
+
+/**
+ * 工具条滚动内容的左内缩（vp）：首颗芯片离展开钮的距离。
+ * ⚠️ 这个值同时被 rememberChipGeo 的淡出坐标换算使用（chipLefts = position.x + 该值），
+ *    两处必须同源，改一处不改另一处，边缘淡出就会整体错位。
+ */
+const BAR_PAD_LEFT: number = 6;
+/** 右内缩：滚动时给最后一颗留出淡出/弧边空间，不参与左缘淡出判据。 */
+const BAR_PAD_RIGHT: number = 16;
+
 const SNIPPETS: MdSnippet[] = [
   { key: 'h1', label: 'H1', before: '# ', after: '', holder: '一级标题', icon: $r('app.media.tb_h1'), group: 'fmt', core: false },
   { key: 'h2', label: 'H2', before: '## ', after: '', holder: '二级标题', icon: $r('app.media.tb_h2'), group: 'fmt', core: true },
@@ -110,30 +135,30 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'code', label: '行内代码', before: '`', after: '`', holder: 'code', icon: $r('app.media.tb_code'), group: 'fmt', core: true },
   { key: 'codeblock', label: '代码块', before: '\n```text\n', after: '\n```\n', holder: '代码内容', icon: $r('app.media.tb_codeblock'), group: 'fmt', core: false },
   { key: 'quote', label: '引用', before: '\n> ', after: '', holder: '引用内容', icon: $r('app.media.tb_quote'), group: 'fmt', core: true },
-  { key: 'callout', label: '提示块', before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false },
+  { key: 'callout', label: '提示块', before: '\n> [!NOTE]\n> ', after: '', holder: '提示内容', icon: $r('app.media.tb_callout'), group: 'fmt', core: false, tip: '插入提示块（> [!NOTE]），渲染成带色提示卡' },
   { key: 'ul', label: '无序列表', before: '\n- ', after: '', holder: '列表项', icon: $r('app.media.tb_ul'), group: 'fmt', core: true },
   { key: 'ol', label: '有序列表', before: '\n1. ', after: '', holder: '列表项', icon: $r('app.media.tb_ol'), group: 'fmt', core: false },
-  { key: 'task', label: '任务', before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false },
-  { key: 'table', label: '表格', before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false },
+  { key: 'task', label: '任务', before: '\n- [ ] ', after: '', holder: '待办事项', icon: $r('app.media.tb_task'), group: 'fmt', core: false, tip: '插入未勾选的任务项 - [ ]' },
+  { key: 'table', label: '表格', before: '\n| 列 A | 列 B |\n| --- | --- |\n| ', after: ' | 内容 |\n', holder: '内容', icon: $r('app.media.tb_table'), group: 'fmt', core: false, tip: '插入「列 A | 列 B」两列表格模板' },
   { key: 'link', label: '链接', before: '[', after: '](https://)', holder: '链接文字', icon: $r('app.media.tb_link'), group: 'fmt', core: true },
   { key: 'image', label: '图片', before: '![', after: '](路径)', holder: '替代文字', icon: $r('app.media.tb_image'), group: 'fmt', core: true },
-  { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false },
-  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false },
+  { key: 'divider', label: '分割线', before: '\n---\n', after: '', holder: '', icon: $r('app.media.tb_divider'), group: 'fmt', core: false, tip: '插入分割线 ---（单独占一行）' },
+  { key: 'note', label: '脚注', before: '[^', after: ']', holder: '1', icon: $r('app.media.tb_note'), group: 'fmt', core: false, tip: '插入脚注引用 [^1]，正文末尾再写 [^1]: 说明' },
   // ── 图表快捷插入（用户要求：一键插模板、占位直接改） ──
   // 模板都取"引擎能认的最小可用写法"，且经 tools/verify-chart-templates.js 用
   // **真实渲染模板**在浏览器里跑过 —— 插进去渲染不出来的模板比没有更糟。
-  { key: 'chart-mermaid', label: '流程图', before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false },
-  { key: 'chart-echarts', label: '数据图', before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false },
-  { key: 'chart-markmap', label: '脑图', before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false },
-  { key: 'chart-graphviz', label: '关系图', before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false },
-  { key: 'chart-flowchart', label: '旧式流程', before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false },
-  { key: 'chart-wavedrom', label: '波形', before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false },
-  { key: 'chart-abc', label: '五线谱', before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false },
-  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false },
+  { key: 'chart-mermaid', label: '流程图', before: '\n```mermaid\n', after: '\n```\n', holder: 'graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]', icon: $r('app.media.tb_chart_mermaid'), group: 'chart', core: false, tip: '插入 mermaid 流程图代码块' },
+  { key: 'chart-echarts', label: '数据图', before: '\n```echarts\n', after: '\n```\n', holder: '{"xAxis":{"type":"category","data":["一","二","三"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[3,6,9]}]}', icon: $r('app.media.tb_chart_echarts'), group: 'chart', core: false, tip: '插入 ECharts 配置（JSON），可画柱状/折线/饼图' },
+  { key: 'chart-markmap', label: '脑图', before: '\n```markmap\n', after: '\n```\n', holder: '# 中心主题\n## 分支一\n### 细节\n## 分支二', icon: $r('app.media.tb_chart_markmap'), group: 'chart', core: false, tip: '插入 markmap 大纲，标题层级即脑图分支' },
+  { key: 'chart-graphviz', label: '关系图', before: '\n```graphviz\n', after: '\n```\n', holder: 'digraph G {\n  A -> B\n  B -> C\n  A -> C\n}', icon: $r('app.media.tb_chart_graphviz'), group: 'chart', core: false, tip: '插入 Graphviz DOT 有向图' },
+  { key: 'chart-flowchart', label: '旧式流程', before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false, tip: '插入 flowchart.js 语法（老式流程图，新图建议用「流程图」）' },
+  { key: 'chart-wavedrom', label: '波形', before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false, tip: '插入 WaveDrom JSON，画数字时序波形' },
+  { key: 'chart-abc', label: '五线谱', before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false, tip: '插入 ABC 记谱，渲染成五线谱' },
+  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false, tip: '插入 HTML 代码块，渲染成可交互网页卡片' },
   // ── 新增格式按钮（参考常见编辑器补齐） ──
-  { key: 'taskdone', label: '已完成任务', before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false },
-  { key: 'latex', label: '公式块', before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false },
-  { key: 'latexinline', label: '行内公式', before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false },
+  { key: 'taskdone', label: '已完成任务', before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false, tip: '插入已勾选的任务项 - [x]' },
+  { key: 'latex', label: '公式块', before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false, tip: '插入块级公式 $$…$$，渲染成公式卡片' },
+  { key: 'latexinline', label: '行内公式', before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false, tip: '插入行内公式 $…$，随正文排版' },
   // ⚠️ **下划线 <u>、居中 <div align>、颜色 <font> 三类按钮都不做**：它们只能靠行内
   //    / 块级 HTML 表达，而解析器只认 `<details>` 一种 HTML，其余按纯文本显示
   //    （见 MdParser 头注释）——插进去就是一串显示出来的标签，比没有按钮更糟。
@@ -1834,6 +1859,76 @@ export struct Editor {
    * **分组网格面板**，所有编辑功能按钮一次性摊开供快速点选（用户要求）。
    */
   @State barExpanded: boolean = false;
+  /** 当前长按显示气泡说明的按钮 key（'' = 无；松手即清空，气泡随之消失） */
+  @State tipKey: string = '';
+
+  /**
+   * 文本视觉宽度估算（vp）：CJK 与全角标点按 1 em，半角按 0.55 em。
+   * **刻意不用 MeasureUtils**：量出来的单位（fp / px）与 px2vp 的换算在不同
+   * 字号缩放下容易差一档，差一点就表现为"某一列被挤到下一行"。估算法确定性、
+   * 可离线校验（tools/verify-panel-layout.js），宁可略宽也不裁字。
+   */
+  private estTextVp(text: string, fp: number): number {
+    let em: number = 0;
+    for (let i = 0; i < text.length; i++) {
+      const code: number = text.charCodeAt(i);
+      em += code > 0x2E80 ? 1 : 0.55;
+    }
+    return em * fp;
+  }
+
+  /** 一组按钮的统一宽度 = 组内**最长标签**那颗所需的宽度（用户要求）。 */
+  private groupCellVp(items: MdSnippet[]): number {
+    let w: number = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it: MdSnippet = items[i];
+      const fp: number = it.icon === undefined ? 15 : 13;
+      // 图标 15 + ImmersiveChip 内部 Row 间隙 HwSpace.xs(6) = 21；
+      // 左右内边距 chipPaddingH 各 8 = 16；再留 6 防估算偏窄把字挤掉。
+      const need: number = this.estTextVp(it.label, fp)
+        + (it.icon === undefined ? 0 : 21) + 16 + 6;
+      if (need > w) {
+        w = need;
+      }
+    }
+    return Math.round(w);
+  }
+
+  /** 整组排版：统一宽度 + 当前可用宽能放几列 + 切好的行（放不下自动换行）。 */
+  private groupLayout(items: MdSnippet[]): GroupLayout {
+    const cellVp: number = this.groupCellVp(items);
+    const gap: number = 6;
+    // 面板左右各 12 内边距，外层容器各约 20
+    const avail: number = Math.max(140, this.rootWidth - 64);
+    let cols: number = Math.floor((avail + gap) / (cellVp + gap));
+    if (cols < 1) {
+      cols = 1;
+    }
+    if (cols > 5) {
+      cols = 5;
+    }
+    const out: GroupLayout = { cellVp: cellVp, cols: cols, rows: this.chunkRows(items, cols) };
+    return out;
+  }
+
+  /** 长按气泡文案：没手写 tip 就从插入片段自动推一条，保证每个按钮都有说明。 */
+  private tipFor(item: MdSnippet): string {
+    if (item.tip !== undefined && item.tip.length > 0) {
+      return item.tip;
+    }
+    if (item.group === 'symcn' || item.group === 'symben') {
+      return '插入字符 ' + item.label;
+    }
+    const b: string = item.before.split('\n').join('⏎');
+    const a: string = item.after.split('\n').join('⏎');
+    if (item.holder.length === 0) {
+      return '插入 ' + b;
+    }
+    if (a.length === 0) {
+      return '插入 ' + b + ' …';
+    }
+    return '包裹选中文字：' + b + ' … ' + a;
+  }
 
   /** 展开 / 收起：状态翻转包在 animateTo 里，面板的 transition 才会有动画。 */
   private toggleBarExpanded(): void {
@@ -1863,8 +1958,8 @@ export struct Editor {
     const px: Position = area.position;
     const lx: Length | undefined = px.x;
     if (typeof lx === 'number') {
-      // position.x 相对父 Row；Row 自身还有 30 的左 padding，一并算进内容坐标
-      this.chipLefts[index] = lx + 20;
+      // position.x 相对父 Row；Row 自身还有左内缩，一并算进内容坐标（常量见 BAR_PAD_LEFT）
+      this.chipLefts[index] = lx + BAR_PAD_LEFT;
     }
     this.updateChipFade();
   }
@@ -1913,12 +2008,15 @@ export struct Editor {
     // 按"已滑出胶囊边缘的量"逐帧变化（见上方 chipAlphas 一组方法），
     // 静止时的缩进由 Row 自己的 padding 承担。
     ImmersiveBar({ palette: this.palette(), barPaddingH: 0, barPaddingV: 4, barHeight: HwBar.pill }) {
-      // 展开钮**钉在最左边**：它在 Scroll 外面，横向滚动时不会跟着滑走（用户要求）。
-      Row({ space: HwSpace.xs }) {
-        ImmersiveChip({
+      // 展开钮**钉在最左边**（在 Scroll 外面，横向滚动不跟着走），且是**圆形**按钮
+      // —— 之前用胶囊芯片包一枚圆框箭头，外面一层长条、里面一个圆，看着别扭。
+      Row({ space: 4 }) {
+        ImmersiveIconButton({
+          buttonSize: 30,
+          buttonRadius: 15,
+          buttonMaterialShadow: false,
           palette: this.palette(),
-          chipActive: this.barExpanded,
-          chipOnTap: (): void => {
+          buttonOnTap: () => {
             this.toggleBarExpanded();
           }
         }) {
@@ -1927,13 +2025,13 @@ export struct Editor {
           // 圆框上下箭头（用户指定的图标）：收起时朝上=可展开，展开时朝下=可收起。
           if (this.barExpanded) {
             Image($r('app.media.chevron_down_circle'))
-              .width(21)
-              .height(21)
+              .width(19)
+              .height(19)
               .fillColor(this.palette().accent)
           } else {
             Image($r('app.media.chevron_up_circle'))
-              .width(21)
-              .height(21)
+              .width(19)
+              .height(19)
               .fillColor(this.palette().accent)
           }
         }
@@ -2037,7 +2135,7 @@ export struct Editor {
         }, (item: MdSnippet) => item.key)
       }
       // 静止时首/尾芯片**完全落在胶囊直段内**、不与两端弧线重合
-      .padding({ left: 20, right: 20 })
+      .padding({ left: BAR_PAD_LEFT, right: BAR_PAD_RIGHT })
     }
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
@@ -2055,7 +2153,7 @@ export struct Editor {
       }
       .width('100%')
       .alignItems(VerticalAlign.Center)
-      .padding({ left: 8, right: 8 })
+      .padding({ left: 5, right: 5 })
     }
   }
 
@@ -2119,9 +2217,10 @@ export struct Editor {
   }
 
   /**
-   * 一组按钮：标题 + **每行 4 颗、每颗 layoutWeight(1)**。
-   * 用"分行 + 等分权重"而不是 Flex 百分比宽度：百分比加固定间隙在窄屏会溢出，
-   * 溢出后列就错位了（用户要求按钮对齐排版）。
+   * 一组按钮：标题 + **每颗同宽（按最长标签算）、每行放得下几列放几列**。
+   * 之前是"每行固定 4 颗 + layoutWeight 等分"：格子等宽但芯片按内容伸缩，
+   * 于是同一列的文字一个偏左一个偏右（用户反馈"不要一个左一个右"）；
+   * 现在宽度由内容算出、行内左对齐，列与列严格对齐，放不下自动少放一列换行。
    */
   @Builder
   barGroupRows(title: string, items: MdSnippet[]) {
@@ -2131,23 +2230,16 @@ export struct Editor {
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
-        ForEach(this.chunkRows(items, 4), (row: MdSnippet[]) => {
+        ForEach(this.groupLayout(items).rows, (row: MdSnippet[]) => {
           Row({ space: 6 }) {
             ForEach(row, (item: MdSnippet) => {
-              Column() {
-                this.barCell(item)
-              }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Center)
+              // 宽度取**整组**的最长标签，不是本行的：最后一行往往只有几颗，
+              // 按行算会让最后一列比上面窄，列就又不齐了
+              this.barCell(item, this.groupCellVp(items))
             }, (item: MdSnippet) => item.key)
-            // 补齐空位：最后一行不满 4 颗时也要保持等宽，否则那几颗会被拉宽
-            if (row.length < 4) {
-              ForEach(this.padIds(row), (id: string) => {
-                Column().layoutWeight(1)
-              }, (id: string) => id)
-            }
           }
           .width('100%')
+          .justifyContent(FlexAlign.Start)
         }, (row: MdSnippet[]) => row.map((it: MdSnippet) => it.key).join('+'))
       }
       .width('100%')
@@ -2155,25 +2247,54 @@ export struct Editor {
     }
   }
 
-  /** 单颗按钮（图标 + 文案；符号组无图标，字符本身放大当脸）。 */
+  /**
+   * 单颗按钮（图标 + 文案；符号组无图标，字符本身放大当脸）。
+   * 长按弹气泡说明、松手消失（用户要求）。
+   * ⚠️ 气泡与手势挂在**外层包装 Column** 上：ImmersiveChip 带尾随闭包之后不能再
+   *    链式属性（编译错误），而且公共组件里也不该为这一个页面加长按逻辑。
+   */
   @Builder
-  barCell(item: MdSnippet) {
-    ImmersiveChip({
-      palette: this.palette(),
-      chipLabel: item.label,
-      chipPaddingH: 8,
-      chipFontSize: item.icon === undefined ? 15 : 0,
-      chipOnTap: (): void => {
-        this.insertSnippet(item);
-      }
-    }) {
-      if (item.icon !== undefined) {
-        Image(item.icon)
-          .width(15)
-          .height(15)
-          .fillColor(this.palette().accent)
+  barCell(item: MdSnippet, cellVp: number) {
+    Column() {
+      ImmersiveChip({
+        palette: this.palette(),
+        chipLabel: item.label,
+        chipPaddingH: 8,
+        chipWidth: cellVp,
+        chipFontSize: item.icon === undefined ? 15 : 0,
+        chipOnTap: (): void => {
+          this.insertSnippet(item);
+        }
+      }) {
+        if (item.icon !== undefined) {
+          Image(item.icon)
+            .width(15)
+            .height(15)
+            .fillColor(this.palette().accent)
+        }
       }
     }
+    .width(cellVp)
+    .bindPopup(this.tipKey === item.key, {
+      message: this.tipFor(item),
+      placement: Placement.Top
+    })
+    // **priorityGesture 而不是 gesture**：长按挂在包装 Column（父），点击在芯片内部（子）。
+    // 默认的父子手势竞争是"子优先"，于是长按 260ms 触发气泡后，抬手时子组件的
+    // onClick 仍会执行 —— 想看说明结果把片段插进了正文。父组件用 priorityGesture
+    // 抢先识别（SDK common.d.ts:19034），长按成功后子组件的点击不再响应。
+    .priorityGesture(
+      LongPressGesture({ repeat: false, duration: 260 })
+        .onAction(() => {
+          this.tipKey = item.key;
+        })
+        .onActionEnd(() => {
+          this.tipKey = '';
+        })
+        .onActionCancel(() => {
+          this.tipKey = '';
+        })
+    )
   }
 
   /** 按 size 切行。 */
@@ -2183,15 +2304,6 @@ export struct Editor {
       rows.push(items.slice(i, i + size));
     }
     return rows;
-  }
-
-  /** 最后一行的补位占位 key（只为让 ForEach 有稳定 key）。 */
-  private padIds(row: MdSnippet[]): string[] {
-    const out: string[] = [];
-    for (let i = row.length; i < 4; i++) {
-      out.push('pad_' + i);
-    }
-    return out;
   }
 
   // ══════════════════════ 底部状态栏 ══════════════════════
