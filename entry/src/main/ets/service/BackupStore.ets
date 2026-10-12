@@ -206,6 +206,8 @@ export class BackupStore {
    * 返回实际写入的**文件**数（目录不计）。
    */
   private static async copyInto(from: string, to: string): Promise<number> {
+    // ⚠️ **逐条目容错**：单个文件被框架占用（如 preferences 的持久层）或权限异常时
+    // 跳过并继续，绝不让一个文件中断整个备份（用户实测：整体抛错导致"收集数据失败"）。
     const names: string[] = await fs.listFile(from);
     let count: number = 0;
     for (let k = 0; k < names.length; k++) {
@@ -234,10 +236,18 @@ export class BackupStore {
         } catch (err) {
           // 已存在
         }
-        count += await BackupStore.copyInto(src, dst);
+        try {
+          count += await BackupStore.copyInto(src, dst);
+        } catch (err) {
+          // 子目录整体失败：跳过该目录，不中断备份
+        }
       } else {
-        fs.copyFileSync(src, dst);
-        count++;
+        try {
+          fs.copyFileSync(src, dst);
+          count++;
+        } catch (err) {
+          // 单个文件失败（占用 / 权限）：跳过
+        }
       }
     }
     return count;
