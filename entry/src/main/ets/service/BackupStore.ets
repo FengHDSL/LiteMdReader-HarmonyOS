@@ -2,16 +2,36 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker, storageStatistics } from '@kit.CoreFileKit';
 import { zlib } from '@kit.BasicServicesKit';
 import preferences from '@ohos.data.preferences';
+import { DocStore } from './DocStore';
+import { ReadingLog } from './ReadingLog';
+import { WritingLog } from './WritingLog';
+import { TabStore } from './TabStore';
+import { FontStore } from './FontStore';
+import { SettingsMirror } from './SettingsMirror';
+import { L10n } from './L10n';
+import { applyAppColorMode, applySystemBarTheme } from './AppWindow';
+import { ReaderThemeMode } from '../theme/DesignTokens';
 
 /**
  * 备份 / 恢复（zip）
  * ===============
  *
- * 备份内容（1.1.1 起为**全量备份**，用户要求"备份整个应用的所有数据"）：
- *   · filesDir 顶层**全部条目**——docs / shelf.json / annotations / handwrite /
- *     drafts / fonts(+json) / review.json / review_stats.json / settings.json /
- *     tabs.json / 阅读背景图 / 壁纸 / 版本记录等，新增数据文件自动纳入；
- *   · preferences 快照——阅读设置等持久化键（导入后重启应用生效）。
+ * 备份内容（**全量**：用户要求"备份整个应用的所有数据"）：
+ *   · filesDir 顶层**全部条目**——docs（正文与图片）/ shelf.json（书架与文件夹）/
+ *     annotations（批注与学习卡）/ handwrite（手写）/ ai（对话与配置）/ drafts /
+ *     versions / review*.json / reading-log.json / writing-log.json / tabs.json /
+ *     settings.json（设置镜像）/ 壁纸与阅读背景图 …，新增数据文件自动纳入；
+ *   · preferences 里的 WebDAV 配置——那部分**不在 filesDir**，打包前先 dump 成
+ *     `webdav_config.json`（见 WEBDAV_SNAPSHOT），恢复时走 preferences API 写回。
+ *
+ * 恢复为什么不能"直接解压到 filesDir"（1.1.x 的老写法，实测数据没进来）：
+ *   ① `zlib.decompressFile` 对"目标已存在同名文件"没有任何覆盖承诺，本机有数据时
+ *      整批被跳过，看上去成功了，重启后还是老数据；
+ *   ② 就算解压成功，运行中的进程手里还握着**恢复前**的内存缓存（DocStore 的索引、
+ *      阅读/写作日志、标签页），下一次 persist 就把刚导入的文件盖回去了；
+ *   ③ 设置存在 preferences（沙箱外），直接拷 XML 文件会被**已打开的实例**在下次
+ *      flush 时冲掉。
+ * 现在：解压到暂存目录 → 校验 → 同名先删再拷 → 走 API/内存重载 → 当场生效，不要求重启。
  *
  * 两个实现要点：
  * 1. **zlib 只能读写沙箱路径，不能直接写 picker 返回的 uri**，
@@ -20,7 +40,14 @@ import preferences from '@ohos.data.preferences';
  *    **不需要任何存储权限**，用户选什么我们才碰什么。
  */
 export class BackupStore {
-  /** 备份白名单（相对 filesDir） */
+  /** WebDAV 配置在包里的文件名（preferences 不在 filesDir，只能另存一份才能进 zip） */
+  static readonly WEBDAV_SNAPSHOT: string = 'webdav_config.json';
+  /** 必须与 WebDavStore.PREF_NAME / KEY_CONFIG 一致（那边改动要同步这里） */
+  private static readonly WEBDAV_PREF_NAME: string = 'webdav';
+  private static readonly WEBDAV_PREF_KEY: string = 'config';
+  /** 解压暂存目录名（cacheDir 下，恢复完就删） */
+  private static readonly STAGE: string = 'restore_stage';
+
    /** 把沙箱文件拷到 picker 返回的 uri（覆盖写）。 */
   /** 把沙箱文件拷到 picker 返回的 uri（覆盖写）。 */
   private static copyToUri(srcPath: string, uri: string): void {
@@ -57,11 +84,17 @@ export class BackupStore {
   }
 
   /**
-   * 把全部数据打包成 zip：filesDir 顶层**全部条目**（docs / ai 会话 / 批注 /
-   * 手写 / 壁纸 / 各 json 索引，新增数据文件自动纳入）+ preferences 设置快照。
+   * 把全部数据打包成 zip：filesDir 顶层**全部条目**（docs / 批注 / 手写 / AI 会话 /
+   * 草稿 / 版本 / 各日志 / 壁纸 / 书架索引 / 设置镜像，新增数据文件自动纳入）
+   * + preferences 里的 WebDAV 配置快照。
    * 返回错误文案；空串 = 打包成功。本地导出与 WebDAV 完整备份共用。
    */
   static async packToZip(ctx: common.UIAbilityContext, outPath: string): Promise<string> {
+    // 打包前先把两份"活在内存 / 沙箱外"的状态落成文件，包里才有它们：
+    //   · settings.json —— 设置镜像（PersistentStorage 的键全在这里，恢复时回填 AppStorage）
+    //   · webdav_config.json —— WebDAV 账号配置（存在 preferences 目录，不在 filesDir）
+    SettingsMirror.save(ctx);
+    BackupStore.dumpWebDavConfig(ctx);
     let items: string[] = [];
     try {
       const names: string[] = await fs.listFile(ctx.filesDir);
@@ -73,26 +106,6 @@ export class BackupStore {
     }
     if (items.length === 0) {
       return '还没有可备份的数据';
-    }
-    // **设置快照**：阅读设置等持久化键存在 preferences（filesDir 之外），
-    // 拷一份进包里；导入时自动恢复（重启应用后生效）。
-    const staging: string = ctx.cacheDir + '/pref_snapshot';
-    try {
-      fs.rmdirSync(staging);
-    } catch (err) {
-      // 无残留
-    }
-    try {
-      const pnames: string[] = await fs.listFile(ctx.preferencesDir);
-      if (pnames.length > 0) {
-        fs.mkdirSync(staging, true);
-        for (let k = 0; k < pnames.length; k++) {
-          fs.copyFileSync(ctx.preferencesDir + '/' + pnames[k], staging + '/' + pnames[k]);
-        }
-        items.push(staging);
-      }
-    } catch (err) {
-      // 设置快照失败不影响数据本体备份
     }
     try {
       try {
@@ -109,30 +122,184 @@ export class BackupStore {
   }
 
   /**
-   * 从本地 zip 路径恢复：解压覆盖到 filesDir + 恢复 preferences 快照。
+   * 把 WebDAV 配置（preferences 里的一段 JSON）写进 filesDir，让它能进备份包。
+   * 没配置过时删掉旧副本 —— 否则恢复会把用户已经清掉的配置又带回来。
+   */
+  private static dumpWebDavConfig(ctx: common.UIAbilityContext): void {
+    const target: string = ctx.filesDir + '/' + BackupStore.WEBDAV_SNAPSHOT;
+    try {
+      const store: preferences.Preferences =
+        preferences.getPreferencesSync(ctx, { name: BackupStore.WEBDAV_PREF_NAME });
+      const raw: string = store.getSync(BackupStore.WEBDAV_PREF_KEY, '') as string;
+      if (raw.length === 0) {
+        try {
+          if (fs.accessSync(target)) {
+            fs.unlinkSync(target);
+          }
+        } catch (err) {
+          // 本来就没有
+        }
+        return;
+      }
+      const file: fs.File = fs.openSync(target,
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      try {
+        fs.writeSync(file.fd, raw);
+      } finally {
+        fs.closeSync(file);
+      }
+    } catch (err) {
+      // 配置快照失败不影响数据本体备份
+    }
+  }
+
+  /** 恢复时反过来：包里的 JSON 写回 preferences（走 API，运行中的实例不会把它冲掉），再删中转文件。 */
+  private static applyWebDavConfig(ctx: common.UIAbilityContext): void {
+    const src: string = ctx.filesDir + '/' + BackupStore.WEBDAV_SNAPSHOT;
+    try {
+      if (!fs.accessSync(src)) {
+        return;
+      }
+      const raw: string = fs.readTextSync(src, { encoding: 'utf-8' });
+      if (raw.length > 0) {
+        const store: preferences.Preferences =
+          preferences.getPreferencesSync(ctx, { name: BackupStore.WEBDAV_PREF_NAME });
+        store.putSync(BackupStore.WEBDAV_PREF_KEY, raw);
+        store.flush();
+      }
+      fs.unlinkSync(src);
+    } catch (err) {
+      // 配置恢复失败不影响数据本体
+    }
+  }
+
+  /**
+   * 把 from 目录里的内容覆盖拷贝进 to 目录：同名先删（目录递归删）再拷，目录递归。
+   * 返回实际写入的**文件**数（目录不计）。
+   */
+  private static async copyInto(from: string, to: string): Promise<number> {
+    const names: string[] = await fs.listFile(from);
+    let count: number = 0;
+    for (let k = 0; k < names.length; k++) {
+      const src: string = from + '/' + names[k];
+      const dst: string = to + '/' + names[k];
+      let isDir: boolean = false;
+      try {
+        isDir = fs.statSync(src).isDirectory();
+      } catch (err) {
+        continue;
+      }
+      try {
+        if (fs.accessSync(dst)) {
+          if (isDir) {
+            fs.rmdirSync(dst);
+          } else {
+            fs.unlinkSync(dst);
+          }
+        }
+      } catch (err) {
+        // 目标本来不存在
+      }
+      if (isDir) {
+        try {
+          fs.mkdirSync(dst, true);
+        } catch (err) {
+          // 已存在
+        }
+        count += await BackupStore.copyInto(src, dst);
+      } else {
+        fs.copyFileSync(src, dst);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * 从本地 zip 路径恢复。**五步**（少任何一步都会出现"导入成功但数据没进来"）：
+   *   ① 解压到 cacheDir 暂存目录（不直接解压进 filesDir：decompressFile 对已存在
+   *      文件没有覆盖承诺，本机有数据时可能整批跳过）；
+   *   ② 校验包内容像澄笺备份，不像就直接报错，别把用户的数据目录搞坏；
+   *   ③ 覆盖拷贝进 filesDir（同名先删再拷，行为完全确定）；
+   *   ④ 回填运行中的进程：settings.json → AppStorage（持久化键会写穿 preferences）、
+   *      WebDAV 配置 → preferences API、语言 → 刷新计数、字体 → registerFont、
+   *      深浅色 → applyAppColorMode，这些就是"必须重启应用"的那批；
+   *   ⑤ 重载各内存缓存（DocStore / 阅读日志 / 写作日志 / 标签页）——不重载的话下一次
+   *      persist 会把恢复前的内存状态写回刚导入的文件。
    * 返回给用户看的结果文案。「文件备份导入」与「WebDAV 恢复」共用。
    */
   static async restoreFromPath(ctx: common.UIAbilityContext, zipPath: string): Promise<string> {
+    const stage: string = ctx.cacheDir + '/' + BackupStore.STAGE;
     try {
-      await zlib.decompressFile(zipPath, ctx.filesDir);
-      // 恢复 preferences 快照（阅读设置等持久化键；**重启应用后全部生效**）
-      const snap: string = ctx.filesDir + '/pref_snapshot';
-      try {
-        if (fs.accessSync(snap)) {
-          const pnames: string[] = await fs.listFile(snap);
-          for (let k = 0; k < pnames.length; k++) {
-            fs.copyFileSync(snap + '/' + pnames[k], ctx.preferencesDir + '/' + pnames[k]);
-          }
-          fs.rmdirSync(snap);
-          return '已恢复（设置将重启应用后生效），请返回书架查看';
-        }
-      } catch (err2) {
-        // 偏好恢复失败不影响数据本体
-      }
-      return '已恢复，请返回书架查看（如未刷新请重进应用）';
+      fs.rmdirSync(stage);
     } catch (err) {
-      return '恢复失败：' + (err as Error).message;
+      // 没有上一次的残留
     }
+    try {
+      fs.mkdirSync(stage, true);
+    } catch (err) {
+      return '恢复失败：创建临时目录出错';
+    }
+    try {
+      await zlib.decompressFile(zipPath, stage);
+    } catch (err) {
+      return '恢复失败：备份包读不出来（' + (err as Error).message + '）';
+    }
+    let entries: string[] = [];
+    try {
+      entries = await fs.listFile(stage);
+    } catch (err) {
+      entries = [];
+    }
+    if (entries.length === 0) {
+      return '恢复失败：备份包是空的';
+    }
+    if (entries.indexOf('shelf.json') < 0 && entries.indexOf('settings.json') < 0
+      && entries.indexOf('docs') < 0 && entries.indexOf('annotations') < 0) {
+      return '恢复失败：这不是澄笺的备份包（没找到书架索引或数据目录）';
+    }
+    let files: number = 0;
+    try {
+      files = await BackupStore.copyInto(stage, ctx.filesDir);
+    } catch (err) {
+      return '恢复失败：写入数据目录出错（' + (err as Error).message + '）';
+    }
+    try {
+      fs.rmdirSync(stage);
+    } catch (err) {
+      // 删不掉只是占缓存
+    }
+    // 老备份（1.1.x）里塞的是 preferences 的**原始 XML 目录**：那种恢复方式不可靠
+    // （进程里那些实例还开着，下次 flush 就冲掉了），现在改走 settings.json 回填
+    // AppStorage + WebDAV 配置走 preferences API。这里把残留清掉，免得它留在数据目录里
+    // 被下一次备份反复打包（既占空间，又把凭据多复制一份）。
+    try {
+      const legacy: string = ctx.filesDir + '/pref_snapshot';
+      if (fs.accessSync(legacy)) {
+        fs.rmdirSync(legacy);
+      }
+    } catch (err) {
+      // 本来就没有
+    }
+    SettingsMirror.forceRestore(ctx);
+    BackupStore.applyWebDavConfig(ctx);
+    L10n.reapply();
+    DocStore.reload(ctx);
+    ReadingLog.reload(ctx);
+    WritingLog.reload(ctx);
+    TabStore.reload(ctx);
+    // 用户字体：恢复进来的字体文件还没注册到字体模块，注册一次（否则正文按回退字体显示）
+    FontStore.invalidateCache();
+    FontStore.registerAll(ctx);
+    // 深浅色模式是 ability 级设置，恢复后要立刻重设（不然恢复了深色主题仍是浅色界面）
+    const mode: number | undefined = AppStorage.get<number>('readerThemeMode');
+    const themeMode: number = mode === undefined || mode === null ? ReaderThemeMode.System : mode;
+    applyAppColorMode(themeMode);
+    const sysDark: boolean | undefined = AppStorage.get<boolean>('systemDark');
+    applySystemBarTheme(themeMode === ReaderThemeMode.Dark
+      || (themeMode === ReaderThemeMode.System && sysDark === true));
+    SettingsMirror.bumpTick();
+    return '已恢复 ' + files + ' 项数据，书架、设置与语言立即生效';
   }
 
   /**

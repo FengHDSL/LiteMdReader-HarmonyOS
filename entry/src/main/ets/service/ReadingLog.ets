@@ -77,6 +77,16 @@ export class ReadingLog {
   /** 保留天数（与热力图 53 周口径一致） */
   private static readonly KEEP: number = 400;
 
+  /**
+   * 从磁盘重新载入（备份恢复之后调用）。
+   * days / docs 是内存缓存且有 ready 门闩：不重载的话，下一次 add()→persist()
+   * 会把**恢复前的**阅读时长记录写回 reading-log.json，把刚导入的盖掉。
+   */
+  static reload(ctx: common.UIAbilityContext): void {
+    ReadingLog.ready = false;
+    ReadingLog.init(ctx);
+  }
+
   /** 必须在其它方法之前调用；重复调用安全。 */
   static init(ctx: common.UIAbilityContext): void {
     if (ReadingLog.ready) {

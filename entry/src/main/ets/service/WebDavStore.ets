@@ -2,14 +2,19 @@
  * LiteMdReader · WebDAV 备份
  * ==========================
  *
- * 通过 WebDAV 把**全部文档 + 书架索引 + 阅读设置 + 完整备份包（zip）**备份到
+ * 通过 WebDAV 把**用户自己的文档 + 书架索引 + 设置快照 + 完整备份包（zip）**备份到
  * 用户自己的网盘（坚果云、群晖、InfiniCloud 等任何支持 WebDAV 的服务）。
  *
- * 上传内容（两阶段）：
- *   ① 逐文件：docs/*.md + shelf.json + config.json —— 网盘端可直接翻看；
+ * 上传内容（两阶段，口径与用户要求一致）：
+ *   ① 逐文件：docs/*.md（**只传用户自建的文档**，内置教程随应用包发布）+ shelf.json
+ *      + config.json（= settings.json 设置镜像，网盘端可直接翻看、也能手动取用）；
  *   ② **完整备份包** litemdreader_full.zip —— BackupStore.packToZip 打的全量包
- *     （含 AI 对话记录、批注、手写、壁纸、偏好设置等 filesDir 全部数据），
- *     恢复时整包下载解压，一个不漏。
+ *     （文档正文与图片、批注、手写、AI 对话与配置、草稿、版本、两份日志、壁纸、
+ *     全部设置、WebDAV 账号配置 = filesDir 全部条目），恢复时整包下载 + 覆盖拷贝。
+ *
+ * 恢复走 BackupStore.restoreFromPath：解压到暂存目录 → 校验 → 同名先删再拷 →
+ * 设置与语言回填 AppStorage、WebDAV 配置回填 preferences、各内存缓存重载 ——
+ * **不必重启应用**（老版本"重启后数据还是旧的"的成因见 BackupStore 顶部说明）。
  *
  * 三个设计决策：
  *
@@ -33,6 +38,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import preferences from '@ohos.data.preferences';
 import { DocMeta, DocStore } from './DocStore';
 import { BackupStore } from './BackupStore';
+import { SettingsMirror } from './SettingsMirror';
 
 /** 完整备份包在 WebDAV 上的文件名（固定名覆盖写，恢复时按名下载） */
 const FULL_ZIP_NAME: string = 'litemdreader_full.zip';
@@ -320,12 +326,16 @@ export class WebDavStore {
     : Promise<WebDavResult> {
     const result: WebDavResult = { error: '', uploaded: 0, total: 0 };
 
-    // ① 收集要上传的内容：文档 + 索引 + 设置快照
+    // ① 收集要上传的内容：**用户自己的文档** + 书架索引 + 设置快照
     const metas: DocMeta[] = DocStore.list(ctx);
     const items: string[] = [];
     const names: string[] = [];
 
     for (let k = 0; k < metas.length; k++) {
+      // 内置教程 / 全功能文档随应用包发布，不占网盘名额（用户要求：单独导出的是用户的文档）
+      if (metas[k].builtin) {
+        continue;
+      }
       const content: string = DocStore.readText(ctx, metas[k]);
       items.push(content);
       names.push('docs/' + DocStore.sanitizeName(metas[k].name) + '.md');
@@ -342,36 +352,18 @@ export class WebDavStore {
       // 没有 shelf.json 就跳过
     }
 
-    // 阅读设置快照：把会影响观感的键都收进来
-    const configKeys: string[] = [
-      'readerFontSize', 'readerLineHeight', 'readerMeasure', 'readerThemeMode',
-      'immersiveLightEnabled', 'appearanceMaterialType', 'appearanceMaterialLevel',
-      'glassStrength', 'cardFallback', 'themeColor', 'cardTint', 'pageBgTint',
-      'wallpaperPath', 'wallpaperBlur', 'wallpaperScrim', 'readerShowMeta',
-      'readerKeepScreenOn', 'readerCustomBgLight', 'readerCustomBgDark',
-      // 引擎管理：被关闭的渲染引擎列表（随配置一起上云 / 恢复）
-      'disabledEngines'
-    ];
-    const snapshot: Record<string, string | number | boolean> = {};
-    for (let k = 0; k < configKeys.length; k++) {
-      const key: string = configKeys[k];
-      const v: string | undefined = AppStorage.get<string>(key);
-      if (v !== undefined) {
-        snapshot[key] = v;
-        continue;
+    // 阅读设置快照：**直接上传设置镜像文件本身**（SettingsMirror.KEYS 是唯一口径），
+    // 以前这里另写了一份 configKeys 白名单，加设置时漏更新就会"备份少一项设置"。
+    try {
+      SettingsMirror.save(ctx);
+      const mirror: string = ctx.filesDir + '/settings.json';
+      if (fs.accessSync(mirror)) {
+        items.push(fs.readTextSync(mirror, { encoding: 'utf-8' }));
+        names.push('config.json');
       }
-      const n: number | undefined = AppStorage.get<number>(key);
-      if (n !== undefined) {
-        snapshot[key] = n;
-        continue;
-      }
-      const b: boolean | undefined = AppStorage.get<boolean>(key);
-      if (b !== undefined) {
-        snapshot[key] = b;
-      }
+    } catch (err) {
+      // 没有镜像文件就跳过（完整包里本来也有一份）
     }
-    items.push(JSON.stringify(snapshot));
-    names.push('config.json');
 
     result.total = items.length + 1;
 

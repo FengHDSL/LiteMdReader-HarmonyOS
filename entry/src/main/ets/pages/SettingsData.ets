@@ -810,8 +810,10 @@ export struct SettingsData {
       this.zipStatus = msg;
       if (msg.length > 0) {
         this.toast(msg);
-        // 数据变了，重载书架索引
-        DocStore.init(ctx);
+        // 恢复流程内部已经把 DocStore / 两份日志 / 标签页的内存缓存按磁盘重建过，
+        // 这里不能再调 DocStore.init()（有 ready 门闩，等于什么都不做），
+        // 回到书架时 Index 的延迟 refresh 会读到恢复后的索引。
+        this.refreshCacheSize(600);
       }
     }).catch((err: BusinessError) => {
       this.zipBusy = false;
@@ -917,10 +919,11 @@ export struct SettingsData {
       // ── ① 备份与恢复 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text('把全部数据打包成一个 zip 导出到你自己选的位置：文档、书架索引、批注、'
-            + '手写笔迹、复习数据、字体、草稿、阅读背景等全部沙箱数据，'
-            + '**外加阅读设置的偏好快照**（导入后重启应用生效）。'
-            + '导入会覆盖同名数据，请先确认当前数据已备份。')
+          Text('把**整个应用的全部数据**打包成一个 zip 导出到你选的位置：文档正文与图片、'
+            + '书架索引与文件夹、批注与学习卡、手写笔迹、复习数据、阅读与写作日志、'
+            + 'AI 对话与配置、草稿、字体、壁纸与阅读背景、全部设置，以及 WebDAV 账号配置。'
+            + '导入会覆盖同名数据，回到书架即刻生效（不必重启应用）；'
+            + '导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。')
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)

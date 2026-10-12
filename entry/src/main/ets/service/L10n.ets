@@ -238,6 +238,16 @@ export class L10n {
     }
   }
 
+  /**
+   * 备份恢复之后调用：SettingsMirror 已经把 appLanguage 的新值写进 AppStorage，
+   * 这里只补两件事——递增刷新计数让各页面重画、把新选择镜像给平台。
+   * （不重启就能看到界面换语言；系统级文字仍是下次启动对齐。）
+   */
+  static reapply(): void {
+    AppStorage.setOrCreate(L10n.KEY_TICK, L10n.tick() + 1);
+    L10n.mirrorToPlatform();
+  }
+
   /** 启动时调用：确保 tick 键存在，并把持久化的选择同步给平台。 */
   static init(): void {
     if (L10n.tick() === 0) {

@@ -71,6 +71,12 @@ export class SettingsMirror {
     'disabledEngines',
     // 应用语言（外观设置里的选择器；languageTick 是会话内刷新计数，不进镜像）
     'appLanguage',
+    // 备份必须带走的那部分：**大屏侧边栏宽度 / 抽屉沉浸 / 手写画布底纹**
+    // （这些也是 persistProp 键，漏在这里就等于"换机恢复后设置少一截"）
+    'readerTocPanelW', 'readerNotesPanelW', 'drawerImmersive',
+    'sketchBgColor', 'sketchBgPattern', 'sketchBgLineWidth',
+    // 材质档位（EntryAbility 每次启动会强制开材质，但等级/引擎选择仍应随备份走）
+    'appearanceMaterialLevel', 'appearanceMaterialEngine',
     // **一次性标记与收藏名单**（第一腿 PersistentStorage 在真机强杀后不一定落盘，
     // 这三项必须有第二腿：设置页首启弹窗 / 更新弹窗 / 48h 自动检查 / 收藏恢复）
     'appMode', 'lastSeenVersion', 'lastAutoCheckAt',
@@ -79,6 +85,50 @@ export class SettingsMirror {
 
   private static pathOf(ctx: common.UIAbilityContext): string {
     return ctx.filesDir + '/settings.json';
+  }
+
+  /**
+   * **无条件**用镜像文件覆盖 AppStorage（备份恢复专用）。
+   *
+   * restore() 要靠时间戳比新旧，而刚解压出来的 settings.json 里 `at` 是**备份当时**的
+   * 时间，通常比本机 `appearanceSavedAt` 旧 → 走 restore() 会被"旧的不覆盖新的"这条
+   * 规则挡掉，设置看起来没恢复。恢复备份是用户明确要"以包里这份为准"，所以这里不比时间。
+   *
+   * 写的是 AppStorage：这些键都由 PersistentStorage.persistProp 注册过，
+   * setOrCreate 会写穿到 preferences，因此**当场生效、也留到下次启动**，不需要重启应用。
+   */
+  static forceRestore(ctx: common.UIAbilityContext): number {
+    let applied: number = 0;
+    try {
+      const path: string = SettingsMirror.pathOf(ctx);
+      if (!fs.accessSync(path)) {
+        return 0;
+      }
+      const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
+      if (text.length === 0) {
+        return 0;
+      }
+      const snap: SettingsSnapshot = JSON.parse(text) as SettingsSnapshot;
+      if (snap === null || snap === undefined || snap.values === undefined) {
+        return 0;
+      }
+      for (let k = 0; k < SettingsMirror.KEYS.length; k++) {
+        const key: string = SettingsMirror.KEYS[k];
+        const v: string | number | boolean | undefined = snap.values[key];
+        if (v === undefined || v === null) {
+          continue;
+        }
+        AppStorage.setOrCreate(key, v);
+        applied++;
+      }
+      const mirrorAt: number = snap.at === undefined ? Date.now() : snap.at;
+      // 时间戳推到"现在"，免得下次启动时旧的 appearanceSavedAt 又把这批值判成过期
+      AppStorage.setOrCreate(SettingsMirror.KEY_SAVED_AT,
+        mirrorAt > Date.now() ? mirrorAt : Date.now());
+    } catch (err) {
+      // 镜像损坏：保持当前会话的设置不变
+    }
+    return applied;
   }
 
   /** 启动时调用一次：镜像比 PersistentStorage 新时，用它覆盖 AppStorage。 */

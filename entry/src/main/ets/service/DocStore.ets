@@ -244,6 +244,25 @@ export class DocStore {
   static readonly ORDER_FOLDER: string = 'F|';
   static readonly ORDER_DOC: string = 'D|';
 
+  /**
+   * **从磁盘重新载入索引**（备份恢复之后必须调用一次）。
+   *
+   * 为什么需要：docs / folders / ord 是内存缓存，init() 又有 ready 门闩 ——
+   * 恢复完文件后再调 init() 什么都不做，于是回到书架时第一次 list() 就把
+   * **恢复前的旧索引** persist() 回 shelf.json：解压进来的文档正文还在磁盘上，
+   * 但书架按旧索引显示，重启后看到的还是旧数据（用户反馈的"导入备份没生效"）。
+   * 先把内存清空，再按磁盘内容重建，后续任何 persist 写的都是恢复后的状态。
+   */
+  static reload(ctx: common.UIAbilityContext): void {
+    DocStore.docs = [];
+    DocStore.folders = [];
+    DocStore.ord = [];
+    DocStore.hiddenBuiltins = [];
+    DocStore.seededFolder = false;
+    DocStore.ready = false;
+    DocStore.init(ctx);
+  }
+
   /** 初始化。必须在任何其它方法之前调用一次；重复调用是安全的。 */
   static init(ctx: common.UIAbilityContext): void {
     if (DocStore.ready) {

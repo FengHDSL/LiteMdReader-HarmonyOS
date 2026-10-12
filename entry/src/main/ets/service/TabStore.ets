@@ -38,6 +38,15 @@ export class TabStore {
   private static path: string = '';
   private static ready: boolean = false;
 
+  /**
+   * 从磁盘重新载入（备份恢复之后调用）：tabs / active 是内存缓存，
+   * 不重载就会被下一次开标签 / 关闭标签时的 persist() 用恢复前的标签页盖掉 tabs.json。
+   */
+  static reload(ctx: common.UIAbilityContext): void {
+    TabStore.ready = false;
+    TabStore.init(ctx);
+  }
+
   /** 必须在任何其它方法之前调用；重复调用安全。 */
   static init(ctx: common.UIAbilityContext): void {
     if (TabStore.ready) {

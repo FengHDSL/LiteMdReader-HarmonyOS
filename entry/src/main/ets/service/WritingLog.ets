@@ -64,6 +64,15 @@ export class WritingLog {
   /** 只保留的最近天数：热力图 53 周 = 371 天，留 29 天余量 */
   private static readonly KEEP: number = 400;
 
+  /**
+   * 从磁盘重新载入（备份恢复之后调用）：days 是内存缓存，
+   * 不重载就会被下一次 record()→persist() 用恢复前的数据盖掉 writing-log.json。
+   */
+  static reload(ctx: common.UIAbilityContext): void {
+    WritingLog.ready = false;
+    WritingLog.init(ctx);
+  }
+
   /** 必须在任何其它方法之前调用；重复调用安全。 */
   static init(ctx: common.UIAbilityContext): void {
     if (WritingLog.ready) {
