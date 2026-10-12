@@ -86,6 +86,10 @@ export struct SettingsAppearance {
   @State customHex: string = '';
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
+  /** 应用语言区块的隐藏入口：标题连点计数（≥5 显示） */
+  @State langHiddenTaps: number = 0;
+  /** 应用语言区块是否显示（默认隐藏：功能未完成） */
+  @State showLangSection: boolean = false;
   /** 函数绘制壁纸选中款（空 = 不用） */
   @StorageLink('wallpaperGenId') genWallId: string = '';
   /** 自定义函数壁纸三键（GenWallpaper 的 custom 分支读取绘制） */
@@ -517,6 +521,14 @@ export struct SettingsAppearance {
   build() {
     SettingsShell({
       shellTitle: this.s('外观设置'),
+      onTitleTap: () => {
+        this.langHiddenTaps = this.langHiddenTaps + 1;
+        if (this.langHiddenTaps >= 5 && !this.showLangSection) {
+          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+            this.showLangSection = true;
+          });
+        }
+      },
       shellSubtitle: this.s('深色模式 · 主题色 · 应用壁纸 · 卡片与流光 · 灰体文本'),
       stack: this.stack,
       life: this.life
@@ -575,10 +587,11 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── ⓪½ 应用语言（用户要求：跟随系统 + 7 种内置语言）──
+      // ── ⓪½ 应用语言（**默认隐藏**：连点标题 5 次显示；功能未完成）──
       // 语言名一律用**该语言的自称**（简体中文 / 繁體中文（台灣）/ English (US) /
       // 日本語 / 한국어…），只有「跟随系统」这一项跟着界面语言翻译；
       // 系统语言不在内置列表里时，L10n.match 归一到简体中文。
+      if (this.showLangSection) {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
           Text(this.s('应用语言'))
@@ -623,6 +636,7 @@ export struct SettingsAppearance {
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
+      }
       }
 
       // ── ① 主题色（标题已在卡片内，删掉卡片外这一份——用户要求）──

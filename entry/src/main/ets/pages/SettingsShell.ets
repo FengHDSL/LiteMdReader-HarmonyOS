@@ -41,6 +41,9 @@ import {
 export struct SettingsShell {
   /** 页面标题 */
   @Prop shellTitle: string = '';
+  /** 标题点击回调（外观设置页用它做「连点 5 次显示应用语言」的隐藏入口） */
+  onTitleTap: () => void = () => {
+  };
   /** 标题下的说明 */
   @Prop shellSubtitle: string = '';
   /** 语言刷新计数：外壳自己的文案（占位提示）也要跟着切语言重画 */
@@ -315,6 +318,9 @@ export struct SettingsShell {
                 .fontColor(this.palette().textPrimary)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .onClick(() => {
+                  this.onTitleTap();
+                })
               if (this.shellSubtitle.length > 0) {
                 Text(this.shellSubtitle)
                   .fontSize(HwType.caption - 1)
