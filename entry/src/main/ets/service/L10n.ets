@@ -2,7 +2,7 @@
  * 澄笺 · 应用语言（i18n 运行时）
  * ============================
  *
- * 为什么是自己查词典，而不是 resources/*/string.json + $r()：
+ * 为什么是自己查词典，而不是 resources 目录下的 string.json 加 $r()：
  *   ① 全应用约 2,000 处文案直接写在 .ets 里（Text('深色模式')、toast、占位符、
  *      Web 模板标题、导出文件名…），$r() 只能覆盖 ArkUI 文本，且 key 必须是**字面量**；
  *   ② 平台的 i18n.System.setAppPreferredLanguage 要**冷启动**才生效
