@@ -95,16 +95,38 @@ export class BackupStore {
     //   · webdav_config.json —— WebDAV 账号配置（存在 preferences 目录，不在 filesDir）
     SettingsMirror.save(ctx);
     BackupStore.dumpWebDavConfig(ctx);
-    let items: string[] = [];
+    // ⚠️ **分类结构必须保留**（用户实测：多目录直接 compressFiles 会被拍平到 zip 根，
+    // 导入后 docs/ 批注等全部散架、数据恢复不进来）。做法：先把 filesDir 全部内容
+    // 复制到暂存目录的 data/ 子目录下，再对这一个文件夹整体压缩——内部目录结构
+    // （docs / annotations / shelf.json …）原样进包，与示例数据包的布局一致。
+    const stage: string = ctx.cacheDir + '/bk_stage';
     try {
-      const names: string[] = await fs.listFile(ctx.filesDir);
-      for (let k = 0; k < names.length; k++) {
-        items.push(ctx.filesDir + '/' + names[k]);
-      }
+      fs.rmdirSync(stage);
     } catch (err) {
-      return '读取数据目录失败';
+      // 没有上一次的残留
     }
-    if (items.length === 0) {
+    try {
+      fs.mkdirSync(stage, true);
+    } catch (err) {
+      return '创建暂存目录出错';
+    }
+    try {
+      await BackupStore.copyInto(ctx.filesDir, stage + '/data');
+    } catch (err) {
+      return '收集数据失败：' + (err as Error).message;
+    }
+    let dataEntries: string[] = [];
+    try {
+      dataEntries = await fs.listFile(stage + '/data');
+    } catch (err) {
+      dataEntries = [];
+    }
+    if (dataEntries.length === 0) {
+      try {
+        fs.rmdirSync(stage);
+      } catch (err) {
+        // 占缓存而已
+      }
       return '还没有可备份的数据';
     }
     try {
@@ -114,10 +136,16 @@ export class BackupStore {
         // 上次残留，忽略
       }
       const zipOptions: zlib.Options = {};
-      await zlib.compressFiles(items, outPath, zipOptions);
+      await zlib.compressFiles([stage + '/data'], outPath, zipOptions);
       return '';
     } catch (err) {
       return '打包失败：' + (err as Error).message;
+    } finally {
+      try {
+        fs.rmdirSync(stage);
+      } catch (err) {
+        // 删不掉只是占缓存
+      }
     }
   }
 
@@ -245,11 +273,22 @@ export class BackupStore {
     } catch (err) {
       return '恢复失败：备份包读不出来（' + (err as Error).message + '）';
     }
+    // 兼容两种包布局：① 分类布局（shelf.json / docs / annotations … 在根，示例数据包即此）
+    // ② data/ 前缀布局（新版导出用单文件夹压缩，包内多一层 data/）
+    let src: string = stage;
     let entries: string[] = [];
     try {
       entries = await fs.listFile(stage);
     } catch (err) {
       entries = [];
+    }
+    if (entries.length === 1 && entries[0] === 'data') {
+      src = stage + '/data';
+      try {
+        entries = await fs.listFile(src);
+      } catch (err) {
+        entries = [];
+      }
     }
     if (entries.length === 0) {
       return '恢复失败：备份包是空的';
@@ -260,7 +299,7 @@ export class BackupStore {
     }
     let files: number = 0;
     try {
-      files = await BackupStore.copyInto(stage, ctx.filesDir);
+      files = await BackupStore.copyInto(src, ctx.filesDir);
     } catch (err) {
       return '恢复失败：写入数据目录出错（' + (err as Error).message + '）';
     }
