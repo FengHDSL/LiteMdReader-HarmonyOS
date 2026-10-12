@@ -366,15 +366,22 @@ export class BackupStore {
    * ⚠️ 逐条目容错：单个文件被框架占用（preferences 的持久层之类）或权限异常时
    *    记一笔 failed 继续，绝不让一个文件中断整包（用户实测过"收集数据失败"）。
    *
-   * 两条容易踩死整包的细节（都实测踩过）：
+   * 三条容易踩死整包的细节（都实测踩过）：
    *  · **拷文件前必须先把 dst 的父目录建出来**。zip 里每个文件都躺在 `<类别>/` 下，
    *    而类别文件夹此前没人创建 → 单文件类别（shelf.json / settings.json / 两份日志 /
    *    tabs.json / review*.json / 壁纸 / 手写 / 字体索引 / 卡片快照）拷贝**全部失败**，
    *    导入后文档正文虽在、书架索引却没了，看上去就是"什么都没有"。
    *  · **空目录绝不进包**。SDK 对 compressFiles 的原文警告：待压缩的文件夹不能为空，
    *    否则 decompressFile 解这个包时会报错——一个空的 drafts/ 就能让整个备份解不开。
+   *  · **ignores 里的路径一个字节都不碰**（来源侧与落点侧都比一次），跳过是静默的、
+   *    不算 failed。名单只在**导出**时非空，放的是 `DocStore.builtinResidue()` 那几份
+   *    内置演示文档的死副本：应用永远不读它们，打进包只会让用户看到"一堆我根本没有的
+   *    文件"。导入侧传空名单，理由见 restoreFromPath 里的注释。
    */
-  private static copyTree(src: string, dst: string, stat: CopyStat): void {
+  private static copyTree(src: string, dst: string, stat: CopyStat, ignores: string[]): void {
+    if (ignores.indexOf(src) >= 0 || ignores.indexOf(dst) >= 0) {
+      return;
+    }
     // 用两个原始类型把 statSync 的结果带出 try（不在 try 外用可空对象，避免严格空检查歧义）
     let isFolder: boolean = false;
     let size: number = 0;
@@ -393,7 +400,7 @@ export class BackupStore {
       }
       BackupStore.ensureDir(dst);
       for (let k = 0; k < names.length; k++) {
-        BackupStore.copyTree(src + '/' + names[k], dst + '/' + names[k], stat);
+        BackupStore.copyTree(src + '/' + names[k], dst + '/' + names[k], stat, ignores);
       }
       return;
     }
@@ -430,10 +437,11 @@ export class BackupStore {
   }
 
   /** 把一个类别文件夹里的内容按相对路径写回落点根（zip 路径去掉类别名就是沙箱路径） */
-  private static copyCategoryInto(srcDir: string, dstRoot: string, stat: CopyStat): void {
+  private static copyCategoryInto(srcDir: string, dstRoot: string, stat: CopyStat,
+                                  ignores: string[]): void {
     const names: string[] = BackupStore.listNames(srcDir);
     for (let k = 0; k < names.length; k++) {
-      BackupStore.copyTree(srcDir + '/' + names[k], dstRoot + '/' + names[k], stat);
+      BackupStore.copyTree(srcDir + '/' + names[k], dstRoot + '/' + names[k], stat, ignores);
     }
   }
 
@@ -457,6 +465,8 @@ export class BackupStore {
 
     const cats: BackupCategory[] = BackupStore.categories();
     const leftover: string[] = BackupStore.leftoverNames(cats, ctx.filesDir);
+    // 内置演示文档的死副本不进包（应用永不读它们，见 DocStore.builtinResidue）
+    const ignores: string[] = DocStore.builtinResidue(ctx);
     const stat: CopyStat = { files: 0, bytes: 0, failed: 0 } as CopyStat;
     const used: BackupCategory[] = [];
 
@@ -476,7 +486,8 @@ export class BackupStore {
         const names: string[] = cat.id === 'extra'
           ? leftover : BackupStore.expandSources(srcRoot, cat.sources);
         for (let n = 0; n < names.length; n++) {
-          BackupStore.copyTree(srcRoot + '/' + names[n], top + '/' + cat.id + '/' + names[n], stat);
+          BackupStore.copyTree(srcRoot + '/' + names[n], top + '/' + cat.id + '/' + names[n],
+            stat, ignores);
         }
       }
       cat.files = stat.files - beforeFiles;
@@ -707,6 +718,12 @@ export class BackupStore {
     }
 
     const stat: CopyStat = { files: 0, bytes: 0, failed: 0 } as CopyStat;
+    // 导入侧**不排除**内置死副本（导出侧才排）：判定"这是死副本"要看书架索引里有没有
+    // 一篇同名的**用户文档**，而索引正是这个包要恢复的东西——用恢复前的本机索引去判定，
+    // 就会把别人机器上叫 README.md 的用户文档当成死副本跳过（书架上留着条目、盘上没文件，
+    // 下次 list() 直接把条目剔掉 = 静默丢数据）。老包里夹着的那几份写回来也无害：
+    // 应用永远不读它们，下次导出又会被排除掉。
+    const ignores: string[] = [];
     const done: string[] = [];
     let webdavDone: boolean = false;
     // 先判定包的布局：**分类布局**（新版）才按类别文件夹写回，**平铺布局**（1.1.x）
@@ -731,7 +748,7 @@ export class BackupStore {
           }
           continue;
         }
-        BackupStore.copyCategoryInto(src, BackupStore.rootDir(cat.root, ctx), stat);
+        BackupStore.copyCategoryInto(src, BackupStore.rootDir(cat.root, ctx), stat, ignores);
         if (stat.files > before) {
           done.push(cat.label);
         }
@@ -751,7 +768,7 @@ export class BackupStore {
         continue;
       }
       const before: number = stat.files;
-      BackupStore.copyTree(src, ctx.filesDir + '/' + entry, stat);
+      BackupStore.copyTree(src, ctx.filesDir + '/' + entry, stat, ignores);
       if (stat.files > before && done.indexOf(entry) < 0) {
         done.push(entry);
       }

@@ -62,6 +62,26 @@ for (const m of methodBody(src, 'private static categories()')
 console.log('从源码解析到 ' + cats.length + ' 类：' + cats.map((c) => c.id).join(' '));
 console.log('SKIP = ' + JSON.stringify(SKIP));
 
+// ── 从 DocStore 源码里解析「内置演示文档的死副本」名单（同样不手抄文件名）──
+// 死副本 = update() 写进 docs/<rawfile 名> 的覆盖正文 + 首启释放的内置插图；
+// readText() 对 builtin 一律回头读 rawfile，所以沙箱这几份永远不会被读到。
+const DOC_SRC =
+  path.join(__dirname, '..', 'entry', 'src', 'main', 'ets', 'service', 'DocStore.ets');
+const docSrc = fs.readFileSync(DOC_SRC, 'utf8').replace(/\r\n/g, '\n');
+const BUILTIN_RAW = [...docSrc.matchAll(/raw:\s*'([^']*)'/g)].map((m) => m[1]);
+const BUILTIN_IMAGE = /BUILTIN_IMAGE: string = '([^']*)'/.exec(docSrc)[1];
+// 用户自建的文档正好叫 README.md 时它就**不是**死副本（isUserDocFile 那条），
+// 仿真里用这个数组模拟书架索引里的非内置文档
+let USER_DOC_FILES = [];
+function builtinResidue(sb) {
+  const out = BUILTIN_RAW.filter((r) => !USER_DOC_FILES.includes(r))
+    .map((r) => sb.files + '/docs/' + r);
+  out.push(sb.files + '/docs/images/' + BUILTIN_IMAGE);
+  return out;
+}
+console.log('内置死副本名单（BUILTINS 反推）= ' + JSON.stringify(BUILTIN_RAW)
+  + ' + images/' + BUILTIN_IMAGE);
+
 // ── copyTree / 打包 / 恢复 的端口（与 ArkTS 版逐行对应）──
 const stat = { files: 0, bytes: 0, failed: 0 };
 // 关掉它就还原事故现场的写法（不建父目录），用来证明诊断没跑偏
@@ -97,7 +117,8 @@ function resolveSource(rootDir, pattern) {
   }
   return listNames(rootDir).filter((n) => matchPattern(n, pattern));
 }
-function copyTree(s, d) {
+function copyTree(s, d, ignores) {
+  if (ignores.includes(s) || ignores.includes(d)) { return; }   // 内置死副本：一个字节都不碰
   let folder = false;
   let size = 0;
   try { const st = fs.statSync(s); folder = st.isDirectory(); size = st.size; }
@@ -106,7 +127,7 @@ function copyTree(s, d) {
     const names = listNames(s);
     if (names.length === 0) { return; }          // 空目录不进包
     ensureDir(d);
-    for (const n of names) { copyTree(s + '/' + n, d + '/' + n); }
+    for (const n of names) { copyTree(s + '/' + n, d + '/' + n, ignores); }
     return;
   }
   if (FIX_PARENT) { ensureDir(parentOf(d)); }        // ← 事故修复点
@@ -139,6 +160,7 @@ function rootDir(root, sb) {
 function pack(sb, top) {
   ensureDir(top);
   const leftover = leftoverNames(sb.files);
+  const ignores = builtinResidue(sb);
   for (const c of cats) {
     if (c.root === 'pref') {
       if (sb.pref.length > 0) {                   // dumpWebDavSnapshot：自己会建目录
@@ -150,11 +172,13 @@ function pack(sb, top) {
     }
     const srcRoot = rootDir(c.root, sb);
     const names = c.id === 'extra' ? leftover : expandSources(srcRoot, c.sources);
-    for (const n of names) { copyTree(srcRoot + '/' + n, top + '/' + c.id + '/' + n); }
+    for (const n of names) { copyTree(srcRoot + '/' + n, top + '/' + c.id + '/' + n, ignores); }
   }
 }
-function copyCategoryInto(srcDir, dstRoot) {
-  for (const n of listNames(srcDir)) { copyTree(srcDir + '/' + n, dstRoot + '/' + n); }
+function copyCategoryInto(srcDir, dstRoot, ignores) {
+  for (const n of listNames(srcDir)) {
+    copyTree(srcDir + '/' + n, dstRoot + '/' + n, ignores);
+  }
 }
 function findPackageRoot(stage) {
   let root = stage;
@@ -191,6 +215,9 @@ function restore(stage, sb2) {
   const root = findPackageRoot(stage);
   const names = listNames(root);
   const categorized = isCategorized(root, names);
+  // 导入侧不排除内置死副本：判定"是不是死副本"要看书架索引，而索引正是这个包要恢复的
+  // 东西。用恢复前的本机索引判定，就会把源机器上叫 README.md 的**用户文档**跳过 → 丢数据。
+  const ignores = [];
   for (const entry of names) {
     const s = root + '/' + entry;
     if (entry === 'manifest.json') { continue; }
@@ -201,14 +228,14 @@ function restore(stage, sb2) {
         if (exists(p)) { sb2.pref = fs.readFileSync(p, 'utf8'); stat.files++; }
         continue;
       }
-      copyCategoryInto(s, rootDir(cat.root, sb2));
+      copyCategoryInto(s, rootDir(cat.root, sb2), ignores);
       continue;
     }
     if (SKIP.includes(entry)) { continue; }
     if (entry === alias['BackupStore.WEBDAV_SNAPSHOT']) {
       sb2.pref = fs.readFileSync(s, 'utf8'); stat.files++; continue;
     }
-    copyTree(s, sb2.files + '/' + entry);
+    copyTree(s, sb2.files + '/' + entry, ignores);
   }
   return categorized;
 }
@@ -231,6 +258,11 @@ function scenario(fixParent) {
   w(A.files + '/docs/笔记.md', '# 标题\n正文');
   w(A.files + '/docs/子目录/嵌套.md', 'nested');
   w(A.files + '/docs/images/a.png', 'PNG');
+  // 内置演示文档的**死副本**：沙箱里真实存在（update() 无条件写盘），但 readText()
+  // 对 builtin 一律回头读 rawfile，所以永远读不到它们 —— 用户看到的"包里一堆我根本
+  // 没有的文件，甚至是演示的文件（英语单词那些）"就是这几份
+  for (const r of BUILTIN_RAW) { w(A.files + '/docs/' + r, 'DEMO'); }
+  w(A.files + '/docs/images/' + BUILTIN_IMAGE, 'ICON');
   w(A.files + '/shelf.json', '{"docs":[]}');
   w(A.files + '/annotations/1.json', '[]');
   w(A.files + '/sketch.handwrite', 'strokes');
@@ -297,9 +329,11 @@ function scenario(fixParent) {
     tree(B.files, '', []).map((x) => 'files/' + x),
     tree(B.cache, '', []).map((x) => 'cache/' + x),
     tree(B.app, '', []).map((x) => 'app/' + x));
-  // 例外名单：本机专属 / 临时文件，本来就不该跟着备份走
+  // 例外名单：本机专属 / 临时文件 / 内置死副本，本来就不该跟着备份走
   const EXEMPT = ['files/webdav_config.json', 'files/pref_snapshot/webdav.xml',
-    'cache/litemd_backup.zip', 'app/form_ids.json'];
+    'cache/litemd_backup.zip', 'app/form_ids.json',
+    'files/docs/images/' + BUILTIN_IMAGE]
+    .concat(BUILTIN_RAW.map((r) => 'files/docs/' + r));
   const expected = want.filter((x) => !EXEMPT.includes(x));
 
   // 老包 A：1.1.x 平铺 + 外面套一层 data/
@@ -325,11 +359,22 @@ function scenario(fixParent) {
   const E = mkSandbox('E');
   const bareCategorized = restore(bare, E);
 
+  // 老包（新版之前导出的）里夹着内置死副本：导入**必须**照原样写回 ——
+  // 在源机器上它可能是一篇同名的用户文档，导入时还没有那份索引可查
+  const oldish = P('oldish');
+  w(oldish + '/backup/manifest.json', '{"app":"澄笺"}');
+  w(oldish + '/backup/shelf/shelf.json', '{"docs":[]}');
+  w(oldish + '/backup/docs/docs/' + BUILTIN_RAW[0], 'MAYBE-USER-DOC');
+  const F = mkSandbox('F');
+  restore(oldish, F);
+
   const out = {
     tmp: tmp, pack: afterPack, failed: stat.failed, emptyDirs: emptyDirs,
     missing: expected.filter((x) => !got.includes(x)),
     surprise: got.filter((x) => !expected.includes(x)),
     got: got, A: A,
+    // 包内实际躺着的东西（相对 top）：用来断言"哪些文件根本没进包"
+    packed: tree(top, '', []),
     contentOk: fs.readFileSync(B.files + '/docs/笔记.md', 'utf8') === '# 标题\n正文'
       && fs.readFileSync(B.files + '/docs/子目录/嵌套.md', 'utf8') === 'nested'
       && fs.readFileSync(B.cache + '/charts/c1.png', 'utf8') === 'PNG',
@@ -342,7 +387,9 @@ function scenario(fixParent) {
       && !exists(D.files + '/旧文档.md'),
     bareCategorized: bareCategorized,
     bareOk: exists(E.files + '/shelf.json') && exists(E.files + '/docs/笔记.md')
-      && exists(E.files + '/settings.json')
+      && exists(E.files + '/settings.json'),
+    oldishOk: exists(F.files + '/docs/' + BUILTIN_RAW[0])
+      && fs.readFileSync(F.files + '/docs/' + BUILTIN_RAW[0], 'utf8') === 'MAYBE-USER-DOC'
   };
   fs.rmSync(tmp, { recursive: true, force: true });
   return out;
@@ -378,6 +425,31 @@ check('老版平铺包（套一层 data/）按 filesDir 顶层恢复，docs 里�
 check('老版平铺包（直接躺在根）同样能恢复', R.flatOk);
 check('新包丢了 manifest 也认得出是分类布局，且按类别写回正确位置',
   R.bareCategorized === true && R.bareOk);
+
+// ── 内置演示文档的死副本：不进包、也不写回（用户反馈"包里一堆我根本没有的文件"）──
+// 包内路径 = <类别>/<沙箱相对路径>，所以文档在包里是 docs/docs/… 这种双层写法
+const residuePacked = R.packed.filter((x) =>
+  BUILTIN_RAW.some((r) => x === 'docs/docs/' + r) || x === 'docs/docs/images/' + BUILTIN_IMAGE);
+const residueRestored = R.got.filter((x) =>
+  BUILTIN_RAW.some((r) => x === 'files/docs/' + r) || x === 'files/docs/images/' + BUILTIN_IMAGE);
+check('内置演示文档的死副本一个都没进包（应用永不读它们，进包只会让用户认不出来）',
+  residuePacked.length === 0, residuePacked.join(', '));
+check('死副本没进包 → 恢复出来的新沙箱里也就没有它们',
+  residueRestored.length === 0, residueRestored.join(', '));
+check('老包里夹着的同名文件导入时照原样写回（导入侧不排除：它可能是用户文档）',
+  R.oldishOk);
+check('用户自己的文档与图片照常进包（排除名单没有误伤）',
+  R.packed.includes('docs/docs/笔记.md') && R.packed.includes('docs/docs/子目录/嵌套.md')
+  && R.packed.includes('docs/docs/images/a.png'));
+
+// 用户自建的文档正好叫 README.md：那是**用户数据**，必须进包（isUserDocFile 那条分支）
+USER_DOC_FILES = [BUILTIN_RAW[0]];
+const R3 = scenario(true);
+check('用户自建的同名文档不算死副本，照样进包（误排就是丢数据）',
+  R3.packed.includes('docs/docs/' + BUILTIN_RAW[0])
+  && !R3.packed.includes('docs/docs/' + BUILTIN_RAW[1]),
+  R3.packed.filter((x) => x.indexOf('docs/') === 0).join(', '));
+USER_DOC_FILES = [];
 
 // ── 反向证明：把「建父目录」那一步去掉，事故就复现（单文件类别整批丢） ──
 const BUG = scenario(false);

@@ -12,8 +12,9 @@
  * ① **包结构与落点**：类别表可解析、id 唯一且纯 ASCII、导出路径与导入路径互为逆运算、
  *    compressFiles 只传一个目录（多目录会被拍平）、解压落暂存目录而非沙箱、
  *    认不出的包直接拒绝（不许把别人的 zip 倒进数据目录）、**拷文件前先建父目录**、
- *    **空目录不进包**、**导入先判定包布局**（后三条都是真机事故：导出说"N 项读不出来"、
- *    导入后书架空空、老包的 docs/ 被摊平进数据目录根）。
+ *    **空目录不进包**、**导入先判定包布局**、**内置演示文档的死副本不进包**
+ *    （后四条都是真机事故：导出说"N 项读不出来"、导入后书架空空、老包的 docs/ 被摊平进
+ *    数据目录根、包里出现一堆"我根本没有的文件"）。
  *    行为层面的端到端仿真见 tools/sim-backup.js（假沙箱打包→恢复→逐文件比对）。
  * ② **覆盖面**：从全部源码里反推出真实的写入位置（filesDir / cacheDir / 应用级
  *    filesDir / preferences），逐个对照类别表——**每一处都必须被显式类别覆盖**，
@@ -144,7 +145,7 @@ check('① 导出路径 = <暂存>/<顶层文件夹>/<类别>/<沙箱相对路�
   packBody !== null && /top \+ '\/' \+ cat\.id \+ '\/' \+ names\[n\]/.test(packBody));
 check('① 导入把类别文件夹里的内容按相对路径写回落点根',
   /private static copyCategoryInto\(srcDir: string, dstRoot: string/.test(backup)
-  && /copyTree\(srcDir \+ '\/' \+ names\[k\], dstRoot \+ '\/' \+ names\[k\], stat\)/.test(backup));
+  && /copyTree\(srcDir \+ '\/' \+ names\[k\], dstRoot \+ '\/' \+ names\[k\], stat, ignores\)/.test(backup));
 check('① 导出与导入用同一张类别表（不许各写一份）',
   packBody !== null && restoreBody !== null
   && /BackupStore\.categories\(\)/.test(packBody) && /BackupStore\.categories\(\)/.test(restoreBody));
@@ -191,6 +192,33 @@ check('① 导入先判定包布局（分类 / 老版平铺），判定结果决
 check('① 撞名类别靠双层路径（docs/docs）区分新老包，不撞名的类别出现即为新包',
   /private static idCollides/.test(backup)
   && /exists\(root \+ '\/' \+ names\[k\] \+ '\/' \+ first\)/.test(backup));
+
+// 真机事故三：用户反馈「导出的压缩包里一堆我根本没有的文件，甚至是演示的文件（英语单词那些）」。
+// 来源是内置演示文档的**死副本**：update() 无条件把正文写进 docs/<fileName>（内置也不例外），
+// 而 readText() 对 builtin 一律回头读应用包里的 rawfile（沙箱那份旧正文会把更新后的教程压住，
+// 所以**故意不读**）。于是 docs/README.md、docs/chengjian.md、docs/capabilities.md 写完再没人读，
+// 却会被"整目录扫"的打包捞进包 —— 文件名是英文、内容是演示文档，用户当然认不出来。
+const docStore = read('service/DocStore.ets');
+const residueBody = methodBody(docStore, 'static builtinResidue(');
+check('① 内置演示文档的死副本不进包（打包时按 DocStore.builtinResidue 跳过）',
+  residueBody !== null
+  && /const ignores: string\[\] = DocStore\.builtinResidue\(ctx\)/.test(packBody)
+  && /ignores\.indexOf\(src\) >= 0 \|\| ignores\.indexOf\(dst\) >= 0/.test(copyTreeBody));
+check('① 导入侧**不**排除死副本（判定要看包里那份索引，用本机索引判定会误丢同名用户文档）',
+  /const ignores: string\[\] = \[\]/.test(restoreBody)
+  && /静默丢数据/.test(restoreBody)
+  && /copyCategoryInto\(src, BackupStore\.rootDir\(cat\.root, ctx\), stat, ignores\)/.test(restoreBody)
+  && /copyTree\(src, ctx\.filesDir \+ '\/' \+ entry, stat, ignores\)/.test(restoreBody));
+check('① 死副本名单来自 BUILTINS 表（内置文档增删自动跟随，不手抄文件名）',
+  residueBody !== null && /DocStore\.BUILTINS\.length/.test(residueBody)
+  && /DocStore\.pathOf\(raw\)/.test(residueBody)
+  && /DocStore\.BUILTIN_IMAGE/.test(residueBody));
+check('① 用户自建的同名文档不算死副本（那种应用真要读，误排就是丢数据）',
+  /private static isUserDocFile/.test(docStore)
+  && /!DocStore\.isUserDocFile\(raw\)/.test(residueBody)
+  && /!DocStore\.docs\[k\]\.builtin && DocStore\.docs\[k\]\.fileName === fileName/.test(docStore));
+check('① 内置文档确实不读沙箱副本（这条是"死副本"成立的前提，改了要重评排除名单）',
+  /if \(meta\.builtin\) \{[\s\S]{0,600}getRawFileContentSync\(meta\.fileName\)/.test(docStore));
 
 // ══════════════════ ② 覆盖面：从源码反推真实写入位置 ══════════════════
 

@@ -225,6 +225,8 @@ export class DocStore {
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
   static readonly BUILTIN_RAW: string = 'README.md';
+  /** 内置文档用到的那张插图（`rawfile/builtin/` 下同名，首启释放到 docs/images/） */
+  static readonly BUILTIN_IMAGE: string = 'chengjian-icon.png';
   /** 新建文档的默认正文 */
   static readonly NEW_DOC_TEMPLATE: string =
     '# 未命名文档\n\n在「阅读设置」里可以调整字号与行高。\n\n## 支持的全部语法\n\n- **加粗** / *斜体* / ~~删除线~~ / `行内代码`\n- 列表、表格、引用、代码块、脚注、提示块\n\n> 点右上角的「语法」可以查看语法速查表。\n';
@@ -295,7 +297,7 @@ export class DocStore {
    * 删掉它之后不会被重新塞回来。
    */
   private static ensureBuiltinImages(ctx: common.UIAbilityContext): void {
-    const name: string = 'chengjian-icon.png';
+    const name: string = DocStore.BUILTIN_IMAGE;
     try {
       const dir: string = DocStore.imagesDirPath();
       const target: string = dir + '/' + name;
@@ -312,6 +314,43 @@ export class DocStore {
     } catch (err) {
       // 释放失败不影响使用：文档里那张图会走"找不到本地图片"的占位
     }
+  }
+
+  /**
+   * **内置内容在沙箱里的残留文件**（绝对路径清单）——备份**打包**时应当跳过。
+   * （导入侧不跳：判定要看书架索引，而索引正是备份包要恢复的东西，见 BackupStore。）
+   *
+   * 为什么会有残留：`update()` 保存正文时无条件写 `docs/<fileName>`，内置文档也不例外；
+   * 而 `readText()` 对 builtin 一律回头读应用包里的 rawfile（沙箱那份旧覆盖正文会把
+   * 更新后的内置教程压住，所以**故意不读**）。于是 `docs/README.md`、`docs/chengjian.md`、
+   * `docs/capabilities.md` 写下去就再没人读；`docs/images/chengjian-icon.png` 同理，
+   * 首启会从 rawfile 重新释放一份。
+   *
+   * 它们能从安装包 100% 复原，却是「备份包里一堆我根本没有的文件」的主要来源
+   * （文件名还是英文的，看着像演示文件——它们本来也就是演示文件的死副本）。
+   * **用户自建的同名文档不算残留**：那种在索引里 builtin=false，应用真的要读它。
+   */
+  static builtinResidue(ctx: common.UIAbilityContext): string[] {
+    DocStore.init(ctx);
+    const out: string[] = [];
+    for (let k = 0; k < DocStore.BUILTINS.length; k++) {
+      const raw: string = DocStore.BUILTINS[k].raw;
+      if (!DocStore.isUserDocFile(raw)) {
+        out.push(DocStore.pathOf(raw));
+      }
+    }
+    out.push(DocStore.imagesDirPath() + '/' + DocStore.BUILTIN_IMAGE);
+    return out;
+  }
+
+  /** 索引里有没有一篇**非内置**文档正用着这个文件名（有就是用户文档，不是残留） */
+  private static isUserDocFile(fileName: string): boolean {
+    for (let k = 0; k < DocStore.docs.length; k++) {
+      if (!DocStore.docs[k].builtin && DocStore.docs[k].fileName === fileName) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** 把内置教程收进「澄笺」文件夹（只做一次；被隐藏的内置文档不参与）。 */

@@ -937,6 +937,11 @@ export struct SettingsData {
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
+          Text(L10n.t('三篇内置演示文档的正文始终从应用包内读取，沙箱里那几份副本应用永远不读、也能随安装复原，所以不进包——包里只会是你自己产生的数据。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.7)
+            .width('100%')
 
           // 换行布局：三颗芯片在窄屏上放不下时折到下一行，不再被右边缘截断
           Flex({
