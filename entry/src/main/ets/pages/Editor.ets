@@ -476,8 +476,19 @@ export struct Editor {
   /** Web 编辑器（WYSIWYG / IR 表面） */
   private editWebCtrl: webview.WebviewController = new webview.WebviewController();
   private webBridge: EditorWebBridge = new EditorWebBridge();
-  /** Web 内容冲刷去重（防保存重入无限循环） */
-  private webFlushed: boolean = false;
+  /**
+   * **保存正在等 Web 侧内容回灌**的标记（事件驱动，取代以前"死等 200ms 重试"）。
+   * WYSIWYG / IR 模式下正文在 Web 那边，必须先 exportToHost 把最新内容要回来再落盘：
+   * 旧写法固定等 200ms 就重试，桥回调晚于 200ms 时重试存的是**旧内容**，
+   * 用户看到的就是"要点两次才真保存"（用户实测）。现在改成
+   * mdChanged 一到就续存，另设一个兜底定时器 —— Web 侧没有改动时它不会回调，
+   * 只干等就永远存不下去。
+   */
+  private saveAwaitingWeb: boolean = false;
+  /** 续存时要沿用的 quiet 标志（自动保存静默 / 手动保存要提示） */
+  private saveAwaitingQuiet: boolean = false;
+  /** 兜底定时器句柄（-1 = 无） */
+  private saveWatchdog: number = -1;
   /**
    * 「块内部刚消费过这次点击」的标记。
    * ArkUI 的 ClickEvent 没有 stopPropagation，父子 onClick 都会跑（子先父后），
@@ -1470,23 +1481,49 @@ export struct Editor {
    * 成功不打 toast（连续自动保存不吵）、只读/未命名的提示也静默跳过；
    * 失败照常提示（罕见且必须让用户知道），dirty 保持 true 由显式保存兜底。
    */
+  /**
+   * 续存被挂起的保存：Web 内容回灌到位（onWebMdChanged）或兜底定时器到点时调用。
+   * 没在等就什么都不做（避免手动保存 + 定时器各存一次）。
+   */
+  private resumePendingSave(): void {
+    if (!this.saveAwaitingWeb) {
+      return;
+    }
+    this.save(this.saveAwaitingQuiet);
+  }
+
   private save(quiet: boolean = false): boolean {
     // **正在编辑的块先提交回正文**（否则保存丢当前块——用户实测）
     this.flushLiveEdit();
-    // Web 编辑模式：先把 Web 里的最新内容同步回来再落盘（200ms 等桥回调，只重试一次）
-    if (this.previewMode >= 1 && this.liveMode && !this.webFlushed) {
-      this.webFlushed = true;
+    // Web 编辑模式：正文在 Web 那边，先把最新内容要回来再落盘。
+    if (this.previewMode >= 1 && this.liveMode && !this.saveAwaitingWeb) {
+      this.saveAwaitingWeb = true;
+      this.saveAwaitingQuiet = quiet;
       try {
         this.editWebCtrl.runJavaScript('window.exportToHost();');
       } catch (err) {
-        // 忽略
+        // Web 未就绪：走兜底定时器，不卡住保存
       }
-      setTimeout((): void => {
-        this.save(quiet);
-      }, 200);
+      // 兜底：Web 侧内容没变时不会回 mdChanged（回调里内容相同直接 return），
+      // 光等事件就永远存不下去。400ms 后不管有没有回内容都续存。
+      if (this.saveWatchdog >= 0) {
+        clearTimeout(this.saveWatchdog);
+      }
+      this.saveWatchdog = setTimeout((): void => {
+        this.saveWatchdog = -1;
+        this.resumePendingSave();
+      }, 400);
       return false;
     }
-    this.webFlushed = false;
+    if (this.saveAwaitingWeb) {
+      // 这一次是"内容已到手"的续存：清标记、还原 quiet
+      this.saveAwaitingWeb = false;
+      if (this.saveWatchdog >= 0) {
+        clearTimeout(this.saveWatchdog);
+        this.saveWatchdog = -1;
+      }
+      quiet = this.saveAwaitingQuiet;
+    }
     const ctx = this.ctx();
     if (ctx === null) {
       return false;
@@ -3581,11 +3618,16 @@ export struct Editor {
   /** Web → 原生：Web 推送整篇 Markdown（防抖后 / 导出时）。 */
   private onWebMdChanged(md: string): void {
     if (this.content === md) {
+      // 内容没变也要放行挂起的保存：Web 侧"无改动"时不会带新内容回来，
+      // 不等它 —— 直接续存（否则只能等兜底定时器，用户会觉得保存慢半拍）
+      this.resumePendingSave();
       return;
     }
     this.content = md;
     this.dirty = true;
     this.refreshPreviewBlocks();
+    // 内容刚到手：有挂起的保存就立刻接着存，不再干等定时器
+    this.resumePendingSave();
   }
 
   /** 原生 → Web：整篇 Markdown + 当前模式推给编辑器页面。 */
