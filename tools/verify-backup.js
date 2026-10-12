@@ -11,7 +11,10 @@
  *
  * ① **包结构与落点**：类别表可解析、id 唯一且纯 ASCII、导出路径与导入路径互为逆运算、
  *    compressFiles 只传一个目录（多目录会被拍平）、解压落暂存目录而非沙箱、
- *    认不出的包直接拒绝（不许把别人的 zip 倒进数据目录）。
+ *    认不出的包直接拒绝（不许把别人的 zip 倒进数据目录）、**拷文件前先建父目录**、
+ *    **空目录不进包**、**导入先判定包布局**（后三条都是真机事故：导出说"N 项读不出来"、
+ *    导入后书架空空、老包的 docs/ 被摊平进数据目录根）。
+ *    行为层面的端到端仿真见 tools/sim-backup.js（假沙箱打包→恢复→逐文件比对）。
  * ② **覆盖面**：从全部源码里反推出真实的写入位置（filesDir / cacheDir / 应用级
  *    filesDir / preferences），逐个对照类别表——**每一处都必须被显式类别覆盖**，
  *    或者写在 NOT_BACKED_UP 里并注明理由。新增数据文件而忘了进表 → 这里就红。
@@ -161,6 +164,33 @@ check('① 导出写 manifest.json 清单，导入把它当成「这是澄笺的
   && /exists\(root \+ '\/' \+ BackupStore\.MANIFEST\)/.test(backup));
 check('① 目录只合并、文件同名先删再拷（导入不会删掉本机多出来的数据）',
   /fs\.unlinkSync\(dst\)/.test(backup) && !/rmdirSync\(dst\)/.test(backup));
+
+// ── ① 两条实测踩死整包的细节（copyTree 里）──
+// 真机事故：导出提示"N 项读不出来"、导入后书架空空——因为 zip 里文件躺在 <类别>/ 下，
+// 而类别文件夹没人创建，copyFileSync 直接 ENOENT，shelf.json / settings.json /
+// 两份日志 / tabs.json / review*.json / 壁纸 / 手写 / fonts.json / 卡片快照**全部**没进包。
+const copyTreeBody = methodBody(backup, 'private static copyTree(');
+check('① 拷文件前先建目标的父目录（不建 = 所有单文件类别整批拷贝失败）',
+  copyTreeBody !== null
+  && /BackupStore\.ensureDir\(BackupStore\.parentOf\(dst\)\)/.test(copyTreeBody)
+  && copyTreeBody.indexOf('parentOf(dst)') < copyTreeBody.indexOf('copyFileSync'));
+check('① 空目录不进包（SDK 原文：待压缩的文件夹不能为空，否则 decompressFile 会报错）',
+  copyTreeBody !== null
+  && /if \(names\.length === 0\) \{\s*return;/.test(copyTreeBody)
+  && copyTreeBody.indexOf('listNames(src)') < copyTreeBody.indexOf('ensureDir(dst)'));
+check('① 解压报错也接着救（老包夹空文件夹时 zlib 整体报错，暂存目录里往往已有可用数据）',
+  restoreBody !== null && /let unzipErr: string = ''/.test(restoreBody)
+  && /if \(names\.length === 0\) \{[\s\S]{0,220}备份包读不出来/.test(restoreBody));
+// 真机事故二：老版平铺包里的 docs/ 被当成新版的 docs **类别夹**，文档被倒进 filesDir 根，
+// 真正的文档目录一个也没恢复。docs/annotations/ai/drafts/versions/fonts 六类 id 与
+// 沙箱里的真实目录同名，必须靠「不撞名的类别」或「双层路径 docs/docs/」来区分布局。
+check('① 导入先判定包布局（分类 / 老版平铺），判定结果决定要不要按类别写回',
+  /private static isCategorized/.test(backup)
+  && /const categorized: boolean = BackupStore\.isCategorized\(root, names, cats\)/.test(restoreBody)
+  && /categorized \? BackupStore\.categoryById\(cats, entry\) : null/.test(restoreBody));
+check('① 撞名类别靠双层路径（docs/docs）区分新老包，不撞名的类别出现即为新包',
+  /private static idCollides/.test(backup)
+  && /exists\(root \+ '\/' \+ names\[k\] \+ '\/' \+ first\)/.test(backup));
 
 // ══════════════════ ② 覆盖面：从源码反推真实写入位置 ══════════════════
 

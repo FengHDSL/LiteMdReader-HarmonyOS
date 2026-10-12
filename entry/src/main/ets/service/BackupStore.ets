@@ -365,6 +365,14 @@ export class BackupStore {
    * **目录只合并、不整目录删**（见文件头要点 3）。
    * ⚠️ 逐条目容错：单个文件被框架占用（preferences 的持久层之类）或权限异常时
    *    记一笔 failed 继续，绝不让一个文件中断整包（用户实测过"收集数据失败"）。
+   *
+   * 两条容易踩死整包的细节（都实测踩过）：
+   *  · **拷文件前必须先把 dst 的父目录建出来**。zip 里每个文件都躺在 `<类别>/` 下，
+   *    而类别文件夹此前没人创建 → 单文件类别（shelf.json / settings.json / 两份日志 /
+   *    tabs.json / review*.json / 壁纸 / 手写 / 字体索引 / 卡片快照）拷贝**全部失败**，
+   *    导入后文档正文虽在、书架索引却没了，看上去就是"什么都没有"。
+   *  · **空目录绝不进包**。SDK 对 compressFiles 的原文警告：待压缩的文件夹不能为空，
+   *    否则 decompressFile 解这个包时会报错——一个空的 drafts/ 就能让整个备份解不开。
    */
   private static copyTree(src: string, dst: string, stat: CopyStat): void {
     // 用两个原始类型把 statSync 的结果带出 try（不在 try 外用可空对象，避免严格空检查歧义）
@@ -379,17 +387,17 @@ export class BackupStore {
       return;
     }
     if (isFolder) {
-      try {
-        fs.mkdirSync(dst, true);
-      } catch (err) {
-        // 已存在
-      }
       const names: string[] = BackupStore.listNames(src);
+      if (names.length === 0) {
+        return;                      // 空目录：连建都不建（见上面的第二条）
+      }
+      BackupStore.ensureDir(dst);
       for (let k = 0; k < names.length; k++) {
         BackupStore.copyTree(src + '/' + names[k], dst + '/' + names[k], stat);
       }
       return;
     }
+    BackupStore.ensureDir(BackupStore.parentOf(dst));
     try {
       if (fs.accessSync(dst)) {
         fs.unlinkSync(dst);
@@ -404,6 +412,21 @@ export class BackupStore {
     } catch (err) {
       stat.failed++;
     }
+  }
+
+  /** 建目录（连父级一起建）；已存在或建不出来都不抛 */
+  private static ensureDir(dir: string): void {
+    try {
+      fs.mkdirSync(dir, true);
+    } catch (err) {
+      // 已存在
+    }
+  }
+
+  /** 取父目录（沙箱路径统一正斜杠，不引 path 模块） */
+  private static parentOf(p: string): string {
+    const at: number = p.lastIndexOf('/');
+    return at > 0 ? p.substring(0, at) : p;
   }
 
   /** 把一个类别文件夹里的内容按相对路径写回落点根（zip 路径去掉类别名就是沙箱路径） */
@@ -501,7 +524,8 @@ export class BackupStore {
       : (kb / 1024).toFixed(2) + ' MB';
     let text: string = stat.files + ' 个文件 · ' + size + ' · ' + used.length + ' 类数据';
     if (stat.failed > 0) {
-      text += '（' + stat.failed + ' 项读不出来，已跳过）';
+      // 说清是"没拷进包"而不是"读不出来"（多半是写目标失败），并且明确备份不完整
+      text += '（注意：有 ' + stat.failed + ' 项没能拷进包里，这份备份不完整）';
     }
     return text;
   }
@@ -637,8 +661,9 @@ export class BackupStore {
    * 从本地 zip 路径恢复。**六步**（少任何一步都会出现"导入成功但数据没进来"）：
    *   ① 解压到 cacheDir 暂存目录（不直接解压进沙箱：decompressFile 对已存在文件
    *      没有覆盖承诺，本机有数据时可能整批跳过）；
-   *   ② 找到包根并**校验像不像澄笺的备份**（认 manifest.json / 认类别文件夹 /
+   *   ② 找到包根、**校验像不像澄笺的备份**（认 manifest.json / 认类别文件夹 /
    *      认老包的 shelf.json），不像就直接报错，别把用户的数据目录搞坏；
+   *      同时判定包是**分类布局**（新版）还是**平铺布局**（1.1.x），见 isCategorized；
    *   ③ 按类别把每个文件夹写回它**本来的落点**（filesDir / cacheDir / 应用级
    *      filesDir / preferences），同名先删再拷；
    *   ④ 回填运行中的进程：settings.json → AppStorage（持久化键会写穿 preferences）、
@@ -658,11 +683,14 @@ export class BackupStore {
     } catch (err) {
       return '恢复失败：创建临时目录出错';
     }
+    // 解压报错也**可能已经解出来一部分**：老包里夹了空文件夹时 zlib 会整体报错
+    // （见 copyTree 的第二条），这时暂存目录里往往已经有能用的数据——接着恢复，
+    // 别把能救的东西一起丢掉。
+    let unzipErr: string = '';
     try {
       await zlib.decompressFile(zipPath, stage);
     } catch (err) {
-      BackupStore.clean(stage);
-      return '恢复失败：备份包读不出来（' + (err as Error).message + '）';
+      unzipErr = (err as Error).message;
     }
 
     const cats: BackupCategory[] = BackupStore.categories();
@@ -670,7 +698,8 @@ export class BackupStore {
     const names: string[] = BackupStore.listNames(root);
     if (names.length === 0) {
       BackupStore.clean(stage);
-      return '恢复失败：备份包是空的';
+      return unzipErr.length > 0
+        ? '恢复失败：备份包读不出来（' + unzipErr + '）' : '恢复失败：备份包是空的';
     }
     if (!BackupStore.looksLikeOurs(root, names, cats)) {
       BackupStore.clean(stage);
@@ -680,6 +709,10 @@ export class BackupStore {
     const stat: CopyStat = { files: 0, bytes: 0, failed: 0 } as CopyStat;
     const done: string[] = [];
     let webdavDone: boolean = false;
+    // 先判定包的布局：**分类布局**（新版）才按类别文件夹写回，**平铺布局**（1.1.x）
+    // 直接按 filesDir 顶层写回。判错了后果很实在——老包里的 `docs/` 会被当成新版的
+    // `docs` 类别夹，里面的文档被倒进 filesDir 根，而真正的文档目录一个也没恢复。
+    const categorized: boolean = BackupStore.isCategorized(root, names, cats);
 
     for (let k = 0; k < names.length; k++) {
       const entry: string = names[k];
@@ -687,7 +720,7 @@ export class BackupStore {
       if (entry === BackupStore.MANIFEST) {
         continue;
       }
-      const cat: BackupCategory | null = BackupStore.categoryById(cats, entry);
+      const cat: BackupCategory | null = categorized ? BackupStore.categoryById(cats, entry) : null;
       if (cat !== null && BackupStore.isDir(src)) {
         const before: number = stat.files;
         if (cat.root === BackupStore.ROOT_PREF) {
@@ -704,8 +737,8 @@ export class BackupStore {
         }
         continue;
       }
-      // 不是类别文件夹：老版平铺包（shelf.json / settings.json / docs 直接躺在根）
-      // 与包根散落的文件，一律按 filesDir 顶层处理
+      // 平铺布局（或分类布局里出现的未知条目）：老版包的 shelf.json / settings.json /
+      // docs 直接躺在根，一律按 filesDir 顶层处理
       if (BackupStore.SKIP.indexOf(entry) >= 0) {
         continue;
       }
@@ -740,6 +773,9 @@ export class BackupStore {
       + '书架、设置与语言立即生效';
     if (stat.failed > 0) {
       text += '；' + stat.failed + ' 项写入失败';
+    }
+    if (unzipErr.length > 0) {
+      text += '；压缩包解压时报错（' + unzipErr + '），已按解出来的部分恢复';
     }
     return text;
   }
@@ -781,6 +817,53 @@ export class BackupStore {
         return true;
       }
       if (names[k] === 'shelf.json' || names[k] === 'settings.json' || names[k] === 'tabs.json') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 这个包是不是**分类布局**（新版）。两条判据，任一成立即算：
+   *   ① 根上有 manifest.json（正常导出的包一定有）；
+   *   ② 根上有一个「只可能属于分类布局」的类别文件夹。
+   *
+   * 为什么不能只看"文件夹名是不是类别 id"：`docs`、`annotations`、`ai`、`drafts`、
+   * `versions`、`fonts` 这六类的 id 与它们在 filesDir 下的真实目录**同名**，老版平铺包
+   * 里也有这些目录，光看名字分不清是"类别夹"还是"真实数据目录"。所以：
+   *   · 不撞名的类别（shelf / settings / logs / tabs / review / wallpaper / handwrite /
+   *     form / cache / webdav / extra）出现即为分类布局；
+   *   · 撞名的类别要看**双层路径**——新版包里是 `docs/docs/…`（类别夹 + 沙箱相对路径），
+   *     老版包里 `docs/` 下面直接就是文档，不会有第二层 `docs/`。
+   */
+  private static isCategorized(root: string, names: string[], cats: BackupCategory[]): boolean {
+    if (BackupStore.exists(root + '/' + BackupStore.MANIFEST)) {
+      return true;
+    }
+    for (let k = 0; k < names.length; k++) {
+      const cat: BackupCategory | null = BackupStore.categoryById(cats, names[k]);
+      if (cat === null || !BackupStore.isDir(root + '/' + names[k])) {
+        continue;
+      }
+      if (!BackupStore.idCollides(cat)) {
+        return true;
+      }
+      for (let s = 0; s < cat.sources.length; s++) {
+        const at: number = cat.sources[s].indexOf('/');
+        const first: string = at < 0 ? cat.sources[s] : cat.sources[s].substring(0, at);
+        if (first.length > 0 && first.indexOf('*') < 0
+          && BackupStore.exists(root + '/' + names[k] + '/' + first)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** 类别 id 是否与它在落点根下的真实路径同名（同名就会与老版平铺包撞车） */
+  private static idCollides(cat: BackupCategory): boolean {
+    for (let s = 0; s < cat.sources.length; s++) {
+      if (cat.sources[s] === cat.id || cat.sources[s].indexOf(cat.id + '/') === 0) {
         return true;
       }
     }
