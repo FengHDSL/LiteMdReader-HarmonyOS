@@ -61,7 +61,10 @@ for (const e of entries) {
 }
 
 // ── ②③④ SVG 本体 ──
-const ALLOWED = 'MmLlHhVvZz';
+// 允许的绘图命令：直线（M L H V Z）+ 二次/三次贝塞尔与圆弧（Q T C S A）。
+// 圆滑风格靠 Q 弧角实现——这与用户提供的 chevron_*.svg 同一套写法（真机可渲染）。
+// ⚠️ 仍然禁止 transform / 属性写法：ArkUI 的 SVG 变换支持不稳，且 fillColor 只能染 fill。
+const ALLOWED = 'MmLlHhVvCcSsQqTtAaZz';
 for (const e of entries) {
   if (e.icon === '') { continue; }
   const p = path.join(MEDIA, e.icon + '.svg');
@@ -69,6 +72,7 @@ for (const e of entries) {
   const svg = fs.readFileSync(p, 'utf8');
   check('② no stroke attr: ' + e.icon, !/stroke\s*=/.test(svg));
   check('② no hard-coded fill: ' + e.icon, !/fill\s*=/.test(svg));
+  check('② no transform attr: ' + e.icon, !/transform\s*=/.test(svg));
   check('④ viewBox 24: ' + e.icon, /viewBox="0 0 24 24"/.test(svg));
   const dRe = /d="([^"]+)"/g;
   let d;
