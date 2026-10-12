@@ -35,21 +35,26 @@ for (const line of body.split('\n')) {
   const group = /group:\s*'([^']*)'/.exec(t);
   const core = /core:\s*(true|false)/.exec(t);
   const label = /label:\s*'([^']*)'/.exec(t);
-  check('entry has key/icon/group/core: ' + (key ? key[1] : t.slice(0, 20)),
-    !!(key && icon && group && core));
-  if (key && icon && group && core) {
-    entries.push({ key: key[1], icon: icon[1], group: group[1],
+  const grp = group ? group[1] : '';
+  // 符号组的按钮**刻意不配 SVG**：字符本身就是脸，画个图标反而看不出要点的是哪个
+  const needIcon = grp !== 'sym';
+  check('entry fields ok: ' + (key ? key[1] : t.slice(0, 20)),
+    !!(key && group && core) && (!needIcon || !!icon));
+  if (key && group && core && (!needIcon || icon)) {
+    entries.push({ key: key[1], icon: icon ? icon[1] : '', group: grp,
       core: core[1] === 'true', label: label ? label[1] : '' });
   }
 }
-console.log('SNIPPETS 条目: ' + entries.length + '，图标引用: ' +
-  new Set(entries.map(e => e.icon)).size + ' 个');
+console.log('SNIPPETS 条目: ' + entries.length + '，带图标: ' +
+  entries.filter(e => e.icon !== '').length + '，纯字符按钮: ' +
+  entries.filter(e => e.icon === '').length);
 check('条目数与源码里的 { key: 行数一致',
   entries.length === (body.match(/^\s*\{ key:/gm) || []).length,
   'parsed=' + entries.length + ' lines=' + (body.match(/^\s*\{ key:/gm) || []).length);
 
-// ── ① 资源文件存在 ──
+// ── ① 资源文件存在（符号组按钮没有图标，跳过）──
 for (const e of entries) {
+  if (e.icon === '') { continue; }
   const p = path.join(MEDIA, e.icon + '.svg');
   check('① asset exists: ' + e.icon, fs.existsSync(p));
 }
@@ -57,6 +62,7 @@ for (const e of entries) {
 // ── ②③④ SVG 本体 ──
 const ALLOWED = 'MmLlHhVvZz';
 for (const e of entries) {
+  if (e.icon === '') { continue; }
   const p = path.join(MEDIA, e.icon + '.svg');
   if (!fs.existsSync(p)) { continue; }
   const svg = fs.readFileSync(p, 'utf8');

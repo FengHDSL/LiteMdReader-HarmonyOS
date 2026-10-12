@@ -77,8 +77,10 @@ interface MdSnippet {
    *    所以字面量写在数据定义处，用的时候直接 `Image(item.icon)`。
    * 图标是**纯直线填充路径**（不用 stroke、不写 fill），这样 `Image.fillColor()`
    * 才能染色、跟随深浅主题；带 stroke 的 SVG 在 ArkUI 里换不了色。
+   * 可省略：符号组（`~ @ ; : — …`）与破折号**用字符本身当图**——给一个画出来的
+   * 图标反而不如直接看到要点的是哪个字符。
    */
-  icon: Resource;
+  icon?: Resource;
   /** 分组：fmt=格式 chart=图表 sym=符号（展开面板按组分节展示） */
   group: string;
   /** 收起状态下也常驻胶囊条（常用那几颗） */
@@ -127,7 +129,38 @@ const SNIPPETS: MdSnippet[] = [
   { key: 'chart-flowchart', label: '旧式流程', before: '\n```flowchart\n', after: '\n```\n', holder: 'st=>start: 开始\nop=>operation: 处理\ncond=>condition: 通过?\ne=>end: 结束\nst->op->cond\ncond(yes)->e\ncond(no)->op', icon: $r('app.media.tb_chart_flowchart'), group: 'chart', core: false },
   { key: 'chart-wavedrom', label: '波形', before: '\n```wavedrom\n', after: '\n```\n', holder: '{"signal":[{"name":"clk","wave":"p...."},{"name":"dat","wave":"x345x","data":["A","B","C"]}]}', icon: $r('app.media.tb_chart_wavedrom'), group: 'chart', core: false },
   { key: 'chart-abc', label: '五线谱', before: '\n```abc\n', after: '\n```\n', holder: 'X:1\nT:示例曲调\nM:4/4\nL:1/4\nK:C\nC D E F | G A B c |', icon: $r('app.media.tb_chart_abc'), group: 'chart', core: false },
-  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false }
+  { key: 'chart-html', label: 'HTML 预览', before: '\n```html\n', after: '\n```\n', holder: '<button onclick="this.textContent=(+this.textContent+1)+\'\'">0</button>', icon: $r('app.media.tb_chart_html'), group: 'chart', core: false },
+  // ── 新增格式按钮（参考常见编辑器补齐） ──
+  { key: 'taskdone', label: '已完成任务', before: '\n- [x] ', after: '', holder: '已完成事项', icon: $r('app.media.tb_taskdone'), group: 'fmt', core: false },
+  { key: 'latex', label: '公式块', before: '\n$$\n', after: '\n$$\n', holder: '\\frac{a}{b}', icon: $r('app.media.tb_latex'), group: 'fmt', core: false },
+  { key: 'latexinline', label: '行内公式', before: '$', after: '$', holder: 'E=mc^2', icon: $r('app.media.tb_latexinline'), group: 'fmt', core: false },
+  { key: 'underline', label: '下划线', before: '\n<u>', after: '</u>\n', holder: '下划线文字', icon: $r('app.media.tb_underline'), group: 'fmt', core: false },
+  { key: 'center', label: '居中', before: '\n<div align="center">\n', after: '\n</div>\n', holder: '居中内容', icon: $r('app.media.tb_center'), group: 'fmt', core: false },
+  // ⚠️ **没做「文字颜色」按钮**：颜色只能靠 `<font color>` / `<span style>` 这类行内
+  //    HTML，而解析器刻意不支持行内 HTML（按纯文本显示，见 MdParser 头注释）——
+  //    插进去就是一串显示出来的标签，宁可不给。
+  // ── 符号组：字符本身就是图标，不另配 SVG（icon 省略） ──
+  { key: 'sym-mdash', label: '—', before: '—', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-endash', label: '–', before: '–', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-ellipsis', label: '…', before: '…', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-dun', label: '、', before: '、', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-dq', label: '“”', before: '“', after: '”', holder: '引用', group: 'sym', core: false },
+  { key: 'sym-sq', label: '‘’', before: '‘', after: '’', holder: '引用', group: 'sym', core: false },
+  { key: 'sym-lpar', label: '（）', before: '（', after: '）', holder: '', group: 'sym', core: false },
+  { key: 'sym-book', label: '《》', before: '《', after: '》', holder: '书名', group: 'sym', core: false },
+  { key: 'sym-tort', label: '【】', before: '【', after: '】', holder: '', group: 'sym', core: false },
+  { key: 'sym-pipe', label: '|', before: '|', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-tilde', label: '~', before: '~', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-at', label: '@', before: '@', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-hash', label: '#', before: '#', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-pct', label: '%', before: '%', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-amp', label: '&', before: '&', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-bslash', label: '\\', before: '\\', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-semi', label: ';', before: ';', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-colon', label: ':', before: ':', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-comma', label: ',', before: ',', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-quest', label: '?', before: '?', after: '', holder: '', group: 'sym', core: false },
+  { key: 'sym-bang', label: '!', before: '!', after: '', holder: '', group: 'sym', core: false }
 ];
 
 /** 收起状态下常驻胶囊条的片段（常用集）。 */
@@ -1943,14 +1976,18 @@ export struct Editor {
               palette: this.palette(),
               chipLabel: item.label,
               chipPaddingH: 10,
+              // 符号组没有图标：字符本身就是脸，字号放大一点才看得清
+              chipFontSize: item.icon === undefined ? 15 : 0,
               chipOnTap: (): void => {
                 this.insertSnippet(item);
               }
             }) {
-              Image(item.icon)
-                .width(15)
-                .height(15)
-                .fillColor(this.palette().accent)
+              if (item.icon !== undefined) {
+                Image(item.icon)
+                  .width(15)
+                  .height(15)
+                  .fillColor(this.palette().accent)
+              }
             }
           }
           .opacity(this.chipAlphaAt(index + 3))
@@ -2022,14 +2059,17 @@ export struct Editor {
               palette: this.palette(),
               chipLabel: item.label,
               chipPaddingH: 10,
+              chipFontSize: item.icon === undefined ? 15 : 0,
               chipOnTap: (): void => {
                 this.insertSnippet(item);
               }
             }) {
-              Image(item.icon)
-                .width(15)
-                .height(15)
-                .fillColor(this.palette().accent)
+              if (item.icon !== undefined) {
+                Image(item.icon)
+                  .width(15)
+                  .height(15)
+                  .fillColor(this.palette().accent)
+              }
             }
           }, (item: MdSnippet) => item.key)
         }
