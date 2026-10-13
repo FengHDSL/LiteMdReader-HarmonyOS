@@ -39,8 +39,9 @@ function check(label, ok, extra) {
 }
 
 // ── ① 源码同步：端口所依据的两条规则还在原地 ──
-check('① 列表层级仍由内容列栈算（不再是 floor(空格/2) 一刀切）',
-  /const levels: number\[\] = \[\]/.test(src) && !/Math\.floor\(indentSpaces \/ 2\)/.test(src));
+check('① 列表层级仍由内容列栈算（不再是 floor(空格/2) 一刀切），且栈直接用匹配器交出的 spaces',
+  /const levels: number\[\] = \[\]/.test(src) && !/Math\.floor\(indentSpaces \/ 2\)/.test(src)
+  && /const baseIndent: number = cur\.spaces;/.test(src));
 const listHitIface = (() => {
   const at = src.indexOf('interface ListHit');
   const open = src.indexOf('{', at);

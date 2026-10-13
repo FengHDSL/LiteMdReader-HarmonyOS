@@ -97,11 +97,6 @@ interface MdStat {
   tableCount: number;
 }
 
-function missHeading(): HeadingHit {
-  const r: HeadingHit = { hit: false, level: 0, text: '' };
-  return r;
-}
-
 function missList(): ListHit {
   const r: ListHit = { hit: false, ordered: false, marker: '', text: '', spaces: 0, task: MdTaskState.None };
   return r;
@@ -1096,7 +1091,7 @@ export class MdParser {
           // 条目自己的源码行号（任务列表勾选要改写原文这一行）
           const itemLine: number = i;
           let text: string = cur.text;
-          const baseIndent: number = MdParser.leadingSpaces(lines[i]);
+          const baseIndent: number = cur.spaces;
           if (levels.length === 0) {
             levels.push(baseIndent);
           } else {
