@@ -14,10 +14,12 @@
 
 | 语言名 | 引擎 | 版本 | 用来画 |
 | --- | --- | --- | --- |
-| `mermaid` | Mermaid | 10.9.3 | 流程图、时序图、类图、状态图、ER 图、甘特、饼图、思维导图、时间线、C4 等 |
+| `mermaid`（别名 `mmd`） | Mermaid | 11.17.2 | 流程图、时序图、类图、状态图、ER 图、甘特、饼图、思维导图、时间线、C4、看板、数据包、架构图、块图、象限、需求、git 分支等 |
 | `echarts` | Apache ECharts | 6.1.0 | 统计图（柱 / 折线 / 饼 / 散点 / 雷达 / 仪表盘 / 关系图 / 树 / 矩形树图 等） |
 | `markmap` | markmap | 0.18.12 | 思维导图（Markdown 大纲直接成图） |
-| `graphviz` | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
+| `graphviz`（别名 `dot` / `gv` / `viz`） | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
+| `nomnoml`（别名 `noml` / `nml`） | nomnoml（UMD，只依赖 graphre） | 1.x | 极简 UML：`[A] -> [B]`、`[类\|字段\|方法]` |
+| `chart`（别名 `chartjs` / `chart.js`） | Chart.js | 4.4.7 | 统计图，配置写 JSON（与 `echarts` 重叠，写法不同） |
 | `flowchart` | flowchart.js | 1.17.1 | 经典 `st=>start:` 写法的流程图 |
 | `abc` | abcjs | 6.7.1 | ABC 记谱法五线谱 |
 | `wavedrom` | WaveDrom | 3.7.0 | **数字波形图**、逻辑门图、寄存器位段图 |
@@ -53,21 +55,22 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
 | 块图 | `block-beta` | ✅ |
 | C4 架构图 | `C4Context` | ✅ |
 | 数据包图 | `packet-beta` | ✅（中文标签实测可用） |
-| 架构图 | `architecture-beta` | ⚠️ 在构建内，但**标签只认 ASCII** |
+| 架构图 | `architecture-beta` | ✅（中文 / 空格 / 点号标签实测可解析——见下面第 3 条，这条是升级到 11.17.2 才通的） |
 
-实测踩到的坑（逐条在随包引擎上跑过）：
+实测踩到的坑（逐条在**随包引擎**上跑过；下面每条都在 11.17.2 重新验过一遍，不再拿旧构建的话糊弄你）：
 
 1. **象限图的标签没有冒号**。要写 `quadrant-1 We should expand`，写成 `quadrant-1: 我们要扩张` 会直接解析失败。
 2. **类图、需求图靠缩进分块**。`class Animal { +int age }` 的花括号内换行要缩进，否则报 Parse error。
-3. **象限图的坐标轴与数据点标签只认 ASCII**。`x-axis 低成本 --> 高成本` 会报 Lexical error，
-   必须写成 `x-axis Low cost --> High cost`；图标题（`title`）里可以放中文。这是 Mermaid 10.9 词法的限制。
-4. **架构图的 `[标签]` 只认"不带点的 ASCII"**（这条是在随包的 Mermaid 11 上逐个变体实测的，不是猜的）：
-   · 中文不行 —— `group app(cloud)[澄笺应用]` 报 `Parsing failed: unexpected character: ->[<-`，
-     **加引号也救不了**（`["澄笺应用"]` 同样失败）；
-   · 点号不行 —— `[shelf.json]` 同样报错，写成 `[shelf index]` 就正常；
-   · 空格可以 —— `[docs folder]`、`[API layer]` 实测正常。
-   同一批图种里 `kanban` 的中文列名与 `packet-beta` 的中文段名都实测正常 —— 只有
-   architecture-beta 的词法卡在这两处。
+3. **`gitGraph` 的分支名只认 ASCII**。`branch 特性/登录` 报 `Lexer error … unexpected character: ->特<-`，
+   写成 `branch feat/login` 就正常——同一批里 `kanban` 的中文列名、`packet-beta` 的中文段名、
+   `quadrantChart` 的中英文轴名、`classDiagram` 的中文类名、`architecture-beta` 的中文标签**都没问题**，
+   别把这条当成"Mermaid 不支持中文"。
+4. **架构图的标签**在 11.17.2 之前确实是死的：`group app(cloud)[澄笺应用]`、`[API 层]`、`[shelf.json]`
+   一律报 `Parsing failed: unexpected character: ->[<-`，**加引号也救不了**——那是 architecture-beta
+   自带的词法器不吃 CJK，跟空格与点号无关。升级到 11.17.2 后这三种写法逐个重测，全部可解析。
+   旧的"只认 ASCII"结论就写在本文档里，现在已改过来；留着这条是为了说明：**图种报错先怀疑构建版本，
+   别急着怪用户写法**。
+5. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
 
 ## PlantUML（```plantuml）：只桥接时序图，其余显示源码
 
