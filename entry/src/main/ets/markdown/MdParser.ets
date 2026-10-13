@@ -1359,7 +1359,8 @@ export class MdParser {
           level: b.level,
           text: b.plain,
           blockIndex: k,
-          seq: b.headingSeq
+          seq: b.headingSeq,
+          anchor: b.anchor === undefined ? '' : b.anchor
         };
         outline.push(item);
       }

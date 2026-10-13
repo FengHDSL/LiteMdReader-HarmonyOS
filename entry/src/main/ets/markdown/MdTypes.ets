@@ -197,6 +197,12 @@ export interface MdHeading {
   blockIndex: number;
   /** 标题序号 */
   seq: number;
+  /**
+   * 显式锚点（`## 标题 {#intro}` 里那个 id，无则空串）。
+   * 有了它，阅读页的 `[文字](#intro)` 才能按 id 跳——以前跳转只比标题文字，
+   * 于是"显式锚点"这件事只有导出的网页成立，应用里点了没反应（用户实测）。
+   */
+  anchor: string;
 }
 
 /**
