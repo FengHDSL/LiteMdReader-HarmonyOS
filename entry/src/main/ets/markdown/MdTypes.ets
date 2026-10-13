@@ -54,7 +54,22 @@ export enum MdInlineKind {
   /** 上标 ^text^ */
   Sup = 10,
   /** 下标 ~text~ */
-  Sub = 11
+  Sub = 11,
+  /**
+   * **键盘按键**（原生 HTML `<kbd>` / `<samp>` / `<var>`）。
+   * 与行内代码同为等宽，但画成"按键帽"底色——导出侧写成真正的 `<kbd>` 标签。
+   */
+  Key = 12,
+  /**
+   * **中文注音**（原生 HTML `<ruby>` 里 `<rt>` 的那段读音）。
+   * 扁平结构里没法做上下两层，所以基准文字仍是普通片段，读音作为紧随其后的
+   * 小号上移片段——导出侧会重新拼成 `<ruby>`。
+   */
+  Ruby = 13,
+  /** **带颜色的文字**（`<span style="color:…">` / `<font color>`），颜色在 `color` 字段 */
+  Color = 14,
+  /** **下划线**（`<u>` / `<ins>`） */
+  Under = 15
 }
 
 /** GFM 提示块种类 */
@@ -90,6 +105,12 @@ export interface MdInline {
   italic: boolean;
   strike: boolean;
   code: boolean;
+  /**
+   * **指定颜色**（原生 HTML `<span style="color:…">` / `<font color>`）。
+   * 空串/未设 = 跟随正文颜色；值形如 `#RRGGBB` 或 `#AARRGGBB`（解析器已过滤，
+   * 只放行十六进制色值，`red`/`rgb()`/`url()` 之类一律丢弃，避免把任意 CSS 注入渲染层）。
+   */
+  color?: string;
 }
 
 /** 表格行 */
@@ -237,6 +258,8 @@ export interface MdPiece {
   italic: boolean;
   strike: boolean;
   code: boolean;
+  /** 指定颜色（`MdInlineKind.Color` 用；从 MdInline.color 原样带过来） */
+  color?: string;
   /** 该片段的荧光笔底色；空串表示无底纹 */
   highlight: string;
   /**

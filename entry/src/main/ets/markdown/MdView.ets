@@ -129,6 +129,10 @@ export class MdViewUtil {
       // 细空格把行内代码与相邻文字撑开，Span 不支持 padding
       return '\u200A' + item.text + '\u200A';
     }
+    if (item.kind === MdInlineKind.Key) {
+      // 按键帽同理：靠细空格撑出"键"的边距
+      return '\u2009' + item.text + '\u2009';
+    }
     return item.text;
   }
 
@@ -149,6 +153,7 @@ export class MdViewUtil {
         italic: item.italic,
         strike: item.strike,
         code: item.code,
+        color: item.color,
         highlight: '',
         wavy: false,
         dblLine: false,
@@ -169,13 +174,17 @@ export class MdViewUtil {
 
   /** 片段字号：脚注引用与行内代码略小。 */
   static pieceSize(piece: MdPiece, size: number): number {
+    if (piece.kind === MdInlineKind.Ruby) {
+      // 注音（`<ruby>` 的 `<rt>`）：ArkUI 没有真注音排版，用"小号 + 上移"贴在基准字右侧
+      return Math.round(size * 0.62 * 10) / 10;
+    }
     if (piece.kind === MdInlineKind.Sup || piece.kind === MdInlineKind.Sub) {
       return Math.round(size * 0.74 * 10) / 10;
     }
     if (piece.kind === MdInlineKind.FootnoteRef) {
       return Math.round(size * 0.72 * 10) / 10;
     }
-    if (piece.kind === MdInlineKind.Code) {
+    if (piece.kind === MdInlineKind.Code || piece.kind === MdInlineKind.Key) {
       return Math.round(size * 0.92 * 10) / 10;
     }
     return size;
@@ -187,11 +196,22 @@ export class MdViewUtil {
       // **学习卡实色底上的文字**：绿底配白字（用户反馈黄底白字看不清，已改绿底）
       return '#FFFFFFFF';
     }
+    // 原生 HTML 指定的颜色优先于一切语义色（用户写 `<span style="color:#f00">` 就是要红字）
+    if (piece.kind === MdInlineKind.Color && piece.color !== undefined
+      && piece.color.length > 0) {
+      return piece.color;
+    }
     if (piece.kind === MdInlineKind.Link) {
       return palette.accent;
     }
     if (piece.kind === MdInlineKind.Code) {
       return palette.inlineCodeText;
+    }
+    if (piece.kind === MdInlineKind.Key) {
+      return palette.textPrimary;
+    }
+    if (piece.kind === MdInlineKind.Ruby) {
+      return palette.textTertiary;
     }
     if (piece.kind === MdInlineKind.FootnoteRef) {
       return palette.accent;
@@ -235,6 +255,10 @@ export class MdViewUtil {
     if (piece.kind === MdInlineKind.Link) {
       return { type: TextDecorationType.Underline, color: palette.accent };
     }
+    if (piece.kind === MdInlineKind.Under) {
+      // 原生 HTML 的 `<u>` / `<ins>`：正体下划线，跟着正文色走（不是链接的强调色）
+      return { type: TextDecorationType.Underline, color: palette.textPrimary };
+    }
     return { type: TextDecorationType.None };
   }
 
@@ -260,6 +284,11 @@ export class MdViewUtil {
     }
     if (piece.kind === MdInlineKind.Code) {
       return { color: palette.inlineCodeBg, radius: HwRadius.inline };
+    }
+    if (piece.kind === MdInlineKind.Key) {
+      // **按键帽**（`<kbd>`）：中性灰底 + 圆角，跟行内代码的彩色底区分开。
+      // Span 没有 padding，键帽的边距靠 spanLabel 里的细空格撑。
+      return { color: palette.divider, radius: HwRadius.inline };
     }
     if (piece.kind === MdInlineKind.Mark) {
       return { color: palette.markBg, radius: HwRadius.inline };
@@ -397,6 +426,10 @@ export class MdViewUtil {
     }
     if (piece.kind === MdInlineKind.FootnoteRef) {
       return LengthMetrics.vp(4);
+    }
+    if (piece.kind === MdInlineKind.Ruby) {
+      // 注音上移贴到基准字右上方（配合 pieceSize 的 0.62 倍字号）
+      return LengthMetrics.vp(Math.round(size * 0.34));
     }
     return LengthMetrics.vp(0);
   }
@@ -550,6 +583,7 @@ export class MdViewUtil {
           italic: item.italic,
           strike: item.strike,
           code: item.code,
+          color: item.color,
           highlight: highlight,
           solid: solid,
           wavy: wavy,

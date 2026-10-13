@@ -52,6 +52,11 @@ const HTML_CSS: string = `
   img { max-width: 100%; border-radius: 8px; }
   hr { border: none; border-top: 1px solid #dde2ea; margin: 2em 0; }
   mark { background: #e8f0a0; padding: 0.05em 0.2em; border-radius: 3px; }
+  kbd { background: #eef1f7; border: 1px solid #ccd3e0; border-bottom-width: 2px; border-radius: 4px;
+        padding: 0.05em 0.4em; font-family: inherit; font-size: 0.86em; color: #1b1f27; }
+  ruby rt { font-size: 0.55em; color: #6e7781; }
+  .rt { font-size: 0.62em; color: #6e7781; vertical-align: super; margin-left: 0.1em; }
+  u { text-decoration: underline; }
   .meta { background: #eef1f7; border-radius: 10px; padding: 14px 18px; margin-bottom: 2em; font-size: 0.9em; }
   .meta dt { font-weight: 600; color: #525a68; margin-top: 6px; }
   .meta dd { margin: 0 0 0 0; color: #1b1f27; }
@@ -174,10 +179,48 @@ export class MdToHtml {
         // JS 未加载 / 渲染失败时以源码兜底（可读），渲染成功会被替换。
         body = '<span class="kxi" data-b64="' + MdToHtml.b64(item.text) + '">'
           + MdToHtml.esc(item.text) + '</span>';
+      } else if (item.kind === MdInlineKind.Sup) {
+        // **上标/下标此前没有分支**：`x^2^` 导出成纯文本 "x2"（阅读页有样式、导出没有）
+        body = '<sup>' + body + '</sup>';
+      } else if (item.kind === MdInlineKind.Sub) {
+        body = '<sub>' + body + '</sub>';
+      } else if (item.kind === MdInlineKind.Key) {
+        body = '<kbd>' + body + '</kbd>';
+      } else if (item.kind === MdInlineKind.Ruby) {
+        body = '<span class="rt">' + body + '</span>';
+      } else if (item.kind === MdInlineKind.Under) {
+        body = '<u>' + body + '</u>';
+      } else if (item.kind === MdInlineKind.Color) {
+        const color: string = MdToHtml.safeHexColor(item.color === undefined ? '' : item.color);
+        if (color.length > 0) {
+          body = '<span style="color:' + color + '">' + body + '</span>';
+        }
       }
       out += body;
     }
     return out;
+  }
+
+  /**
+   * 只放行十六进制色值（`#RGB` / `#RRGGBB` / `#AARRGGBB`），其余返回空串。
+   * 解析器已经过滤过一遍，这里是**写进 style 属性前**的第二道闸：颜色值会被拼进
+   * HTML 属性，绝不能让任何带引号、分号或函数调用的串混进来。
+   */
+  static safeHexColor(raw: string): string {
+    if (raw.length === 0 || raw.charAt(0) !== '#') {
+      return '';
+    }
+    const digits: string = raw.substring(1);
+    if (digits.length !== 3 && digits.length !== 6 && digits.length !== 8) {
+      return '';
+    }
+    const hex: string = '0123456789abcdefABCDEF';
+    for (let k = 0; k < digits.length; k++) {
+      if (hex.indexOf(digits.charAt(k)) < 0) {
+        return '';
+      }
+    }
+    return raw;
   }
 
   /** 代码块 → 带语言族高亮的 pre/code。 */

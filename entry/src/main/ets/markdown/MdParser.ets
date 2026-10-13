@@ -16,8 +16,15 @@
  * 数学公式：块级（$$…$$ / \[…\]）与行内（$…$ / \(…\)）**源码原样保留**，
  * 交给 KaTeX 完整渲染（块级结构段仅作预渲染完成前的线性化兜底）。
  *
+ * 原生 HTML（行内）：`<kbd>` 按键帽、`<ruby>`+`<rt>` 注音、`<span style="color:…">`
+ * / `<font color>` 彩色文字、`<u>`/`<ins>` 下划线、`<b>`/`<i>`/`<s>`/`<code>`/`<mark>`/
+ * `<sub>`/`<sup>`/`<a href>`/`<img>`/`<br>` 都能渲染；不认识的成对标签**脱标签留内容**。
+ * 只放行十六进制色值，`<script>`/`<style>` 整段丢弃——渲染层没有 CSS/JS 执行环境，
+ * 放行等于把任意样式注入正文。
+ *
  * 刻意不支持（v1 范围）：
- *   行内 HTML（按纯文本显示）、缩进代码块（4 空格）、多文件文档。
+ *   **块级原生 HTML**（`<table>` 合并单元格、`<div>`、内嵌 `<svg>` 等，按文本显示）、
+ *   缩进代码块（4 空格）、多文件文档。
  */
 
 import { PlantumlBridge } from './PlantumlBridge';
@@ -453,6 +460,18 @@ class MdBlockFactory {
 
 function inlineOfPlain(text: string): MdInline {
   return inlineOf(MdInlineKind.Plain, text, '', 0, false, false, false, false);
+}
+
+/** 行内 HTML 的一次识别结果 */
+interface HtmlHit {
+  /** 吃掉的字符数；0 = 不是可识别的行内 HTML（原样留作文本） */
+  consumed: number;
+  /** 产出的片段（可以为空：注释与 <script> 这类整段丢弃） */
+  items: MdInline[];
+}
+
+function missHtml(): HtmlHit {
+  return { consumed: 0, items: [] } as HtmlHit;
 }
 
 export class MdParser {
@@ -1507,6 +1526,20 @@ export class MdParser {
         }
       }
 
+      // **原生 HTML 行内标签**（`<kbd>` / `<ruby>` / `<span style="color">` / `<u>` / `<b>` …）
+      // 放在所有行内规则之后：`<https://…>` 这类自动链接已经先一步处理过了。
+      if (c === '<') {
+        const h: HtmlHit = MdParser.htmlAt(src, i, bold, italic, strike, code);
+        if (h.consumed > 0) {
+          buf = MdParser.flush(out, buf, bold, italic, strike, code);
+          for (let q = 0; q < h.items.length; q++) {
+            out.push(h.items[q]);
+          }
+          i += h.consumed;
+          continue;
+        }
+      }
+
       buf = buf + c;
       i++;
     }
@@ -1522,6 +1555,395 @@ export class MdParser {
       out.push(inlineOf(MdInlineKind.Plain, buf, '', 0, bold, italic, strike, code));
     }
     return '';
+  }
+
+  /** 这些标签是**块级**的：行内不处理（否则会把整张表格吞成一行文本），留给块级路径或原样显示 */
+  private static htmlBlockTag(name: string): boolean {
+    const names: string[] = ['table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+      'colgroup', 'col', 'div', 'p', 'section', 'article', 'aside', 'main', 'header',
+      'footer', 'nav', 'details', 'summary', 'figure', 'figcaption', 'pre', 'blockquote',
+      'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'svg', 'canvas', 'iframe', 'video', 'audio', 'source', 'form', 'hr'];
+    return names.indexOf(name) >= 0;
+  }
+
+  /**
+   * 行内原生 HTML：`start` 指向 `<`。返回吃掉的字符数与产出片段。
+   *
+   * **认不出来就返回 consumed=0**，让 `<` 原样留作正文——宁可显示标签文本，
+   * 也不猜一段结构（块级 HTML 的 `<table>` 就是这么留在文本里的）。
+   */
+  private static htmlAt(src: string, start: number, bold: boolean, italic: boolean,
+                        strike: boolean, code: boolean): HtmlHit {
+    const n: number = src.length;
+    if (start + 2 >= n || src.charAt(start) !== '<') {
+      return missHtml();
+    }
+    // HTML 注释：整段丢弃（写在源码里不是为了给人看）
+    if (src.substring(start, start + 4) === '<!--') {
+      const cEnd: number = src.indexOf('-->', start + 4);
+      if (cEnd < 0) {
+        return missHtml();
+      }
+      return { consumed: cEnd + 3 - start, items: [] } as HtmlHit;
+    }
+    const name: string = MdParser.htmlTagName(src, start);
+    if (name.length === 0 || MdParser.htmlBlockTag(name)) {
+      return missHtml();
+    }
+    const gt: number = src.indexOf('>', start + 1);
+    if (gt < 0 || gt - start > 300) {
+      return missHtml();
+    }
+    const attrs: string = src.substring(start + 1 + name.length, gt);
+    const selfClosed: boolean = src.charAt(gt - 1) === '/';
+
+    // ── 没有内容的标签 ──
+    if (name === 'br') {
+      return { consumed: gt + 1 - start, items: [inlineOfPlain('\n')] } as HtmlHit;
+    }
+    if (name === 'wbr') {
+      return { consumed: gt + 1 - start, items: [] } as HtmlHit;
+    }
+    if (name === 'img') {
+      const imgSrc: string = MdParser.htmlAttr(attrs, 'src');
+      if (imgSrc.length === 0) {
+        return missHtml();
+      }
+      return {
+        consumed: gt + 1 - start,
+        items: [inlineOf(MdInlineKind.Image, MdParser.htmlText(MdParser.htmlAttr(attrs, 'alt')),
+          imgSrc, 0, bold, italic, strike, code)]
+      } as HtmlHit;
+    }
+
+    let inner: string = '';
+    let after: number = gt + 1;
+    if (!selfClosed) {
+      const closeAt: number = MdParser.htmlCloseAt(src, gt + 1, name);
+      if (closeAt < 0) {
+        return missHtml();                 // 找不到配对闭合 → 交给块级路径 / 原样显示
+      }
+      inner = src.substring(gt + 1, closeAt);
+      const closeEnd: number = src.indexOf('>', closeAt);
+      after = closeEnd < 0 ? closeAt : closeEnd + 1;
+    }
+    const consumed: number = after - start;
+
+    // 脚本与样式：**整段丢弃**，不执行也不显示（渲染层没有 CSS/JS 执行环境）
+    if (name === 'script' || name === 'style' || name === 'noscript' || name === 'template') {
+      return { consumed: consumed, items: [] } as HtmlHit;
+    }
+
+    if (name === 'kbd' || name === 'samp' || name === 'var') {
+      // 按键帽：等宽 + 底色（Span 不支持 padding，与行内代码一样用细空格撑开）
+      return {
+        consumed: consumed,
+        items: [inlineOf(MdInlineKind.Key, MdParser.htmlText(inner), '', 0,
+          bold, italic, strike, false)]
+      } as HtmlHit;
+    }
+    if (name === 'mark') {
+      return {
+        consumed: consumed,
+        items: [inlineOf(MdInlineKind.Mark, MdParser.htmlText(inner), '', 0,
+          bold, italic, strike, code)]
+      } as HtmlHit;
+    }
+    if (name === 'sub') {
+      return {
+        consumed: consumed,
+        items: [inlineOf(MdInlineKind.Sub, MdParser.htmlText(inner), '', 0,
+          bold, italic, strike, code)]
+      } as HtmlHit;
+    }
+    if (name === 'sup') {
+      return {
+        consumed: consumed,
+        items: [inlineOf(MdInlineKind.Sup, MdParser.htmlText(inner), '', 0,
+          bold, italic, strike, code)]
+      } as HtmlHit;
+    }
+    if (name === 'strong' || name === 'b') {
+      return { consumed: consumed, items: MdParser.scan(inner, true, italic, strike, code) } as HtmlHit;
+    }
+    if (name === 'em' || name === 'i') {
+      return { consumed: consumed, items: MdParser.scan(inner, bold, true, strike, code) } as HtmlHit;
+    }
+    if (name === 's' || name === 'del' || name === 'strike') {
+      return { consumed: consumed, items: MdParser.scan(inner, bold, italic, true, code) } as HtmlHit;
+    }
+    if (name === 'code') {
+      return { consumed: consumed, items: MdParser.scan(inner, bold, italic, strike, true) } as HtmlHit;
+    }
+    if (name === 'u' || name === 'ins') {
+      const items: MdInline[] = MdParser.scan(inner, bold, italic, strike, code);
+      for (let q = 0; q < items.length; q++) {
+        items[q].kind = MdInlineKind.Under;
+      }
+      return { consumed: consumed, items: items } as HtmlHit;
+    }
+    if (name === 'a') {
+      const href: string = MdParser.htmlAttr(attrs, 'href');
+      if (href.length === 0) {
+        return { consumed: consumed, items: MdParser.scan(inner, bold, italic, strike, code) } as HtmlHit;
+      }
+      return {
+        consumed: consumed,
+        items: [inlineOf(MdInlineKind.Link, MdParser.htmlText(inner), href, 0,
+          bold, italic, strike, code)]
+      } as HtmlHit;
+    }
+    if (name === 'ruby') {
+      // <ruby>汉<rt>hàn</rt><rp>(</rp><rp>)</rp></ruby>
+      // 扁平结构里做不了上下两层：基准文字照常产出，读音变成紧随其后的小号上移片段；
+      // <rp> 是"不支持注音时显示的括号"，我们有注音，直接丢
+      const base: string = MdParser.rubyBase(inner);
+      const reading: string = MdParser.rubyReading(inner);
+      const items: MdInline[] = MdParser.scan(base, bold, italic, strike, code);
+      if (reading.length > 0) {
+        items.push(inlineOf(MdInlineKind.Ruby, reading, '', 0, false, false, false, false));
+      }
+      return { consumed: consumed, items: items } as HtmlHit;
+    }
+    if (name === 'span' || name === 'font') {
+      const items: MdInline[] = MdParser.scan(inner, bold, italic, strike, code);
+      const color: string = MdParser.htmlColor(attrs);
+      if (color.length === 0) {
+        return { consumed: consumed, items: items } as HtmlHit;
+      }
+      for (let q = 0; q < items.length; q++) {
+        items[q].kind = MdInlineKind.Color;
+        items[q].color = color;
+      }
+      return { consumed: consumed, items: items } as HtmlHit;
+    }
+    // 其它成对标签（abbr / cite / q / time / small / label / bdi …）：**脱标签留内容**
+    return { consumed: consumed, items: MdParser.scan(inner, bold, italic, strike, code) } as HtmlHit;
+  }
+
+  /** 取标签名（小写）；不是字母开头（`<3`、`</`、`<!`）返回空串 */
+  private static htmlTagName(src: string, start: number): string {
+    let k: number = start + 1;
+    if (k >= src.length || !MdParser.isAsciiLetter(src.charAt(k))) {
+      return '';
+    }
+    const from: number = k;
+    while (k < src.length) {
+      const c: string = src.charAt(k);
+      const lc: string = c.toLowerCase();
+      if (MdParser.isAsciiLetter(lc) || (lc >= '0' && lc <= '9') || lc === '-') {
+        k++;
+      } else {
+        break;
+      }
+    }
+    return src.substring(from, k).toLowerCase();
+  }
+
+  private static isAsciiLetter(c: string): boolean {
+    const lc: string = c.toLowerCase();
+    return lc >= 'a' && lc <= 'z' && lc.length === 1;
+  }
+
+  /** 从 from 起找 `</name>` 的 `<` 下标（大小写不敏感）；没有返回 -1 */
+  private static htmlCloseAt(src: string, from: number, name: string): number {
+    const needle: string = '</' + name;
+    // 整串只降一次：在循环里反复 toLowerCase 会把找闭合标签变成 O(n²)（长段落会卡）
+    const lower: string = src.toLowerCase();
+    let k: number = from;
+    while (k + needle.length <= lower.length) {
+      const at: number = lower.indexOf(needle, k);
+      if (at < 0) {
+        return -1;
+      }
+      const after: string = at + needle.length < src.length ? src.charAt(at + needle.length) : ' ';
+      if (after === '>' || after === ' ' || after === '\t' || after === '/') {
+        return at;
+      }
+      k = at + 1;
+    }
+    return -1;
+  }
+
+  /**
+   * 读一个属性值（大小写不敏感，支持双引号 / 单引号 / 裸值）；没有返回空串。
+   * 逐个候选试：`data-color="x" color="#f00"` 里第一个 `color` 是 `data-color` 的尾巴，
+   * 只取第一次命中会把真正的颜色读成"没有"。
+   */
+  private static htmlAttr(attrs: string, key: string): string {
+    const lower: string = attrs.toLowerCase();
+    const needle: string = key.toLowerCase();
+    let from: number = 0;
+    while (from <= lower.length - needle.length) {
+      const k: number = lower.indexOf(needle, from);
+      if (k < 0) {
+        return '';
+      }
+      from = k + 1;
+      // 必须是独立属性名（前面是空白/串头/引号/等号），否则会匹配到 data-href / mycolor
+      if (k > 0) {
+        const prev: string = attrs.charAt(k - 1);
+        if (prev !== ' ' && prev !== '\t' && prev !== '"' && prev !== '\'' && prev !== '=') {
+          continue;
+        }
+      }
+      let p: number = k + key.length;
+      while (p < attrs.length && (attrs.charAt(p) === ' ' || attrs.charAt(p) === '\t')) {
+        p++;
+      }
+      if (p >= attrs.length || attrs.charAt(p) !== '=') {
+        continue;                          // 属性名后面没有 = —— 继续找下一个
+      }
+      p++;
+      while (p < attrs.length && (attrs.charAt(p) === ' ' || attrs.charAt(p) === '\t')) {
+        p++;
+      }
+      if (p >= attrs.length) {
+        return '';
+      }
+      const quote: string = attrs.charAt(p);
+      if (quote === '"' || quote === '\'') {
+        const close: number = attrs.indexOf(quote, p + 1);
+        if (close < 0) {
+          return '';
+        }
+        return attrs.substring(p + 1, close).trim();
+      }
+      let end: number = p;
+      while (end < attrs.length && attrs.charAt(end) !== ' ' && attrs.charAt(end) !== '\t') {
+        end++;
+      }
+      return attrs.substring(p, end).trim();
+    }
+    return '';
+  }
+
+  /**
+   * 从属性里取**十六进制**颜色：`color="#f00"` / `style="color:#ff0000; …"`。
+   * 只放行 `#RGB` / `#RRGGBB` / `#AARRGGBB`，其余（red、rgb()、url()、含分号的注入串）
+   * 一律当没有颜色——渲染层拿到的只能是色值，不可能是任意 CSS。
+   */
+  private static htmlColor(attrs: string): string {
+    let raw: string = MdParser.htmlAttr(attrs, 'color');
+    if (raw.length === 0) {
+      const style: string = MdParser.htmlAttr(attrs, 'style');
+      const at: number = style.toLowerCase().indexOf('color:');
+      if (at >= 0) {
+        const semi: number = style.indexOf(';', at);
+        raw = semi < 0 ? style.substring(at + 6) : style.substring(at + 6, semi);
+      }
+    }
+    return MdParser.normalizeHexColor(raw.trim());
+  }
+
+  private static normalizeHexColor(raw: string): string {
+    if (raw.length === 0 || raw.charAt(0) !== '#') {
+      return '';
+    }
+    const digits: string = raw.substring(1);
+    let ok: boolean = true;
+    for (let k = 0; k < digits.length; k++) {
+      const c: string = digits.charAt(k).toLowerCase();
+      const isHex: boolean = (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9');
+      if (!isHex) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) {
+      return '';
+    }
+    if (digits.length === 3) {
+      // #f00 → #ff0000（ArkUI 的色值解析对三位并不一致，这里统一展开）
+      return '#' + digits.charAt(0) + digits.charAt(0) + digits.charAt(1) + digits.charAt(1)
+        + digits.charAt(2) + digits.charAt(2);
+    }
+    if (digits.length === 6 || digits.length === 8) {
+      return raw;
+    }
+    return '';
+  }
+
+  /** `<ruby>` 里的读音（第一段 `<rt>…</rt>`）；没有返回空串 */
+  private static rubyReading(inner: string): string {
+    const open: number = inner.toLowerCase().indexOf('<rt');
+    if (open < 0) {
+      return '';
+    }
+    const gt: number = inner.indexOf('>', open);
+    const close: number = inner.toLowerCase().indexOf('</rt>', gt + 1);
+    if (gt < 0 || close < 0) {
+      return '';
+    }
+    return MdParser.htmlText(inner.substring(gt + 1, close));
+  }
+
+  /** `<ruby>` 里的基准文字：去掉 `<rt>` / `<rp>` 两段附属内容，其余原样（仍可带行内标记） */
+  private static rubyBase(inner: string): string {
+    let out: string = '';
+    let k: number = 0;
+    while (k < inner.length) {
+      if (inner.charAt(k) === '<') {
+        const tag: string = MdParser.htmlTagName(inner, k);
+        if (tag === 'rt' || tag === 'rp') {
+          const closeAt: number = MdParser.htmlCloseAt(inner, k, tag);
+          if (closeAt >= 0) {
+            const closeEnd: number = inner.indexOf('>', closeAt);
+            k = closeEnd < 0 ? closeAt : closeEnd + 1;
+            continue;
+          }
+        }
+      }
+      out = out + inner.charAt(k);
+      k++;
+    }
+    return out;
+  }
+
+  /**
+   * HTML → 纯文本：跳过标签、解几个常见实体。
+   * 按键帽 / 链接文字这类内容基本是纯文本，用这个把夹在中间的 `<b>` 之类剥掉。
+   */
+  private static htmlText(s: string): string {
+    let out: string = '';
+    let k: number = 0;
+    while (k < s.length) {
+      const c: string = s.charAt(k);
+      if (c === '<') {
+        const gt: number = s.indexOf('>', k);
+        if (gt > k) {
+          k = gt + 1;
+          continue;
+        }
+      }
+      if (c === '&') {
+        const semi: number = s.indexOf(';', k);
+        if (semi > k && semi - k <= 8) {
+          const ent: string = s.substring(k + 1, semi);
+          if (ent === 'amp') {
+            out = out + '&';
+          } else if (ent === 'lt') {
+            out = out + '<';
+          } else if (ent === 'gt') {
+            out = out + '>';
+          } else if (ent === 'quot') {
+            out = out + '"';
+          } else if (ent === 'apos' || ent === '#39') {
+            out = out + '\'';
+          } else if (ent === 'nbsp') {
+            out = out + ' ';
+          } else {
+            out = out + s.substring(k, semi + 1);
+          }
+          k = semi + 1;
+          continue;
+        }
+      }
+      out = out + c;
+      k++;
+    }
+    return out.trim();
   }
 
   /** 解析 `[label](href)`，start 指向 `[`。 */
