@@ -2852,7 +2852,8 @@ export struct MdBlockView {
             }
             .width('100%')
             .alignItems(VerticalAlign.Center)
-          }, (tokens: CodeToken[], lineIndex: number) => 'g' + lineIndex + '_' + tokens.length)
+          }, (tokens: CodeToken[], lineIndex: number) => 'g' + this.groupIndex() + '_'
+            + lineIndex + '_' + tokens.length)
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
@@ -2870,9 +2871,16 @@ export struct MdBlockView {
   detailsView() {
     Column({ space: HwSpace.xs }) {
       Row({ space: HwSpace.xs }) {
-        SymbolGlyph(this.detailsShown() ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
-          .fontSize(13)
-          .fontColor([this.palette.textTertiary])
+        // **用户提供的圆圈右尖角图标**（rawfile/icons/chevron_circle_right.svg）：
+        // 收起时朝右，展开后**顺时针转 90°** 朝下。原来用系统 symbol chevron 是两条
+        // 完全不同的字形，用户要求换成自己这套。
+        // fillColor 覆盖 SVG 里的黑色，深浅两套配色都跟着主题走。
+        Image($rawfile('icons/chevron_circle_right.svg'))
+          .width(14)
+          .height(14)
+          .fillColor(this.palette.textTertiary)
+          .rotate({ angle: this.detailsShown() ? 90 : 0 })
+          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
         Text() {
           ForEach(MdViewUtil.toPieces(this.block.inlines, this.dark), (piece: MdPiece) => {
             Span(piece.text)
