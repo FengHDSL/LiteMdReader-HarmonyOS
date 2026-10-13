@@ -1058,7 +1058,22 @@ export class MdParser {
         // 在同一层"就是这么来的。栈里存的是**每一层第一次出现时的行首空格数**：
         // 比栈顶更深 = 新开一层；比栈顶浅 = 弹回对应层；相等 = 同层兄弟。
         const levels: number[] = [];
+        let lastIndent: number = -1;
         while (i < lines.length) {
+          // **松散列表的嵌套**：父项与子项之间空了一行（`- 父` 空行 `        - 子`）。
+          // 空行会让上面这个 while 直接 break，新一轮列表又从零建 levels 栈，
+          // 于是子项的层级被抹平成第 0 层。只要空行后紧跟的是**缩进更深**的列表项，
+          // 它就还是这一项的子列表——跨过空行，栈保留。
+          if (lines[i].trim().length === 0 && lastIndent >= 0) {
+            let j: number = i;
+            while (j < lines.length && lines[j].trim().length === 0) {
+              j++;
+            }
+            if (j < lines.length && MdParser.listInfo(lines[j]).hit
+              && MdParser.leadingSpaces(lines[j]) > lastIndent) {
+              i = j;
+            }
+          }
           const cur: ListHit = MdParser.listInfo(lines[i]);
           if (!cur.hit) {
             break;
@@ -1097,18 +1112,21 @@ export class MdParser {
           }
           blocks.push(MdBlockFactory.listItem(text, cur.ordered, cur.marker, cur.task, depth,
             MdParser.parseInline(text), blocks.length, MdParser.orig(itemLine)));
+          lastIndent = baseIndent;
         }
         continue;
       }
 
       // ── 缩进代码块（4 空格 / Tab，老式写法）────────────────────────
       // CommonMark 的两条限制都在这儿落地：
-      //  · **不能打断段落**——紧跟段落的缩进行是段落的"惰性续行"，不是代码；
-      //  · **不算在列表项内容区里**——那里 4+ 空格是"这一项的后续段落"，
-      //    真要写代码得再缩进过内容列，那种交给列表分支处理。
-      // 此前这里没有分支，缩进正文会被当普通段落、行首空白被 trim 掉，
-      // 老式代码块的等宽与缩进整段丢失。
-      if ((raw.startsWith('    ') || raw.startsWith('\t')) && MdParser.atBlockBoundary(blocks)) {
+      //  · **不能打断段落**——紧跟段落的缩进行是段落的"惰性续行"，不是代码。
+      //    判据是**上一行**有没有空行，而不是"上一个块是什么种类"：`段落 + 空行 + 缩进`
+      //    里段落早被那行空行关闭了，缩进块是代码。原来只看块种类，这条被当成续行，
+      //    整段代码并进段落、行首空白被 trim，等宽与缩进全丢（覆盖实测第 4 条）。
+      //  · 列表项的嵌套与后续内容轮不到这里——列表分支在这条之前，
+      //    `listInfo()` 对 8 空格缩进的项同样命中，缩进正文才落到这条来。
+      if ((raw.startsWith('    ') || raw.startsWith('\t'))
+        && (MdParser.atBlockBoundary(blocks) || MdParser.prevLineBlank(lines, i))) {
         const codeStart: number = i;
         const body: string[] = [];
         while (i < lines.length) {
@@ -1837,6 +1855,11 @@ export class MdParser {
     }
     const last: MdBlock = blocks[blocks.length - 1];
     return last.kind !== MdBlockKind.Paragraph && last.kind !== MdBlockKind.ListItem;
+  }
+
+  /** 上一行是不是空白行（首行算空白：文档一开头就缩进那是代码） */
+  private static prevLineBlank(lines: string[], i: number): boolean {
+    return i === 0 || lines[i - 1].trim().length === 0;
   }
 
   /** 这些标签是**块级**的：行内不处理（否则会把整张表格吞成一行文本），留给块级路径或原样显示 */

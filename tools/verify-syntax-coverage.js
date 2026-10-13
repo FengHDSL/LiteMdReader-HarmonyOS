@@ -312,10 +312,24 @@ probe('§4.4', '代码组 ::: code-group',
     return (codes[0].label === 'npm' && codes[0].lang === 'bash') ? true
       : '页签名/语言没拿到：' + JSON.stringify(codes[0]);
   });
-probe('§4.5', '4 空格缩进代码块（老式）', '段落文字。\n\n    indented();\n    code();\n', 'claim', (res) => {
-  const c = blocks(res, K.Code);
-  return c.length === 1 && c[0].code.indexOf('indented();') >= 0 ? true : '缩进代码没成块';
-});
+probe('§4.5', '段落 + 空行 + 缩进 是代码（不能当段落的惰性续行）',
+  '段落文字。\n\n    indented();\n    code();\n\n普通段落。\n', 'claim', (res) => {
+    const c = blocks(res, K.Code);
+    if (c.length !== 1) { return '代码块 ' + c.length + ' 个（期望 1）'; }
+    if (c[0].code.indexOf('\n') < 0) { return '两行缩进被并成一行：' + JSON.stringify(c[0].code); }
+    return blocks(res, K.Paragraph).length === 2 ? true
+      : '段落数 ' + blocks(res, K.Paragraph).length + '（期望 2：前后各一）';
+  });
+probe('§4.5', '紧跟段落的缩进行仍是惰性续行（CommonMark）',
+  '段落第一行\n    这是续行，不是代码\n', 'claim', (res) =>
+    blocks(res, K.Code).length === 0 && blocks(res, K.Paragraph).length === 1 ? true
+      : '缩进续行被误收成代码块');
+probe('§2.2', '松散嵌套列表（父项后空行，子项缩进 8 空格）不失层级',
+  '- 父项\n\n        - 子项\n- 另一个父项\n', 'claim', (res) => {
+    const it = blocks(res, K.ListItem);
+    if (it.length !== 3) { return '列表项 ' + it.length + ' 个（期望 3）'; }
+    return it.some((b) => b.indent >= 1) ? true : '嵌套层级被缩进代码分支吞掉，层级=' + JSON.stringify(it.map((b) => b.indent));
+  });
 
 // ════ §5 数学 ════
 probe('§5.1', '行内公式 $...$', '质能方程 $E = mc^2$；条件概率 $P(A \\mid B)$。\n', 'claim', (res) =>
