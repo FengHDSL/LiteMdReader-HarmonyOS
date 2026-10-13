@@ -3970,7 +3970,7 @@ export struct Reader {
     }
   }
 
-private toggleStar(): void {
+  private toggleStar(): void {
     const ctx = this.ctx();
     if (ctx === null) {
       return;
@@ -4516,7 +4516,6 @@ private toggleStar(): void {
     this.toast('编码已切换：' + this.encodingLabel(value));
   }
 
-  @Builder
   /** 标签编辑面板：输入添加 + 芯片移除，改动即时落盘 */
   @Builder
   tagsSheet() {
@@ -4579,6 +4578,7 @@ private toggleStar(): void {
     .alignItems(HorizontalAlign.Start)
   }
 
+  @Builder
   noteSheet() {
     Column() {
       // **面板内容自持状态**（NotePanel）：bindSheet 的 builder 不跟宿主 @State
