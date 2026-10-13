@@ -1088,6 +1088,14 @@ export struct MdBlockView {
     return hl !== undefined && hl.indexOf(index + 1) >= 0;
   }
 
+  /**
+   * 高亮行的底色（与导出网页的 .hl 同一支琥珀）。
+   * 深色底上同样的 alpha 比白底上暗得多，所以深色加深一档，两处看着才是"同一种亮"。
+   */
+  private hlLineBg(): string {
+    return this.dark ? '#3DF59E0B' : '#26F59E0B';
+  }
+
   /** 代码块的 token 化结果，按块缓存。 */
   private tokensForCode(): CodeToken[][] {
     const key: string = this.block.id + '|' + this.block.lang + '|' + this.block.codeLines.length;
@@ -1347,30 +1355,40 @@ export struct MdBlockView {
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
           .onClick(() => {
-            if (this.systemSelectId === this.block.id) {
-              // 系统选择模式下点正文 = 退出该模式，恢复自定义批注菜单
-              this.sysSelectExit(this.block.id);
-              return;
-            }
-            if (piece.kind !== MdInlineKind.Link) {
-              return;
-            }
-            if (piece.href.startsWith('#')) {
-              // 站内锚点（`[文字](#标题)`）：交给页面在大纲里定位并跳转
-              this.anchorHandler(piece.href);
-            } else if (MdViewUtil.looksLikeDocLink(piece.href)) {
-              // 文档间链接（`[文字](./other.md#锚点)`）：交给页面开标签跳转
-              this.docLinkHandler(piece.href);
-            } else if (piece.href.startsWith('http://') || piece.href.startsWith('https://')) {
-              // 外部链接：网页开放开启 → 页面半模态打开；关闭 → 维持「点击复制地址」
-              this.webLinkHandler(piece.href);
-            } else {
-              // 其他协议（mailto 等）不做跳转（需要 want + 浏览器能力），点击复制地址并提示
-              this.copyText(piece.href, '链接已复制');
-            }
+            this.pieceTapped(piece);
           })
         }
       }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
+  }
+
+  /**
+   * 行内片段被点：锚点跳转 / 文档间链接 / 外链 / 复制。非链接片段直接返回。
+   * 正文（inlinePieces）与表格单元格（richText）**共用这一份**——单元格那条路以前没有
+   * 点击通道，加上表格卡片整体 onClick 是"打开可视化编辑"，结果文档里表格内的超链接
+   * 一个都点不动（用户实测）。表格改长按进编辑后，链接点击走这里。
+   */
+  private pieceTapped(piece: MdPiece): void {
+    if (this.systemSelectId === this.block.id) {
+      // 系统选择模式下点正文 = 退出该模式，恢复自定义批注菜单
+      this.sysSelectExit(this.block.id);
+      return;
+    }
+    if (piece.kind !== MdInlineKind.Link) {
+      return;
+    }
+    if (piece.href.startsWith('#')) {
+      // 站内锚点（`[文字](#标题)`）：交给页面在大纲里定位并跳转
+      this.anchorHandler(piece.href);
+    } else if (MdViewUtil.looksLikeDocLink(piece.href)) {
+      // 文档间链接（`[文字](./other.md#锚点)`）：交给页面开标签跳转
+      this.docLinkHandler(piece.href);
+    } else if (piece.href.startsWith('http://') || piece.href.startsWith('https://')) {
+      // 外部链接：网页开放开启 → 页面半模态打开；关闭 → 维持「点击复制地址」
+      this.webLinkHandler(piece.href);
+    } else {
+      // 其他协议（mailto 等）不做跳转（需要 want + 浏览器能力），点击复制地址并提示
+      this.copyText(piece.href, '链接已复制');
+    }
   }
 
   /**
@@ -1455,6 +1473,12 @@ export struct MdBlockView {
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
+          // 表格单元格里的链接要能点（与正文同一套跳转）。非链接片段在这条路上是空操作。
+          .onClick(() => {
+            if (piece.kind === MdInlineKind.Link) {
+              this.pieceTapped(piece);
+            }
+          })
         }
       }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
     }
@@ -1715,15 +1739,6 @@ export struct MdBlockView {
                     .width(22)
                     .textAlign(TextAlign.End)
                     .lineHeight(this.bodySize * HwType.codeScale * 1.6)
-                  // 行背景：指定高亮行（琥珀）优先，其次 diff 差异着色
-                  if (this.lineHighlighted(lineIndex)) {
-                    Column()
-                      .position({ x: 0, y: 0 })
-                      .width('100%')
-                      .height('100%')
-                      .backgroundColor('#26F59E0B')
-                      .hitTestBehavior(HitTestMode.None)
-                  }
                   Divider()
                     .vertical(true)
                     .height(this.bodySize * HwType.codeScale * 1.4)
@@ -1749,8 +1764,15 @@ export struct MdBlockView {
                 }
                 .width('100%')
                 .alignItems(VerticalAlign.Center)
-                .backgroundColor(this.diffLineBg(this.block.codeLines.length > lineIndex
-                  ? this.block.codeLines[lineIndex] : ''))
+                // 行底色：指定高亮行（琥珀）优先，其次 diff 差异着色。
+                // 以前高亮是在 Row 里叠一个 position+100% 的半透明 Column，那块底**盖在行号
+                // 之上**（行号被染上琥珀色，与相邻行明显不一致），而且深浅两套底色上 alpha
+                // 一样、看上去一深一浅（用户实测"亮度不一样"）。改成走 Row 背景后，行号与
+                // 代码都在同一层底色上，和 diff 行完全同一套机制。
+                .backgroundColor(this.lineHighlighted(lineIndex)
+                  ? this.hlLineBg()
+                  : this.diffLineBg(this.block.codeLines.length > lineIndex
+                    ? this.block.codeLines[lineIndex] : ''))
               }, (tokens: CodeToken[], lineIndex: number) => 'c' + lineIndex + '_' + tokens.length)
 
           }
@@ -1986,11 +2008,13 @@ export struct MdBlockView {
     .clip(true)
     .border({ width: 1, color: this.palette.divider })
     .margin({ top: HwSpace.xs, bottom: HwSpace.xs })
-    // **点表格打开可视化编辑**（TableEditorDialog，页面按块 srcLine 写回原文）。
-    // onClick 不影响表格内部的横向滚动手势（滚动手势由 Scroll 消费，单击才冒泡）。
-    .onClick(() => {
-      this.tableEditHandler(this.block.id);
-    })
+    // **长按表格打开可视化编辑**（TableEditorDialog，页面按块 srcLine 写回原文）。
+    // 原来是单击：整张表的点击被"打开编辑"吃掉，表格里的超链接一个都点不动（用户实测）。
+    // 改长按后，单击留给单元格里的链接（见 richText 的 onClick），横向滚动仍由 Scroll 消费。
+    .gesture(LongPressGesture({ repeat: false, duration: 500 })
+      .onAction(() => {
+        this.tableEditHandler(this.block.id);
+      }))
   }
 
   @Builder

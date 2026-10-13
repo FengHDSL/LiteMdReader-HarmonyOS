@@ -401,6 +401,12 @@ export struct Reader {
   @State enlargePayload: string = '';
   /** 代码块放大时的**已高亮 HTML**（与正文卡片同一套分词配色；空=纯文本） */
   @State enlargeRichHtml: string = '';
+  /**
+   * 代码块放大时的**指定高亮行**（围栏元数据 js{1,3-5}，逗号分隔的 1 起行号）。
+   * 正文卡片按 block.hlLines 铺行底色，浮层是另一个渲染面（Web），
+   * 不传下去就"一放大高亮全没了"（用户实测）。
+   */
+  @State enlargeHlCsv: string = '';
   /** 放大浮层的一镜到底共享 id（与正文里那张卡片同 id） */
   @State enlargeGeo: string = '';
   /** 放大浮层的 Web 组件 id（导出图片快照按 id 抓） */
@@ -1403,6 +1409,8 @@ export struct Reader {
     this.enlargeMode = 'code';
     // 图表源码不是任何编程语言，必须清掉高亮 HTML（否则会拿上一次的配色乱染一屏）
     this.enlargeRichHtml = '';
+    // 指定高亮行同理：源码视图里没有围栏元数据可依据
+    this.enlargeHlCsv = '';
   }
 
   /** 切换沉浸阅读：进入即收起顶栏 / 底栏，退出即恢复。 */
@@ -5580,6 +5588,24 @@ export struct Reader {
     });
   }
 
+  /**
+   * 代码块放大时按 geoKey（'mdcode_' + 块 id）找回那一块，交出它的高亮行 CSV。
+   * 找不到 / 没有围栏元数据 → 空串（模板一行都不亮）。
+   */
+  private codeHlCsv(geoKey: string): string {
+    const id: string = geoKey.startsWith('mdcode_') ? geoKey.substring('mdcode_'.length) : '';
+    if (id.length === 0) {
+      return '';
+    }
+    for (let k = 0; k < this.blocks.length; k++) {
+      if (this.blocks[k].id === id) {
+        const hl: number[] | undefined = this.blocks[k].hlLines;
+        return hl === undefined ? '' : hl.join(',');
+      }
+    }
+    return '';
+  }
+
   /** 打开放大浮层（正文 / 对照面板共用）：图片 payload 统一转 file:// + URL 编码，
    *  挂载包在 animateTo 里让一镜到底几何动画生效。 */
   private openEnlarge(mode: string, payload: string, geoKey: string, title: string): void {
@@ -5613,6 +5639,7 @@ export struct Reader {
       this.enlargeRichHtml = mode === 'code'
         ? MdViewUtil.highlightToHtml(pl, title, this.palette())
         : '';
+      this.enlargeHlCsv = mode === 'code' ? this.codeHlCsv(geoKey) : '';
       this.enlargeGeo = geoKey;
       this.enlargeTitle = title;
       // 每次打开生成唯一 Web id：导出图片快照按它定位；
@@ -8242,6 +8269,8 @@ export struct Reader {
                     payload: this.enlargePayload,
                     // 代码放大的高亮 HTML（其它模式为空，模板按纯文本渲染）
                     richHtml: this.enlargeRichHtml,
+                    // 指定高亮行（围栏元数据 js{1,3-5}），放大后仍然要亮
+                    hlLines: this.enlargeHlCsv,
                     dark: this.isDark(),
                     // ⚠️ **页面底色必须不透明**：透明 Web 表面在「一镜到底」退场的
                     // geometryTransition 快照里被系统合成成垃圾色（真机：卡片发红）

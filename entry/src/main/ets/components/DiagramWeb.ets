@@ -47,6 +47,12 @@ export struct DiagramWeb {
    * 留空 = 模板按纯文本渲染（图表源码、无高亮语言的情况）。
    */
   @Prop @Watch('onPayloadChanged') richHtml: string = '';
+  /**
+   * 需要整行高亮的行号（1 起，逗号分隔，如 `1,3-5` 展开后的 `1,3,4,5`）。
+   * 来自围栏元数据 `js{1,3-5}`：正文卡片按 `block.hlLines` 铺行底色，浮层是 Web，
+   * 不把这份信息传下去，**一放大高亮就没了**（用户实测）。模板据此给对应 `<tr>` 加 class。
+   */
+  @Prop @Watch('onPayloadChanged') hlLines: string = '';
   /** 暗色模式（传给页面切主题） */
   @Prop dark: boolean = false;
   /** 允许双指缩放（放大浮层用；行内卡片关闭以免劫持页面滚动） */
@@ -229,7 +235,9 @@ export struct DiagramWeb {
     const json: string = JSON.stringify({
       src: this.payload, dark: this.dark, fit: this.fit, bg: this.cssColor(this.cardBg),
       vw: this.inlineMode ? 0 : this.virtualWidth, inline: this.inlineMode,
-      html: this.richHtml
+      html: this.richHtml,
+      // 指定高亮行（围栏元数据 js{1,3-5}），1 起的行号 CSV；模板据此给整行铺底
+      hl: this.hlLines
     });
     try {
       this.ctrl.runJavaScript('window.renderPayload(' + json + ');');

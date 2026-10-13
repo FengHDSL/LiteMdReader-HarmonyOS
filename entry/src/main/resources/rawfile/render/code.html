@@ -8,11 +8,15 @@
   body{color:#1B1F27;-webkit-text-size-adjust:100%;}
   body.dark{color:#ECEFF4;}
   #app{padding:10px 12px;box-sizing:border-box;}
-  table{border-collapse:collapse;
+  table{border-collapse:collapse;width:100%;
         font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,"HarmonyOS Sans SC",monospace;}
   td.ln{width:1%;padding:0 10px 0 0;text-align:right;color:rgba(128,128,128,0.85);
         user-select:none;vertical-align:top;white-space:nowrap;}
-  td.lc{padding:0;white-space:pre-wrap;word-break:break-word;vertical-align:top;}
+  td.lc{padding:0;white-space:pre-wrap;word-break:break-word;vertical-align:top;width:100%;}
+  /* 指定行高亮（围栏元数据 js{1,3-5}）：整行铺琥珀底，与正文卡片同一支颜色。
+     lc 拉满表宽，短行的色带才不会比长行短一截（浮层里"亮度不一样"的观感来自带宽）。 */
+  tr.hl td{background:rgba(245,158,11,0.15);}
+  body.dark tr.hl td{background:rgba(245,158,11,0.24);}
 </style>
 </head>
 <body>
@@ -45,10 +49,16 @@
       document.body.className=(p&&p.dark)?'dark':'';
       var lines=String((p&&p.src)||'').replace(/\r\n?/g,'\n').split('\n');
       var rich=(p&&typeof p.html==='string'&&p.html.length>0)?p.html.split('\n'):null;
+      // 宿主传来的指定高亮行（1 起，CSV）。⚠️ 只认字符串里的数字，缺省 = 一行都不亮。
+      var hlSet={};
+      String((p&&p.hl)||'').split(',').forEach(function(x){
+        var v=parseInt(x,10);
+        if(!isNaN(v)){hlSet[v]=true;}
+      });
       var rows=[];
       for(var k=0;k<lines.length;k++){
         var cell=rich?(rich[k]||''):esc(lines[k]);
-        rows.push('<tr><td class="ln">'+(k+1)+'</td><td class="lc">'+(cell||'&nbsp;')+'</td></tr>');
+        rows.push('<tr'+(hlSet[k+1]?' class="hl"':'')+'><td class="ln">'+(k+1)+'</td><td class="lc">'+(cell||'&nbsp;')+'</td></tr>');
       }
       app.innerHTML='<table>'+rows.join('')+'</table>';
       report();

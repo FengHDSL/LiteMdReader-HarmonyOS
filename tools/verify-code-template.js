@@ -36,7 +36,7 @@ const check = (n, c, extra) => {
   if (c) console.log('  PASS  ' + n);
   else { fails++; console.log('  FAIL  ' + n + ' -> ' + JSON.stringify(extra)); }
 };
-const rows = out => (out.match(/<tr>/g) || []).length;
+const rows = out => (out.match(/<tr(\s|>)/g) || []).length;
 
 // 1) highlighted path
 const src = 'def f(x):\n    return x + 1   # add\n';
@@ -56,6 +56,30 @@ check('ampersand escaped', out2.inner.includes('&amp;co'), out2.inner.slice(0, 2
 // 3) html present but shorter than src -> must not crash / must still cover all rows
 const out3 = render({ src: 'a\nb\nc\nd\n', html: 'x\ny' });
 check('short html still yields one row per source line', rows(out3.inner) === 5, rows(out3.inner));
+
+// 4) 指定高亮行（围栏元数据 js{1,3-5}）：模板必须给对应 <tr> 加 class，
+//    且宿主没给 hl 时一行都不亮（放大浮层此前整个丢高亮）
+const out4 = render({ src: 'a\nb\nc\nd\ne', html: 'a\nb\nc\nd\ne', hl: '1,3,4' });
+const hlRows = [...out4.inner.matchAll(/<tr([^>]*)>/g)].map(m => (m[1].includes('hl') ? 1 : 0));
+check('hl 命中的行加 class（1、3、4 亮）', hlRows.join('') === '10110', hlRows);
+const out5 = render({ src: 'a\nb', html: 'a\nb' });
+check('没给 hl 时一行都不亮', !out5.inner.includes('class="hl"'), out5.inner);
+
+// 5) 宿主侧管道：payload 里得真的带上 hl，否则模板永远收不到（这类"分支没人走"的坑栽过）
+const root = path.join(__dirname, '..');
+const web = fs.readFileSync(path.join(root, 'entry/src/main/ets/components/DiagramWeb.ets'), 'utf8');
+const reader = fs.readFileSync(path.join(root, 'entry/src/main/ets/pages/Reader.ets'), 'utf8');
+const view = fs.readFileSync(path.join(root, 'entry/src/main/ets/markdown/MdView.ets'), 'utf8');
+check('DiagramWeb 声明 hlLines 并入 payload', /@Prop @Watch\('onPayloadChanged'\) hlLines/.test(web)
+  && /hl: this\.hlLines/.test(web));
+check('Reader 按 geoKey 取块的 hlLines 并传给浮层',
+  /private codeHlCsv\(geoKey: string\): string/.test(reader)
+  && /this\.enlargeHlCsv = mode === 'code' \? this\.codeHlCsv\(geoKey\)/.test(reader)
+  && /hlLines: this\.enlargeHlCsv/.test(reader));
+check('源码视图切换时清掉 hl（别拿上一块的高亮乱染）', /this\.enlargeHlCsv = '';/.test(reader));
+check('正文卡片用行底色而不是叠一层 Column（叠层会盖住行号）',
+  !/position\(\{ x: 0, y: 0 \}\)[\s\S]{0,200}#26F59E0B/.test(view)
+  && /this\.lineHighlighted\(lineIndex\)[\s\S]{0,80}hlLineBg\(\)/.test(view));
 
 console.log('\n' + (fails === 0 ? 'CODE.HTML CONTRACT OK' : fails + ' FAILED'));
 process.exit(fails ? 1 : 0);
