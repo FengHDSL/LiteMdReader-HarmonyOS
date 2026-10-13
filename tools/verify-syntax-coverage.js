@@ -501,6 +501,23 @@ probe('§13', '段内两空格硬换行', '第一行  \n第二行\n', 'known', (
   }
 })();
 
+probe('§13', 'HTML 字符实体解码（&amp; &lt; &#124; &#8212;）',
+  'A &amp; B、&lt;tag&gt;、竖线 &#124; 与长破折号 &#8212;、命名 &mdash;\n', 'claim', (res) => {
+    const t = flatText(res);
+    const want = ['A & B', '<tag>', '|', '—'];
+    for (const w of want) {
+      if (t.indexOf(w) < 0) { return '"' + w + '" 没解出来，实际是 "' + t + '"'; }
+    }
+    return t.indexOf('&amp;') < 0 ? true : '&amp; 原样留着';
+  });
+probe('§13', '正文里孤立的 & 不被误吞（AT&T、R&D）', 'AT&T 与 R&D 还有 &xyz 不是实体\n', 'claim', (res) =>
+  flatText(res) === 'AT&T 与 R&D 还有 &xyz 不是实体' ? true : '实际：' + JSON.stringify(flatText(res)));
+probe('§13', '行内代码里的实体保持字面', '写 HTML 时用 `&amp;` 表示 &\n', 'claim', (res) => {
+  const code = withKind(res, I.Code);
+  return (code.length === 1 && code[0].text === '&amp;') ? true
+    : '行内代码被解码成 "' + (code[0] ? code[0].text : '?') + '"';
+});
+
 console.log('');
 console.log(gaps.length === 0
   ? 'COVERAGE OK — 真解析器逐条实测通过（known 档 ' + knownFails + ' 条为已标注降级）'

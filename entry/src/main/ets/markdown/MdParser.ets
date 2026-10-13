@@ -48,6 +48,18 @@ import {
 import { isEmojiCodeChar, lookupEmoji } from './Emoji';
 import { MathLite } from './MathLite';
 
+/** 匹配结果：HTML 字符实体 */
+interface EntityHit {
+  /** 吃掉的字符数（0 = 这里不是实体，按普通文字处理） */
+  len: number;
+  text: string;
+}
+
+function missEntity(): EntityHit {
+  const r: EntityHit = { len: 0, text: '' };
+  return r;
+}
+
 /** 匹配结果：标题 */
 interface HeadingHit {
   hit: boolean;
@@ -1404,6 +1416,18 @@ export class MdParser {
         continue;
       }
 
+      // HTML 字符实体：`&amp;` `&lt;` `&nbsp;` `&#124;`（十进制）`&#x2014;`（十六进制）。
+      // CommonMark 的基本盘，也是渲染文档 §13 给的"表格里要写竖线"的另一条推荐写法；
+      // 此前一个都不解，正文里就明晃晃显示 &amp;。
+      if (c === '&') {
+        const ent: EntityHit = MdParser.entityAt(src, i);
+        if (ent.len > 0) {
+          buf = buf + ent.text;
+          i += ent.len;
+          continue;
+        }
+      }
+
       // 行内代码
       if (c === '`') {
         const end: number = src.indexOf('`', i + 1);
@@ -2350,6 +2374,124 @@ export class MdParser {
   private static isEscapable(ch: string): boolean {
     const set: string = '\\`*_{}[]()#+-.!~=|>';
     return set.indexOf(ch) >= 0;
+  }
+
+  /** 命名实体表：CommonMark 收了两千多条，这里放日常文档真会遇到的；其余交给数字实体 */
+  private static entityMap: Map<string, string> | null = null;
+
+  private static entityName(nm: string): string {
+    if (MdParser.entityMap === null) {
+      const m: Map<string, string> = new Map<string, string>();
+      m.set('amp', '&');
+      m.set('lt', '<');
+      m.set('gt', '>');
+      m.set('quot', '"');
+      m.set('apos', '\'');
+      m.set('nbsp', String.fromCharCode(160));   // 不换行空格：直接写字面量在源码里看不出差别
+      m.set('copy', '©');
+      m.set('reg', '®');
+      m.set('trade', '™');
+      m.set('hellip', '…');
+      m.set('mdash', '—');
+      m.set('ndash', '–');
+      m.set('middot', '·');
+      m.set('laquo', '«');
+      m.set('raquo', '»');
+      m.set('ldquo', '“');
+      m.set('rdquo', '”');
+      m.set('lsquo', '‘');
+      m.set('rsquo', '’');
+      m.set('times', '×');
+      m.set('divide', '÷');
+      m.set('deg', '°');
+      m.set('plusmn', '±');
+      m.set('euro', '€');
+      m.set('pound', '£');
+      m.set('yen', '¥');
+      m.set('cent', '¢');
+      m.set('para', '¶');
+      m.set('sect', '§');
+      m.set('bull', '•');
+      m.set('dagger', '†');
+      m.set('larr', '←');
+      m.set('rarr', '→');
+      m.set('uarr', '↑');
+      m.set('darr', '↓');
+      m.set('harr', '↔');
+      m.set('frac12', '½');
+      m.set('frac34', '¾');
+      MdParser.entityMap = m;
+    }
+    const v: string | undefined = MdParser.entityMap.get(nm);
+    return v === undefined ? '' : v;
+  }
+
+  /** 位置 at（指向 `&`）起是不是一条实体；不是就 len=0，交给普通文字处理 */
+  private static entityAt(src: string, at: number): EntityHit {
+    const semi: number = src.indexOf(';', at + 1);
+    // 半分号都没有、或名字长得离谱，那多半是正文里的 &（AT&T 这类）
+    if (semi < 0 || semi - at > 12) {
+      return missEntity();
+    }
+    const body: string = src.substring(at + 1, semi);
+    if (body.length === 0) {
+      return missEntity();
+    }
+    let text: string = '';
+    if (body.charAt(0) === '#') {
+      const rest: string = body.substring(1);
+      const hex: boolean = rest.charAt(0) === 'x' || rest.charAt(0) === 'X';
+      const digits: string = hex ? rest.substring(1) : rest;
+      if (digits.length === 0 || !MdParser.isHexDigits(digits, hex)) {
+        return missEntity();
+      }
+      const code: number = parseInt(digits, hex ? 16 : 10);
+      if (isNaN(code) || code <= 0 || code > 0x10FFFF
+        || (code >= 0xD800 && code <= 0xDFFF)) {
+        return missEntity();
+      }
+      if (code < 0x10000) {
+        text = String.fromCharCode(code);
+      } else {
+        // 辅助平面（emoji 那一段）自己拼代理对，不依赖 String.fromCodePoint
+        const v: number = code - 0x10000;
+        text = String.fromCharCode(0xD800 + (v >> 10)) + String.fromCharCode(0xDC00 + (v & 0x3FF));
+      }
+    } else {
+      if (!MdParser.isAlphaOnly(body)) {
+        return missEntity();
+      }
+      text = MdParser.entityName(body.toLowerCase());
+      if (text.length === 0) {
+        return missEntity();
+      }
+    }
+    const hit: EntityHit = { len: semi - at + 1, text: text };
+    return hit;
+  }
+
+  private static isHexDigits(s: string, hex: boolean): boolean {
+    for (let k = 0; k < s.length; k++) {
+      const code: number = s.charCodeAt(k);
+      const digit: boolean = code >= 48 && code <= 57;
+      const letter: boolean = hex && ((code >= 97 && code <= 102) || (code >= 65 && code <= 70));
+      if (!digit && !letter) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static isAlphaOnly(s: string): boolean {
+    for (let k = 0; k < s.length; k++) {
+      const code: number = s.charCodeAt(k);
+      const upper: boolean = code >= 65 && code <= 90;
+      const lower: boolean = code >= 97 && code <= 122;
+      if (!upper && !lower) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
