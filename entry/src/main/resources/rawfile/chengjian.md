@@ -54,12 +54,14 @@
 
 | 组件 | 用途 |
 | --- | --- |
-| Mermaid | 流程图 / 时序图 / 状态图 / 类图 / 甘特图 / 饼图 |
+| Mermaid（v11） | 流程图 / 时序图 / 状态图 / 类图 / 甘特图 / 饼图 / 看板 / 架构图 / 数据包图 |
 | Apache ECharts | 柱状 / 折线等统计图 |
+| Chart.js | 数据可视化（JSON 配置，四类入门示例见下） |
 | Markmap | 思维导图 |
 | Graphviz（viz.js） | 关系网络图 |
 | flowchart.js | 流程图（另一套写法） |
-| KaTeX | 数学公式 |
+| nomnoml | 极简 UML 类图 |
+| KaTeX + mhchem | 数学公式与化学方程式 |
 | abcjs | 五线谱（ABC 记谱） |
 | Lute | Markdown 解析 |
 | d3 / Raphael | 上述库的渲染依赖 |
@@ -221,7 +223,7 @@ def fib(n):
     return n if n < 2 else fib(n - 1) + fib(n - 2)
 ~~~
 
-语言名写成 `mermaid` / `echarts` / `markmap` / `graphviz` / `flowchart` / `abc` / `html`
+语言名写成 `mermaid` / `echarts` / `chart` / `markmap` / `graphviz` / `flowchart` / `nomnoml` / `abc` / `html`
 时不再是"高亮代码"，而是**直接渲染成图表或可交互预览** —— 见第五节和第九节。
 
 ### 3.7 分隔线
@@ -912,7 +914,155 @@ V:LH
   免得像"黑底写黑字"那样在深色卡片里糊掉。换官方 dark 皮肤反而更糟（同样是白底，
   描边却变浅色），所以固定用 default 皮肤，不需要配置。
 
-### 图表速查
+### 5.10b Mermaid v11 新图种（看板 / 架构图 / 数据包图）
+
+升级到 mermaid v11 后新增三种图。**看板**（kanban，任务列与卡片）：
+
+```mermaid
+kanban
+  学习计划
+    todo[本周]
+      card1[过一遍语法教程]
+    doing[进行中]
+      card2[整理错题本]
+    done[已完成]
+      card3[读完第一章]
+```
+
+**架构图**（architecture-beta，服务分组与连接）：
+
+```mermaid
+architecture-beta
+    group app(cloud)[澄笺应用]
+    service md(database)[docs 目录] in app
+    service web(server)[渲染 WebView] in app
+    service store(database)[shelf.json] in app
+    web:T -- B:md
+    web:T -- B:store
+```
+
+**数据包图**（packet-beta，字节位段可视化）：
+
+```mermaid
+packet-beta
+  0-15: "源端口"
+  16-31: "目标端口"
+  32-95: "序列号"
+  96-127: "确认号"
+```
+
+### 5.11 Chart.js 数据可视化（chart）
+
+语言名 `chart`，内容是 **Chart.js 的 JSON 配置**，支持柱状 / 折线 / 饼图 / 环形 / 雷达等全部图种。
+深色模式下会自动切换浅色文字；`options.width` / `options.height` 控制画布尺寸（默认 560×320）：
+
+```chart
+{
+  "type": "bar",
+  "data": {
+    "labels": ["1 天", "3 天", "7 天", "半月", "一月"],
+    "datasets": [
+      { "label": "复习条数", "data": [12, 8, 5, 3, 2],
+        "backgroundColor": "rgba(47, 99, 232, 0.65)" },
+      { "label": "掌握条数", "data": [9, 7, 4, 2, 2],
+        "backgroundColor": "rgba(31, 158, 102, 0.65)" }
+    ]
+  },
+  "options": {
+    "width": 560,
+    "height": 300,
+    "scales": { "y": { "beginAtZero": true } }
+  }
+}
+```
+
+折线图（`type: "line"`），`tension` 控制曲线圆滑程度：
+
+```chart
+{
+  "type": "line",
+  "data": {
+    "labels": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+    "datasets": [
+      { "label": "写作字数", "data": [820, 932, 901, 1290, 1330, 1320, 1010],
+        "borderColor": "#FF2F63E8", "backgroundColor": "rgba(47, 99, 232, 0.15)",
+        "fill": true, "tension": 0.35 }
+    ]
+  },
+  "options": { "width": 560, "height": 280 }
+}
+```
+
+饼图（`type: "pie"`，环形用 `doughnut`）：
+
+```chart
+{
+  "type": "pie",
+  "data": {
+    "labels": ["直接打开", "邮件营销", "联盟广告"],
+    "datasets": [
+      { "data": [335, 310, 234],
+        "backgroundColor": ["#FF2F63E8", "#FF1F9E66", "#FFE08000"] }
+    ]
+  },
+  "options": { "width": 420, "height": 300 }
+}
+```
+
+> 注意：内容**必须是合法 JSON**（双引号、无注释、无尾随逗号）；`options.scales`
+> 可以进一步定制坐标轴，`plugins.legend` 控制图例位置。
+
+### 5.12 nomnoml 极简 UML（nomnoml）
+
+语言名 `nomnoml`，一行一个框，用 `[名称 | 字段 | 方法]` 描述类，箭头表示关系：
+
+```nomnoml
+[澄笺|MdParser; MdView; DocStore|渲染(); 批注(); 备份()]
+[MdParser|- fence 识别|+ 解析正文]
+[MdView|- 卡片排版|+ 增量刷新]
+[DocStore|- shelf.json|+ 备份恢复]
+
+[澄笺] -> [MdParser]
+[澄笺] -> [MdView]
+[澄笺] -> [DocStore]
+[MdParser] => [MdView]
+```
+
+更复杂的关联修饰：`<` 继承、`+` 组合、`-` 依赖、`>` 指向：
+
+```nomnoml
+[学习者]
+[学习卡|正面; 背面|拼写记忆()]
+[复习计划|每日目标]
+[学习者] -> [复习计划]
+[复习计划] ++ [学习卡]
+[学习卡] - [批注]
+```
+
+> nomnoml 语法极简但表达力有限，复杂 UML（泳道 / 时序）请用 mermaid。
+
+### 5.13 化学方程式（mhchem）
+
+数学公式引擎挂载了 **mhchem 扩展**，`\ce{}` 命令直接写化学式，自动处理
+下标、配平系数、气体沉淀箭头：
+
+$$
+\ce{CO2 + C -> 2 CO}
+$$
+
+$$
+\ce{2H2 + O2 ->[点燃] 2H2O}
+$$
+
+可逆与沉淀：
+
+$$
+\ce{CaCO3 + 2HCl = CaCl2 + H2O + CO2 ^}
+$$
+
+> 行内也可以用：水的电离 $\ce{H2O <=> H+ + OH-}$ 是可逆反应。
+
+### 5.14 图表速查
 
 | 语言名 | 首行怎么写 | 最容易踩的坑 |
 | --- | --- | --- |
