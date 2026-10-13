@@ -280,6 +280,14 @@ export interface MdPiece {
   /** 该片段的荧光笔底色；空串表示无底纹 */
   highlight: string;
   /**
+   * **注音配对信息**（`<ruby>汉<rt>hàn</rt></ruby>` 解析后的两段之间互相指认）：
+   * 基准字片段带 `rubyOver`（要压在它上面的读音），读音片段带 `rubyBase`（它属于哪个字）。
+   * 有了这一对，视图才能量出两个宽度、把读音**水平居中到基准字上方**并把它自己的
+   *  advance 抵消掉（否则注音会占位、把后面的文字推歪）。
+   */
+  rubyOver?: string;
+  rubyBase?: string;
+  /**
    * **实色底**（学习卡）：true 时 highlight 按**不透明**渲染，
    * 不走荧光笔透明度缩放（默认黄色实底）
    */

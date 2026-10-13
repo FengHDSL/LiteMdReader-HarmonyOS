@@ -24,7 +24,7 @@ import { L10n } from '../service/L10n';
  */
 
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
-import { LengthMetrics } from '@kit.ArkUI';
+import { LengthMetrics, MeasureText } from '@kit.ArkUI';
 import {
   ANNOTATION_COLORS,
   AnnotationColor,
@@ -162,7 +162,82 @@ export class MdViewUtil {
       };
       out.push(piece);
     }
+    MdViewUtil.pairRuby(out);
     return out;
+  }
+
+  /**
+   * 把 `<ruby>汉<rt>hàn</rt></ruby>` 解析出来的相邻两段（基准字 + 读音）互相指认。
+   * 解析器产出的是扁平两段（基准字是普通片段，读音是紧随其后的 Ruby 片段），
+   * 视图只有拿到"这一对"才能量宽并把读音居中压到基准字正上方。
+   */
+  static pairRuby(pieces: MdPiece[]): void {
+    for (let k = 1; k < pieces.length; k++) {
+      if (pieces[k].kind !== MdInlineKind.Ruby) {
+        continue;
+      }
+      const base: MdPiece = pieces[k - 1];
+      if (base.text.length === 0 || base.kind === MdInlineKind.Ruby) {
+        continue;
+      }
+      base.rubyOver = pieces[k].text;
+      pieces[k].rubyBase = base.text;
+    }
+  }
+
+  /**
+   * 注音的水平微调（letterSpacing，fp）——让读音**落在基准字正上方**而不是排在它后面。
+   *
+   * 设基准宽 Wb、注音宽 Wr，ArkUI 的 letterSpacing 与 CSS 同口径（每个字符后都算，
+   * 含最后一个）：
+   *   · 基准片段尾随 L1 → 注音起点 = Wb + L1，要居中即 (Wb − Wr)/2 → **L1 = −(Wb + Wr)/2**
+   *   · 注音片段尾随 L2 → 后文起点 = (Wb + Wr)/2 + Wr + L2，要等于 Wb → **L2 = (Wb − Wr)/2**
+   * 于是注音自身不占推进宽度（与网页 ruby 的观感一致）。
+   *
+   * 两种情况退回旧观感（小号上标排在右边，字距全 0）：
+   *   · 量不到宽（引擎异常返回 0）；
+   *   · 注音比基准字宽出 1.6 倍以上——强行居中会让后文压进注音里，比偏右更难读。
+   *
+   * ⚠️ 用静态 `MeasureText.measureText` 而不是 `getMeasureUtils()`：这两个是纯静态方法，
+   *    拿不到 UIContext；该接口在 SDK 里标了 deprecated 但仍可用（换实例通道要把调用点
+   *    全搬到组件实例上，代价不值）。
+   */
+  static rubySpanShift(piece: MdPiece, size: number, family: string): number {
+    const rubySize: number = Math.round(size * 0.62 * 10) / 10;
+    if (piece.kind === MdInlineKind.Ruby) {
+      const baseText: string = piece.rubyBase === undefined ? '' : piece.rubyBase;
+      if (baseText.length === 0) {
+        return 0;
+      }
+      const wb: number = MeasureText.measureText(
+        { textContent: baseText, fontSize: size, fontFamily: family });
+      const wr: number = MeasureText.measureText(
+        { textContent: piece.text, fontSize: rubySize, fontFamily: family });
+      if (wb <= 0 || wr <= 0 || wr > wb * 1.6) {
+        return 0;
+      }
+      return (wb - wr) / 2;
+    }
+    const over: string = piece.rubyOver === undefined ? '' : piece.rubyOver;
+    if (over.length === 0 || piece.text.length === 0) {
+      return 0;
+    }
+    const wb2: number = MeasureText.measureText(
+      { textContent: piece.text, fontSize: size, fontFamily: family });
+    const wr2: number = MeasureText.measureText(
+      { textContent: over, fontSize: rubySize, fontFamily: family });
+    if (wb2 <= 0 || wr2 <= 0 || wr2 > wb2 * 1.6) {
+      return 0;
+    }
+    return -(wb2 + wr2) / 2;
+  }
+
+  /** 这段片段是否"读音已经居中压到字上方"（决定要不要抬得更高） */
+  static rubyCentered(piece: MdPiece): boolean {
+    if (piece.kind === MdInlineKind.Ruby) {
+      return (piece.rubyBase === undefined ? '' : piece.rubyBase).length > 0;
+    }
+    return (piece.rubyOver === undefined ? '' : piece.rubyOver).length > 0;
   }
 
   static pieceKey(piece: MdPiece, index: number): string {
@@ -439,8 +514,11 @@ export class MdViewUtil {
       return LengthMetrics.vp(4);
     }
     if (piece.kind === MdInlineKind.Ruby) {
-      // 注音上移贴到基准字右上方（配合 pieceSize 的 0.62 倍字号）
-      return LengthMetrics.vp(Math.round(size * 0.34));
+      // 能居中到字上方的抬到基准字之上（配合 rubySpanShift 的水平量）；
+      // 量不出来退化成小号上标时，只抬一点点，免得顶到上一行
+      return LengthMetrics.vp(MdViewUtil.rubyCentered(piece)
+        ? Math.round(size * 0.62)
+        : Math.round(size * 0.34));
     }
     return LengthMetrics.vp(0);
   }
@@ -858,6 +936,22 @@ export struct MdBlockView {
   /** 本块的渲染片段（含荧光笔底色与搜索命中）。 */
   private pieces(): MdPiece[] {
     return MdViewUtil.buildPieces(this.block, this.annotations, this.dark, this.searchQuery);
+  }
+
+  /** 该块是否含注音：注音抬到字上方要额外行距，否则会与上一行相碰 */
+  private hasRuby(): boolean {
+    const items: MdInline[] = this.block.inlines;
+    for (let k = 0; k < items.length; k++) {
+      if (items[k].kind === MdInlineKind.Ruby) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 含注音的段放行距下限（抬上去的读音不能压到上一行的字顶） */
+  private lineMulFor(lineMul: number): number {
+    return this.hasRuby() ? Math.max(lineMul, 1.95) : lineMul;
   }
 
   /**
@@ -1354,6 +1448,8 @@ export struct MdBlockView {
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
+          // 注音：基准字与读音两段互相抵消推进量，读音才落得在字**正上方**
+          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
           .onClick(() => {
             this.pieceTapped(piece);
           })
@@ -1409,7 +1505,7 @@ export struct MdBlockView {
       }
       .fontSize(size)
       .fontColor(baseColor)
-      .lineHeight(size * lineMul)
+      .lineHeight(size * this.lineMulFor(lineMul))
       .textAlign(align)
       .fontFamily(HwFont.resolve(this.fontKey))
       .textIndent(firstIndent ? Math.round(size * 2) : 0)
@@ -1421,7 +1517,7 @@ export struct MdBlockView {
     }
     .fontSize(size)
     .fontColor(baseColor)
-    .lineHeight(size * lineMul)
+    .lineHeight(size * this.lineMulFor(lineMul))
     .textAlign(align)
     .fontFamily(HwFont.resolve(this.fontKey))
     // 首行缩进按正文尺寸取两个字宽；0 表示不缩进
@@ -1484,7 +1580,7 @@ export struct MdBlockView {
     }
     .fontSize(size)
     .fontColor(baseColor)
-    .lineHeight(size * lineMul)
+    .lineHeight(size * this.lineMulFor(lineMul))
     .textAlign(align)
     .fontFamily(HwFont.resolve(this.fontKey))
     .width('100%')
