@@ -74,12 +74,16 @@ export class ChartCache {
    *  · v15（2026-10-13 十二次升级）：mermaid 10.9.3→11.4.1（新图种 packet/kanban/architecture）
    *    与 KaTeX 挂载 mhchem 化学扩展——旧引擎时代的错误渲染图（kanban/架构图/数据包图/
    *    化学式的报错 SVG）全部作废，按新引擎重生成。
+   *  · v16（2026-10-13 十三次升级）：mermaid 11.4.1→11.17.2（architecture-beta 的中文标签
+   *    在旧构建里是词法层直接拒收）。**这条同时是"引擎升级必须升键"的又一例**：缓存键里
+   *    没有引擎版本，用户机上就会留着旧引擎烘出来的"Syntax error in text"报错图，
+   *    卡片读缓存、放大走实时渲染 → "卡片显示错误、放大后正常"（用户实测）。
    *  · v14（2026-10-11 十一次升级）：跟随公式卡片撤回**键升盐**——v13 那批
    *    "按公式自身尺寸"的 PNG 与 .dim 和撤回后的模板产物尺寸口径不同，
    *    两代混存会让卡片高度忽高忽低，必须一并作废重生成。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v15|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v16|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

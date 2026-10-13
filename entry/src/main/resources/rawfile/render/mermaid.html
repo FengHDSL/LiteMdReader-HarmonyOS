@@ -3661,14 +3661,31 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
     mermaid.render('mmd'+(seq++),src).then(function(r){
       app.innerHTML=r.svg;
       var sv=app.querySelector('svg');
-      if(sv){ if(window.__fit){sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';sv.style.maxHeight='calc(100vh - 24px)';} else {
-        // 卡片模式：**与正文图片路径同一套限高规则**（chartCardMaxHeight：340～600px，
-        // 随卡宽取值）。以前这里只给 maxWidth:100%，纵向长的图（状态图 141×894 这类
-        // 约 1:6 的）按宽铺开后高度能到两千多 vp，宿主照这个高度把卡片钉起来 —— 要么
-        // 正文被顶到两屏外，要么被外层裁掉看不全（用户实测"状态图卡片下没展示全图"）。
-        // max-height + width/height auto 就是 contain：整图缩进框内，一点不裁。
-        sv.style.maxWidth='100%';sv.style.maxHeight='clamp(340px, 100vw, 600px)';sv.style.width='auto';sv.style.height='auto';sv.style.display='block';sv.style.margin='0 auto';
-      } sv.style.height='auto'; }
+      if(sv){
+        if(window.__fit){
+          sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';sv.style.maxHeight='calc(100vh - 24px)';
+          sv.style.display='block';
+        } else {
+          // 卡片模式：**自己按 viewBox 算等比缩放比**，不用 CSS 的 max-height 去夹 svg。
+          // 上一版用 max-height + width:auto 想做 contain，实测把 architecture-beta 挤坏了：
+          // 它的 viewBox 是 "-283 -166 647 463" 这种**带负原点**的、mermaid 又给了
+          // width="100%"，两者叠加后内容跑出可视区（用户实测"卡片显示错误、放大后正常"
+          // ——放大走 fit=true 这条支路，所以没事）。
+          // 现在宽高严格按同一个 k 缩放，比例一定不歪；限高沿用正文图片路径的
+          // chartCardMaxHeight 区间（340～600，随卡宽），长图（状态图 141×894 这类）
+          // 整图缩进框内，既不顶掉两屏正文也不裁。
+          var capW=Math.max(200, window.innerWidth||360);
+          var capH=Math.max(340, Math.min(600, capW));
+          var vb=sv.viewBox && sv.viewBox.baseVal ? sv.viewBox.baseVal : null;
+          if(vb && vb.width>0 && vb.height>0){
+            var k=Math.min(capW/vb.width, capH/vb.height);
+            // 只缩不放：小图保持原尺寸，免得被糊成一大块
+            if(k<1){ sv.style.width=Math.round(vb.width*k)+'px'; sv.style.height=Math.round(vb.height*k)+'px'; }
+            else { sv.style.width=vb.width+'px'; sv.style.height=vb.height+'px'; }
+          } else { sv.style.maxWidth='100%'; sv.style.height='auto'; }
+          sv.style.display='block';sv.style.margin='0 auto';
+        }
+      }
       report();
     }).catch(function(e){
       app.innerHTML='<div class="err">'+(e&&e.message?e.message:e)+'</div>';report();

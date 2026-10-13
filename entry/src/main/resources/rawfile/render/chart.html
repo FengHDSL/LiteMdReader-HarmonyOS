@@ -6,7 +6,7 @@
   html,body{margin:0;padding:0;background:transparent;}
   body.dark{color:#ECEFF4;}
   #app{padding:8px 10px;box-sizing:border-box;overflow:hidden;}
-  #app svg,#app canvas{max-width:100%;}
+  #app svg,#app canvas{max-width:100%;height:auto;}
   .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
 </style>
 <script>/*!
@@ -45,8 +45,15 @@
       var cv = document.createElement('canvas');
       var w = (cfg.options && cfg.options.width) ? cfg.options.width : 560;
       var hh = (cfg.options && cfg.options.height) ? cfg.options.height : 320;
-      cv.width = w; cv.height = hh;
-      cv.style.width = w + 'px'; cv.style.height = hh + 'px';
+      // 画布**按实际视口宽开、严格保住作者给的宽高比**。原来固定 560×320：卡片只有
+      // 三百多 px 宽，CSS 把宽缩到卡片宽、高却按属性留着 → 折线图/饼图整个被压扁
+      //（用户实测"比例异常，都拉伸了"；深色模式下线条变淡更明显）。
+      var avail = Math.max(240, (window.innerWidth || w) - 4);
+      var useW = Math.min(w, avail);
+      var useH = Math.max(140, Math.round(useW * hh / w));
+      cfg.options.devicePixelRatio = window.devicePixelRatio || 1;
+      cv.width = useW; cv.height = useH;
+      cv.style.width = useW + 'px'; cv.style.height = useH + 'px';
       app.appendChild(cv);
       new Chart(cv.getContext('2d'), cfg);
     }catch(e){
