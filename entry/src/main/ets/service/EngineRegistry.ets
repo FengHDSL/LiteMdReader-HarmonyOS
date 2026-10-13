@@ -80,6 +80,16 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: '数字波形图（WaveJSON 时序 / 逻辑门 / 寄存器位段），深浅主题统一浅色波形面板'
   },
   {
+    id: 'nomnoml', name: 'nomnoml', version: '1.7.0', date: '2026-10-13',
+    repo: 'https://github.com/skanaar/nomnoml',
+    desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）')
+  },
+  {
+    id: 'chartjs', name: 'Chart.js', version: '4.4.7', date: '2026-10-13',
+    repo: 'https://github.com/chartjs/Chart.js',
+    desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）'
+  },
+  {
     id: 'marked', name: 'marked', version: '18.1.0', date: '2026-10-05',
     repo: 'https://github.com/markedjs/marked',
     desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析'
@@ -159,6 +169,12 @@ export class EngineRegistry {
     }
     if (l === 'wavedrom') {
       return 'wavedrom';
+    }
+    if (l === 'nomnoml') {
+      return 'nomnoml';
+    }
+    if (l === 'chart') {
+      return 'chartjs';
     }
     return '';
   }

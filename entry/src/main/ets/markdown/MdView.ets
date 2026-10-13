@@ -999,6 +999,46 @@ export struct MdBlockView {
     return '#FF6B7280';
   }
 
+  /** diff 差异块的行背景：- 红 / + 绿 / @@ 蓝（lang=diff 时生效） */
+  private diffLineBg(line: string): string {
+    if (this.block.lang !== 'diff') {
+      return Color.Transparent.toString();
+    }
+    if (line.startsWith('-')) {
+      return '#26F93838';
+    }
+    if (line.startsWith('+')) {
+      return '#262E9E5B';
+    }
+    if (line.startsWith('@@')) {
+      return '#262F63E8';
+    }
+    return Color.Transparent.toString();
+  }
+
+  /** diff 差异块的行前景：删除红 / 新增绿 / 定位蓝 */
+  private diffLineFg(line: string): string | null {
+    if (this.block.lang !== 'diff') {
+      return null;
+    }
+    if (line.startsWith('-')) {
+      return '#FFE05252';
+    }
+    if (line.startsWith('+')) {
+      return '#FF2E9E5B';
+    }
+    if (line.startsWith('@@')) {
+      return '#FF2F63E8';
+    }
+    return null;
+  }
+
+  /** 指定行高亮（围栏元数据 hlLines，1 起） */
+  private lineHighlighted(index: number): boolean {
+    const hl: number[] | undefined = this.block.hlLines;
+    return hl !== undefined && hl.indexOf(index + 1) >= 0;
+  }
+
   /** 代码块的 token 化结果，按块缓存。 */
   private tokensForCode(): CodeToken[][] {
     const key: string = this.block.id + '|' + this.block.lang + '|' + this.block.codeLines.length;
@@ -1626,6 +1666,15 @@ export struct MdBlockView {
                     .width(22)
                     .textAlign(TextAlign.End)
                     .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+                  // 行背景：指定高亮行（琥珀）优先，其次 diff 差异着色
+                  if (this.lineHighlighted(lineIndex)) {
+                    Column()
+                      .position({ x: 0, y: 0 })
+                      .width('100%')
+                      .height('100%')
+                      .backgroundColor('#26F59E0B')
+                      .hitTestBehavior(HitTestMode.None)
+                  }
                   Divider()
                     .vertical(true)
                     .height(this.bodySize * HwType.codeScale * 1.4)
@@ -1636,7 +1685,9 @@ export struct MdBlockView {
                     ForEach(tokens, (token: CodeToken) => {
                       Span(token.text)
                         .fontSize(this.bodySize * HwType.codeScale)
-                        .fontColor(MdViewUtil.tokenColor(token.kind, this.palette))
+                        .fontColor(this.diffLineFg(this.block.codeLines.length > lineIndex
+                          ? this.block.codeLines[lineIndex] : '')
+                          ?? MdViewUtil.tokenColor(token.kind, this.palette))
                     }, (token: CodeToken, ti: number) => 't' + ti + '_' + token.kind + '_' + token.text.length)
                   }
                   .fontSize(this.bodySize * HwType.codeScale)
@@ -1649,6 +1700,8 @@ export struct MdBlockView {
                 }
                 .width('100%')
                 .alignItems(VerticalAlign.Center)
+                .backgroundColor(this.diffLineBg(this.block.codeLines.length > lineIndex
+                  ? this.block.codeLines[lineIndex] : ''))
               }, (tokens: CodeToken[], lineIndex: number) => 'c' + lineIndex + '_' + tokens.length)
 
           }

@@ -671,7 +671,7 @@ export class MdParser {
 
       // ── 围栏代码块 ────────────────────────────────────────────────
       if (MdParser.isFence(t)) {
-        const lang: string = MdParser.fenceLang(t);
+        let lang: string = MdParser.fenceLang(t);
         // **围栏长度**：外层围栏可能比内层长（教程里用 4 个反引号包住 3 个反引号的
         // 示例，这是 Markdown 标准写法）—— 只有**同长或更长**的围栏才算结束。
         // 否则内层围栏会被误判为结束标记，外层块内容变成空的（用户实测
@@ -691,17 +691,49 @@ export class MdParser {
         if (i < lines.length) {
           i++;
         }
+        // 围栏元数据：```js{1,3-5} → 语言 js + 高亮行集合（VitePress 语法，1 起）
+        let hlLines: number[] = [];
+        const braceAt: number = lang.indexOf('{');
+        if (braceAt >= 0 && lang.endsWith('}')) {
+          const spec: string = lang.substring(braceAt + 1, lang.length - 1);
+          const parts: string[] = spec.split(',');
+          for (let pi = 0; pi < parts.length; pi++) {
+            const seg: string = parts[pi].trim();
+            if (seg.indexOf('-') >= 0) {
+              const ab: string[] = seg.split('-');
+              if (ab.length === 2) {
+                const a: number = Number(ab[0]);
+                const b: number = Number(ab[1]);
+                if (!isNaN(a) && !isNaN(b) && b >= a) {
+                  for (let v = a; v <= b; v++) {
+                    hlLines.push(v);
+                  }
+                }
+              }
+            } else {
+              const v2: number = Number(seg);
+              if (!isNaN(v2) && v2 > 0) {
+                hlLines.push(v2);
+              }
+            }
+          }
+          lang = lang.substring(0, braceAt).trim();
+        }
         const langLower: string = lang.toLowerCase();
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
-          || langLower === 'wavedrom' || langLower === 'html') {
+          || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
+          || langLower === 'html') {
           blocks.push(MdBlockFactory.chart(lang, body, blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
           const cb: MdBlock = MdBlockFactory.code(lang, body, blocks.length);
           cb.srcLine = MdParser.orig(fenceLine);
+          if (hlLines.length > 0) {
+            cb.hlLines = hlLines;
+          }
           blocks.push(cb);
         }
         continue;

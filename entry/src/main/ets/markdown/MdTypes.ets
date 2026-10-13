@@ -94,6 +94,8 @@ export interface MdTableRow {
 
 /** 块级元素 */
 export interface MdBlock {
+  /** 指定高亮行（围栏元数据 ```lang{1,3-5}，1 起） */
+  hlLines?: number[];
   /** 稳定 key（块序号） */
   id: string;
   kind: MdBlockKind;

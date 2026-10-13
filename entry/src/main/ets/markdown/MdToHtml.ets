@@ -240,7 +240,7 @@ export class MdToHtml {
 
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
-    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom'];
+    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom', 'nomnoml', 'chart'];
 
   private static isChartLang(lang: string): boolean {
     const l: string = lang.trim().toLowerCase();
