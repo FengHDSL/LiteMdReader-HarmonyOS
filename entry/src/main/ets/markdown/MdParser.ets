@@ -2601,20 +2601,49 @@ export class MdParser {
     return dashes > 0;
   }
 
+  /**
+   * 按**未转义**的 `|` 切列。
+   * 以前直接 `s.split('|')`，于是文档里按 GFM 惯例写的 `\|`（渲染文档 §3.1 和 §13 都把它
+   * 当成"单元格要显示竖线"的标准解法）照样断列——`| `a \| b` | 尾 |` 裂成三格，
+   * 表头四列的表格被撑歪，反斜杠还留在文字里。
+   */
   private static splitRow(t: string): string[] {
     let s: string = t.trim();
     if (s.startsWith('|')) {
       s = s.substring(1);
     }
-    if (s.endsWith('|')) {
+    if (s.endsWith('|') && !MdParser.pipeEscaped(s, s.length - 1)) {
       s = s.substring(0, s.length - 1);
     }
-    const parts: string[] = s.split('|');
     const out: string[] = [];
-    for (let k = 0; k < parts.length; k++) {
-      out.push(parts[k].trim());
+    let cur: string = '';
+    for (let k = 0; k < s.length; k++) {
+      const c: string = s.charAt(k);
+      if (c !== '|') {
+        cur += c;
+        continue;
+      }
+      if (!MdParser.pipeEscaped(s, k)) {
+        out.push(cur.trim());
+        cur = '';
+        continue;
+      }
+      // 转义的竖线：把那层反斜杠退掉，竖线本身留作正文（行内解析会当普通字符处理）
+      cur = cur.substring(0, cur.length - 1) + '|';
     }
+    out.push(cur.trim());
     return out;
+  }
+
+  /** 位置 at 上的竖线是否被反斜杠转义（连续反斜杠要数奇偶：`\\|` 是分隔符，`\|` 是内容） */
+  private static pipeEscaped(s: string, at: number): boolean {
+    let bs: number = 0;
+    let k: number = at - 1;
+    while (k >= 0 && s.charAt(k) === '\\') {
+      bs++;
+      k--;
+    }
+    return bs % 2 === 1;
   }
 
   private static delimiterAligns(t: string): number[] {
