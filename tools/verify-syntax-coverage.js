@@ -520,11 +520,35 @@ probe('§9.3', '显式锚点 <a id> + 站内跳转',
     return (links.indexOf('#anchor-demo') >= 0 && anchored === 1) ? true
       : '站内链接 ' + JSON.stringify(links) + '，带 id 的标题 ' + anchored + ' 个';
   });
-probe('§9.4', 'Pandoc 图表编号 @fig: 与文献 [@key]',
+probe('§9.4', 'Pandoc 属性块：标题多属性 / 围栏 div / 行内 span / 图片属性',
+  '## 背景 {#bg .unnumbered}\n\n::: {#note1 .tip}\n正文 A\n:::\n\n'
+  + '普通 [重点]{.bold color=#2F63E8} 结尾\n\n![示意](flow.png){#fig:flow width=60%}\n', 'claim', (res) => {
+    const hs = blocks(res, K.Heading);
+    const co = blocks(res, K.Callout);
+    const t = flatText(res);
+    if (hs.length !== 1 || (hs[0].anchor || '') !== 'bg') { return '标题属性块没吃掉：anchor=' + (hs[0] ? hs[0].anchor : '无'); }
+    if (co.length !== 1 || (co[0].anchor || '') !== 'note1') { return '围栏 div 的 id 没落地'; }
+    if (t.indexOf('{#bg') >= 0 || t.indexOf('{#note1') >= 0 || t.indexOf('{.bold') >= 0 || t.indexOf('{#fig:flow') >= 0) {
+      return '花括号仍显示在正文：' + t.trim().slice(0, 70);
+    }
+    const hit = allInlines(res).find((x) => x.text === '重点');
+    if (!hit || hit.bold !== true || (hit.color || '').toUpperCase() !== '#2F63E8') {
+      return '[文字]{属性} 没变成带样式的片段：' + JSON.stringify(hit);
+    }
+    if (hit.kind !== I.Color) { return '有色值却没走 Color 通道（导出侧按 kind 分派，Plain 上的 color 会被丢掉）'; }
+    return true;
+  });
+probe('§9.4', 'Pandoc 图表编号 @fig: 仍然不解析（如实降级，别假装支持）',
   '![示意](flow.png){#fig:flow width=60%}\n\n如图 @fig:flow 所示，受[@gruber2004]影响。\n', 'known', (res) => {
     const t = flatText(res);
     return (t.indexOf('{#fig:flow') < 0 && t.indexOf('@fig:flow') >= 0)
       ? true : 'pandoc 标记退化异常："' + t.trim().slice(0, 60) + '"';
+  });
+probe('§9.4', '不是属性块的花括号不误吞（`# 集合 { x }`、`[文字] { 三个词 }`）',
+  '# 集合 { x }\n\n这里有 [文字] { 三个词 } 收尾。\n', 'claim', (res) => {
+    const t = flatText(res);
+    return (t.indexOf('{ x }') >= 0 && t.indexOf('{ 三个词 }') >= 0)
+      ? true : '普通花括号被吃掉了：' + t.trim();
   });
 
 // ════ §10 MDX ════

@@ -82,6 +82,14 @@ interface HeadingHit {
   id: string;
 }
 
+/** pandoc 属性块 `{#id .类名 key=value}` 的词法结果（hit=false = 这不是属性块，原文照旧） */
+interface AttrTail {
+  hit: boolean;
+  id: string;
+  classes: string[];
+  attrs: string[];
+}
+
 function missHeading(): HeadingHit {
   const r: HeadingHit = { hit: false, level: 0, text: '', id: '' };
   return r;
@@ -845,8 +853,28 @@ export class MdParser {
       if (t.startsWith(':::') && t.length > 3) {
         const ctnStart: number = i;
         const head: string = t.substring(3).trim();
-        const ctnName: string = head.split(' ')[0].toLowerCase();
-        const ctnTitle: string = head.substring(head.split(' ')[0].length).trim();
+        const firstName: string = head.split(' ')[0];
+        let ctnName: string = firstName.toLowerCase();
+        let ctnTitle: string = head.substring(firstName.length).trim();
+        // pandoc 的**围栏 div**：`::: {#id .类名}`（MyST / pandoc 都这么写）。上一版把
+        // `{#note1` 当名字、`.callout}` 当标题，渲染出 `【.callout}】` 这种半截字面文本。
+        let ctnAt: AttrTail = { hit: false, id: '', classes: [], attrs: [] };
+        let ctnRaw: string = '';
+        if (firstName.charAt(0) === '{') {
+          const close: number = head.indexOf('}');
+          if (close > 0) {
+            const inner: string = head.substring(1, close);
+            if (inner.charAt(0) === '=') {
+              ctnRaw = inner.substring(1).toLowerCase();   // `::: {=html}` = 原生块
+            } else {
+              ctnAt = MdParser.attrTailOf(inner);
+            }
+            if (ctnAt.hit || ctnRaw.length > 0) {
+              ctnTitle = head.substring(close + 1).trim();
+              ctnName = ctnRaw.length > 0 ? '=' + ctnRaw : (ctnAt.classes.length > 0 ? ctnAt.classes[0] : '');
+            }
+          }
+        }
         const innerLines: string[] = [];
         i++;
         while (i < lines.length) {
@@ -862,25 +890,44 @@ export class MdParser {
         }
         // `::: details` 是**折叠面板**（VitePress / pymdownx.details 都这么用），不是提示卡：
         // 落到下面的 callout 分支会变成一张常驻的蓝卡，"点击展开"的语义整个丢了。
-        if (ctnName === 'details') {
+        // pandoc 写法 `::: {#x .details}` 同理（类名驱动的折叠面板）。
+        if (ctnName === 'details' || (ctnAt.hit && MdParser.hasClass(ctnAt, 'details'))) {
           const dSum: string = ctnTitle.length > 0 ? ctnTitle : '点击展开';
           const db: MdBlock = MdBlockFactory.details(dSum, innerLines.join('\n'), blocks.length,
             MdParser.orig(ctnStart));
+          if (ctnAt.id.length > 0) {
+            db.anchor = ctnAt.id;
+          }
           blocks.push(db);
           continue;
         }
+        // `::: {=html}`：pandoc 的**原生块**——这段内容本来就是要原样交给 html 输出的，
+        // 所以直接走 HTML 卡片（和 ```html 围栏同一条路，脚本能跑）。
+        if (ctnRaw === 'html') {
+          const hb: MdBlock = MdBlockFactory.chart('html', innerLines, blocks.length,
+            MdParser.orig(ctnStart));
+          blocks.push(hb);
+          continue;
+        }
         let kind: MdCalloutKind = MdCalloutKind.Note;
-        if (ctnName === 'tip' || ctnName === 'info' || ctnName === 'success') {
+        const knob: string = ctnAt.hit && ctnAt.classes.length > 0 ? ctnAt.classes[0] : ctnName;
+        if (knob === 'tip' || knob === 'info' || knob === 'success' || knob === 'question'
+          || knob === 'details' || knob === 'abstract' || knob === 'summary') {
           kind = MdCalloutKind.Tip;
-        } else if (ctnName === 'warning' || ctnName === 'caution' || ctnName === 'attention') {
+        } else if (knob === 'warning' || knob === 'caution' || knob === 'attention'
+          || knob === 'todo') {
           kind = MdCalloutKind.Warning;
-        } else if (ctnName === 'important' || ctnName === 'error' || ctnName === 'danger') {
+        } else if (knob === 'important' || knob === 'error' || knob === 'danger'
+          || knob === 'failure' || knob === 'quote' || knob === 'cite') {
           kind = MdCalloutKind.Important;
         }
         const innerText: string = (ctnTitle.length > 0 ? '【' + ctnTitle + '】 ' : '')
           + innerLines.join(' ');
         blocks.push(MdBlockFactory.callout(kind, innerText, MdParser.parseInline(innerText), blocks.length));
         blocks[blocks.length - 1].srcLine = MdParser.orig(ctnStart);
+        if (ctnAt.id.length > 0) {
+          blocks[blocks.length - 1].anchor = ctnAt.id;
+        }
         continue;
       }
 
@@ -1418,7 +1465,98 @@ export class MdParser {
 
   /** 解析行内 Markdown。样式标志位会向下继承，因此无需嵌套节点。 */
   static parseInline(src: string): MdInline[] {
-    return MdParser.scan(src, false, false, false, false);
+    return MdParser.applyPandocAttrs(MdParser.scan(src, false, false, false, false));
+  }
+
+  /**
+   * Pandoc 行内属性：`![图](a.png){#fig:a width=60%}`、`[文字]{.bold color=#2F63E8}`。
+   *
+   * 上一版这些花括号**原样显示在正文里**（用户实测"pandoc 专属还是不支持"最直观的一条）。
+   * 澄笺没有 pandoc 的编号引擎 / CSS 样式层，所以策略是**吃掉花括号、能表达的语义表达**：
+   *  · `.bold` / `.strong` / `.italic` / `.em` / `.strikeout` / `.underline`（没有下划线通道，
+   *    只吃掉不显示）→ 对应 flag；
+   *  · `color=#RRGGBB` / `background-color=#RRGGBB` → 复用原生 HTML 那套色值过滤
+   *    （`red` / `rgb()` / `url()` 一律丢弃，避免把任意 CSS 注入渲染层）；
+   *  · `#id` 与其它 `key=value` → 静默忽略，**`@fig:x` 交叉引用仍然不解析**（矩阵如实标注）。
+   * 认不出是属性块就一个字都不动（`[x] { 三个词 }` 这种正常正文不会被误吞）。
+   */
+  private static applyPandocAttrs(list: MdInline[]): MdInline[] {
+    for (let k = 0; k < list.length; k++) {
+      const cur: MdInline = list[k];
+      if (cur.kind !== MdInlineKind.Plain) {
+        continue;
+      }
+      // ① 图片 / 链接后面**紧跟着**的花括号属性块（它们在 list 里是独立片段）
+      if (k > 0 && cur.text.charAt(0) === '{') {
+        const prev: MdInline = list[k - 1];
+        if (prev.kind === MdInlineKind.Image || prev.kind === MdInlineKind.Link) {
+          const close: number = cur.text.indexOf('}');
+          if (close > 0 && MdParser.attrTailOf(cur.text.substring(1, close)).hit) {
+            const left: string = cur.text.substring(close + 1);
+            if (left.length === 0) {
+              list.splice(k, 1);
+              k--;
+            } else {
+              cur.text = left;
+            }
+            continue;
+          }
+        }
+      }
+      // ② `[文字]{属性}` 形式的行内 span：在原片段里就地拆分
+      const m: RegExpMatchArray | null = cur.text.match(/\[([^\[\]]+)\]\{([^{}]*)\}/);
+      if (m === null || !MdParser.attrTailOf(m[2]).hit) {
+        continue;
+      }
+      const at: AttrTail = MdParser.attrTailOf(m[2]);
+      const col: string = MdParser.attrColor(at, 'color');
+      const bgc: string = MdParser.attrColor(at, 'background-color');
+      // 走原生 HTML 那两条现成通道（Color / Under），**不要**新造"Plain + color"这种
+      // 只有正文认得的组合：导出侧 MdToHtml 是按 kind 分派的，Plain 上的 color 会被丢掉。
+      const spanKind: MdInlineKind = (col.length > 0 || bgc.length > 0) ? MdInlineKind.Color
+        : (MdParser.hasClass(at, 'underline') ? MdInlineKind.Under : MdInlineKind.Plain);
+      const span: MdInline = {
+        kind: spanKind, text: m[1], href: '', num: 0,
+        bold: MdParser.hasClass(at, 'bold') || MdParser.hasClass(at, 'strong'),
+        italic: MdParser.hasClass(at, 'italic') || MdParser.hasClass(at, 'em'),
+        strike: MdParser.hasClass(at, 'strikeout') || MdParser.hasClass(at, 'strike'),
+        code: false,
+        color: col,
+        bg: bgc
+      };
+      const before: string = cur.text.substring(0, m.index);
+      const after: string = cur.text.substring((m.index === undefined ? 0 : m.index) + m[0].length);
+      const rest: MdInline[] = after.length > 0
+        ? [{ kind: MdInlineKind.Plain, text: after, href: '', num: 0, bold: false, italic: false, strike: false, code: false }]
+        : [];
+      cur.text = before;
+      const ins: MdInline[] = [span].concat(rest);
+      for (let q = 0; q < ins.length; q++) {
+        list.splice(k + 1 + q, 0, ins[q]);
+      }
+      if (before.length === 0) {
+        list.splice(k, 1);
+        k--;
+      }
+    }
+    return list;
+  }
+
+  /** 属性块里的 `key=#RRGGBB`：交给原生 HTML 同一套色值过滤器（其它写法直接丢） */
+  private static attrColor(at: AttrTail, key: string): string {
+    for (let k = 0; k < at.attrs.length; k++) {
+      const kv: string = at.attrs[k];
+      const eq: number = kv.indexOf('=');
+      if (eq <= 0 || kv.substring(0, eq).toLowerCase() !== key) {
+        continue;
+      }
+      const v: string = kv.substring(eq + 1).replace(/^["']|["']$/g, '');
+      const c: string = MdParser.htmlColor('color="' + v + '"');
+      if (c.length > 0) {
+        return c;
+      }
+    }
+    return '';
   }
 
   private static scan(src: string, bold: boolean, italic: boolean, strike: boolean, code: boolean): MdInline[] {
@@ -2985,34 +3123,81 @@ export class MdParser {
   }
 
   /**
-   * 从标题尾部取走**显式锚点** `{#intro}`（Pandoc / markdown-it-anchor / VitePress 同一套写法）。
-   * 不取走的话它会以字面文本显示在标题后面（用户清单第 22 项的"没渲染"就是这个），
-   * 取走之后：导出网页里标题带上真 id（`[](#intro)` 能精确跳），阅读页仍然按标题文字
-   * 模糊匹配跳转（那套逻辑本来就能用，不必依赖 id），两边都不受影响。
+   * 从标题尾部取走**属性块** `{#intro}` / `{#bg .unnumbered}` / `{width=60%}`
+   * （Pandoc header attributes，markdown-it-anchor / VitePress / MyST 同一套写法）。
+   *
+   * 不取走的话它会以字面文本显示在标题后面（用户清单第 22 项的"没渲染"就是这个）。
+   * ⚠️ 上一版只认**光秃秃的 `{#id}`**：`## 背景 {#bg .unnumbered}` 因为多带一个类名就
+   * 整块退回正文显示——"支持标题 ID"这句话就变成半真半假。现在按 pandoc 的词法认
+   * `#id` / `.类名` / `key=value` 三种 token，**只在整块都像属性时才吃掉**，
+   * 所以 `# 集合 { x }` 这种正常正文里的花括号不会被误吞。
+   * id 只排除会破坏 HTML id 的字符，**不限制成 ASCII**：中文锚点（`{#语法}`）在 HTML5
+   * 里是合法 id。
    */
   private static takeAnchor(text: string, level: number): HeadingHit {
     const tail: string = text.trim();
     if (tail.length > 3 && tail.endsWith('}')) {
-      const open: number = tail.lastIndexOf('{#');
+      const open: number = tail.lastIndexOf('{');
       if (open > 0 && tail.charAt(open - 1) === ' ') {
-        const id: string = tail.substring(open + 2, tail.length - 1).trim();
-        // 只排除"会破坏 id / 属性"的字符，**不限制成 ASCII**：中文锚点（`{#语法}`）
-        // 在 HTML5 里是合法 id，若按白名单拒收，它会退回字面文本显示在标题后面——
-        // 那正是这条语法被当成"没渲染"的原因。
-        let usable: boolean = id.length > 0;
-        for (let k = 0; k < id.length && usable; k++) {
-          const c: string = id.charAt(k);
-          if (c === ' ' || c === '\t' || c === '{' || c === '}' || c === '"'
-            || c === '\'' || c === '<' || c === '>' || c === '&' || c === '\\') {
-            usable = false;
-          }
-        }
-        if (usable) {
-          return { hit: true, level: level, text: tail.substring(0, open).trim(), id: id };
+        const at: AttrTail = MdParser.attrTailOf(tail.substring(open + 1, tail.length - 1));
+        if (at.hit) {
+          return { hit: true, level: level, text: tail.substring(0, open).trim(), id: at.id };
         }
       }
     }
     return { hit: true, level: level, text: text, id: '' };
+  }
+
+  /**
+   * pandoc 属性块词法：`#id` / `.class` / `key=value` 三种 token，空白分隔。
+   * 只要有一个 token 不属于这三类就判**不是属性块**（hit=false），调用侧原样保留文本。
+   */
+  private static attrTailOf(inner: string): AttrTail {
+    const out: AttrTail = { hit: false, id: '', classes: [], attrs: [] };
+    const s: string = inner.trim();
+    if (s.length === 0 || s.indexOf('{') >= 0 || s.indexOf('}') >= 0) {
+      return out;
+    }
+    const toks: string[] = s.split(/\s+/);
+    let seen: boolean = false;
+    for (let k = 0; k < toks.length; k++) {
+      const tok: string = toks[k];
+      if (tok.length === 0) {
+        continue;
+      }
+      const c: string = tok.charAt(0);
+      if (c === '#') {
+        const id: string = tok.substring(1);
+        if (id.length === 0 || /[<>&"'\s\\]/.test(id)) {
+          return out;
+        }
+        out.id = id;
+      } else if (c === '.') {
+        const cls: string = tok.substring(1);
+        if (cls.length === 0 || /[<>&"'\s\\{}]/.test(cls)) {
+          return out;
+        }
+        out.classes.push(cls);
+      } else if (MdParser.ATTR_KV.test(tok)) {
+        out.attrs.push(tok);            // key=value：吃掉不显示，渲染层没有对应的能力
+      } else {
+        return out;
+      }
+      seen = true;
+    }
+    out.hit = seen;
+    return out;
+  }
+  private static readonly ATTR_KV: RegExp = /^[A-Za-z_:][A-Za-z0-9_:.-]*=\S+$/;
+
+  /** 属性块里是否带某个类名（`::: {#x .details}` → 折叠面板） */
+  private static hasClass(at: AttrTail, name: string): boolean {
+    for (let k = 0; k < at.classes.length; k++) {
+      if (at.classes[k].toLowerCase() === name) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static setextLevel(underline: string): number {
