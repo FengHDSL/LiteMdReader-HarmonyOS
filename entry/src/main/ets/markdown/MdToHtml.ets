@@ -13,7 +13,7 @@
  */
 
 import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCodeState, resolveFamily } from './CodeHighlight';
-import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind } from './MdTypes';
+import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { util } from '@kit.ArkTS';
 
@@ -47,6 +47,10 @@ const HTML_CSS: string = `
   blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid #2f63e8;
                background: rgba(47,99,232,0.06); border-radius: 6px; color: #3a4150; }
   .callout { margin: 1em 0; padding: 12px 16px; border-left: 3px solid #888; border-radius: 6px; background: rgba(0,0,0,0.04); }
+  details { margin: 1em 0; padding: 8px 12px; border: 1px solid #e2e6ee; border-radius: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .dbody { white-space: pre-line; margin-top: 6px; color: #3a4150; }
+  .grouplabel { margin: 0.6em 0 0.2em; font-size: 0.86em; color: #6e7781; }
   .callout .t { font-weight: 600; font-size: 0.85em; letter-spacing: 0.06em; display: block; margin-bottom: 4px; }
   table { border-collapse: collapse; margin: 1em 0; width: 100%; font-size: 0.94em; }
   th, td { border: 1px solid #e2e6ee; padding: 7px 12px; text-align: left; }
@@ -820,6 +824,20 @@ export class MdToHtml {
           body += MdToHtml.table(block);
         } else if (block.kind === MdBlockKind.Divider) {
           body += '<hr />';
+        } else if (block.kind === MdBlockKind.Details) {
+          // 折叠面板：浏览器原生 <details> 就能开合，导出网页里保持"能折叠"这件事
+          body += '<details' + (block.open === true ? ' open' : '') + '>'
+            + '<summary>' + MdToHtml.inline(block.inlines) + '</summary>'
+            + '<div class="dbody">' + MdToHtml.esc(block.code) + '</div>'
+            + '</details>';
+        } else if (block.kind === MdBlockKind.CodeGroup) {
+          // 代码组：导出的静态网页没有页签脚本，退成"每段一个带标题的代码块"。
+          // 内容一段不丢，只是不切换——阅读页那边是真 tab。
+          const gs: GroupCode[] = block.groupCodes === undefined ? [] : block.groupCodes;
+          for (let g = 0; g < gs.length; g++) {
+            body += '<p class="grouplabel">' + MdToHtml.esc(gs[g].label) + '</p>'
+              + MdToHtml.codeBlock(gs[g].lang, gs[g].code.split('\n'), []);
+          }
         } else if (block.footnoteNo > 0) {
           body += '<p class="foot">' + MdToHtml.esc(block.marker) + ' '
             + MdToHtml.inline(block.inlines) + '</p>';

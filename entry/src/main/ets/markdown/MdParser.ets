@@ -835,6 +835,15 @@ export class MdParser {
           }
           i++;
         }
+        // `::: details` 是**折叠面板**（VitePress / pymdownx.details 都这么用），不是提示卡：
+        // 落到下面的 callout 分支会变成一张常驻的蓝卡，"点击展开"的语义整个丢了。
+        if (ctnName === 'details') {
+          const dSum: string = ctnTitle.length > 0 ? ctnTitle : '点击展开';
+          const db: MdBlock = MdBlockFactory.details(dSum, innerLines.join('\n'), blocks.length,
+            MdParser.orig(ctnStart));
+          blocks.push(db);
+          continue;
+        }
         let kind: MdCalloutKind = MdCalloutKind.Note;
         if (ctnName === 'tip' || ctnName === 'info' || ctnName === 'success') {
           kind = MdCalloutKind.Tip;
@@ -851,17 +860,22 @@ export class MdParser {
       }
 
       // ── 折叠细节块 <details><summary>…</summary>…</details> ──
-      if (t.startsWith('<details>')) {
+      // 带属性的写法同样要认：`<details open>`（默认展开）与 `<summary class=…>` 是
+      // VitePress / GitHub 的常规用法。原先这里比的是字面 '<details>'，这类面板整块漏给
+      // 块级 HTML 路径，而 HTML 路径遇空行收束——正文被拆到面板外面，收尾的 </details>
+      // 还会显成一段白字。
+      if (MdParser.isDetailsStart(t)) {
         const detailsStart: number = i;
         const bodyLines: string[] = [];
         let summary: string = '';
-        let inBody: boolean = false;
+        let openDefault: boolean = MdParser.tagHasOpen(t);
         i++;
         while (i < lines.length) {
           const cur: string = lines[i].trim();
-          if (cur.startsWith('<summary>') && cur.endsWith('</summary>')) {
-            summary = cur.substring(9, cur.length - 10).trim();
-          } else if (cur === '</details>') {
+          const sumInner: string | null = MdParser.summaryText(cur);
+          if (sumInner !== null) {
+            summary = sumInner;
+          } else if (cur.startsWith('</details')) {
             i++;
             break;
           } else {
@@ -871,8 +885,10 @@ export class MdParser {
           }
           i++;
         }
-        blocks.push(MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length,
-          MdParser.orig(detailsStart)));
+        const db: MdBlock = MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length,
+          MdParser.orig(detailsStart));
+        db.open = openDefault;
+        blocks.push(db);
         continue;
       }
 
@@ -1860,6 +1876,43 @@ export class MdParser {
   /** 上一行是不是空白行（首行算空白：文档一开头就缩进那是代码） */
   private static prevLineBlank(lines: string[], i: number): boolean {
     return i === 0 || lines[i - 1].trim().length === 0;
+  }
+
+  /** 这一行是不是 `<details>` 或 `<details open …>`（标签名必须正好是 details） */
+  private static isDetailsStart(t: string): boolean {
+    if (!t.startsWith('<details')) {
+      return false;
+    }
+    const gt: number = t.indexOf('>');
+    if (gt < 0) {
+      return false;
+    }
+    const head: string = t.substring(1, gt).trim();
+    const sp: number = head.indexOf(' ');
+    const name: string = sp < 0 ? head : head.substring(0, sp);
+    return name.toLowerCase() === 'details';
+  }
+
+  /** 开标签里有没有 `open` 属性（默认展开） */
+  private static tagHasOpen(t: string): boolean {
+    const gt: number = t.indexOf('>');
+    const head: string = (gt > 0 ? t.substring(0, gt) : t).toLowerCase();
+    return /(^|\s)open(\s|=|$)/.test(head);
+  }
+
+  /** `<summary …>…</summary>` 整行取标题文字；不是这一行返回 null */
+  private static summaryText(cur: string): string | null {
+    const low: string = cur.toLowerCase();
+    if (!low.startsWith('<summary') || !low.endsWith('</summary>')) {
+      return null;
+    }
+    const gt: number = cur.indexOf('>');
+    if (gt < 0) {
+      return '';
+    }
+    const inner: string = cur.substring(gt + 1, cur.length - 10).trim();
+    // <summary><b>要点</b></summary>：标题留文字、脱掉标签，后面仍走行内解析
+    return MdParser.scrubHtmlTags(inner);
   }
 
   /** 这些标签是**块级**的：行内不处理（否则会把整张表格吞成一行文本），留给块级路径或原样显示 */

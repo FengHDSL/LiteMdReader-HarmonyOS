@@ -134,6 +134,11 @@ export interface MdBlock {
   anchor?: string;
   /** 代码组的分段（kind=CodeGroup 时有效） */
   groupCodes?: GroupCode[];
+  /**
+   * 折叠面板**默认展开**（`<details open>` 的 open 属性；kind=Details 时有效）。
+   * 没有这个字段时，带属性的写法整块会被块级 HTML 路径吞掉、正文被空行拆散。
+   */
+  open?: boolean;
   /** 稳定 key（块序号） */
   id: string;
   kind: MdBlockKind;

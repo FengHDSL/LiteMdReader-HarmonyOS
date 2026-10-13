@@ -385,7 +385,16 @@ probe('§7.2', '冒号容器 ::: details（折叠）', '::: details 点击展开
 probe('§7.3', '原生 <details open> 带属性 summary',
   '<details open>\n<summary><b>默认展开</b></summary>\n\n正文一行。\n\n</details>\n', 'claim', (res) => {
     const d = blocks(res, K.Details);
-    return d.length === 1 ? true : 'Details ' + d.length + ' 个（期望 1）';
+    if (d.length !== 1) { return 'Details ' + d.length + ' 个（期望 1）'; }
+    if (d[0].open !== true) { return 'open 属性没记下（导出与阅读页都不会默认展开）'; }
+    if (d[0].code.indexOf('正文一行') < 0) { return '正文被拆到面板外：' + JSON.stringify(d[0].code); }
+    if (flatText(res).indexOf('</details>') >= 0) { return '收尾标签漏成正文'; }
+    return true;
+  });
+probe('§7.3', '原生 <details>（无属性）照旧可折叠',
+  '<details>\n<summary>要点</summary>\n\n内容 A\n\n</details>\n', 'claim', (res) => {
+    const d = blocks(res, K.Details);
+    return (d.length === 1 && d[0].open !== true) ? true : 'Details ' + JSON.stringify(d.map((x) => x.open));
   });
 probe('§7.4', 'pymdownx.tabbed 的 +++ 分组',
   'div.tabbed-set\n\n+++ Tab 一\n\n内容 A\n\n+++ Tab 二\n\n内容 B\n', 'known', (res) =>
@@ -477,6 +486,10 @@ probe('§13', '段内两空格硬换行', '第一行  \n第二行\n', 'known', (
     ['指定行高亮导出侧有 .hl 行底', /hl\.indexOf\(k \+ 1\) >= 0/.test(html) && /\.hl \{[^}]*rgba\(245,158,11/.test(html)],
     ['代码族解析仍走 resolveFamily（改 codeBlock 签名时别把高亮链路带断）',
       /resolveFamily\(lang\)/.test(html)],
+    ['折叠面板导出侧仍是能开合的 <details>（漏掉这条分支的话整块内容凭空消失）',
+      /block\.kind === MdBlockKind\.Details/.test(html) && /'<details' \+ \(block\.open === true \? ' open' : ''\)/.test(html)],
+    ['代码组导出侧按段退化（静态网页没页签脚本，但一段都不能丢）',
+      /block\.kind === MdBlockKind\.CodeGroup/.test(html) && /grouplabel/.test(html)],
   ];
   for (const [label, ok] of probes2) {
     if (ok) { console.log('  ok    导出侧 ' + label); }

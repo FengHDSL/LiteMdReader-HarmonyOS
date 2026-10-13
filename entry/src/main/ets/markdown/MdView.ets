@@ -2729,7 +2729,15 @@ export struct MdBlockView {
     .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
   }
   // ── 折叠细节块（<details><summary>）──
-  @State detailsOpen: boolean = false;
+  /**
+   * 用户开合状态。`null` = 还没手动动过，这时以源码的 `<details open>` 为准；
+   * 不用 aboutToAppear 播种，是因为 block 走 @Prop、同一实例可能被换到别的块上复用，
+   * 生命周期里读到的初始值会留在状态里带过去。
+   */
+  @State detailsOpen: boolean | null = null;
+  private detailsShown(): boolean {
+    return this.detailsOpen === null ? this.block.open === true : this.detailsOpen;
+  }
   /** 代码组的活动页签：blockId|index（多代码组各自独立） */
   @State groupActiveKey: string = '';
 
@@ -2838,7 +2846,7 @@ export struct MdBlockView {
   detailsView() {
     Column({ space: HwSpace.xs }) {
       Row({ space: HwSpace.xs }) {
-        SymbolGlyph(this.detailsOpen ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
+        SymbolGlyph(this.detailsShown() ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
           .fontSize(13)
           .fontColor([this.palette.textTertiary])
         Text() {
@@ -2857,11 +2865,11 @@ export struct MdBlockView {
       .onClick(() => {
         // 展开收起包 animateTo：内容出现 / 消失才有过渡动画
         this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
-          this.detailsOpen = !this.detailsOpen;
+          this.detailsOpen = !this.detailsShown();
         });
       })
 
-      if (this.detailsOpen && this.block.code.length > 0) {
+      if (this.detailsShown() && this.block.code.length > 0) {
         Text(this.block.code)
           .fontSize(this.bodySize)
           .fontColor(this.palette.textSecondary)
