@@ -929,14 +929,17 @@ kanban
       card3[读完第一章]
 ```
 
-**架构图**（architecture-beta，服务分组与连接）：
+**架构图**（architecture-beta，服务分组与连接）——
+⚠️ **`[标签]` 只认不带点的 ASCII**：`[澄笺应用]` 与 `[shelf.json]` 都会报
+`Parsing failed: unexpected character: ->[<-`（加引号也救不了），实测 `[docs folder]` 这种
+带空格的英文没问题。分组名与服务名请写成 ASCII 单词，说明文字放正文：
 
 ```mermaid
 architecture-beta
-    group app(cloud)[澄笺应用]
-    service md(database)[docs 目录] in app
-    service web(server)[渲染 WebView] in app
-    service store(database)[shelf.json] in app
+    group app(cloud)[ChengJian]
+    service md(database)[docs folder] in app
+    service web(server)[WebView] in app
+    service store(database)[shelf index] in app
     web:T -- B:md
     web:T -- B:store
 ```

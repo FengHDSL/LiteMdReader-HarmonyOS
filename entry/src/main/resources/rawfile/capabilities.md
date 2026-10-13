@@ -52,15 +52,22 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
 | 时间线 | `timeline` | ✅ |
 | 块图 | `block-beta` | ✅ |
 | C4 架构图 | `C4Context` | ✅ |
-| 数据包图 | `packet-beta` | ❌ 不在此构建内 |
-| 架构图 | `architecture-beta` | ❌ 不在此构建内 |
+| 数据包图 | `packet-beta` | ✅（中文标签实测可用） |
+| 架构图 | `architecture-beta` | ⚠️ 在构建内，但**标签只认 ASCII** |
 
-两个实测踩到的坑：
+实测踩到的坑（逐条在随包引擎上跑过）：
 
 1. **象限图的标签没有冒号**。要写 `quadrant-1 We should expand`，写成 `quadrant-1: 我们要扩张` 会直接解析失败。
 2. **类图、需求图靠缩进分块**。`class Animal { +int age }` 的花括号内换行要缩进，否则报 Parse error。
 3. **象限图的坐标轴与数据点标签只认 ASCII**。`x-axis 低成本 --> 高成本` 会报 Lexical error，
    必须写成 `x-axis Low cost --> High cost`；图标题（`title`）里可以放中文。这是 Mermaid 10.9 词法的限制。
+4. **架构图的 `[标签]` 只认"不带点的 ASCII"**（这条是在随包的 Mermaid 11 上逐个变体实测的，不是猜的）：
+   · 中文不行 —— `group app(cloud)[澄笺应用]` 报 `Parsing failed: unexpected character: ->[<-`，
+     **加引号也救不了**（`["澄笺应用"]` 同样失败）；
+   · 点号不行 —— `[shelf.json]` 同样报错，写成 `[shelf index]` 就正常；
+   · 空格可以 —— `[docs folder]`、`[API layer]` 实测正常。
+   同一批图种里 `kanban` 的中文列名与 `packet-beta` 的中文段名都实测正常 —— 只有
+   architecture-beta 的词法卡在这两处。
 
 一张象限图（注意 `quadrant-1` 后面**没有**冒号，且轴标签用英文）：
 
