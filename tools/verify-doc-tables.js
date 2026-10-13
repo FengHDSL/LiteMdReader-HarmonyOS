@@ -9,6 +9,8 @@
  * 顺手把"每行列数 = 表头列数"和"单元格别写成整墙"两条量化了。
  *
  * 只读文件，不改任何东西。围栏里的内容不算表格（代码块里的 | 是正文）。
+ * 列数按**未转义**的竖线切（跟解析器 splitRow 同一条规则）：`\|` 是单元格里的内容，
+ * 不是分列——文档里正有一行拿它当示例，按字面 split 会把这条好行判成塌版。
  *
  * 用法：node tools/verify-doc-tables.js
  */
@@ -21,6 +23,23 @@ const RAW = path.join(__dirname, '..', 'entry', 'src', 'main', 'resources', 'raw
 const DOCS = ['README.md', 'chengjian.md', 'capabilities.md'];
 /** 单元格超过这个字数就提个醒：同表其它格子普遍在 100 字以内，整墙说明该拆到正文里去 */
 const CELL_WARN = 200;
+
+/** 按未转义的竖线切单元格（解析器同款规则） */
+function cellsOf(l) {
+  const parts = [];
+  let cur = '';
+  for (let k = 0; k < l.length; k++) {
+    const c = l.charAt(k);
+    if (c !== '|') { cur += c; continue; }
+    if (l.charAt(k - 1) === '\\') { cur += '|'; continue; }   // \| 是内容里的竖线
+    parts.push(cur);
+    cur = '';
+  }
+  parts.push(cur);
+  if (parts.length > 1 && parts[0].trim().length === 0) { parts.shift(); }
+  if (parts.length > 1 && parts[parts.length - 1].trim().length === 0) { parts.pop(); }
+  return parts.map((s) => s.trim());
+}
 
 let bad = 0;
 for (const doc of DOCS) {
@@ -53,7 +72,7 @@ for (const doc of DOCS) {
     if (t.startsWith('```')) { inFence = !inFence; if (!inFence) { flush(); } return; }
     if (inFence) { return; }
     if (t.startsWith('|')) {
-      rows.push({ line: i + 1, cells: l.split('|').map((s) => s.trim()).slice(1, -1) });
+      rows.push({ line: i + 1, cells: cellsOf(l) });
     } else if (rows.length) {
       flush();
     }
