@@ -438,8 +438,12 @@ export class MdToHtml {
         + '<script src="https://cdn.jsdelivr.net/npm/wavedrom@3.7.0/wavedrom.min.js"></script>\n';
     }
     if (has('katex')) {
-      scripts += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />\n'
-        + '<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>\n';
+      // 版本与仓库里打包的 KaTeX 对齐（0.19.0）：内联模式用的是本地打包件，
+      // CDN 模式若停在别的版本，同一份文档两种导出会有不同渲染结果。
+      // mhchem 必须在 katex 之后：它把自己的 \ce / \pu 注册到当时已存在的 katex 上。
+      scripts += '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.css" />\n'
+        + '<script src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/katex.min.js"></script>\n'
+        + '<script src="https://cdn.jsdelivr.net/npm/katex@0.19.0/dist/contrib/mhchem.min.js"></script>\n';
     }
     if (scripts.length === 0) {
       const none: ChartAssets = { head: '', runner: '' };

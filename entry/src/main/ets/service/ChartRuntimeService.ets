@@ -38,7 +38,11 @@ export class ChartRuntimeService {
       return ['echarts.min.js'];
     }
     if (lang === 'katex') {
-      return ['katex.min.js', 'katex.min.css'];
+      // mhchem 必须排在 katex 之后：它是 KaTeX 的扩展包，加载时把自己的 \ce / \pu
+      // 注册到**当时已存在**的 katex 对象上（阅读页的 render/katex.html 早就内联了它，
+      // 导出侧此前只带 katex，所以 `\ce{CO2 + C -> 2 CO}` 在阅读页正常、导出的网页里
+      // 变成红色 "Undefined control sequence"）。
+      return ['katex.min.js', 'katex.min.css', 'mhchem.min.js'];
     }
     if (lang === 'graphviz') {
       return ['viz-global.js'];
