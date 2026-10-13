@@ -91,11 +91,15 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
   const scaled = /Math\.min\(capW\/vb\.width, capH\/vb\.height\)/.test(mm)
     && /sv\.viewBox && sv\.viewBox\.baseVal/.test(mm);
   const noClampHack = !/maxHeight='clamp\(/.test(mm);
-  if (scaled && noClampHack) {
-    console.log('  ok    mermaid 卡片按 viewBox 同比缩放（限高 340~600，比例不歪）');
+  // 窄图不跟 capH 一起缩（stateDiagram 100×412 / classDiagram 165×336 实测会被削成
+  // 一条 87px 宽的细带、字更糊）——这条规则丢了就会退回那个体验。
+  const narrowKeep = /vb\.width<=capW && vb\.height<=capH\*2/.test(mm);
+  if (scaled && noClampHack && narrowKeep) {
+    console.log('  ok    mermaid 卡片按 viewBox 同比缩放（限高 340~600，窄图保持自然尺寸）');
   } else {
     fails++;
-    console.log('  FAIL  mermaid 卡片缩放被改回夹 max-height：负原点 viewBox 会被挤歪');
+    console.log('  FAIL  mermaid 卡片缩放规则被改动（同比缩放 / 不用 clamp 夹高 / 窄图不缩：'
+      + [scaled, noClampHack, narrowKeep].join(', ') + '）');
   }
 }
 // 公式模板：svg/canvas 规则里**不能**出现 height:auto。

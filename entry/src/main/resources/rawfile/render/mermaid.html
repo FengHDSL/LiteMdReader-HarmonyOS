@@ -3679,7 +3679,12 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
           var vb=sv.viewBox && sv.viewBox.baseVal ? sv.viewBox.baseVal : null;
           if(vb && vb.width>0 && vb.height>0){
             var k=Math.min(capW/vb.width, capH/vb.height);
-            // 只缩不放：小图保持原尺寸，免得被糊成一大块
+            // ⚠️ **窄而短的图不要跟着 capH 一起缩**：stateDiagram 的 viewBox 只有
+            // 80～150 宽、300～420 高（实测中文名状态图 100×412），按 capH 夹会把本来
+            // 就不大的图再削一圈 → 卡片里是一条 87px 宽的细带、字更糊（用户实测
+            // "状态图卡片下大小要合适"）。自然宽度本来就装得下、高度又不到 capH 两倍时，
+            // 保持原尺寸让卡片长高；真正的长图（3000px 类图）仍按 capH 缩。
+            if(k<1 && vb.width<=capW && vb.height<=capH*2){ k=1; }
             if(k<1){ sv.style.width=Math.round(vb.width*k)+'px'; sv.style.height=Math.round(vb.height*k)+'px'; }
             else { sv.style.width=vb.width+'px'; sv.style.height=vb.height+'px'; }
           } else { sv.style.maxWidth='100%'; sv.style.height='auto'; }
