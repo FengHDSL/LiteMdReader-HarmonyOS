@@ -148,6 +148,16 @@ probe('§1.1', '粗体 / 斜体 / 删除线 / 行内代码',
     const both = all.filter((x) => x.bold === true && x.italic === true);
     return both.length > 0 ? true : '***粗斜体*** 没有同时置上两个标志位';
   });
+probe('§1.1', '斜体里套粗体（改三连定界符不能弄坏常规嵌套）',
+  '**粗 *斜粗* 粗** 与 *斜 **粗斜** 斜*\n', 'claim', (res) => {
+    const all = allInlines(res);
+    const both = all.filter((x) => x.bold === true && x.italic === true);
+    if (both.length === 0) { return '嵌套的 *** 层没同时置上两个标志位'; }
+    if (all.some((x) => /^\*/.test(x.text) || /\*$/.test(x.text))) {
+      return '漏出字面星号：' + JSON.stringify(all.map((x) => x.text));
+    }
+    return true;
+  });
 probe('§1.2', '高亮 ==文字==', '==这段文字需要高亮显示==\n', 'claim',
   (res) => withKind(res, I.Mark).length > 0 || '没有 Mark 片段');
 probe('§1.3', '上标 ^x^ 与下标 ~x~', 'H~2~O、x^2^、E=mc^2^\n', 'claim', (res) => {

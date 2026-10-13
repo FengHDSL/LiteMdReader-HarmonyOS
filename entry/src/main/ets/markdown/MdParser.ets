@@ -1526,18 +1526,22 @@ export class MdParser {
       // 强调（粗体 / 斜体 / 粗斜体）
       if (c === '*' || c === '_') {
         const isDouble: boolean = i + 1 < n && src.charAt(i + 1) === c;
-        const delim: string = isDouble ? c + c : c;
+        // ***三*** 是"又粗又斜"，不是"两层"。以前只认到两连，`***粗斜体***` 走的是
+        // **双 delim 分支**：定界符后面紧跟第三个 * 让 nextOk 判假，整条强调分支被跳过，
+        // 于是首尾各剩一个字面 *，中间按粗体渲染（用户清单 §1.1 的写法）。
+        const isTriple: boolean = isDouble && i + 2 < n && src.charAt(i + 2) === c;
+        const delim: string = isTriple ? c + c + c : (isDouble ? c + c : c);
         const from: number = i + delim.length;
         // 下划线必须位于词边界，否则 snake_case 会被误判成斜体
         const prevOk: boolean = c !== '_' || i === 0 || !MdParser.isWordChar(src.charAt(i - 1));
         const nextOk: boolean = from < n && src.charAt(from) !== ' ' && src.charAt(from) !== c;
         if (prevOk && nextOk) {
-          const end: number = src.indexOf(delim, from);
+          const end: number = MdParser.findEmphClose(src, c, delim.length, from);
           if (end > from) {
             buf = MdParser.flush(out, buf, bold, italic, strike, code);
             const kids: MdInline[] = MdParser.scan(src.substring(from, end),
               isDouble ? true : bold,
-              isDouble ? italic : true,
+              isTriple ? true : (isDouble ? italic : true),
               strike, code);
             for (let k = 0; k < kids.length; k++) {
               out.push(kids[k]);
@@ -2270,6 +2274,31 @@ export class MdParser {
   private static isEscapable(ch: string): boolean {
     const set: string = '\\`*_{}[]()#+-.!~=|>';
     return set.indexOf(ch) >= 0;
+  }
+
+  /**
+   * 从 from 起找**长度正好等于 delimLen** 的定界符串，跳过更长或更短的连串。
+   * 原来用 `src.indexOf(delim, from)`，于是 `*斜 **粗** 斜*` 的单星外层会在内层双星的
+   * 第一个星号处收口（内层被当正文，尾巴的 `* 斜*` 漏成字面星号）。
+   */
+  private static findEmphClose(src: string, ch: string, delimLen: number, from: number): number {
+    const n: number = src.length;
+    let k: number = from;
+    while (k < n) {
+      if (src.charAt(k) !== ch) {
+        k++;
+        continue;
+      }
+      let run: number = 0;
+      while (k + run < n && src.charAt(k + run) === ch) {
+        run++;
+      }
+      if (run === delimLen) {
+        return k;
+      }
+      k += run;                       // 连串长度不符，整串跨过（里面的 * 不能当闭口）
+    }
+    return -1;
   }
 
   private static isWordChar(ch: string): boolean {
