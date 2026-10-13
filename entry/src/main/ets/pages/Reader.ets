@@ -361,6 +361,29 @@ export struct Reader {
    */
   @State renderEpoch: number = 0;
   /**
+   * **单块刷新通道**：某个块的内容就地变了（如勾选题目），只换这一块条目的 key，
+   * 让它一张卡重建。以前这种地方一律 `renderEpoch++`——那会把**整篇正文**重建：
+   * 所有卡片重新创建、图表重新加载、visibleBlocks 打回 80，用户实测表现为
+   * "勾一下任务列表，整屏内容闪一下，已经收起来的顶栏底栏又弹出来"。
+   * 形如 `块id:序号`；keygen 直接读这个 @State 字符串，所以是真实的渲染依赖，
+   * 换块时旧块 key 回到原样（它的 @Prop 数据本来就是最新的，多重建一次无副作用）。
+   */
+  @State blockRev: string = '';
+
+  /** 该块刚被单块刷新过 → 返回它的序号，否则空串（key 保持原样，不打扰别的卡） */
+  private blockRevSuffix(blockId: string): string {
+    const at: number = this.blockRev.indexOf(':');
+    if (at <= 0 || this.blockRev.substring(0, at) !== blockId) {
+      return '';
+    }
+    return '_v' + this.blockRev.substring(at + 1);
+  }
+
+  /** 只重建这一块（调用方需先把数据改好） */
+  private bumpBlockRev(blockId: string): void {
+    this.blockRev = blockId + ':' + (Date.now() % 1000000);
+  }
+  /**
    * **本页自己的深浅记忆**（不再依赖全局"已应用"标记）：
    * 全局标记会被别的页面先置位（切深浅时设置页先收到），阅读页据此**跳过重建**
    * → 出现"背景跟着变深、正文文字却还是浅色主题的深色字"（用户实测看不清）。
@@ -2732,17 +2755,21 @@ export struct Reader {
       return;
     }
     const done: boolean = block.task === MdTaskState.Done;
+    const flip = (): void => {
+      block.task = done ? MdTaskState.Todo : MdTaskState.Done;
+      // 只换这一块：以前这里 renderEpoch++ 会把整篇正文重建（所有卡重建成、图表重载、
+      // visibleBlocks 打回 80），实测就是"勾一下闪一下 + 收起的栏弹回来"
+      this.bumpBlockRev(block.id);
+    };
     // 只读文档：勾选**不写盘**（只改内存态供演示，重载后还原）——
     // 与内置教程原来的演示行为一致。
     if (this.docReadOnly) {
-      this.blocks[idx].task = done ? MdTaskState.Todo : MdTaskState.Done;
-      this.renderEpoch++;
+      flip();
       this.toast(done ? L10n.t('已取消勾选（只读文档，不写盘）') : L10n.t('已完成（只读文档，不写盘）'));
       return;
     }
     if (this.docBuiltin) {
-      this.blocks[idx].task = done ? MdTaskState.Todo : MdTaskState.Done;
-      this.renderEpoch++;
+      flip();
       this.toast(done ? L10n.t('已取消勾选（演示状态，重载后还原）') : L10n.t('已完成（演示状态，重载后还原）'));
       return;
     }
@@ -2777,8 +2804,12 @@ export struct Reader {
         lines[lineNo] = line.substring(0, atX) + '[ ]' + line.substring(atX + 3);
       }
       DocStore.update(ctx, this.docName, lines.join('\n'));
-      this.skipRestoreOnce = true;
-      this.loadDoc();
+      // 写盘成功后**不整篇重载**：勾选只改一行里的 `[ ]`↔`[x]`（长度都不变），
+      // loadDoc() 会把 blocks / 大纲 / 批注重建一遍、visibleBlocks 打回 80，
+      // 用户实测就是"内容闪一下、已收起的顶栏底栏弹出来"。
+      // 这里只同步内存里那份原文（后续保存要拿它作基线）+ 就地翻这一块。
+      this.rawContent = lines.join('\n');
+      flip();
       this.toast(done ? L10n.t('已取消勾选') : L10n.t('已完成'));
     } catch (err) {
       this.toast('勾选失败：' + DocStore.describeError(err as BusinessError));
@@ -2787,7 +2818,7 @@ export struct Reader {
 
   // ══════════════════════ 站内锚点 ══════════════════════
 
-  /** `[文字](#标题)`：按标题文本匹配大纲并跳转（忽略空白、大小写与常见标点）。 */
+  /** `[文字](#标题)`：按标题文本或**显式锚点 id** 匹配大纲并跳转（文字匹配忽略空白、大小写与常见标点）。 */
   private jumpToAnchor(href: string): void {
     const raw: string = href.startsWith('#') ? href.substring(1) : href;
     const target: string = normalizeAnchor(decodeURIComponent(raw));
@@ -2795,7 +2826,10 @@ export struct Reader {
       return;
     }
     for (let k = 0; k < this.docOutline.length; k++) {
-      if (normalizeAnchor(this.docOutline[k].text) === target) {
+      // 先认 `{#id}`：以前只比标题文字，于是"显式锚点"只有导出的网页能用，
+      // 应用里点了没反应（用户实测"显式锚点与交叉引用没实现"）
+      const id: string = this.docOutline[k].anchor === undefined ? '' : normalizeAnchor(this.docOutline[k].anchor);
+      if ((id.length > 0 && id === target) || normalizeAnchor(this.docOutline[k].text) === target) {
         this.jumpTo(this.docOutline[k].blockIndex);
         return;
       }
@@ -7563,7 +7597,9 @@ export struct Reader {
                 // 含行内公式的段落：key 追加"公式图就绪数"——图就绪后本段重建，
                 // 线性化文本才会换成公式图（见 inlineReadySuffix 注释）
                 return block.id + '_' + this.docName + '_' + this.renderEpoch
-                  + this.inlineReadySuffix(block);
+                  + this.inlineReadySuffix(block)
+                  // 单块就地刷新（勾选任务等）：只有这一块的 key 变，别的一律复用
+                  + this.blockRevSuffix(block.id);
               })
 
             // **懒渲染的「继续加载」入口**（大文件分批渲染）。
