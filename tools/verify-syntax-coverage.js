@@ -466,8 +466,22 @@ probe('§8.6', 'div style 自定义卡片里嵌 ol/code',
 probe('§9.1', 'YAML Front Matter 收进 meta',
   '---\ntitle: "总谱"\nauthor: "Yuanbao"\ntags: [markdown, mermaid]\n---\n\n# 正文\n', 'claim', (res) =>
     res.meta.length >= 3 ? true : 'meta ' + res.meta.length + ' 项（期望 ≥3）');
-probe('§9.2', '自动目录 [TOC]', '[TOC]\n\n# 甲\n\n# 乙\n', 'known', (res) =>
-  flatText(res).indexOf('[TOC]') < 0 ? true : '[TOC] 原样显示（矩阵已标 ❌）');
+probe('§9.2', '自动目录 [TOC]（单独一行 → 可点跳转的条目列表）',
+  '[TOC]\n\n# 甲\n\n## 甲之一\n\n# 乙\n', 'claim', (res) => {
+    if (flatText(res).indexOf('[TOC]') >= 0) { return '[TOC] 还留在正文里'; }
+    const it = blocks(res, K.ListItem);
+    const links = withKind(res, I.Link).filter((x) => x.href.startsWith('#'));
+    if (it.length !== 3) { return '目录条目 ' + it.length + ' 条（期望 3：甲 / 甲之一 / 乙）'; }
+    if (links.length !== 3) { return '可点锚点链接 ' + links.length + ' 条'; }
+    const lv = it.map((b) => b.indent);
+    return lv.join(',') === '0,1,0' ? true : '层级按标题层级走：实际 ' + lv.join(',');
+  });
+probe('§9.2', '正文里的其它 [TOC] 字样不误伤（行内有别的内容就不展开）',
+  '这一行 [TOC] 只是举例，不该变成目录\n\n# 标题\n', 'claim', (res) => {
+    const it = blocks(res, K.ListItem);
+    return (it.length === 0 && flatText(res).indexOf('[TOC]') >= 0) ? true
+      : '误展开：条目 ' + it.length + ' 条，正文 "' + flatText(res) + '"';
+  });
 probe('§9.3', '显式锚点 <a id> + 站内跳转',
   '<a id="anchor-demo"></a>\n\n**这里埋了锚点**，用 [跳转到锚点](#anchor-demo) 可以跳。\n\n## 目标标题 {#t2}\n',
   'claim', (res) => {

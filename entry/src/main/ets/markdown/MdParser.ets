@@ -1343,6 +1343,13 @@ export class MdParser {
       }
     }
 
+    // ── `[TOC]` 展开成正文目录 ───────────────────────────────────────
+    // Python-Markdown `toc` / remark-toc 的同一写法。此前原样显示，矩阵标 ❌。
+    // 做法是把那一行换成一份列表条目，每条是 `[标题文字](#标题文字)`——**复用既有的
+    // 跳转通道**（阅读页按标题文字归一化匹配跳转；导出网页里锚点 id 本来就按标题生成），
+    // 因此不需要任何新的渲染面，条目还能被选中、批注。
+    MdParser.expandToc(blocks);
+
     // ── 目录与统计 ────────────────────────────────────────────────
     const outline: MdHeading[] = [];
     for (let k = 0; k < blocks.length; k++) {
@@ -2397,6 +2404,53 @@ export class MdParser {
       end: end + 1
     };
     return r;
+  }
+
+  /** 把正文里单独一行的 `[TOC]` 段落换成正文目录条目（见 parse() 里的注释） */
+  private static expandToc(blocks: MdBlock[]): void {
+    let at: number = -1;
+    for (let k = 0; k < blocks.length; k++) {
+      const b: MdBlock = blocks[k];
+      if (b.kind === MdBlockKind.Paragraph && b.plain.trim().toUpperCase() === '[TOC]') {
+        at = k;
+        break;
+      }
+    }
+    if (at < 0) {
+      return;
+    }
+    const rebuilt: MdBlock[] = [];
+    let n: number = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      if (k === at) {
+        // 条目层级 = 标题层级 - 1（h1 顶格，h2 缩进一级……）
+        for (let q = at + 1; q < blocks.length; q++) {
+          const h: MdBlock = blocks[q];
+          if (h.kind !== MdBlockKind.Heading) {
+            continue;
+          }
+          const title: string = h.plain.trim();
+          if (title.length === 0) {
+            continue;
+          }
+          const href: string = '#' + ((h.anchor !== undefined && h.anchor.length > 0) ? h.anchor : title);
+          const link: MdInline[] = [inlineOf(MdInlineKind.Link, title, href, 0,
+            false, false, false, false)];
+          const item: MdBlock = MdBlockFactory.listItem(title, false, '-', MdTaskState.None,
+            h.level > 1 ? h.level - 1 : 0, link, blocks.length, h.srcLine);
+          // 自己起 id：数字序号会和后面的真块撞，撞了 ForEach 就复用错行
+          item.id = 'btoc' + n;
+          n++;
+          rebuilt.push(item);
+        }
+        continue;
+      }
+      rebuilt.push(blocks[k]);
+    }
+    blocks.length = 0;
+    for (let k = 0; k < rebuilt.length; k++) {
+      blocks.push(rebuilt[k]);
+    }
   }
 
   private static isEscapable(ch: string): boolean {
