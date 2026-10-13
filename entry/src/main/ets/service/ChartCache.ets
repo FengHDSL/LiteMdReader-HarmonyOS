@@ -71,12 +71,15 @@ export class ChartCache {
    *    （用户实测"部分内容被裁切显示不完全"）。当时改为溢出可见 + body max-content；
    *    ⚠️ 但这批改动让用户实测更差（卡片被拉得一屏长、有的公式内容反而变小），
    *    已**整体撤回**，katex.html 恢复原状。
+   *  · v15（2026-10-13 十二次升级）：mermaid 10.9.3→11.4.1（新图种 packet/kanban/architecture）
+   *    与 KaTeX 挂载 mhchem 化学扩展——旧引擎时代的错误渲染图（kanban/架构图/数据包图/
+   *    化学式的报错 SVG）全部作废，按新引擎重生成。
    *  · v14（2026-10-11 十一次升级）：跟随公式卡片撤回**键升盐**——v13 那批
    *    "按公式自身尺寸"的 PNG 与 .dim 和撤回后的模板产物尺寸口径不同，
    *    两代混存会让卡片高度忽高忽低，必须一并作废重生成。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v14|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v15|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
