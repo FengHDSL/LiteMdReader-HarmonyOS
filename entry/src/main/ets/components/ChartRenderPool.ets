@@ -155,8 +155,10 @@ export struct ChartRenderPool {
     }
     this.pixelLooksBlank(pixel).then((blank: boolean) => {
       if (blank) {
-        // **空白自检**：全透明图不落盘——宁可任务保持"未就绪"（正文显示
-        // 线性化文本 / 实时渲染），也不把空白写进持久缓存。记入失败集让队列继续。
+        // **空白自检**：整张同色（= 只有烘焙进去的卡片底色、什么都没画出来）的图
+        // 不落盘——宁可任务保持"未就绪"（正文回落实时 Web / 线性化文本），
+        // 也不把空白写进持久缓存：一旦落盘，正文每次命中缓存键都显示这张空白图，
+        // 重开文档也不会恢复。记入失败集让队列继续。
         this.failed.add(t.key);
         this.finishOne(t);
         return;
@@ -171,11 +173,16 @@ export struct ChartRenderPool {
   }
 
   /**
-   * 自检：快照是否"基本空白"。
+   * 自检：快照是不是"整张一个颜色"。
    *
-   * 全图扫描（首个 alpha ≥ 16 的像素即判定"有内容"，提前退出）——
-   * 键控后的公式图是**透明底**（背景 alpha=0），旧的三行采样会漏掉稀疏笔画
-   * 把正常公式误判成空白；不透明烘焙图首像素即退出，开销不变。
+   * ⚠️ **不能只看 alpha**：卡片快照刻意烘焙**不透明**卡片底色（webPageSnapshot 不带
+   * alpha，透明会被合成成黑色——见 DiagramWeb.cardBg 与 cardBgKey 的注释），
+   * 于是"什么都没画出来"的失败快照是**整片 alpha=255 的卡片底色**，
+   * 用 alpha≥16 判空白永远判不出来 → 空白图照样落盘，正文一直是一张
+   * 同色矩形（用户实测"数据可视化卡片上不显示，浅色模式也不显示"；
+   * 放大浮层走的是实时 Web 那条支路，所以放大能看到图、卡片看不到）。
+   * 改成**与左上角那像素比颜色**：整张都一样才算空白。
+   * 全图扫描、发现第一个不同就退出（真实图表第一个像素之后马上就有笔画/网格）。
    * 读取失败保守放行（按有内容处理）。
    */
   private async pixelLooksBlank(pixel: image.PixelMap): Promise<boolean> {
@@ -196,8 +203,15 @@ export struct ChartRenderPool {
       };
       await pixel.readPixels(area);
       const px: Uint8Array = new Uint8Array(buf);
-      for (let i: number = 3; i < px.length; i += 4) {
-        if (px[i] >= 16) {
+      // 参照色 = 左上角（就是烘焙进去的卡片底色；行内公式是透明底 0,0,0,0）
+      const r0: number = px[0];
+      const g0: number = px[1];
+      const b0: number = px[2];
+      const a0: number = px[3];
+      for (let i: number = 4; i + 3 < px.length; i += 4) {
+        // 阈值 8/通道：合成器抖动最多差 1～2，任何真实内容远超这个量
+        if (Math.abs(px[i] - r0) > 8 || Math.abs(px[i + 1] - g0) > 8
+          || Math.abs(px[i + 2] - b0) > 8 || Math.abs(px[i + 3] - a0) > 8) {
           return false;
         }
       }

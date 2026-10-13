@@ -81,9 +81,15 @@ export class ChartCache {
    *  · v14（2026-10-11 十一次升级）：跟随公式卡片撤回**键升盐**——v13 那批
    *    "按公式自身尺寸"的 PNG 与 .dim 和撤回后的模板产物尺寸口径不同，
    *    两代混存会让卡片高度忽高忽低，必须一并作废重生成。
+   *  · v17（2026-10-13 十四次升级）：修「**空白图能被写进持久缓存**」——卡片快照刻意
+   *    烘焙不透明卡片底色，而池子的空白自检只看了 alpha，一片底色 alpha=255 直接过关，
+   *    于是"什么都没画出来"的失败快照永久落盘；正文命中缓存键就一直显示同色矩形，
+   *    重开文档也不恢复（放大浮层走实时 Web，所以"卡片空白、放大正常"，
+   *    用户实测 chart.js「数据可视化卡片上不显示，浅色模式也不显示」正是这一条）。
+   *    自检改成"整张同色才算空白"，同时升键把已经躺在用户机上的空白图作废重生成。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v16|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v17|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
