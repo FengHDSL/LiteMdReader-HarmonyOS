@@ -98,6 +98,22 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
     console.log('  FAIL  mermaid 卡片缩放被改回夹 max-height：负原点 viewBox 会被挤歪');
   }
 }
+// 公式模板：svg/canvas 规则里**不能**出现 height:auto。
+// KaTeX 的箭头是 `<svg width="400em" height="0.522em" viewBox="0 0 400000 522">`——超宽、
+// 靠 height 属性与 max-width 裁切。height:auto 会按 viewBox 比例把它算成 0.05px，
+// \ce 与 \xrightarrow 直接消失（用户实测"化学方程式箭头不显示了"，
+// 就是给全部图表模板统一加 height:auto 那条改动串进了 katex.html）。
+{
+  const kx = fs.readFileSync(path.join(ROOT, 'entry/src/main/resources/rawfile/render/katex.html'), 'utf8');
+  const cssOnly = kx.replace(/<script[\s\S]*?<\/script>/g, '');
+  const bad = /#app svg[^}]*height:\s*auto/.test(cssOnly);
+  if (bad) {
+    fails++;
+    console.log('  FAIL  katex.html 的 svg 规则带 height:auto：化学箭头会被压成 0.05px');
+  } else {
+    console.log('  ok    katex.html 未给公式 svg 加 height:auto（化学箭头留得住）');
+  }
+}
 
 console.log('清单 → ' + OUT);
 console.log(fails === 0 ? 'CHART TEMPLATES OK' : 'CHART TEMPLATES FAILED: ' + fails);

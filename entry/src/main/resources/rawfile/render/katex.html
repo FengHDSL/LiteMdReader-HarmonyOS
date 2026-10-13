@@ -6,7 +6,12 @@
   html,body{margin:0;padding:0;background:transparent;}
   body.dark{color:#ECEFF4;}
   #app{padding:8px 10px;box-sizing:border-box;overflow:hidden;}
-  #app svg,#app canvas{max-width:100%;height:auto;}
+  /* ⚠️ 这里**不能**加 height:auto：KaTeX 的箭头是 `<svg width="400em" height="0.522em"
+     viewBox="0 0 400000 522">` 这种"超宽 + 靠 max-width/overflow 裁切"的写法，
+     height:auto 会按 viewBox 比例把它算成 0.05px —— \ce 的箭头与 \xrightarrow 直接消失
+     （用户实测"化学方程式箭头不显示了"，就是这条全局改动串到公式模板里造成的）。
+     公式里的 svg 是行内零件，缩放交给 KaTeX 自己排；max-width 那条只对整张独立图有意义。 */
+  #app svg,#app canvas{max-width:100%;}
   .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
   /* 放大窗口（fit 模式，仅放大浮层传入）：**不强制居中**（用户要求）——
      katex.css 默认 .katex-display{text-align:center} + white-space:nowrap 会让
