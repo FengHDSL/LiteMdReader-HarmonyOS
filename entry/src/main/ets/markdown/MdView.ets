@@ -154,7 +154,9 @@ export class MdViewUtil {
         strike: item.strike,
         code: item.code,
         color: item.color,
-        highlight: '',
+        highlight: item.bg === undefined ? '' : item.bg,
+        // 原生 span 指定的背景是**作者写死的实心色**，不参与荧光笔透明度缩放
+        solid: item.bg !== undefined && item.bg.length > 0,
         wavy: false,
         dblLine: false,
         annotated: false,

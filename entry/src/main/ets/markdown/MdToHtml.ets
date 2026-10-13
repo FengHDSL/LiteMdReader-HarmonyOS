@@ -202,10 +202,20 @@ export class MdToHtml {
         body = '<span class="rt">' + body + '</span>';
       } else if (item.kind === MdInlineKind.Under) {
         body = '<u>' + body + '</u>';
-      } else if (item.kind === MdInlineKind.Color) {
-        const color: string = MdToHtml.safeHexColor(item.color === undefined ? '' : item.color);
-        if (color.length > 0) {
-          body = '<span style="color:' + color + '">' + body + '</span>';
+      } else if (item.kind === MdInlineKind.Color || (item.bg !== undefined && item.bg.length > 0)) {
+        // 字色与底色各管各的：徽章/彩色标签是"浅底 + 深字"，只放行其中一个就会丢一半
+        const hexColor: string = item.kind === MdInlineKind.Color
+          ? MdToHtml.safeHexColor(item.color === undefined ? '' : item.color) : '';
+        const hexBg: string = MdToHtml.safeHexColor(item.bg === undefined ? '' : item.bg);
+        let decl: string = '';
+        if (hexColor.length > 0) {
+          decl += 'color:' + hexColor + ';';
+        }
+        if (hexBg.length > 0) {
+          decl += 'background:' + hexBg + ';';
+        }
+        if (decl.length > 0) {
+          body = '<span style="' + decl + '">' + body + '</span>';
         }
       }
       out += body;

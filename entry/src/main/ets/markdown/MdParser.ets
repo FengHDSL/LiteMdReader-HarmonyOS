@@ -2125,14 +2125,25 @@ export class MdParser {
       return { consumed: consumed, items: items } as HtmlHit;
     }
     if (name === 'span' || name === 'font') {
-      const items: MdInline[] = MdParser.scan(inner, bold, italic, strike, code);
+      const boldInner: boolean = bold || MdParser.attrsBold(attrs);
+      const items: MdInline[] = MdParser.scan(inner, boldInner, italic, strike, code);
       const color: string = MdParser.htmlColor(attrs);
-      if (color.length === 0) {
+      const bg: string = MdParser.htmlBgColor(attrs);
+      if (color.length === 0 && bg.length === 0) {
         return { consumed: consumed, items: items } as HtmlHit;
       }
       for (let q = 0; q < items.length; q++) {
-        items[q].kind = MdInlineKind.Color;
-        items[q].color = color;
+        if (color.length > 0) {
+          items[q].kind = MdInlineKind.Color;
+          items[q].color = color;
+        }
+        // 背景只登记色值，**不改 kind**：彩色底 + 任意字色要能同时成立（徽章就是这型）
+        if (bg.length > 0) {
+          items[q].bg = bg;
+        }
+        if (boldInner && !bold) {
+          items[q].bold = true;
+        }
       }
       return { consumed: consumed, items: items } as HtmlHit;
     }
@@ -2242,15 +2253,76 @@ export class MdParser {
    * 只放行 `#RGB` / `#RRGGBB` / `#AARRGGBB`，其余（red、rgb()、url()、含分号的注入串）
    * 一律当没有颜色——渲染层拿到的只能是色值，不可能是任意 CSS。
    */
+  /**
+   * 从 style 串里取一条声明的值。**两条讲究**：
+   *  · 名字前不能是 `-`：否则 `background-color:#eee;color:#f00` 里会从
+   *    `background-color:` 的 `color:` 处开始取，把背景色当成文字颜色（实测到的真错）；
+   *  · 只认声明起点（行首或 `;` 之后，允许空白），不做子串匹配。
+   */
+  private static styleDecl(style: string, name: string): string {
+    const low: string = style.toLowerCase();
+    const key: string = name.toLowerCase() + ':';
+    let from: number = 0;
+    while (from < low.length) {
+      const at: number = low.indexOf(key, from);
+      if (at < 0) {
+        return '';
+      }
+      const prev: string = at === 0 ? ';' : low.charAt(at - 1);
+      // 声明起点只允许是行首或 `;` / 空白：这一条同时挡掉 `background-color:`
+      // （它里面的 `color:` 前面是 `-`）与 `xcolor:` 这类粘连名
+      if (prev === ';' || prev === ' ' || prev === '\t') {
+        const semi: number = style.indexOf(';', at);
+        return (semi < 0 ? style.substring(at + key.length) : style.substring(at + key.length, semi)).trim();
+      }
+      from = at + 1;
+    }
+    return '';
+  }
+
+  /** style 里的 font-weight：bold / bolder / 600~900 算粗体 */
+  private static styleBold(style: string): boolean {
+    const v: string = MdParser.styleDecl(style, 'font-weight').toLowerCase();
+    if (v === 'bold' || v === 'bolder') {
+      return true;
+    }
+    const n: number = Number(v);
+    return !isNaN(n) && n >= 600;
+  }
+
+  /** 属性 + style 两路取字重（`<b>` 类标签走的是 bold 参数，这里是 span 上的 style） */
+  private static attrsBold(attrs: string): boolean {
+    const direct: string = MdParser.htmlAttr(attrs, 'font-weight');
+    if (direct.length > 0) {
+      const n: number = Number(direct);
+      return direct.toLowerCase() === 'bold' || direct.toLowerCase() === 'bolder' || (!isNaN(n) && n >= 600);
+    }
+    return MdParser.styleBold(MdParser.htmlAttr(attrs, 'style'));
+  }
+
+  /**
+   * 背景色（徽章、进度条底、彩色标签这类排版的最小可用子集）：
+   * 只放行**实心十六进制**色，`linear-gradient(...)` 那种画不出来，直接不要——
+   * 与其渲成黑底不如没有底，文字仍然带着自己的颜色可读。
+   */
+  private static htmlBgColor(attrs: string): string {
+    const style: string = MdParser.htmlAttr(attrs, 'style');
+    let raw: string = MdParser.styleDecl(style, 'background-color');
+    if (raw.length === 0) {
+      raw = MdParser.styleDecl(style, 'background');
+    }
+    if (raw.indexOf('gradient') >= 0 || raw.indexOf('url(') >= 0) {
+      return '';
+    }
+    // `background:#eee;padding:2px` 这类简写：取第一段是色值时才用
+    const first: string = raw.split(' ')[0].trim();
+    return MdParser.normalizeHexColor(first);
+  }
+
   private static htmlColor(attrs: string): string {
     let raw: string = MdParser.htmlAttr(attrs, 'color');
     if (raw.length === 0) {
-      const style: string = MdParser.htmlAttr(attrs, 'style');
-      const at: number = style.toLowerCase().indexOf('color:');
-      if (at >= 0) {
-        const semi: number = style.indexOf(';', at);
-        raw = semi < 0 ? style.substring(at + 6) : style.substring(at + 6, semi);
-      }
+      raw = MdParser.styleDecl(MdParser.htmlAttr(attrs, 'style'), 'color');
     }
     return MdParser.normalizeHexColor(raw.trim());
   }

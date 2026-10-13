@@ -557,6 +557,29 @@ probe('§6.22', '别名围栏也进图表通道（```dot / ```gv = graphviz，``
     return ch.join(',') === want.join(',') ? true : '图表通道拿到 ' + JSON.stringify(ch) + '，期望 ' + JSON.stringify(want);
   });
 
+probe('§8.1', 'span 的 font-weight 与背景色（不只认字色）',
+  '<span style="color:#e11d48;font-weight:700">红色强调</span> · '
+  + '<span style="background-color:#eef1f6;color:#1b1f27">浅底深字的徽章</span>\n', 'claim', (res) => {
+    const all = allInlines(res);
+    const red = all.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('E11D48') >= 0);
+    if (red.length === 0) { return '红色没认出来'; }
+    if (!red.every((x) => x.bold === true)) { return 'font-weight:700 没落到 bold 上'; }
+    const badge = all.filter((x) => (x.bg === undefined ? '' : x.bg).toUpperCase().indexOf('EEF1F6') >= 0);
+    if (badge.length === 0) { return 'background-color 没登记为底色'; }
+    const wrong = badge.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('EEF1F6') >= 0);
+    if (wrong.length > 0) { return '把 background-color 当成文字颜色了（旧 bug）'; }
+    const dark = badge.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('1B1F27') >= 0);
+    return dark.length === badge.length ? true : '底色那块自己的文字颜色丢了';
+  });
+probe('§8.1', '渐变背景画不出来就不兜底（宁缺底不渲成黑块）',
+  '<span style="background:linear-gradient(90deg,#a78bfa,#f472b6);color:#fff">渐变标签</span>\n', 'claim', (res) => {
+    const all = allInlines(res);
+    const withBg = all.filter((x) => (x.bg === undefined ? '' : x.bg).length > 0);
+    if (withBg.length > 0) { return '渐变被当成实心色登记了：' + JSON.stringify(withBg.map((x) => x.bg)); }
+    const white = all.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('FFFFFF') >= 0);
+    return white.length > 0 ? true : '字色也一起丢了：' + JSON.stringify(all.map((x) => x.color));
+  });
+
 console.log('');
 console.log(gaps.length === 0
   ? 'COVERAGE OK — 真解析器逐条实测通过（known 档 ' + knownFails + ' 条为已标注降级）'

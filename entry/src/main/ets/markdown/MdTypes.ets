@@ -111,6 +111,11 @@ export interface MdInline {
    * 只放行十六进制色值，`red`/`rgb()`/`url()` 之类一律丢弃，避免把任意 CSS 注入渲染层）。
    */
   color?: string;
+  /**
+   * **指定背景色**（`<span style="background:#eee">` 这类实心色值）。渐变 / url() 背景
+   * 画不出来，解析器就不会写这个字段；渲染层拿它当"实色底"，与学习卡同一套通道。
+   */
+  bg?: string;
 }
 
 /** 表格行 */
