@@ -2734,6 +2734,13 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'wavedrom') {
                   DiagramWeb({ mode: 'wavedrom', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'nomnoml') {
+                  // nomnoml / chart 此前**不在这条活渲染链里**，落到最后的 else → codeView，
+                  // 于是"极简 UML""chart.js"永远只是一段代码（用户实测）。模板本身能出图，
+                  // 但只有预渲染池命中才有 PNG，没命中就再没有第二次机会。
+                  DiagramWeb({ mode: 'nomnoml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'chart') {
+                  DiagramWeb({ mode: 'chart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'html') {
                   DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else {

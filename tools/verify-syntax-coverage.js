@@ -549,6 +549,14 @@ probe('§13', '行内代码里的实体保持字面', '写 HTML 时用 `&amp;` �
     : '行内代码被解码成 "' + (code[0] ? code[0].text : '?') + '"';
 });
 
+probe('§6.22', '别名围栏也进图表通道（```dot / ```gv = graphviz，```chartjs = chart，```puml = 桥）',
+  '```dot\ndigraph G { a -> b }\n```\n\n```gv\ndigraph H { c -> d }\n```\n\n```chartjs\n{"type":"bar"}\n```\n\n```puml\n@startuml\nA -> B : hi\n@enduml\n```\n',
+  'claim', (res) => {
+    const ch = blocks(res, K.Chart).map((b) => b.lang);
+    const want = ['graphviz', 'graphviz', 'chart', 'mermaid'];
+    return ch.join(',') === want.join(',') ? true : '图表通道拿到 ' + JSON.stringify(ch) + '，期望 ' + JSON.stringify(want);
+  });
+
 console.log('');
 console.log(gaps.length === 0
   ? 'COVERAGE OK — 真解析器逐条实测通过（known 档 ' + knownFails + ' 条为已标注降级）'

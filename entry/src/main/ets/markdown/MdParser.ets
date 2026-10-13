@@ -775,7 +775,7 @@ export class MdParser {
         // PlantUML → mermaid 桥接（时序图子集；无法离线渲染真 PlantUML，转译后用 mermaid 出图）
         let pumlBody: string = '';
         let isPuml: boolean = false;
-        if (lang.toLowerCase() === 'plantuml') {
+        if (MdParser.isPumlLang(lang.toLowerCase())) {
           // 只有时序图能桥成 mermaid；类图 / 用例图 / 活动图**不硬转**，
           // 留成普通代码块显示源码——以前 bridgeable 从没被调用，类图也被塞进
           // sequenceDiagram，用户看到的是一整张 mermaid 解析错误卡
@@ -785,7 +785,7 @@ export class MdParser {
             isPuml = true;
           }
         }
-        const langLower: string = (isPuml ? 'mermaid' : lang.toLowerCase());
+        const langLower: string = (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
         const bodyStr: string = isPuml ? pumlBody : body.join('\n');
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
@@ -2794,6 +2794,40 @@ export class MdParser {
       return '';
     }
     return tok;
+  }
+
+  /**
+   * 图表语言别名归一。
+   * 只比字面 id 的代价实测到了：渲染总谱 §6.22 的 graphviz 围栏写的是 ` ```dot `，
+   * 于是整张图退化成代码块（用户报"graphviz 依旧是代码块"）；nomnoml 的常见扩展名
+   * 是 `.nml`、mermaid 是 `mmd`、chart.js 有人写 `chartjs` / `chart.js`。
+   * 不认识的照原样返回，交给代码高亮或纯文本，绝不硬认。
+   */
+  private static chartLangOf(l: string): string {
+    if (l === 'dot' || l === 'gv' || l === 'viz' || l === 'graphviz-dot') {
+      return 'graphviz';
+    }
+    if (l === 'chartjs' || l === 'chart.js' || l === 'chart-js') {
+      return 'chart';
+    }
+    if (l === 'mmd' || l === 'mermaidjs' || l === 'mermaid-js') {
+      return 'mermaid';
+    }
+    if (l === 'noml' || l === 'nml') {
+      return 'nomnoml';
+    }
+    if (l === 'mindmap' || l === 'mm') {
+      return 'markmap';
+    }
+    if (l === 'abcjs') {
+      return 'abc';
+    }
+    return l;
+  }
+
+  /** PlantUML 的几种写法（puml / iuml 是官方文件扩展名） */
+  private static isPumlLang(l: string): boolean {
+    return l === 'plantuml' || l === 'puml' || l === 'iuml' || l === 'startuml';
   }
 
   /** 从 info 串里抠指定高亮行：`{1,3-5}`（VitePress / Shiki）、`hl_lines="1 3"`（Python-Markdown） */
