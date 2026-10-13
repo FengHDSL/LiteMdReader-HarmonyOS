@@ -337,6 +337,17 @@ export class MdViewUtil {
     if (kind === CodeTokenKind.Attr) {
       return palette.codeAttr;
     }
+    // diff 差异块（```diff）：整行按行首符号上色。取的是深浅底都读得清的中间亮度，
+    // 而不是跟随调色板——代码底（palette.codeBlockBg）本身与主题色脱钩。
+    if (kind === CodeTokenKind.Added) {
+      return '#FF1FA35C';
+    }
+    if (kind === CodeTokenKind.Removed) {
+      return '#FFD93B3B';
+    }
+    if (kind === CodeTokenKind.Hunk) {
+      return '#FF7A5FA8';
+    }
     return palette.textPrimary;
   }
 

@@ -25,7 +25,9 @@ export enum CodeFamily {
   Markup = 4,
   Css = 5,
   Sql = 6,
-  Data = 7
+  Data = 7,
+  /** 差异块（```diff）：**整行**按行首符号着色，不是逐 token 扫关键字 */
+  Diff = 8
 }
 
 /** token 类型 */
@@ -37,7 +39,13 @@ export enum CodeTokenKind {
   Number = 4,
   Func = 5,
   Tag = 6,
-  Attr = 7
+  Attr = 7,
+  /** diff：新增行 */
+  Added = 8,
+  /** diff：删除行 */
+  Removed = 9,
+  /** diff：@@ 段头 */
+  Hunk = 10
 }
 
 export interface CodeToken {
@@ -119,6 +127,9 @@ export function resolveFamily(lang: string): CodeFamily {
   if (l === 'json' || l === 'json5' || l === 'yaml' || l === 'yml' || l === 'toml' || l === 'ini') {
     return CodeFamily.Data;
   }
+  if (l === 'diff' || l === 'udiff' || l === 'patch') {
+    return CodeFamily.Diff;
+  }
   return CodeFamily.None;
 }
 
@@ -177,6 +188,24 @@ export class CodeHighlighter {
    * 所以调用方必须**按行顺序**调用并复用同一个 state。
    */
   static highlightLine(line: string, family: CodeFamily, state: CodeState): CodeToken[] {
+    // **diff 是整行语义**：一行的性质由行首符号决定（+ 增、- 删、@@ 段头、+++/--- 文件头），
+    // 不是逐 token 扫关键字，所以放在最前面单独处理，整行出一个 token。
+    if (family === CodeFamily.Diff) {
+      const one: CodeToken[] = [];
+      if (line.startsWith('@@')) {
+        push(one, line, CodeTokenKind.Hunk);
+      } else if (line.startsWith('+++ ') || line.startsWith('--- ')
+        || line.startsWith('diff ') || line.startsWith('index ')) {
+        push(one, line, CodeTokenKind.Keyword);
+      } else if (line.startsWith('+')) {
+        push(one, line, CodeTokenKind.Added);
+      } else if (line.startsWith('-')) {
+        push(one, line, CodeTokenKind.Removed);
+      } else {
+        push(one, line.length === 0 ? ' ' : line, CodeTokenKind.Plain);
+      }
+      return one;
+    }
     if (family === CodeFamily.None || line.length === 0) {
       const single: CodeToken[] = [];
       push(single, line.length === 0 ? ' ' : line, CodeTokenKind.Plain);

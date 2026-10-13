@@ -41,6 +41,8 @@ const HTML_CSS: string = `
   pre code { background: transparent; color: #1b1f27; padding: 0; }
   .kw { color: #cf222e; } .str { color: #0a3069; } .cmt { color: #6e7781; font-style: italic; }
   .num { color: #0550ae; } .fn { color: #8250df; } .tag { color: #116329; } .attr { color: #0550ae; }
+  .add { color: #116329; background: #e6ffec; } .rem { color: #cf222e; background: #ffebe9; }
+  .hunk { color: #8250df; background: #fff5e5; }
   blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid #2f63e8;
                background: rgba(47,99,232,0.06); border-radius: 6px; color: #3a4150; }
   .callout { margin: 1em 0; padding: 12px 16px; border-left: 3px solid #888; border-radius: 6px; background: rgba(0,0,0,0.04); }
@@ -252,6 +254,12 @@ export class MdToHtml {
           cls = 'tag';
         } else if (kind === CodeTokenKind.Attr) {
           cls = 'attr';
+        } else if (kind === CodeTokenKind.Added) {
+          cls = 'add';
+        } else if (kind === CodeTokenKind.Removed) {
+          cls = 'rem';
+        } else if (kind === CodeTokenKind.Hunk) {
+          cls = 'hunk';
         }
         out += cls.length > 0 ? '<span class="' + cls + '">' + text + '</span>' : text;
       }
