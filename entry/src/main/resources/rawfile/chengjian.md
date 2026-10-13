@@ -1015,7 +1015,7 @@ packet-beta
     "labels": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
     "datasets": [
       { "label": "写作字数", "data": [820, 932, 901, 1290, 1330, 1320, 1010],
-        "borderColor": "#FF2F63E8", "backgroundColor": "rgba(47, 99, 232, 0.15)",
+        "borderColor": "#2F63E8", "backgroundColor": "rgba(47, 99, 232, 0.15)",
         "fill": true, "tension": 0.35 }
     ]
   },
@@ -1032,7 +1032,7 @@ packet-beta
     "labels": ["直接打开", "邮件营销", "联盟广告"],
     "datasets": [
       { "data": [335, 310, 234],
-        "backgroundColor": ["#FF2F63E8", "#FF1F9E66", "#FFE08000"] }
+        "backgroundColor": ["#2F63E8", "#1F9E66", "#E08000"] }
     ]
   },
   "options": { "width": 420, "height": 300 }
@@ -1041,6 +1041,10 @@ packet-beta
 
 > 注意：内容**必须是合法 JSON**（双引号、无注释、无尾随逗号）；`options.scales`
 > 可以进一步定制坐标轴，`plugins.legend` 控制图例位置。
+>
+> 颜色写 **CSS 格式**（`#2F63E8`、`rgba(47,99,232,0.65)`），**不是**应用内部的
+> `#AARRGGBB`：这里的字符串直接交给 Chart.js 填画布，`#FF2F63E8` 会被当成
+> "红 255 绿 47 蓝 99、透明度 91%" 的**粉红**，而不是想要的蓝色。
 
 ### 5.12 nomnoml 极简 UML（nomnoml）
 

@@ -6,7 +6,7 @@ const path = require('path');
 
 const RAW = path.join(__dirname, '../entry/src/main/resources/rawfile');
 const DOCS = ['chengjian.md', 'capabilities.md', 'README.md'];
-const JSON_LANGS = ['wavedrom', 'echarts'];
+const JSON_LANGS = ['wavedrom', 'echarts', 'chart'];
 const fenceRe = /^```([A-Za-z0-9_-]*)[ \t]*$/;
 
 // Same repair the templates apply (keys only, never values).
@@ -47,6 +47,16 @@ for (const doc of DOCS) {
           const o = JSON.parse(fix(src));
           if (!(o.signal || o.assign || o.reg)) problems.push(doc + ':' + (i + 1) + ' [wavedrom] 顶层缺 signal/assign/reg');
         } catch (e) { /* already reported */ }
+      }
+      // chart.js 的颜色字符串**直接进 canvas**（CSS 语义 #RRGGBBAA），
+      // 写成应用内部的 #AARRGGBB 会变颜色（#FF2F63E8 = 粉红，不是蓝）——
+      // 用户实测"数据可视化卡片颜色不对"，示例里就踩过这个。
+      if (lang === 'chart') {
+        const bad = (src.match(/#[0-9a-fA-F]{8}(?!['"]?[0-9a-fA-F])/g) || []);
+        if (bad.length) {
+          problems.push(doc + ':' + (i + 1) + ' [chart] 8 位十六进制色值 ' + bad.join(', ') +
+            '（canvas 按 CSS 的 #RRGGBBAA 解析，应用的 #AARRGGBB 会变颜色）');
+        }
       }
     }
     i = j + 1;
