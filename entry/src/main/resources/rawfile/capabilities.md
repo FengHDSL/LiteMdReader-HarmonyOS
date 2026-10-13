@@ -69,6 +69,30 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    同一批图种里 `kanban` 的中文列名与 `packet-beta` 的中文段名都实测正常 —— 只有
    architecture-beta 的词法卡在这两处。
 
+## PlantUML（```plantuml）：只桥接时序图，其余显示源码
+
+PlantUML 的本体是 Java 实现，离线要么带 `plantuml.jar` 要么连官方渲染服务器 ——
+两者澄笺都不做（无账号、无必需联网是产品底线）。所以 ```` ```plantuml ```` 走的是
+**语法桥**：把时序图翻译成 mermaid 的 `sequenceDiagram`，交给上面那套 mermaid 引擎渲染。
+
+**桥得住的**（逐条在随包引擎上跑过）：
+
+| PlantUML 写法 | 翻成 |
+| --- | --- |
+| `actor` / `participant` / `database` / `boundary` / `entity` / `queue` …（含 `"显示名" as ID`） | `participant ID as 显示名` |
+| `A -> B: 文本`、`A --> B: 文本`，以及不带空格的 `A->B: 文本` | `A->>B:` / `A-->>B:`（实线 / 虚线） |
+| `A -> B++` / `A -> B--`、`activate B` / `deactivate B` | `activate` / `deactivate` |
+| `note over A`、`note over A, B`、`note left of / right of` | `Note …` |
+| `alt` / `else` / `end`、`loop` / `opt` / `par` / `and` / `break` / `critical`、`group` | 同名关键字直接透传 |
+| `autonumber`、`title …`、`== 分隔线 ==` | 原样透传 |
+| `skinparam …`、`!theme`、`!$变量`、`hide/show/style` | **丢弃**（纯外观指令，透传会让整图报错） |
+| 认不出的行 | 降格成 mermaid 注释 `%% …`，不再连累整张图 |
+
+**桥不住的**：类图、用例图、活动图、状态图、组件图、时序图之外的任何 PlantUML —— 这些
+语法差异过大，**不硬转**，直接以代码块显示源码（以前会被塞成 sequenceDiagram，
+渲染出一张 mermaid 解析错误卡，比看源码更没用）。要真渲染全套 PlantUML，请导出源码
+交给 PlantUML 服务器，或改用 mermaid / Graphviz / nomnoml 的等价图种。
+
 一张象限图（注意 `quadrant-1` 后面**没有**冒号，且轴标签用英文）：
 
 ```mermaid

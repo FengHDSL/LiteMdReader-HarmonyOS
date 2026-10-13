@@ -774,8 +774,14 @@ export class MdParser {
         let pumlBody: string = '';
         let isPuml: boolean = false;
         if (lang.toLowerCase() === 'plantuml') {
-          pumlBody = PlantumlBridge.toMermaid(body.join('\n'));
-          isPuml = true;
+          // 只有时序图能桥成 mermaid；类图 / 用例图 / 活动图**不硬转**，
+          // 留成普通代码块显示源码——以前 bridgeable 从没被调用，类图也被塞进
+          // sequenceDiagram，用户看到的是一整张 mermaid 解析错误卡
+          const pumlSrc: string = body.join('\n');
+          if (PlantumlBridge.bridgeable(pumlSrc)) {
+            pumlBody = PlantumlBridge.toMermaid(pumlSrc);
+            isPuml = true;
+          }
         }
         const langLower: string = (isPuml ? 'mermaid' : lang.toLowerCase());
         const bodyStr: string = isPuml ? pumlBody : body.join('\n');
