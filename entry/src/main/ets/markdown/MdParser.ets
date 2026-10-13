@@ -48,6 +48,19 @@ import {
 import { isEmojiCodeChar, lookupEmoji } from './Emoji';
 import { MathLite } from './MathLite';
 
+/** 匹配结果：尖括号自动链接 */
+interface AutolinkHit {
+  /** 吃掉的字符数（0 = 不是自动链接，交回行内 HTML 或普通文字） */
+  len: number;
+  text: string;
+  href: string;
+}
+
+function missAutolink(): AutolinkHit {
+  const r: AutolinkHit = { len: 0, text: '', href: '' };
+  return r;
+}
+
 /** 匹配结果：HTML 字符实体 */
 interface EntityHit {
   /** 吃掉的字符数（0 = 这里不是实体，按普通文字处理） */
@@ -1428,6 +1441,20 @@ export class MdParser {
         }
       }
 
+      // 尖括号自动链接 `<https://…>` / `<mailto:…>` / `<someone@example.com>`。
+      // 此前没有这一条：`<` 被当普通文字落下，紧随其后的裸 URL 扫描一路吃到 `>`，
+      // 结果是**链接文本和 href 都带着收尾的 `>`**（点了打不开），而矩阵里写的是
+      // "照原样显示 ❌"——比标错更糟的是标错的方向还反了。
+      if (c === '<') {
+        const al: AutolinkHit = MdParser.autolinkAt(src, i);
+        if (al.len > 0) {
+          buf = MdParser.flush(out, buf, bold, italic, strike, code);
+          out.push(inlineOf(MdInlineKind.Link, al.text, al.href, 0, bold, italic, strike, code));
+          i += al.len;
+          continue;
+        }
+      }
+
       // 行内代码
       if (c === '`') {
         const end: number = src.indexOf('`', i + 1);
@@ -1556,13 +1583,14 @@ export class MdParser {
         }
       }
 
-      // 裸 URL 自动链接（http:// 或 https:// 开头，吃到空白/全角标点为止）
+      // 裸 URL 自动链接（http:// 或 https:// 开头，吃到空白/全角标点/尖括号为止）
       if (c === 'h' && (src.startsWith('http://', i) || src.startsWith('https://', i))) {
         let k: number = i;
         while (k < n) {
           const ch: string = src.charAt(k);
           if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '）' || ch === '》'
-            || ch === '，' || ch === '。' || ch === '；' || ch === '"' || ch === '\'') {
+            || ch === '，' || ch === '。' || ch === '；' || ch === '"' || ch === '\''
+            || ch === '>' || ch === '<') {
             break;
           }
           k++;
@@ -2468,6 +2496,49 @@ export class MdParser {
     }
     const hit: EntityHit = { len: semi - at + 1, text: text };
     return hit;
+  }
+
+  /** `<…>` 是不是自动链接：合法 scheme 的 URI，或一个邮箱（补 mailto:） */
+  private static autolinkAt(src: string, at: number): AutolinkHit {
+    const gt: number = src.indexOf('>', at + 1);
+    if (gt < 0 || gt - at > 300) {
+      return missAutolink();
+    }
+    const body: string = src.substring(at + 1, gt);
+    if (body.length === 0 || /[\s<>]/.test(body)) {
+      return missAutolink();
+    }
+    const colon: number = body.indexOf(':');
+    if (colon > 0 && colon <= 32 && MdParser.isScheme(body.substring(0, colon))) {
+      const h: AutolinkHit = { len: gt - at + 1, text: body, href: body };
+      return h;
+    }
+    const dog: number = body.indexOf('@');
+    if (dog > 0 && body.indexOf('.', dog) > dog + 1) {
+      const h2: AutolinkHit = { len: gt - at + 1, text: body, href: 'mailto:' + body };
+      return h2;
+    }
+    return missAutolink();
+  }
+
+  /** 协议名：字母开头，其后允许数字 / + / . / - （CommonMark 同一口径） */
+  private static isScheme(s: string): boolean {
+    if (s.length === 0) {
+      return false;
+    }
+    const first: number = s.charCodeAt(0);
+    if (!((first >= 65 && first <= 90) || (first >= 97 && first <= 122))) {
+      return false;
+    }
+    for (let k = 1; k < s.length; k++) {
+      const code: number = s.charCodeAt(k);
+      const alpha: boolean = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+      const digit: boolean = code >= 48 && code <= 57;
+      if (!alpha && !digit && code !== 43 && code !== 45 && code !== 46) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static isHexDigits(s: string, hex: boolean): boolean {

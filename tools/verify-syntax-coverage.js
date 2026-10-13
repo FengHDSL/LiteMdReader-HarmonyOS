@@ -225,10 +225,27 @@ probe('§2.6', '缩写 *[HTML]: 全称', '*[HTML]: HyperText Markup Language\n\n
   const t = flatText(res);
   return t.indexOf('HyperText') >= 0 ? true : '正文里没有展开全称："' + t.trim() + '"';
 });
-probe('§2.7', '裸网址自动链接', 'https://commonmark.org 直接被识别；www.example.com 也算。\n', 'known', (res) =>
-  withKind(res, I.Link).length >= 1 ? true : '裸 URL / www. 不自动成链');
-probe('§2.7', '尖括号自动链接 <mailto:...>', '邮箱 <mailto:hi@example.com> 与 <https://a.com>。\n', 'known', (res) =>
-  withKind(res, I.Link).length >= 1 ? true : '尖括号自动链接不支持（矩阵已标 ❌）');
+probe('§2.7', '尖括号自动链接 <https://…> / <mailto:…> / 邮箱',
+  '看 <https://a.com> 与 <http://x.cn/p?q=1#f>；邮箱 <mailto:hi@example.com> 和 <a@b.com>。\n', 'claim', (res) => {
+    const links = withKind(res, I.Link);
+    if (links.length !== 4) { return '自动链接 ' + links.length + ' 个（期望 4）'; }
+    const bad = links.filter((x) => /<>/.test(x.href) || x.href.endsWith('>') || x.href.startsWith('>'));
+    if (bad.length > 0) { return 'href 里带尖括号（点了打不开）：' + JSON.stringify(bad.map((x) => x.href)); }
+    if (links[0].text !== 'https://a.com') { return '链接文字含收尾符：' + JSON.stringify(links[0].text); }
+    const mail = links.filter((x) => x.href.indexOf('mailto:') === 0);
+    return mail.length === 2 ? true : 'mailto 前缀缺（' + JSON.stringify(links.map((x) => x.href)) + '）';
+  });
+probe('§2.7', '裸 URL 自动链接（后面紧跟中文标点也要正确收尾）',
+  '参考 https://commonmark.org 与 www 无关；再看 http://a.com/x(y) 收尾。\n', 'claim', (res) => {
+    const links = withKind(res, I.Link);
+    return links.length >= 1 && links[0].href === 'https://commonmark.org' ? true
+      : 'href=' + JSON.stringify(links.map((x) => x.href));
+  });
+probe('§2.7', '不是链接的尖括号内容不许变身（<b>、<img …>、<not a link>）',
+  '假的 <not a link> 与 <b>粗</b> 还有 <img src="a.png" alt="x">\n', 'claim', (res) => {
+    const links = withKind(res, I.Link);
+    return links.length === 0 ? true : '被误判成链接：' + JSON.stringify(links.map((x) => x.href));
+  });
 
 // ════ §3 表格 ════
 probe('§3.1', '对齐语法 + 单元格内联 + 转义管道',
