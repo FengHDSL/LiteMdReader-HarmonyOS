@@ -16,9 +16,13 @@
  *     （透传给 mermaid 会让整张图报解析错，一颗老鼠屎坏一锅汤）
  *   · 认不出来的行降格成 mermaid 注释（`%% …`），信息留着但不参与语法
  *
- * ⚠️ **只覆盖时序图**。类图 / 用例图 / 活动图 / 组件图语法差异过大，`bridgeable()`
- * 会判 false，调用侧据此**回落成普通代码块显示源码**（以前 bridgeable 没被任何地方调用，
- * 类图也被硬转成 sequenceDiagram，用户看到的是一张 mermaid 报错卡 —— 比看源码更没用）。
+ * ⚠️ **只覆盖三种图**：时序图（→ sequenceDiagram）、状态图（→ stateDiagram-v2）、
+ * 类图（→ classDiagram）。用例图 / 活动图 / 组件图语法差异过大，`kindOf()` 返回空串，
+ * 调用侧据此**回落成普通代码块显示源码**。
+ *
+ * ⚠️ **判定必须逐行白名单，不能"看到箭头就转"**：曾经状态图（`[*] --> 草稿`）被当成
+ * 时序图硬塞进 sequenceDiagram，mermaid 直接 `Parse error … Expecting 'TXT',
+ * got 'NEWLINE'`（用户实测"plantuml / uml 全家桶显示不正常"）——一张报错卡比看源码更没用。
  */
 
 /** 一行是否只影响外观 / 属于预处理，翻译时应直接丢掉 */
@@ -59,57 +63,300 @@ export class PlantumlBridge {
   private static readonly NOT_SEQ: string =
     '^\\s*(class|interface|enum|abstract|annotation|object|usecase|actor\\s+\\w+\\s*[\\[{]'
     + '|state|component|node|artifact|database\\s+\\w+\\s*[\\[{]|folder|rectangle|queue\\s+\\w+\\s*[\\[{]'
-    + '|package|frame|salt|json|yaml|mindmap|gantt|wire|board)\\b';
+    + '|package|frame|salt|json|yaml|mindmap|gantt|wire|board|\\[)'
+    + '|\\S*\\[[^\\]]*\\]\\s*-{1,2}>';
 
-  static bridgeable(src: string): boolean {
+  /**
+   * 能不能桥 + 桥成哪种图：`'sequence' | 'state' | 'class' | ''`（'' = 不桥，原样显示源码）。
+   *
+   * 分类靠**决定性标记**，验收靠各图种自己的翻译器：**翻译失败即不桥**（每个 to*() 认不出
+   * 一行就整体返回空串）。这样"判定"和"翻译"永远是同一套规则，不会出现"判能桥、翻出来是废的"
+   * ——那正是上一轮状态图被塞进 sequenceDiagram 报 Parse error 的原因。
+   */
+  static kindOf(src: string): string {
     const head: string = src.trim().toLowerCase();
     if (!head.startsWith('@startuml') && !head.startsWith('@startsequence')) {
-      return false;
+      return '';
     }
     if (/@startmindmap|@startsalt|@startgantt|@startjson|@startyaml/i.test(src)) {
-      return false;
+      return '';
     }
+    const lines: string[] = PlantumlBridge.contentLines(src);
+    if (lines.length === 0) {
+      return '';
+    }
+    let cls: boolean = false;
+    let st: boolean = false;
+    for (let k = 0; k < lines.length; k++) {
+      if (PlantumlBridge.CLASS_MARK.test(lines[k])) {
+        cls = true;
+      }
+      if (PlantumlBridge.STATE_MARK.test(lines[k])) {
+        st = true;
+      }
+    }
+    if (cls) {
+      return PlantumlBridge.toClass(lines).length > 0 ? 'class' : '';
+    }
+    if (st) {
+      return PlantumlBridge.toState(lines).length > 0 ? 'state' : '';
+    }
+    return PlantumlBridge.toSequence(lines).length > 0 ? 'sequence' : '';
+  }
+
+  /** 兼容旧调用：能不能桥（=kindOf 非空） */
+  static bridgeable(src: string): boolean {
+    return PlantumlBridge.kindOf(src).length > 0;
+  }
+
+  /** 去掉围栏标记、空行、注释与纯外观/预处理指令后的内容行 */
+  private static contentLines(src: string): string[] {
+    const out: string[] = [];
+    const lines: string[] = src.replace(/\r\n?/g, '\n').split('\n');
+    for (let k = 0; k < lines.length; k++) {
+      const l: string = lines[k].replace(/\t/g, '  ').trim();
+      if (l.length === 0 || l.toLowerCase() === '@startuml' || l.toLowerCase() === '@enduml'
+        || l.toLowerCase() === '@startsequence' || isPlantumlCosmetic(l)
+        || l.startsWith("'") || l.startsWith("/'")) {
+        continue;
+      }
+      out.push(l);
+    }
+    return out;
+  }
+
+  /** 决定性标记：出现即认定是类图 / 状态图（两者都出现按类图走） */
+  private static readonly CLASS_MARK: RegExp =
+    /^(abstract\s+class|class|interface|enum)\s+\S|\s(<\|--|--\|>|<\|\.\.|\.\.\|>)\s/;
+  private static readonly STATE_MARK: RegExp =
+    /\[\*\]|^state\s+"[^"]*"\s+as\s+\S|^state\s+\S+\s*<<\w+>>|^hide\s+empty/i;
+
+  /** PlantUML 状态图 → mermaid stateDiagram-v2；认不出一行就返回空串（整体不桥） */
+  private static toState(lines: string[]): string {
+    const out: string[] = ['stateDiagram-v2'];
+    let sawArrow: boolean = false;
+    let inNote: boolean = false;
+    for (let k = 0; k < lines.length; k++) {
+      const raw: string = lines[k];
+      if (/^title\s/i.test(raw)) {
+        continue;                          // mermaid 状态图不吃 title 语句：只丢标题，不丢整张图
+      }
+      if (inNote) {
+        // note 块内的自由文本原样透传（mermaid 状态图支持多行 note）
+        if (/^end\s*note$/i.test(raw)) {
+          inNote = false;
+        }
+        out.push('    ' + raw);
+        continue;
+      }
+      const noteOne: RegExpMatchArray | null =
+        raw.match(/^note\s+(left|right|top|bottom)\s+of\s+(\S+)\s*:\s*(.+)$/i);
+      if (noteOne !== null) {
+        out.push('    note ' + noteOne[1].toLowerCase() + ' of ' + noteOne[2]);
+        out.push('    ' + noteOne[3]);
+        out.push('    end note');
+        continue;
+      }
+      if (/^note\s+(left|right|top|bottom)\s+of\s+\S+$/i.test(raw)) {
+        out.push('    ' + raw);
+        inNote = true;
+        continue;
+      }
+      if (/^end\s*note$/i.test(raw)) {
+        out.push('    ' + raw);
+        continue;
+      }
+      const ar: RegExpMatchArray | null =
+        raw.match(/^(\S+)\s*(-->|->|\.\.>|\.>)\s*(\S+)(\s*:\s*(.+))?$/);
+      if (ar !== null) {
+        sawArrow = true;
+        out.push('    ' + ar[1] + ' --> ' + ar[3] + (ar[5] === undefined ? '' : ' : ' + ar[5]));
+        continue;
+      }
+      if (/^state\s+\S+\s*\{$/.test(raw) || raw === '}') {
+        out.push('    ' + raw);            // 复合状态：mermaid stateDiagram-v2 同形
+        continue;
+      }
+      if (/^state\s+".*"\s+as\s+\S+$/.test(raw) || /^state\s+\S+\s*<<\w+>>$/.test(raw)) {
+        out.push('    ' + raw);            // 带描述的别名、<<choice>> / <<fork>> / <<join>>
+        continue;
+      }
+      if (/^(\S+)\s*:\s*\S/.test(raw) && raw.indexOf('>') < 0) {
+        out.push('    ' + raw);            // `状态 : 描述`
+        continue;
+      }
+      return '';                           // 有一行不认识 → 整体不桥
+    }
+    if (inNote || !sawArrow) {
+      return '';
+    }
+    return out.join('\n');
+  }
+
+  /** PlantUML 类图 → mermaid classDiagram；认不出一行就返回空串（整体不桥） */
+  private static toClass(lines: string[]): string {
+    const out: string[] = ['classDiagram'];
+    let sawClass: boolean = false;
+    let inBody: boolean = false;
+    let inNote: boolean = false;
+    for (let k = 0; k < lines.length; k++) {
+      const raw: string = lines[k];
+      if (/^title\s/i.test(raw)) {
+        continue;
+      }
+      if (inNote) {
+        if (/^end\s*note$/i.test(raw)) {
+          inNote = false;
+          out.push('    """');              // mermaid classDiagram 的多行注释用三引号收尾
+          continue;
+        }
+        out.push('    ' + raw);
+        continue;
+      }
+      if (inBody) {
+        if (raw === '}') {
+          inBody = false;
+          out.push('    }');
+          continue;
+        }
+        out.push('      ' + raw);          // 成员行原样透传（mermaid 按字面显示）
+        continue;
+      }
+      // ⚠️ **`interface X { 成员 }` 与 `abstract class X { 成员 }` 在这个 mermaid 构建里是
+      // 词法/语法错误**（实测：`interface I {` → "Lexical error … Unrecognized text"，
+      // `abstract class B {` → "Expecting 'NEWLINE'"）。mermaid 认的是**构造型**写法，
+      // 所以带体的 interface / abstract 一律降级成 `class X { <<interface>> / <<abstract>> … }`
+      //（实测可渲染），成员不丢；不带体的 `interface X` 原样交给 mermaid（它画得出）。
+      const hd: RegExpMatchArray | null =
+        raw.match(/^(abstract\s+class|class|interface)\s+(\S+)(\s*\{)?$/i);
+      if (hd !== null) {
+        sawClass = true;
+        const kw: string = hd[1].toLowerCase();
+        const brace: boolean = hd[3] !== undefined;
+        if (kw === 'class') {
+          out.push('    class ' + hd[2] + (brace ? ' {' : ''));
+        } else if (!brace) {
+          out.push('    ' + (kw === 'interface' ? 'interface ' + hd[2]
+            : 'class ' + hd[2] + ' {\n      <<abstract>>\n    }'));
+          continue;
+        } else {
+          out.push('    class ' + hd[2] + ' {');
+          out.push('      <<' + (kw === 'interface' ? 'interface' : 'abstract') + '>>');
+        }
+        inBody = brace;
+        continue;
+      }
+      const en: RegExpMatchArray | null = raw.match(/^enum\s+(\S+)(\s*\{)?$/i);
+      if (en !== null) {
+        sawClass = true;
+        out.push('    class ' + en[1] + ' {');
+        out.push('      <<enumeration>>');  // mermaid 用构造型标枚举，没有 enum 关键字
+        inBody = en[2] !== undefined;
+        continue;
+      }
+      // PlantUML 的行内继承/实现（`class 子 extends 父`）→ mermaid 的关系行
+      const ext: RegExpMatchArray | null =
+        raw.match(/^(?:class|interface)\s+(\S+)\s+(extends|implements)\s+(\S+)$/i);
+      if (ext !== null) {
+        out.push('    ' + ext[3] + ' ' + (ext[2].toLowerCase() === 'implements' ? '<|..' : '<|--') + ' ' + ext[1]);
+        continue;
+      }
+      const rel: string = PlantumlBridge.classRelOf(raw);
+      if (rel.length > 0) {
+        out.push('    ' + rel);
+        continue;
+      }
+      const noteOne: RegExpMatchArray | null =
+        raw.match(/^note\s+(?:left|right|top|bottom)\s+of\s+(\S+)\s*:\s*(.+)$/i);
+      if (noteOne !== null) {
+        out.push('    note for ' + noteOne[1] + ' "' + noteOne[2].replace(/"/g, '') + '"');
+        continue;
+      }
+      if (/^note\s+(?:left|right|top|bottom)\s+of\s+\S+$/i.test(raw)) {
+        const who: string = raw.substring(raw.lastIndexOf(' ') + 1);
+        out.push('    note for ' + who + ' """');
+        inNote = true;
+        continue;
+      }
+      if (/^hide\s+circle$/i.test(raw) || /^show\s+members$/i.test(raw)) {
+        continue;
+      }
+      return '';
+    }
+    if (inNote || inBody || !sawClass) {
+      return '';
+    }
+    return out.join('\n');
+  }
+
+  /**
+   * 类图关系行：mermaid 的关系符号与 PlantUML **基本同形**（`<|--`、`*--`、`o--`、`-->`、
+   * `..>`、`..|>`、`<-->`、`--`、`..`），多重性写法也是同一形状
+   * （`Teacher "1" --> "*" Student : 教授`），所以**原样透传**；
+   * 命名框 `[A] --> [B]`、彩色箭头 `-[#red]->` 这些 PlantUML 独有的写法返回空串（宁可不桥）。
+   */
+  private static classRelOf(l: string): string {
+    const m: RegExpMatchArray | null = l.match(
+      /^(\S+)(\s+"[^"]*")?\s*(<\|--|--\|>|\*--|--\*|o--|--o|<-->|-->|<\|\.\.|\.\.\|>|\.\.>|--|\.\.)\s*("[^"]*"\s*)?(\S+)(\s*:\s*(.+))?$/);
+    if (m === null) {
+      return '';
+    }
+    const left: string = m[1];
+    const right: string = m[5];
+    if (left.indexOf('[') >= 0 || right.indexOf('[') >= 0
+      || left.indexOf('#') >= 0 || right.indexOf('#') >= 0
+      || left === 'class' || right === 'class') {
+      return '';
+    }
+    const cardL: string = m[2] === undefined ? '' : m[2];
+    const cardR: string = m[4] === undefined ? '' : m[4];
+    const label: string = m[7] === undefined ? '' : ' : ' + m[7];
+    return left + cardL + ' ' + m[3] + ' ' + cardR + right + label;
+  }
+
+  /** PlantUML → mermaid（按 kindOf 分流；判不桥时返回空串，调用侧原样显示源码） */
+  static toMermaid(src: string): string {
+    const kind: string = PlantumlBridge.kindOf(src);
+    if (kind.length === 0) {
+      return '';
+    }
+    const lines: string[] = PlantumlBridge.contentLines(src);
+    if (kind === 'class') {
+      return PlantumlBridge.toClass(lines);
+    }
+    if (kind === 'state') {
+      return PlantumlBridge.toState(lines);
+    }
+    return PlantumlBridge.toSequence(lines);
+  }
+
+  /**
+   * PlantUML 时序图 → mermaid sequenceDiagram。
+   *
+   * ⚠️ 先做**整体验收**再翻译：有一行不像时序图构造（或一张消息都没有）就返回空串。
+   * 半桥的图既丢结构又丢源码，比不桥更糟。
+   */
+  private static toSequence(lines: string[]): string {
     const seqRe: RegExp = new RegExp(PlantumlBridge.SEQ_LINE, 'i');
     const notRe: RegExp = new RegExp(PlantumlBridge.NOT_SEQ, 'i');
     let sawMessage: boolean = false;
-    const lines: string[] = src.replace(/\r\n?/g, '\n').split('\n');
     for (let k = 0; k < lines.length; k++) {
-      const l: string = lines[k].trim();
-      if (l.length === 0 || l.toLowerCase() === '@startuml' || l.toLowerCase() === '@enduml'
-        || isPlantumlCosmetic(l) || l.startsWith("'") || l.startsWith("/'")) {
-        continue;                          // 空行、围栏、外观指令、注释：不参与判定
+      if (notRe.test(lines[k]) || !seqRe.test(lines[k])) {
+        return '';
       }
-      if (notRe.test(l)) {
-        return false;
-      }
-      if (!seqRe.test(l)) {
-        return false;                      // 有一行不像时序图构造 → 整体不桥
-      }
-      if (new RegExp('^\\S+\\s*-{1,2}>+').test(l)) {
+      if (/^\S+\s*-{1,2}>+/.test(lines[k])) {
         sawMessage = true;
       }
     }
-    return sawMessage;
-  }
-
-  /** PlantUML → mermaid sequenceDiagram */
-  static toMermaid(src: string): string {
+    if (!sawMessage) {
+      return '';
+    }
     const out: string[] = ['sequenceDiagram'];
-    const lines: string[] = src.replace(/\r\n?/g, '\n').split('\n');
-    // 显示名 → id（参与者名字里有空格/引号时，箭头里写的是名字，得能换回 id）
     const aliasFrom: string[] = [];
     const aliasTo: string[] = [];
     let autoId: number = 0;
     for (let k = 0; k < lines.length; k++) {
-      const raw: string = lines[k].replace(/\t/g, '  ').trim();
-      if (raw.length === 0 || raw.toLowerCase() === '@startuml'
-        || raw.toLowerCase() === '@enduml' || raw.startsWith("/'")
-        || (raw.startsWith("'") && !raw.startsWith("''"))) {
-        continue;                          // 空行、围栏标记、PlantUML 单行注释
-      }
-      if (isPlantumlCosmetic(raw)) {
-        continue;                          // 纯外观 / 预处理指令：丢掉
-      }
+      const raw: string = lines[k];
       const decl: RegExpMatchArray | null =
         raw.match(new RegExp('^(' + PlantumlBridge.DECL_KEYS + ')\\s+(.+)$', 'i'));
       if (decl !== null) {
@@ -141,7 +388,9 @@ export class PlantumlBridge {
         continue;
       }
       if (raw.startsWith('==') && raw.endsWith('==')) {
-        out.push('    ' + raw);
+        // ⚠️ mermaid 时序图**没有分隔线语法**（实测 `== 登录 ==` → Parse error），
+        // 降级成注释：图照画，阶段名留在源码里（能力矩阵按"⚠️ 分隔线丢弃"标注）
+        out.push('    %% 分隔：' + raw.replace(/^=+|=+$/g, '').trim());
         continue;
       }
       const note: RegExpMatchArray | null =

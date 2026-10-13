@@ -377,11 +377,40 @@ for (const [lang, sec, src] of CHARTS) {
       : '没进 Chart（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
   });
 }
-probe('§6.21', 'PlantUML 类图不硬转（留源码，不出坏图）',
-  '```plantuml\n@startuml\nclass Foo {\n  +bar()\n}\n@enduml\n```\n', 'claim', (res) => {
+// PlantUML 桥：**翻译器本身就是验收器**（认不出一行就整体不桥），所以这里判的是
+// "桥成了哪种 mermaid 图种 / 该不桥的有没有硬转"。状态图曾经被塞进 sequenceDiagram
+// → mermaid 报 Parse error（用户实测"uml 全家桶显示不正常"），这条就是钉死它的。
+const PUML = [
+  ['@startuml\n[*] --> 草稿\n草稿 --> 已发布 : 发布\n@enduml\n', 'stateDiagram-v2',
+   '状态图桥成 stateDiagram-v2（不能塞进 sequenceDiagram）'],
+  ['@startuml\nclass Foo {\n  +bar()\n}\nclass Baz {\n  +qux()\n}\nFoo <|-- Baz\n@enduml\n', 'classDiagram',
+   '类图桥成 classDiagram（成员与继承不丢）'],
+  ['@startuml\ninterface Runnable {\n  +run()\n}\nclass Task implements Runnable\n@enduml\n', 'classDiagram',
+   '带体 interface 降级成 <<interface>> 构造型（mermaid 不吃 `interface X {`）'],
+  ['@startuml\nA -> B : hi\n== 阶段 ==\nB -> A : yo\n@enduml\n', 'sequenceDiagram',
+   '时序图 == 分隔线降级成注释（mermaid 序列图没有分隔线语法）'],
+];
+for (const [body, want, title] of PUML) {
+  probe('§6.21', title, '```plantuml\n' + body + '```', 'claim', (res) => {
     const ch = blocks(res, K.Chart);
-    return ch.length === 0 ? true : '类图被塞进 mermaid（会是一张报错卡）';
+    if (ch.length !== 1) { return '没进图表通道（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）'; }
+    const code = ch[0].code;
+    const head = code.split('\n')[0].trim();
+    return head === want ? true : '桥成了 ' + head + '，期望 ' + want + '：\n' + code;
   });
+}
+const PUML_NOBRIDGE = [
+  ['活动图', '@startuml\nstart\n:写文档;\nstop\n@enduml\n'],
+  ['用例图', '@startuml\nactor 用户\n(查看文档) as U1\n用户 --> U1\n@enduml\n'],
+  ['组件图', '@startuml\n[MdParser] --> [MdView] : 块列表\n@enduml\n'],
+];
+for (const [name, body] of PUML_NOBRIDGE) {
+  probe('§6.21', name + '不硬转（留源码，不出坏图）', '```plantuml\n' + body + '```', 'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    const code = ch.length === 1 ? ch[0].code.split('\n')[0] : '';
+    return ch.length === 0 ? true : '被塞进 mermaid（' + code + '）——会是一张报错卡';
+  });
+}
 
 // ════ §7 容器与折叠 ════
 probe('§7.1', 'GFM Alerts 五连',
