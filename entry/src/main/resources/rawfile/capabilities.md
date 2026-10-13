@@ -53,7 +53,7 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
 | 思维导图 | `mindmap` | ✅ |
 | 时间线 | `timeline` | ✅ |
 | 块图 | `block-beta` | ✅ |
-| C4 架构图 | `C4Context` | ✅ |
+| C4 架构图 | `C4Context` / `C4Container` / `C4Component` | ✅（能画，但⚠️ 见下面第 5 条：图天生 1000px+ 宽，卡片里缩得小） |
 | 数据包图 | `packet-beta` | ✅（中文标签实测可用） |
 | 架构图 | `architecture-beta` | ✅（中文 / 空格 / 点号标签实测可解析——见下面第 3 条，这条是升级到 11.17.2 才通的） |
 
@@ -70,15 +70,27 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    自带的词法器不吃 CJK，跟空格与点号无关。升级到 11.17.2 后这三种写法逐个重测，全部可解析。
    旧的"只认 ASCII"结论就写在本文档里，现在已改过来；留着这条是为了说明：**图种报错先怀疑构建版本，
    别急着怪用户写法**。
-5. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
+5. **C4 图天生就宽，卡片里看不清字是正常的**。实测官方 `C4Context` 样例的 viewBox 是
+   `1564×844`，正文卡片只有三百多 px 宽 → 等比缩到 **0.23 倍**，14px 的标签变成 3.2px：
+   形状、连线、边界框都在，字糊成一团。C4 没有 `useMaxWidth` 这类"铺满容器"开关，
+   缩略只能这样（放大浮层里 ± 或双指捏合到 3~5 倍就能读；`-` 到底可以再看全貌）。
+   真要在小屏上读，建议把一张 C4 拆成 Context / Container / Component 三张。
+6. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
 
-## PlantUML（```plantuml）：只桥接时序图，其余显示源码
+## PlantUML（```plantuml）：时序 / 状态 / 类三张图桥成 mermaid，其余显示源码
 
 PlantUML 的本体是 Java 实现，离线要么带 `plantuml.jar` 要么连官方渲染服务器 ——
 两者澄笺都不做（无账号、无必需联网是产品底线）。所以 ```` ```plantuml ```` 走的是
-**语法桥**：把时序图翻译成 mermaid 的 `sequenceDiagram`，交给上面那套 mermaid 引擎渲染。
+**语法桥**：翻成 mermaid 的 `sequenceDiagram` / `stateDiagram-v2` / `classDiagram`，
+交给上面那套 mermaid 引擎渲染。
 
-**桥得住的**（逐条在随包引擎上跑过）：
+**判定规则**（这条决定"桥不了的写法为什么不会给你一张坏图"）：**翻译器本身就是验收器** ——
+逐行白名单，有一行认不出来就**整体不桥**，正文退回代码块显示源码。
+所以结果只有两种：一张画对的图，或者完整源码，**不存在"半桥"**。
+（上一版就栽在这上面：状态图的 `[*] --> 草稿` 被当成消息塞进 `sequenceDiagram`，
+mermaid 报 `Expecting 'TXT', got 'NEWLINE'`，用户看到的是一张报错卡。）
+
+### 时序图 → `sequenceDiagram`（逐条在随包引擎上跑过）
 
 | PlantUML 写法 | 翻成 |
 | --- | --- |
@@ -87,14 +99,84 @@ PlantUML 的本体是 Java 实现，离线要么带 `plantuml.jar` 要么连官�
 | `A -> B++` / `A -> B--`、`activate B` / `deactivate B` | `activate` / `deactivate` |
 | `note over A`、`note over A, B`、`note left of / right of` | `Note …` |
 | `alt` / `else` / `end`、`loop` / `opt` / `par` / `and` / `break` / `critical`、`group` | 同名关键字直接透传 |
-| `autonumber`、`title …`、`== 分隔线 ==` | 原样透传 |
+| `autonumber`、`title …` | 原样透传 |
+| `== 阶段分隔 ==` | **降成注释** `%% 分隔：阶段`——mermaid 时序图没有分隔线语法，原样透传实测直接 Parse error |
 | `skinparam …`、`!theme`、`!$变量`、`hide/show/style` | **丢弃**（纯外观指令，透传会让整图报错） |
 | 认不出的行 | 降格成 mermaid 注释 `%% …`，不再连累整张图 |
 
-**桥不住的**：类图、用例图、活动图、状态图、组件图、时序图之外的任何 PlantUML —— 这些
-语法差异过大，**不硬转**，直接以代码块显示源码（以前会被塞成 sequenceDiagram，
-渲染出一张 mermaid 解析错误卡，比看源码更没用）。要真渲染全套 PlantUML，请导出源码
-交给 PlantUML 服务器，或改用 mermaid / Graphviz / nomnoml 的等价图种。
+### 状态图 → `stateDiagram-v2`
+
+| PlantUML 写法 | 翻成 |
+| --- | --- |
+| `[*] --> 草稿`、`草稿 --> 已发布 : 发布` | 同形直接透传（两种语法本来就一样） |
+| `state "审核中" as rev`、`rev : 内容与格式都要看` | 同形透传（中文状态名、中文描述实测都画得出） |
+| `state 判定 <<choice>>`（也收 `<<fork>>` / `<<join>>`） | 同形透传 |
+| `state 外层 { A --> B }` 复合状态 | 同形透传 |
+| `note right of S1` … `end note`、`note left of S2 : 文本` | 多行原样透传；单行拆成三行 |
+| `title …` | **丢弃**（mermaid 状态图不吃 `title` 语句，宁可不画标题也不整图不桥） |
+
+### 类图 → `classDiagram`
+
+| PlantUML 写法 | 翻成 |
+| --- | --- |
+| `class Foo {` 换行写成员 换行 `}`（`+name: String`、`+move()`、`+get(): T`） | 同形透传，成员按字面显示 |
+| `Animal <\|-- Dog`、`A --> B`、`A *-- B`、`A o-- B`、`A ..> B`、`A ..\|> B`、`A <--> B` | 同形透传 |
+| 多重性 `Teacher "1" --> "*" Student : 教授` | 同形透传 |
+| `class 子 extends 父` / `class 子 implements 父` | `父 <\|-- 子` / `父 <\|.. 子` |
+| `interface Foo` | 原样透传 |
+| `interface Foo { 成员 }`、`abstract class Foo { 成员 }` | `class Foo { <<interface>> / <<abstract>> … }` ——**这个 mermaid 构建不认 `interface X {` 和 `abstract class`**（实测词法/语法报错），换成构造型写法，成员一个不丢 |
+| `enum Color { RED GREEN }` | `class Color { <<enumeration>> … }` |
+| `泛型 class Box~T~`、中文类名 | 原样透传（实测可解析） |
+| `note left of X : 文本`、`note left of X` … `end note` | `note for X "文本"` / `note for X """…"""`（左右位置信息丢失） |
+
+**桥不住的**：用例图、活动图、组件图、`package { }` 嵌套、彩色箭头 `-[#red]->`、
+命名框写法 `[A] --> [B]`、以及 `@startmindmap` / `@startgantt` / `@startsalt` /
+`@startjson` / `@startyaml` 这些非 `@startuml` 的图 —— **不硬转**，直接以代码块显示源码。
+要真渲染全套 PlantUML，请把源码交给 PlantUML 服务器，或改用 mermaid / Graphviz / nomnoml
+的等价图种（状态图、类图现在其实已经能桥，多数情况下不必再退）。
+
+下面这两张就是**本文档自己渲染出来的**结果（左边是 PlantUML 源码，不是 mermaid 源码）：
+
+```plantuml
+@startuml
+title 发布流程
+[*] --> 草稿
+草稿 --> 审核中 : 提交
+state "审核中" as 审核中
+审核中 : 内容与格式都要看
+审核中 --> 已发布 : 通过
+审核中 --> 草稿 : 退回
+已发布 --> [*]
+note right of 审核中
+  批注与学习卡
+  都在这一步生成
+end note
+@enduml
+```
+
+```plantuml
+@startuml
+abstract class MdBlock {
+  +kind: string
+  +srcLine: int
+}
+class MdParser {
+  +parse(md): MdBlock[]
+  +fenceLang(line): string
+}
+class PlantumlBridge {
+  +kindOf(src): string
+  +toMermaid(src): string
+}
+interface Renderable {
+  +render(): svg
+}
+MdParser --> PlantumlBridge : 交给桥
+MdParser --|> MdBlock
+PlantumlBridge ..|> Renderable
+note right of PlantumlBridge : 认不出一行就整体不桥
+@enduml
+```
 
 一张象限图（注意 `quadrant-1` 后面**没有**冒号，且轴标签用英文）：
 
