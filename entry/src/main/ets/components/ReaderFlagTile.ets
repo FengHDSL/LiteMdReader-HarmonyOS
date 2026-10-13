@@ -45,7 +45,7 @@ export struct ReaderFlagTile {
     if (this.kind === 'drawer') {
       return this.drawerOn ? L10n.t('侧边栏光感：开') : L10n.t('侧边栏光感：关');
     }
-    return this.tabBarBottom ? L10n.t('标签栏：底部') : L10n.t('标签栏：顶部');
+    return this.tabBarBottom ? L10n.t('标签页：底部') : L10n.t('标签页：顶部');
   }
 
   build() {

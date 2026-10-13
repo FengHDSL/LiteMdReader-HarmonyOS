@@ -156,6 +156,35 @@ export struct ReviewPage {
     return this.swapMode ? c.front : c.back;
   }
 
+  /** 当前卡的文档标签（书架标签系统：信息卡添加，此处只读展示） */
+  private docTagsOf(name: string): string[] {
+    const c = this.ctx();
+    if (c === null) {
+      return [];
+    }
+    const meta: DocMeta | undefined = DocStore.find(c, name);
+    const raw: string[] | undefined = meta === undefined ? undefined : meta.tags;
+    return raw === undefined ? [] : raw;
+  }
+
+  /** 切换互换模式（学习主页提前选好，复习中只执行） */
+  private toggleSwapMode(): void {
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+      this.swapMode = !this.swapMode;
+      this.flipped = false;
+      this.typeWrong = false;
+    });
+  }
+
+  /** 切换拼写模式 */
+  private toggleTypingMode(): void {
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+      this.typingMode = !this.typingMode;
+      this.typeInput = '';
+      this.typeWrong = false;
+    });
+  }
+
   /** 拼写提交：输入与隐藏内容完全一致（trim 后）才通过，否则翻面看答案并按模糊计 */
   private submitTyping(): void {
     if (this.typeInput.trim().length === 0 || this.queueIndex >= this.queue.length) {
@@ -575,22 +604,14 @@ export struct ReviewPage {
               .fontColor(this.palette().textSecondary)
           }
           .alignItems(VerticalAlign.Center)
-          Row({ space: 6 }) {
-            Column()
-              .width(16).height(3).borderRadius(2)
-              .backgroundColor(this.palette().textTertiary)
-            Text(L10n.t('标准遗忘曲线'))
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textSecondary)
-          }
-          .alignItems(VerticalAlign.Center)
           Blank()
-          Text(L10n.t('横轴：天后') + ' · ' + L10n.t('纵轴：记忆保持率'))
-            .fontSize(HwType.caption)
-            .fontColor(this.palette().textTertiary)
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
+        Text(L10n.t('横轴：天后') + ' · ' + L10n.t('纵轴：记忆保持率'))
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
         Text(L10n.t('预测基于当前卡片的间隔与难度系数聚合；复习会让曲线整体抬升。'))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
@@ -642,22 +663,6 @@ export struct ReviewPage {
       ctx.stroke();
       ctx.fillText(d + 'd', gx - 6, h - 6);
     }
-    // 标准艾宾浩斯参考线：R(t) = exp(-t / 0.35)（无复习的自然遗忘，陡峭）
-    ctx.strokeStyle = pal.textTertiary;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let d = 0; d <= DAYS * 2; d++) {
-      const t: number = d / 2;
-      const r: number = Math.exp(-t / 0.35);
-      const x: number = ml + gw * t / DAYS;
-      const y: number = mt + gh * (1 - r);
-      if (d === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
     // 预测曲线：按卡片聚合 R_i(t) = exp(-t / S_i)，S_i = max(间隔,0.5) × 3（经验系数）
     const studied: ReviewCard[] = this.cards.filter((c: ReviewCard) => c.lastReview > 0 && c.interval > 0);
     ctx.strokeStyle = pal.accent;
@@ -672,19 +677,6 @@ export struct ReviewPage {
           sum += Math.exp(-t / sN);
         }
         const r: number = sum / studied.length;
-        const x: number = ml + gw * t / DAYS;
-        const y: number = mt + gh * (1 - r);
-        if (d === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-    } else {
-      // 没有学过的卡片：画标准曲线的浅色占位（与参考线重合的表达）
-      for (let d = 0; d <= DAYS * 2; d++) {
-        const t: number = d / 2;
-        const r: number = Math.exp(-t / 0.35);
         const x: number = ml + gw * t / DAYS;
         const y: number = mt + gh * (1 - r);
         if (d === 0) {
@@ -1504,6 +1496,32 @@ export struct ReviewPage {
             .width('100%')
         }
 
+        // ── 复习模式（**提前在外面选好**，不进背诵再切）：互换 / 拼写 ──
+        Row({ space: HwSpace.xs }) {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: L10n.t('互换'),
+            chipActive: this.swapMode,
+            chipOnTap: () => {
+              this.toggleSwapMode();
+            }
+          })
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: L10n.t('拼写'),
+            chipActive: this.typingMode,
+            chipOnTap: () => {
+              this.toggleTypingMode();
+            }
+          })
+          Text(L10n.t('拼写模式下输入与隐藏内容完全一致才通过'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
         // 开始复习：主行动按钮（沉浸光感 chip，**放大一号**，用户要求）
         Row({ space: HwSpace.sm }) {
           Blank()
@@ -2045,33 +2063,19 @@ export struct ReviewPage {
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
-            // ── 模式切换芯片：互换（正反面交换）/ 拼写（输入判定）──
-            Row({ space: HwSpace.xs }) {
-              ImmersiveChip({
-                palette: this.palette(),
-                chipLabel: L10n.t('互换'),
-                chipActive: this.swapMode,
-                chipOnTap: () => {
-                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                    this.swapMode = !this.swapMode;
-                    this.flipped = false;
-                    this.typeWrong = false;
-                  });
-                }
-              })
-              ImmersiveChip({
-                palette: this.palette(),
-                chipLabel: L10n.t('拼写'),
-                chipActive: this.typingMode,
-                chipOnTap: () => {
-                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                    this.typingMode = !this.typingMode;
-                    this.typeInput = '';
-                    this.typeWrong = false;
-                  });
-                }
-              })
+            // ── 文档标签（学习卡左上角展示，数量不限自适应换行）──
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(this.docTagsOf(this.queue[this.queueIndex].docName), (tag: string) => {
+                Text('#' + tag)
+                  .fontSize(HwType.caption - 1)
+                  .fontColor(this.palette().accent)
+                  .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+                  .borderRadius(HwRadius.pill)
+                  .border({ width: 1, color: this.palette().divider })
+                  .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+              }, (tag: string) => tag)
             }
+            .width('100%')
             // **卡面公式渲染**（同上）：正面 = 原文（含公式时直接渲染）
             MathFormulaText({
               src: this.cardFront(),

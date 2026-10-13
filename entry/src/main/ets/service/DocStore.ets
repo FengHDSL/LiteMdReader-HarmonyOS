@@ -71,6 +71,8 @@ export interface DocMeta {
   starred?: boolean;
   /** 收藏时间（毫秒；列表按它倒序，还能显示「收藏日期」） */
   starredAt?: number;
+  /** 自定义标签（阅读页信息卡添加；书架顶栏按标签筛选，学习卡左上角展示） */
+  tags?: string[];
   /**
    * ── Front Matter 提取结果（文首 `---` 之间的元数据）──
    *
@@ -2335,6 +2337,16 @@ export class DocStore {
       // 索引损坏时按空书架处理，磁盘上的 md 文件不会被删除
       return [];
     }
+  }
+
+  /** 设置文档的自定义标签（信息卡编辑 → 书架筛选 + 学习卡展示共用） */
+  static setTags(ctx: common.UIAbilityContext, name: string, tags: string[]): void {
+    const meta: DocMeta | undefined = DocStore.find(ctx, name);
+    if (meta === undefined) {
+      return;
+    }
+    meta.tags = tags;
+    DocStore.persist();
   }
 
   private static persist(): void {

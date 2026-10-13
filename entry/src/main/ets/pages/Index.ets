@@ -213,6 +213,8 @@ struct Index {
    * 拼在根节点上还能正常逐帧过渡（新老节点各渲染一帧，不会闪空白）。
    */
   @State themeEpoch: number = 0;
+  /** 标签筛选：空 = 全部；非空 = 只显示带该标签的文档 */
+  @State tagFilter: string = '';
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
   /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手 */
@@ -1447,6 +1449,78 @@ struct Index {
       return null;
     }
     return c as common.UIAbilityContext;
+  }
+
+  /** 全部文档的标签并集（书架顶栏筛选条的候选） */
+  private allTags(): string[] {
+    const out: string[] = [];
+    for (let k = 0; k < this.docs.length; k++) {
+      const raw: string[] | undefined = this.docs[k].tags;
+      if (raw === undefined) {
+        continue;
+      }
+      for (let j = 0; j < raw.length; j++) {
+        if (raw[j].length > 0 && out.indexOf(raw[j]) < 0) {
+          out.push(raw[j]);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** 标签匹配：空筛选 = 全部通过 */
+  private tagMatches(meta: DocMeta): boolean {
+    if (this.tagFilter.length === 0) {
+      return true;
+    }
+    const raw: string[] | undefined = meta.tags;
+    return raw !== undefined && raw.indexOf(this.tagFilter) >= 0;
+  }
+
+  /** 标签筛选条：全部 + 各标签（横向滚动，参考阅读页标签页设计） */
+  @Builder
+  tagBar() {
+    Scroll() {
+      Row({ space: HwSpace.xs }) {
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: L10n.t('全部'),
+          chipActive: this.tagFilter.length === 0,
+          chipOnTap: () => {
+            this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+              this.tagFilter = '';
+              this.refreshShelfItems();
+            });
+          }
+        })
+        ForEach(this.allTags(), (tag: string) => {
+          ImmersiveChip({
+            palette: this.palette(),
+            chipLabel: '#' + tag,
+            chipActive: this.tagFilter === tag,
+            chipOnTap: () => {
+              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                this.tagFilter = this.tagFilter === tag ? '' : tag;
+                this.refreshShelfItems();
+              });
+            }
+          })
+        }, (tag: string) => tag)
+      }
+      .padding({ left: HwSpace.lg, right: HwSpace.lg })
+    }
+    .scrollable(ScrollDirection.Horizontal)
+    .scrollBar(BarState.Off)
+    .width('100%')
+  }
+
+  /** 按标签过滤重建书架网格（保持书架顺序） */
+  private refreshShelfItems(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    this.items = this.buildItems(c, this.docs);
   }
 
   private refresh(): void {
@@ -3543,7 +3617,20 @@ struct Index {
         // ⚠️ **一个可见文档都没有的文件夹不显示**：只装内置文档的「澄笺」在
         // 内置被"从书架移除"后就该一起消失（用户反馈它孤零零挂在书架上）。
         // 文件夹记录本身不动 —— 恢复内置时它自然又会出现，成员也还在里面。
-        if (folder !== null && this.folderDocs(name).length > 0) {
+        // 标签筛选下：文件夹内有匹配成员才显示
+        let folderVisible: boolean = folder !== null && this.folderDocs(name).length > 0;
+        if (folderVisible && this.tagFilter.length > 0) {
+          const members: DocMeta[] = this.folderDocs(name);
+          let hit: boolean = false;
+          for (let j = 0; j < members.length; j++) {
+            if (this.tagMatches(members[j])) {
+              hit = true;
+              break;
+            }
+          }
+          folderVisible = hit;
+        }
+        if (folder !== null && folderVisible) {
           out.push({ kind: 'folder', name: name, folder: folder, meta: null });
         }
       } else if (entry.startsWith(DocStore.ORDER_DOC)) {
@@ -3555,7 +3642,7 @@ struct Index {
             break;
           }
         }
-        if (meta !== null) {
+        if (meta !== null && this.tagMatches(meta)) {
           out.push({ kind: 'doc', name: name, folder: null, meta: meta });
         }
       }
@@ -7252,6 +7339,7 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
             }
             this.topBar()
+            this.tagBar()
           }
           .width('100%')
           .justifyContent(this.isWideShelf() ? FlexAlign.SpaceBetween : FlexAlign.Start)

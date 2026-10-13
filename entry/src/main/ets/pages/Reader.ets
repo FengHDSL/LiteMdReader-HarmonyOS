@@ -287,6 +287,10 @@ export struct Reader {
   @State docCreatedAt: number = 0;
   @State docModifiedAt: number = 0;
   @State docStarred: boolean = false;
+  /** 当前文档的自定义标签（信息卡编辑，书架筛选 / 学习卡展示共用） */
+  @State docTags: string[] = [];
+  /** 标签输入草稿 */
+  @State tagDraft: string = '';
   /** 面板内容强刷纪元：深浅切换时换容器 key，让 bindSheet 的面板重建 */
   @State sheetEpoch: number = 0;
   /** 沉浸布局下状态栏 / 手势条的避让高度（px），由 AppWindow 写入 */
@@ -3118,7 +3122,7 @@ export struct Reader {
   }
 
   /**
-   * 首屏占位条目高度：让开状态栏 + 悬浮胶囊，多标签时再让开标签栏，
+   * 首屏占位条目高度：让开状态栏 + 悬浮胶囊，多标签时再让开标签页，
    * 查找条打开时也要让开——否则第一屏文字初始就被标签芯片 / 查找条压住
    * （用户要求：初始文字顶部与上方悬浮胶囊保持距离，不被遮挡）。
    * 占位条目只决定首屏起点，滚动后正文照旧从悬浮层底下穿过。
@@ -3914,7 +3918,59 @@ export struct Reader {
     return meta.fileName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
   }
 
-  /** 收藏 / 取消收藏（信息卡右上角爱心）。 */  private toggleStar(): void {
+  /** 收藏 / 取消收藏（信息卡右上角爱心）。 */    /** 打开标签编辑面板并读入当前文档标签 */
+  private openTagEditor(): void {
+    const c = this.ctx();
+    this.docTags = [];
+    if (c !== null) {
+      const meta: DocMeta | undefined = DocStore.find(c, this.docName);
+      const raw: string[] | undefined = meta === undefined ? undefined : meta.tags;
+      if (raw !== undefined) {
+        this.docTags = raw.slice();
+      }
+    }
+    this.tagDraft = '';
+    this.sheetEpoch++;
+    this.activeSheet = 'tags';
+    this.sheetVisible = true;
+  }
+
+  /** 添加标签（去重、非空，添加即落盘） */
+  private addTag(): void {
+    const v: string = this.tagDraft.trim();
+    if (v.length === 0) {
+      return;
+    }
+    for (let k = 0; k < this.docTags.length; k++) {
+      if (this.docTags[k] === v) {
+        this.tagDraft = '';
+        return;
+      }
+    }
+    this.docTags = this.docTags.concat([v]);
+    this.tagDraft = '';
+    const c = this.ctx();
+    if (c !== null) {
+      DocStore.setTags(c, this.docName, this.docTags);
+    }
+  }
+
+  /** 移除标签（立即落盘） */
+  private removeTag(tag: string): void {
+    const kept: string[] = [];
+    for (let k = 0; k < this.docTags.length; k++) {
+      if (this.docTags[k] !== tag) {
+        kept.push(this.docTags[k]);
+      }
+    }
+    this.docTags = kept;
+    const c = this.ctx();
+    if (c !== null) {
+      DocStore.setTags(c, this.docName, this.docTags);
+    }
+  }
+
+private toggleStar(): void {
     const ctx = this.ctx();
     if (ctx === null) {
       return;
@@ -3946,6 +4002,9 @@ export struct Reader {
     }
     if (this.activeSheet === 'note') {
       return '添加批注';
+    }
+    if (this.activeSheet === 'tags') {
+      return '文档标签';
     }
     if (this.activeSheet === 'tabMenu') {
       return this.tabMenuFor;
@@ -4010,6 +4069,8 @@ export struct Reader {
       this.settingsSheet()
     } else if (this.activeSheet === 'note') {
       this.noteSheet()
+    } else if (this.activeSheet === 'tags') {
+      this.tagsSheet()
     } else if (this.activeSheet === 'tabMenu') {
       this.tabMenuSheet()
     } else if (this.activeSheet === 'bright') {
@@ -4456,6 +4517,68 @@ export struct Reader {
   }
 
   @Builder
+  /** 标签编辑面板：输入添加 + 芯片移除，改动即时落盘 */
+  @Builder
+  tagsSheet() {
+    Column({ space: HwSpace.md }) {
+      Row({ space: HwSpace.sm }) {
+        TextInput({ text: this.tagDraft, placeholder: L10n.t('输入标签，如：单词 / 语法 / 精读…') })
+          .layoutWeight(1)
+          .fontSize(HwType.label)
+          .fontColor(this.palette().textPrimary)
+          .placeholderColor(this.palette().textTertiary)
+          .backgroundColor(this.palette().codeBlockBg)
+          .borderRadius(HwRadius.pill)
+          .onChange((value: string) => {
+            this.tagDraft = value;
+          })
+          .onSubmit(() => {
+            this.addTag();
+          })
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: L10n.t('添加'),
+          chipOnTap: () => {
+            this.addTag();
+          }
+        })
+      }
+      .width('100%')
+
+      if (this.docTags.length > 0) {
+        Flex({ wrap: FlexWrap.Wrap }) {
+          ForEach(this.docTags, (tag: string) => {
+            Row({ space: 8 }) {
+              Text('#' + tag)
+                .fontSize(HwType.label)
+                .fontColor(this.palette().accent)
+              Text('×')
+                .fontSize(HwType.label)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.palette().textTertiary)
+                .onClick(() => {
+                  this.removeTag(tag);
+                })
+            }
+            .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
+            .borderRadius(HwRadius.pill)
+            .border({ width: 1, color: this.palette().divider })
+          }, (tag: string) => tag)
+        }
+        .width('100%')
+      } else {
+        Text(L10n.t('还没有标签。添加后：书架顶栏可按标签筛选，学习卡左上角会显示所属标签。'))
+          .fontSize(HwType.caption)
+          .fontColor(this.palette().textTertiary)
+          .lineHeight(HwType.caption * 1.6)
+          .width('100%')
+      }
+    }
+    .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg, top: HwSpace.sm, bottom: HwSpace.lg })
+    .alignItems(HorizontalAlign.Start)
+  }
+
   noteSheet() {
     Column() {
       // **面板内容自持状态**（NotePanel）：bindSheet 的 builder 不跟宿主 @State
@@ -4593,8 +4716,21 @@ export struct Reader {
     Column() {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          // ── 收藏爱心（用户要求：信息卡右上角，点击变红表示已收藏）──
+          // ── 标签按钮（用户要求：爱心左边，点开标签编辑面板）+ 收藏爱心 ──
           Row() {
+            ImmersiveIconButton({
+              buttonSize: 30,
+              buttonMaterialShadow: false,
+              palette: this.palette(),
+              buttonOnTap: () => {
+                this.openTagEditor();
+              }
+            }) {
+              Text('#')
+                .fontSize(15)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.docTags.length > 0 ? this.palette().accent : this.palette().textTertiary)
+            }
             Blank()
             SymbolGlyph(this.docStarred ? $r('sys.symbol.heart_fill') : $r('sys.symbol.heart'))
               .fontSize(20)
@@ -6987,8 +7123,7 @@ export struct Reader {
                     dark: this.isDark(),
                     fontSize: this.fontSize,
                     color: this.palette().textPrimary,
-                    generate: false,
-                    maxLines: 3
+                    generate: false
                   })
 
                   if (ann.note.length > 0) {
@@ -7057,8 +7192,6 @@ export struct Reader {
                       Text(note.label)
                         .fontSize(HwType.caption)
                         .fontColor(this.palette().textTertiary)
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis })
                         .layoutWeight(1)
                     }
                     .width('100%')
