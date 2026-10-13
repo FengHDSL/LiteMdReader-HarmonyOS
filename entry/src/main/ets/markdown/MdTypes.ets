@@ -126,6 +126,12 @@ export interface MdTableRow {
 export interface MdBlock {
   /** 指定高亮行（围栏元数据 ```lang{1,3-5}，1 起） */
   hlLines?: number[];
+  /**
+   * 标题的**显式锚点**（`## 标题 {#intro}` 里那个 `intro`，Pandoc / markdown-it-anchor
+   * 同一套写法）。导出网页据此给 `<h*>` 加 id，`[文字](#intro)` 才能精确命中；
+   * 阅读页仍按标题文字模糊匹配跳转，不依赖这个字段。
+   */
+  anchor?: string;
   /** 代码组的分段（kind=CodeGroup 时有效） */
   groupCodes?: GroupCode[];
   /** 稳定 key（块序号） */

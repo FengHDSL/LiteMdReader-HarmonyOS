@@ -212,6 +212,64 @@ check('⑥ 端口与 ArkTS 版同步：定义块仍走"空 marker 的列表项"�
 check('⑥ 导出侧认得空 marker（定义不进 <ul>，出缩进段），阅读页不画圆点',
   /block\.marker\.length === 0/.test(mdHtmlSrc) && /this\.block\.marker\.length === 0/.test(mdViewSrc));
 
+/**
+ * 端口：headingInfo + takeAnchor（显式锚点 `{#id}`）。
+ * 不取走的话它会以字面文本显示在标题后面，取走后导出网页给 <h*> 加真 id。
+ */
+function headingOf(line) {
+  let n = 0;
+  while (n < line.length && line.charAt(n) === '#') { n++; }
+  if (n === 0 || n > 6) { return null; }
+  if (n < line.length && line.charAt(n) !== ' ') { return null; }
+  // 先取锚点、再剥结尾闭合 # —— 顺序与 ArkTS 版一致（见 headingInfo 注释）
+  let hit = takeAnchorPorted(line.substring(n).trim(), n);
+  let text = hit.text;
+  let end = text.length;
+  while (end > 0 && text.charAt(end - 1) === '#') { end--; }
+  if (end < text.length && (end === 0 || text.charAt(end - 1) === ' ')) {
+    text = text.substring(0, end).trim();
+  }
+  hit.text = text;
+  return hit;
+}
+function takeAnchorPorted(text, level) {
+  const tail = text.trim();
+  if (tail.length > 3 && tail.endsWith('}')) {
+    const open = tail.lastIndexOf('{#');
+    if (open > 0 && tail.charAt(open - 1) === ' ') {
+      const id = tail.substring(open + 2, tail.length - 1).trim();
+      const bad = ' \t{}"\'<>&\\';
+      let usable = id.length > 0;
+      for (let k = 0; k < id.length && usable; k++) {
+        if (bad.indexOf(id.charAt(k)) >= 0) { usable = false; }
+      }
+      if (usable) { return { level: level, text: tail.substring(0, open).trim(), id: id }; }
+    }
+  }
+  return { level: level, text: text, id: '' };
+}
+const a1 = headingOf('## 扩展链路一图流 {#flow}');
+check('⑦ 显式锚点被取走：标题只剩文字，id 单独带出',
+  a1.text === '扩展链路一图流' && a1.id === 'flow' && a1.level === 2, JSON.stringify(a1));
+const a2 = headingOf('### 行内语法 {#语法}');
+check('⑦ 中文锚点照收（HTML5 的 id 允许非 ASCII；按 ASCII 白名单拒收会退回字面文本）',
+  a2.id === '语法' && a2.text === '行内语法', JSON.stringify(a2));
+const a3 = headingOf('## 没有锚点的标题');
+check('⑦ 没有 {#…} 的标题不受影响', a3.id === '' && a3.text === '没有锚点的标题');
+const a4 = headingOf('## 中段有 {#x} 但后面还有字');
+check('⑦ 锚点必须在行尾，否则当普通文字留着', a4.id === '' && a4.text.indexOf('{#x}') >= 0, JSON.stringify(a4));
+const a5 = headingOf('# 尾闭合序列 ## {#tail}');
+check('⑦ 与"结尾闭合 # 序列"能共存（先去尾 # 再取锚点）',
+  a5.id === 'tail' && a5.text === '尾闭合序列', JSON.stringify(a5));
+const a6 = headingOf('## 坏锚点 {#有 空格}');
+check('⑦ 含空格的畸形锚点不吞（宁可留字面，也不静默改掉用户文字）',
+  a6.id === '' && a6.text.indexOf('{#有 空格}') >= 0, JSON.stringify(a6));
+check('⑦ 端口与 ArkTS 版同步：解析器落到 block.anchor、导出真的写进 id 属性',
+  /hb\.anchor = head\.id/.test(src) && /block\.anchor === undefined \? '' : block\.anchor/.test(mdHtmlSrc)
+  && /id="' \+ MdToHtml\.esc\(anc\)/.test(mdHtmlSrc));
+check('⑦ 顺序同步：先取锚点、再剥结尾闭合 #（反了 `# T ## {#x}` 就剥不干净）',
+  src.indexOf('takeAnchor(text, n)') < src.indexOf("while (end > 0 && text.charAt(end - 1) === '#')"));
+
 /** 端口：主循环的缩进代码分支（只看"能不能起块 + 收哪些行"） */
 function parseIndentedCode(lines, lastKind) {
   const canStart = lastKind === undefined

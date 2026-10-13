@@ -757,7 +757,10 @@ export class MdToHtml {
       if (block.kind !== MdBlockKind.ListItem) {
         closeTo(0);
         if (block.kind === MdBlockKind.Heading) {
-          body += '<h' + block.level + '>' + MdToHtml.inline(block.inlines) + '</h' + block.level + '>';
+          // 显式锚点 `## 标题 {#intro}` → <h* id="intro">（解析器已把 {#…} 从标题文本里取走）
+          const anc: string = block.anchor === undefined ? '' : block.anchor;
+          body += '<h' + block.level + (anc.length > 0 ? ' id="' + MdToHtml.esc(anc) + '"' : '')
+            + '>' + MdToHtml.inline(block.inlines) + '</h' + block.level + '>';
         } else if (block.kind === MdBlockKind.Paragraph) {
           body += '<p>' + MdToHtml.inline(block.inlines) + '</p>';
         } else if (block.kind === MdBlockKind.Chart) {

@@ -53,6 +53,13 @@ interface HeadingHit {
   hit: boolean;
   level: number;
   text: string;
+  /** 显式锚点 `{#id}`；没有是空串 */
+  id: string;
+}
+
+function missHeading(): HeadingHit {
+  const r: HeadingHit = { hit: false, level: 0, text: '', id: '' };
+  return r;
 }
 
 /** 匹配结果：列表项 */
@@ -1004,6 +1011,9 @@ export class MdParser {
         const hb: MdBlock = MdBlockFactory.heading(head.level, head.text, headingSeq,
           MdParser.parseInline(head.text), blocks.length);
         hb.srcLine = MdParser.orig(i);
+        if (head.id.length > 0) {
+          hb.anchor = head.id;
+        }
         blocks.push(hb);
         i++;
         continue;
@@ -2436,6 +2446,10 @@ export class MdParser {
       return missHeading();
     }
     let text: string = t.substring(n).trim();
+    // **先取尾部的显式锚点 `{#id}`，再剥结尾的闭合 # 序列**：顺序反了的话
+    // `# 标题 ## {#id}` 会因为"# 不在行尾"而剥不掉闭合号，标题里就多出一串 ##
+    const hit: HeadingHit = MdParser.takeAnchor(text, n);
+    text = hit.text;
     // 去掉结尾的闭合 # 序列
     let end: number = text.length;
     while (end > 0 && text.charAt(end - 1) === '#') {
@@ -2444,8 +2458,39 @@ export class MdParser {
     if (end < text.length && (end === 0 || text.charAt(end - 1) === ' ')) {
       text = text.substring(0, end).trim();
     }
-    const r: HeadingHit = { hit: true, level: n, text: text };
-    return r;
+    hit.text = text;
+    return hit;
+  }
+
+  /**
+   * 从标题尾部取走**显式锚点** `{#intro}`（Pandoc / markdown-it-anchor / VitePress 同一套写法）。
+   * 不取走的话它会以字面文本显示在标题后面（用户清单第 22 项的"没渲染"就是这个），
+   * 取走之后：导出网页里标题带上真 id（`[](#intro)` 能精确跳），阅读页仍然按标题文字
+   * 模糊匹配跳转（那套逻辑本来就能用，不必依赖 id），两边都不受影响。
+   */
+  private static takeAnchor(text: string, level: number): HeadingHit {
+    const tail: string = text.trim();
+    if (tail.length > 3 && tail.endsWith('}')) {
+      const open: number = tail.lastIndexOf('{#');
+      if (open > 0 && tail.charAt(open - 1) === ' ') {
+        const id: string = tail.substring(open + 2, tail.length - 1).trim();
+        // 只排除"会破坏 id / 属性"的字符，**不限制成 ASCII**：中文锚点（`{#语法}`）
+        // 在 HTML5 里是合法 id，若按白名单拒收，它会退回字面文本显示在标题后面——
+        // 那正是这条语法被当成"没渲染"的原因。
+        let usable: boolean = id.length > 0;
+        for (let k = 0; k < id.length && usable; k++) {
+          const c: string = id.charAt(k);
+          if (c === ' ' || c === '\t' || c === '{' || c === '}' || c === '"'
+            || c === '\'' || c === '<' || c === '>' || c === '&' || c === '\\') {
+            usable = false;
+          }
+        }
+        if (usable) {
+          return { hit: true, level: level, text: tail.substring(0, open).trim(), id: id };
+        }
+      }
+    }
+    return { hit: true, level: level, text: text, id: '' };
   }
 
   private static setextLevel(underline: string): number {
