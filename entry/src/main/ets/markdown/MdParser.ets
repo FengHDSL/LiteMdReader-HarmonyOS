@@ -32,7 +32,8 @@ import {
   MdParseResult,
   MdSrcRange,
   MdTableRow,
-  MdTaskState
+  MdTaskState,
+  GroupCode
 } from './MdTypes';
 import { isEmojiCodeChar, lookupEmoji } from './Emoji';
 import { MathLite } from './MathLite';
@@ -310,6 +311,31 @@ class MdBlockFactory {
       footnoteNo: 0,
       headingSeq: 0,
       srcLine: srcLine
+    };
+    return b;
+  }
+
+  static codeGroup(codes: GroupCode[], id: number): MdBlock {
+    const b: MdBlock = {
+      id: 'b' + id,
+      kind: MdBlockKind.CodeGroup,
+      level: 0,
+      lang: '',
+      code: '',
+      codeLines: [],
+      inlines: [],
+      plain: '',
+      indent: 0,
+      ordered: false,
+      marker: '',
+      task: MdTaskState.None,
+      rows: [],
+      aligns: [],
+      footnoteNo: 0,
+      headingSeq: 0,
+      callout: MdCalloutKind.None,
+      groupCodes: codes,
+      srcLine: 0
     };
     return b;
   }
@@ -739,6 +765,75 @@ export class MdParser {
         continue;
       }
 
+      // ── 代码组 ::: code-group（VitePress 语法：组内多个 ```lang [页签名]）──
+      if (t === '::: code-group' || t.startsWith(':::code-group')) {
+        const groupStart: number = i;
+        const codes: GroupCode[] = [];
+        i++;
+        while (i < lines.length) {
+          const cur: string = lines[i].trim();
+          if (cur === ':::') {
+            i++;
+            break;
+          }
+          if (cur.startsWith('```')) {
+            const fl: string = cur.substring(3).trim();
+            const spAt: number = fl.indexOf(' [');
+            const gl: string = spAt >= 0 ? fl.substring(0, spAt).trim() : fl;
+            const label: string = spAt >= 0 ? fl.substring(spAt + 2, fl.length - 1).trim() : (gl.length > 0 ? gl : 'text');
+            const body: string[] = [];
+            i++;
+            while (i < lines.length && lines[i].trim() !== '```') {
+              body.push(lines[i]);
+              i++;
+            }
+            i++;
+            codes.push({ label: label, lang: gl, code: body.join('\n') });
+          } else {
+            i++;
+          }
+        }
+        if (codes.length > 0) {
+          blocks.push(MdBlockFactory.codeGroup(codes, blocks.length));
+          blocks[blocks.length - 1].srcLine = MdParser.orig(groupStart);
+        }
+        continue;
+      }
+
+      // ── 冒号容器 :::name [标题] ... :::（映射为对应色提示卡）──
+      if (t.startsWith(':::') && t.length > 3) {
+        const ctnStart: number = i;
+        const head: string = t.substring(3).trim();
+        const ctnName: string = head.split(' ')[0].toLowerCase();
+        const ctnTitle: string = head.substring(head.split(' ')[0].length).trim();
+        const innerLines: string[] = [];
+        i++;
+        while (i < lines.length) {
+          const cur: string = lines[i].trim();
+          if (cur === ':::' || cur.startsWith(':::')) {
+            i++;
+            break;
+          }
+          if (cur.length > 0) {
+            innerLines.push(cur);
+          }
+          i++;
+        }
+        let kind: MdCalloutKind = MdCalloutKind.Note;
+        if (ctnName === 'tip' || ctnName === 'info' || ctnName === 'success') {
+          kind = MdCalloutKind.Tip;
+        } else if (ctnName === 'warning' || ctnName === 'caution' || ctnName === 'attention') {
+          kind = MdCalloutKind.Warning;
+        } else if (ctnName === 'important' || ctnName === 'error' || ctnName === 'danger') {
+          kind = MdCalloutKind.Important;
+        }
+        const innerText: string = (ctnTitle.length > 0 ? '【' + ctnTitle + '】 ' : '')
+          + innerLines.join(' ');
+        blocks.push(MdBlockFactory.callout(kind, innerText, MdParser.parseInline(innerText), blocks.length));
+        blocks[blocks.length - 1].srcLine = MdParser.orig(ctnStart);
+        continue;
+      }
+
       // ── 折叠细节块 <details><summary>…</summary>…</details> ──
       if (t.startsWith('<details>')) {
         const detailsStart: number = i;
@@ -975,10 +1070,23 @@ export class MdParser {
         para.push(nx.trim());
         i++;
       }
+      // ── 定义列表（term + 连续 ": 定义" 行，PHP Markdown Extra 语法）──
+      // 渲染为「粗体术语 + 分号连接定义」的段落形态，不新增块种类。
+      const allDefs: boolean = para.length >= 2
+        && para.slice(1).every((dl: string) => dl.startsWith(':'));
+      if (allDefs) {
+        const term: string = para[0].trim();
+        const defs: string[] = para.slice(1).map((dl: string) => dl.substring(1).trim());
+        const dlText: string = '**' + term + '**：' + defs.join('；') + '。';
+        const pb2: MdBlock = MdBlockFactory.paragraph(dlText, MdParser.parseInline(dlText), blocks.length);
+        pb2.srcLine = MdParser.orig(paraStart);
+        blocks.push(pb2);
+      } else {
       const paraText: string = para.join(' ');
       const pb: MdBlock = MdBlockFactory.paragraph(paraText, MdParser.parseInline(paraText), blocks.length);
       pb.srcLine = MdParser.orig(paraStart);
       blocks.push(pb);
+      }
     }
 
     // 正文最后一行之后的行号（**原文行号**）：文末合成的「注释区」块没有对应的源文本，

@@ -74,6 +74,7 @@ import {
   MdPiece,
   MdTableRow,
   MdTaskState,
+  GroupCode,
   emptyBlock
 } from './MdTypes';
 
@@ -2665,12 +2666,109 @@ export struct MdBlockView {
   }
   // ── 折叠细节块（<details><summary>）──
   @State detailsOpen: boolean = false;
+  /** 代码组的活动页签：blockId|index（多代码组各自独立） */
+  @State groupActiveKey: string = '';
 
   /**
    * 图表块（mermaid / echarts / markmap / flowchart / graphviz / abc / html）是否
    * 以「源码」形态展示。**预览 ↔ 查看代码**切换（用户要求）：核对写法时不必离开阅读页。
    */
   @State chartShowCode: boolean = false;
+
+  /** 代码组的活动下标 */
+  private groupIndex(): number {
+    const codes: GroupCode[] | undefined = this.block.groupCodes;
+    if (codes === undefined || codes.length === 0) {
+      return 0;
+    }
+    for (let k = 0; k < codes.length; k++) {
+      if (this.groupActiveKey === this.block.id + '|' + k) {
+        return k;
+      }
+    }
+    return 0;
+  }
+
+  /** 代码组数据（undefined → 空数组，避免 ArkTS 无类型数组字面量） */
+  private groupCodesSafe(): GroupCode[] {
+    const g: GroupCode[] | undefined = this.block.groupCodes;
+    return g === undefined ? [] : g;
+  }
+
+  /** 代码组的 token 化（活动段） */
+  private groupTokens(): CodeToken[][] {
+    const codes: GroupCode[] | undefined = this.block.groupCodes;
+    const cur: GroupCode = (codes !== undefined && codes.length > 0)
+      ? codes[Math.min(this.groupIndex(), codes.length - 1)] : { label: '', lang: '', code: '' };
+    const family: CodeFamily = resolveFamily(cur.lang);
+    const state: CodeState = newCodeState();
+    const out: CodeToken[][] = [];
+    const ls: string[] = cur.code.replace(/\r\n?/g, '\n').split('\n');
+    for (let k = 0; k < ls.length; k++) {
+      out.push(CodeHighlighter.highlightLine(ls[k], family, state));
+    }
+    return out;
+  }
+
+  /** 代码组视图：页签芯片 + 活动段代码（行号 + 高亮） */
+  @Builder
+  codeGroupView() {
+    Column({ space: HwSpace.xs }) {
+      Row({ space: HwSpace.xs }) {
+        ForEach(this.groupCodesSafe(), (gc: GroupCode, gi: number) => {
+          Text(gc.label)
+            .fontSize(HwType.caption)
+            .fontColor((this.groupActiveKey === this.block.id + '|' + gi)
+              ? this.palette.textPrimary : this.palette.textTertiary)
+            .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 4, bottom: 4 })
+            .borderRadius({ topLeft: 8, topRight: 8, bottomLeft: 0, bottomRight: 0 })
+            .backgroundColor((this.groupActiveKey === this.block.id + '|' + gi)
+              ? this.palette.codeBlockBg : Color.Transparent)
+            .onClick(() => {
+              this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+                this.groupActiveKey = this.block.id + '|' + gi;
+              });
+            })
+        }, (gc: GroupCode) => this.block.id + '_' + gc.label)
+      }
+      .width('100%')
+      Scroll() {
+        Column() {
+          ForEach(this.groupTokens(), (tokens: CodeToken[], lineIndex: number) => {
+            Row() {
+              Text((lineIndex + 1).toString())
+                .fontSize(this.bodySize * HwType.codeScale * 0.85)
+                .fontColor(this.palette.textTertiary)
+                .width(22)
+                .textAlign(TextAlign.End)
+                .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+              Text() {
+                ForEach(tokens, (token: CodeToken) => {
+                  Span(token.text)
+                    .fontSize(this.bodySize * HwType.codeScale)
+                    .fontColor(MdViewUtil.tokenColor(token.kind, this.palette))
+                }, (token: CodeToken, ti: number) => 't' + ti + '_' + token.kind + '_' + token.text.length)
+              }
+              .fontSize(this.bodySize * HwType.codeScale)
+              .lineHeight(this.bodySize * HwType.codeScale * 1.6)
+              .layoutWeight(1)
+              .copyOption(CopyOptions.LocalDevice)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+          }, (tokens: CodeToken[], lineIndex: number) => 'g' + lineIndex + '_' + tokens.length)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.md })
+      }
+      .scrollable(ScrollDirection.Vertical)
+      .scrollBar(BarState.Auto)
+      .width('100%')
+      .height(Math.min(this.groupTokens().length, 14) * this.bodySize * HwType.codeScale * 1.6 + 20)
+    }
+    .width('100%')
+  }
 
   @Builder
   detailsView() {
@@ -2747,6 +2845,8 @@ export struct MdBlockView {
         }
       } else if (this.block.kind === MdBlockKind.Details) {
         this.detailsView()
+      } else if (this.block.kind === MdBlockKind.CodeGroup) {
+        this.codeGroupView()
       } else if (this.block.kind === MdBlockKind.Paragraph && this.standaloneImage() !== null) {
         this.imageView()
       } else if (this.block.footnoteNo > 0) {

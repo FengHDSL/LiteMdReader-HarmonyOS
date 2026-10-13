@@ -26,7 +26,16 @@ export enum MdBlockKind {
   /** 图表块（```mermaid / markmap / echarts ...），按语言分发渲染 */
   Chart = 9,
   /** 折叠细节块（<details><summary>） */
-  Details = 10
+  Details = 10,
+  /** 代码组（::: code-group，多段代码标签页切换） */
+  CodeGroup = 11
+}
+
+/** 代码组里的一段代码（语言 + 页签名 + 源码） */
+export interface GroupCode {
+  label: string;
+  lang: string;
+  code: string;
 }
 
 /** 行内片段种类 */
@@ -96,6 +105,8 @@ export interface MdTableRow {
 export interface MdBlock {
   /** 指定高亮行（围栏元数据 ```lang{1,3-5}，1 起） */
   hlLines?: number[];
+  /** 代码组的分段（kind=CodeGroup 时有效） */
+  groupCodes?: GroupCode[];
   /** 稳定 key（块序号） */
   id: string;
   kind: MdBlockKind;
