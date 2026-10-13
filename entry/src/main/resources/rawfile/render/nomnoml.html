@@ -1789,8 +1789,17 @@
     var app=document.getElementById('app');
     app.innerHTML='';
     try{
-      var svg = nomnoml.renderSync(src);
-      app.appendChild(svg);
+      var svgText = nomnoml.renderSvg(src, document);
+      if (typeof svgText === 'string') {
+        app.innerHTML = svgText;
+      } else if (svgText && typeof svgText.then === 'function') {
+        svgText.then(function (t) { app.innerHTML = t; report(); }).catch(function (e) {
+          app.innerHTML = '<div class="err">' + (e && e.message ? e.message : e) + '</div>'; report();
+        });
+        return;
+      } else if (svgText && svgText.nodeType) {
+        app.appendChild(svgText);
+      }
     }catch(e){
       app.innerHTML='<div class="err">'+(e&&e.message?e.message:e)+'</div>';
     }

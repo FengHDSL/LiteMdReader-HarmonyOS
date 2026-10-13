@@ -25,7 +25,12 @@ const head = '<!DOCTYPE html>\n'
   + '</style>\n</head>\n<body>\n'
   + '<div id="mhold"></div>\n';
 
+// **mhchem 化学方程式**：行内公式走 MathJax，需在库加载前声明启用 [tex]/mhchem
+// （tex-svg-full.js 全量包内已含 mhchem 模块，这里只是把它加进 tex 包列表）。
+const mhchemConfig = '<script>window.MathJax = { tex: { packages: { "[+]": ["mhchem"] } }, loader: { load: ["[tex]/mhchem"] } };</script>\n';
+
 const html = head
+  + mhchemConfig
   + '<script>\n' + lib + '\n</script>\n'
   + '<script>\n' + page + '\n</script>\n'
   + '</body>\n</html>\n';
