@@ -8,6 +8,10 @@
   body{font:14px/1.7 -apple-system,"HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
        color:#1B1F27;-webkit-text-size-adjust:100%;}
   body.dark{color:#ECEFF4;}
+  /* 深色模式下的对比度兜底：文档里自带**浅色 background** 的块（§8.6 那种
+     div style="background:#f8fafc"、渐变标签、进度条容器…）不能沿用我们强制的浅色字，
+     否则白字压浅底＝看不清。作者显式写了 color 的行内样式优先级更高，不会被这条盖掉。 */
+  body.dark [style*="background"]{color:#1B1F27;}
   #app{padding:8px 10px;box-sizing:border-box;overflow-wrap:break-word;min-height:1px;}
   #app img{max-width:100%;height:auto;}
   #app table{border-collapse:collapse;max-width:100%;}
@@ -28,6 +32,7 @@
   var app=document.getElementById('app');
 
   // 上报高度：让宿主按内容自适应卡片高度
+  var lastH = -1;
   function report(){
     try{
       // 高度回传：三处取最大（img / table 延迟撑开由 documentElement 兜底；
@@ -35,6 +40,10 @@
       var h=Math.max(app.scrollHeight, document.body.scrollHeight,
                      document.documentElement.scrollHeight);
       if(!(h>0)){h=1;}
+      // 只在真的变了时才回传：宿主收到高度会改 Web 尺寸 → 又触发 ResizeObserver，
+      // 不设这道闸就是自我循环。
+      if(h===lastH){return;}
+      lastH=h;
       if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
     }catch(e){}
   }
@@ -74,6 +83,23 @@
         imgs[i].addEventListener('load',report);
         imgs[i].addEventListener('error',report);
       }
+      // **交互后长出来的高度也要重报**。用户实测「原生 html 折叠面板展开后没法点击」
+      // 的真因不是点击被吞：卡片高度停在折叠时的测量值，<details> 展开出来的内容
+      // 被裁在卡片外面，看不见也点不到。页签切换、进度条、CSS 展开动画同理。
+      // ResizeObserver 覆盖一切布局变化；不支持时退到 MutationObserver + 轮询。
+      try{
+        if(window.ResizeObserver){
+          if(!window.__htmlRO){ window.__htmlRO=new ResizeObserver(function(){report();}); }
+          window.__htmlRO.observe(app);
+        }else{
+          if(!window.__htmlMO){
+            window.__htmlMO=new MutationObserver(function(){
+              setTimeout(report,60); // 等一帧，让 CSS 过渡把最终高度算出来
+            });
+            window.__htmlMO.observe(document.body,{childList:true,subtree:true,attributes:true});
+          }
+        }
+      }catch(e2){}
       report();
       setTimeout(report,60);
       setTimeout(report,240);
