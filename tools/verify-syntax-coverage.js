@@ -1,0 +1,475 @@
+#!/usr/bin/env node
+/**
+ * 语法覆盖实测：把**真解析器**跑在 Node 里，逐条验"这语法到底渲染成什么"
+ * ======================================================================
+ *
+ * 为什么值得单开一个工具：之前的 sim-*.js 都是**算法端口**——把 ArkTS 里的判定抄一份到
+ * JS，靠"源码同步检查"约束别抄歪。抄对了能验逻辑，但验不出一件事：**真代码里那条分支
+ * 根本没被走到**。这一轮就栽在这上面——`{1,3-5}` 指定行高亮的解析代码明明在
+ * MdParser.ets:747，可 `fenceLang()`（2409）早就把 `{}` 剥掉、只留第一个空格前的词，
+ * hlLines 那段永远拿到不含花括号的 lang，于是这个语法实际上是**不支持**的，
+ * 而所有端口检查全绿。
+ *
+ * 所以现在直接用 SDK 自带的 typescript 把 markdown 目录下的纯逻辑 .ets 转成 CommonJS，
+ * require 真 MdParser.parse() 跑探针。判的是真代码，不存在端口跑偏。
+ * 只处理无平台依赖的那几个文件（MdTypes / Emoji / MathLite / PlantumlBridge / MdParser），
+ * 一旦哪天它们 import 了 @kit.*，这里会直接报错提示，不会静默降级成假绿灯。
+ *
+ * tier: 'claim' = 能力矩阵里我们说有 ✅，失败就是真缺口
+ *       'known' = 已按"尽力子集 / 如实标注"降级，失败只报不动作项
+ *
+ * 用法：node tools/verify-syntax-coverage.js
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const TS_MOD =
+  'C:/Users/panda/AppData/Local/OpenHarmony/Sdk/26.0.0/ets/build-tools/ets-loader/node_modules/typescript';
+const ts = require(TS_MOD);
+
+const ROOT = path.join(__dirname, '..');
+const MD = path.join(ROOT, 'entry', 'src', 'main', 'ets', 'markdown');
+const OUT = path.join(ROOT, '.workbuddy', 'parser-cjs');
+const NEED = ['MdTypes', 'Emoji', 'MathLite', 'PlantumlBridge', 'MdParser'];
+
+function build() {
+  fs.mkdirSync(OUT, { recursive: true });
+  for (const n of NEED) {
+    const file = path.join(MD, n + '.ets');
+    const src = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+    if (/^import .*@(kit|ohos)\./m.test(src)) {
+      console.log('FAIL  ' + n + '.ets 现在 import 了平台模块，本工具的转译范围（纯逻辑文件）不再成立，'
+        + '需要补 stub 才能继续 —— 别把它当绿灯');
+      process.exit(1);
+    }
+    const r = ts.transpileModule(src, {
+      fileName: n + '.ets',
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2021,
+        module: ts.ModuleKind.CommonJS,
+        esModuleInterop: true,
+        alwaysStrict: false,
+      },
+    });
+    if ((r.diagnostics || []).length > 0) {
+      console.log('FAIL  ' + n + ' 转译诊断：' + r.diagnostics.map((d) =>
+        ts.flattenDiagnosticMessageText(d.messageText, ' ')).join(' | '));
+      process.exit(1);
+    }
+    fs.writeFileSync(path.join(OUT, n + '.js'), r.outputText);
+  }
+}
+build();
+for (const n of NEED) { delete require.cache[path.join(OUT, n + '.js')]; }
+const { MdParser, } = require(path.join(OUT, 'MdParser.js'));
+const { MdBlockKind, MdInlineKind, MdCalloutKind, MdTaskState, } = require(path.join(OUT, 'MdTypes.js'));
+
+// ── 取产物的几个小工具 ──
+function allInlines(res) {
+  const out = [];
+  const push = (arr) => {
+    for (const x of arr || []) {
+      if (Array.isArray(x)) { push(x); continue; }   // 表格单元格里装的是一段片段数组
+      if (x && typeof x === 'object' && x.kind !== undefined) { out.push(x); }
+    }
+  };
+  for (const b of res.blocks) {
+    push(b.inlines);
+    for (const r of b.rows || []) { push(r.cells); }
+  }
+  return out;
+}
+function withKind(res, kind) {
+  return allInlines(res).filter((x) => x.kind === kind);
+}
+function blocks(res, kind) {
+  return res.blocks.filter((b) => b.kind === kind);
+}
+/** 行内片段的拼接文本（判断"渲染出来的正文"只用它）。
+ *  ⚠️ 不要用 block.plain —— 那是**源码原文**，转义符、`:tada:`、`<span style>` 都还在原样里，
+ *  拿它断言会把已经生效的语法误判成没生效（这一版工具就错过三次）。 */
+function flatText(res) {
+  const parts = [];
+  for (const x of allInlines(res)) { parts.push(x.text || ''); }
+  return parts.join('');
+}
+
+let fails = 0;
+let knownFails = 0;
+const gaps = [];
+function probe(sec, label, src, tier, want) {
+  let res = null;
+  let err = '';
+  try {
+    res = MdParser.parse(src);
+  } catch (e) {
+    err = e.message;
+  }
+  if (err.length > 0) {
+    fails++;
+    console.log('  抛错  ' + sec + ' ' + label + ' —— ' + err);
+    gaps.push(sec + ' ' + label + '（解析器抛错）');
+    return;
+  }
+  const r = want(res);
+  const ok = r === true;
+  if (ok) {
+    console.log('  ok    ' + sec + ' ' + label);
+    return;
+  }
+  const why = typeof r === 'string' ? r : '判定未通过';
+  if (tier === 'known') {
+    knownFails++;
+    console.log('  已标注 ' + sec + ' ' + label + ' —— ' + why);
+    return;
+  }
+  fails++;
+  console.log('  FAIL  ' + sec + ' ' + label + ' —— ' + why);
+  gaps.push(sec + ' ' + label + '：' + why);
+}
+
+const K = MdBlockKind;
+const I = MdInlineKind;
+const C = MdCalloutKind;
+const T = MdTaskState;
+const txt = (arr) => arr.map((x) => x.text).join('');
+
+// ════ §1 行内文本排版 ════
+probe('§1.1', '粗体 / 斜体 / 删除线 / 行内代码',
+  '**粗体**、`行内代码`、*斜体*、***粗斜体***、~~删除线~~\n', 'claim', (res) => {
+    // 粗斜体这些**叠加样式**是标志位（kind 仍是 Plain），只有行内代码是独立 kind
+    const all = allInlines(res);
+    const need = [['bold', '粗体'], ['italic', '斜体'], ['strike', '删除']];
+    for (const [flag, sub] of need) {
+      if (!all.some((x) => x[flag] === true && (x.text || '').indexOf(sub) >= 0)) { return '缺 ' + flag; }
+    }
+    if (withKind(res, I.Code).length === 0) { return '缺行内代码 kind'; }
+    const both = all.filter((x) => x.bold === true && x.italic === true);
+    return both.length > 0 ? true : '***粗斜体*** 没有同时置上两个标志位';
+  });
+probe('§1.2', '高亮 ==文字==', '==这段文字需要高亮显示==\n', 'claim',
+  (res) => withKind(res, I.Mark).length > 0 || '没有 Mark 片段');
+probe('§1.3', '上标 ^x^ 与下标 ~x~', 'H~2~O、x^2^、E=mc^2^\n', 'claim', (res) => {
+  if (withKind(res, I.Sub).length === 0) { return '没有 Sub（下标）'; }
+  if (withKind(res, I.Sup).length === 0) { return '没有 Sup（上标）'; }
+  return true;
+});
+probe('§1.4', 'Emoji 短代码 :tada:', ':tada: :rocket: :bulb: :white_check_mark:\n', 'claim',
+  (res) => flatText(res).indexOf('🎉') >= 0 || '短代码没换成字符');
+probe('§1.5', '<kbd> 键帽', '<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>\n', 'claim',
+  (res) => withKind(res, I.Key).length === 3 ? true : 'Key 片段 ' + withKind(res, I.Key).length + ' 个（期望 3）');
+probe('§1.6', '<ruby> 带 <rp> 的完整写法',
+  '<ruby>markdown<rp>(</rp><rt>mā kè dāng</rt><rp>)</rp></ruby> 是一种轻量标记语言。\n', 'claim', (res) => {
+    const ruby = withKind(res, I.Ruby);
+    if (ruby.length === 0) { return '没有 Ruby 注音片段'; }
+    if (txt(ruby) !== 'mā kè dāng') { return '注音内容是 "' + txt(ruby) + '"，应为读音本身'; }
+    if (flatText(res).indexOf('<rp>') >= 0 || flatText(res).indexOf('rp>') >= 0) { return '<rp> 漏成正文'; }
+    return true;
+  });
+probe('§1.7', '反斜杠转义 \\* \\_ \\# \\` \\\\',
+  '\\* 不是斜体 \\* · \\_ 不是下划线 \\_ · \\# 不是标题 \\# · \\` 反引号 \\` · \\\\ 反斜杠\n', 'claim', (res) => {
+    if (blocks(res, K.Heading).length > 0) { return '\\# 被判成标题'; }
+    const t = flatText(res);
+    if (t.indexOf('* 不是斜体 *') < 0) { return '转义的 * 没还原："' + t.slice(0, 40) + '"'; }
+    if (t.indexOf('` 反引号 `') < 0) { return '转义的反引号没还原："' + t.slice(0, 60) + '"'; }
+    return true;
+  });
+
+// ════ §2 块级结构 ════
+probe('§2.1', '三级嵌套引用',
+  '> 一级引用\n> > 二级嵌套引用\n> > > 三级嵌套引用，内部仍可写 **粗体** 与 `代码`\n', 'claim', (res) => {
+    const q = blocks(res, K.Quote);
+    const depths = q.map((b) => b.indent);
+    return (depths.indexOf(2) >= 0) ? true : '引用层级 ' + JSON.stringify(depths) + '，最深应为 2';
+  });
+probe('§2.2', '五级混排嵌套列表',
+  '1. 一级有序项\n   1. 二级有序项\n      - 三级无序项\n        - 四级无序项\n          - 五级\n2. 另一个一级项\n   - 混排无序\n',
+  'claim', (res) => {
+    const it = blocks(res, K.ListItem);
+    const lv = it.map((b) => b.indent);
+    return lv.indexOf(4) >= 0 ? true : '层级只到 ' + Math.max.apply(null, lv) + '（期望出现 4）';
+  });
+probe('§2.3', '任务列表（含子任务勾选态）',
+  '- [x] 已完成项\n- [ ] 未完成项\n- [ ] 带子任务的项\n  - [x] 子任务 A\n  - [ ] 子任务 B\n', 'claim', (res) => {
+    const it = blocks(res, K.ListItem);
+    const done = it.filter((b) => b.task === T.Done).length;
+    const todo = it.filter((b) => b.task === T.Todo).length;
+    return (done === 2 && todo === 3) ? true : '勾选 ' + done + ' / 未勾 ' + todo + '（期望 2/3）';
+  });
+probe('§2.4', '定义列表（术语 + 多条 : 定义）',
+  'Markdown\n:   轻量级标记语言。\n:   2004 年发布。\n\nCommonMark\n:   标准化规范。\n', 'claim', (res) => {
+    const it = blocks(res, K.ListItem).filter((b) => b.marker.length === 0);
+    if (it.length !== 3) { return '空 marker 的定义项 ' + it.length + ' 条（期望 3）'; }
+    return true;
+  });
+probe('§2.5', '脚注引用 + 定义', '扩展能力丰富[^note1]，另一种[^note2]。\n\n[^note1]: 第一条。\n[^note2]: 第二条含 **粗体**。\n',
+  'claim', (res) => {
+    const ref = withKind(res, I.FootnoteRef);
+    if (ref.length !== 2) { return '脚注引用 ' + ref.length + ' 个（期望 2）'; }
+    return res.notes.length === 2 ? true : '底部脚注 ' + res.notes.length + ' 条（期望 2）';
+  });
+probe('§2.5', '行内脚注 ^[...]', '行内脚注也可以这样写^[这是行内脚注，Pandoc 支持]。\n', 'known', (res) =>
+  withKind(res, I.FootnoteRef).length > 0 ? true : '行内脚注没识别（按普通文本显示）');
+probe('§2.6', '缩写 *[HTML]: 全称', '*[HTML]: HyperText Markup Language\n\nHTML 文档由 CSS 控制样式。\n', 'claim', (res) => {
+  const t = flatText(res);
+  return t.indexOf('HyperText') >= 0 ? true : '正文里没有展开全称："' + t.trim() + '"';
+});
+probe('§2.7', '裸网址自动链接', 'https://commonmark.org 直接被识别；www.example.com 也算。\n', 'known', (res) =>
+  withKind(res, I.Link).length >= 1 ? true : '裸 URL / www. 不自动成链');
+probe('§2.7', '尖括号自动链接 <mailto:...>', '邮箱 <mailto:hi@example.com> 与 <https://a.com>。\n', 'known', (res) =>
+  withKind(res, I.Link).length >= 1 ? true : '尖括号自动链接不支持（矩阵已标 ❌）');
+
+// ════ §3 表格 ════
+probe('§3.1', '对齐语法 + 单元格内联 + 转义管道',
+  '| 能力 | 语法 | 支持度 | 示例 |\n|:-----|:----:|-----:|------|\n| 左对齐 | `:---` | ✅ | **粗体** |\n| 转义管道 | `a \\| b` | ✅ | [规范](https://x.com) |\n',
+  'claim', (res) => {
+    const tb = blocks(res, K.Table);
+    if (tb.length !== 1) { return '表格 ' + tb.length + ' 张（期望 1）'; }
+    const rows = tb[0].rows;
+    if (tb[0].aligns.length !== 4) { return '列对齐 ' + tb[0].aligns.length + ' 项（期望 4）'; }
+    if (rows.length !== 3) { return '行数 ' + rows.length + '（期望 3）'; }
+    const cellText = (r, c) => (r.cells[c] || []).map((x) => x.text).join('');
+    if (rows[0].cells.length !== 4 || rows[1].cells.length !== 4) {
+      return '表头 / 首行数据列数 ' + rows[0].cells.length + ' / ' + rows[1].cells.length;
+    }
+    if (cellText(rows[1], 3).indexOf('粗体') < 0) { return '单元格里的 **粗体** 丢了'; }
+    if (rows[2].cells.length !== 4) {
+      return '`a \\| b` 里的转义管道被当列分隔符，那一行裂成 ' + rows[2].cells.length + ' 格（应 4 格）';
+    }
+    if (cellText(rows[2], 1).indexOf('a | b') < 0) {
+      return '单元格里没还原出字面竖线："' + cellText(rows[2], 1) + '"';
+    }
+    return true;
+  });
+probe('§13', '表格里用 HTML 实体 &#124; 表示竖线',
+  '| a | b |\n|---|---|\n| `x &#124; y` | 尾 |\n', 'known', (res) => {
+    const tb = blocks(res, K.Table);
+    return (tb.length === 1 && tb[0].rows[1].cells.length === 2) ? true
+      : '&#124; 没当竖线处理，列被裂开';
+  });
+probe('§3.2', 'HTML 表格 colspan / rowspan / colgroup',
+  '<table>\n  <colgroup><col style="width:40%"></colgroup>\n  <thead><tr><th colspan="2">合并表头</th><th>单列</th></tr></thead>\n  <tbody><tr><td rowspan="2">纵向合并<br>（rowspan=2）</td><td>A</td></tr></tbody>\n</table>\n',
+  'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    if (ch.length !== 1 || ch[0].lang !== 'html') { return '没走块级 HTML（block kinds=' + JSON.stringify(res.blocks.map((b) => b.kind)) + ')'; }
+    const src = ch[0].codeLines.join('\n');
+    if (src.indexOf('colspan="2"') < 0 || src.indexOf('rowspan="2"') < 0) { return '合并单元格属性被吃掉'; }
+    return true;
+  });
+
+// ════ §4 代码块 ════
+probe('§4.1', '带语言标识的围栏', '```python\nprint("hi")  # 注释\n```\n', 'claim', (res) => {
+  const c = blocks(res, K.Code);
+  return c.length === 1 && c[0].lang === 'python' ? true : 'lang="' + (c[0] ? c[0].lang : '?') + '"';
+});
+probe('§4.2', 'diff 差异块', '```diff\n+ 新增行\n- 删除行\n@@ -1,3 +1,4 @@\n```\n', 'claim', (res) => {
+  const c = blocks(res, K.Code);
+  return c.length === 1 && c[0].lang === 'diff' ? true : 'lang="' + (c[0] ? c[0].lang : '?') + '"';
+});
+probe('§4.3', '指定行高亮 ```js{1,3-5}（不带空格，VitePress / Shiki 写法）',
+  '```js{1,3-5}\nlet a=1;\nmd.use(a);\nmd.use(b);\nmd.use(c);\nmd.use(d);\n```\n', 'claim', (res) => {
+    const c = blocks(res, K.Code);
+    if (c.length !== 1) { return '代码块 ' + c.length + ' 个'; }
+    if (c[0].lang !== 'js') { return 'lang 被污染成 "' + c[0].lang + '"（语法高亮会整块失效）'; }
+    const hl = c[0].hlLines || [];
+    return hl.join(',') === '1,3,4,5' ? true : 'hlLines=' + JSON.stringify(hl) + '，应为 [1,3,4,5]';
+  });
+probe('§4.3', '指定行高亮 ```js {1,3}（带空格）', '```js {1,3}\nlet a=1;\nlet b=2;\nlet c=3;\n```\n', 'claim', (res) => {
+  const c = blocks(res, K.Code);
+  if (c.length !== 1 || c[0].lang !== 'js') { return 'lang="' + (c[0] ? c[0].lang : '?') + '"'; }
+  const hl = c[0].hlLines || [];
+  return hl.join(',') === '1,3' ? true : 'hlLines=' + JSON.stringify(hl);
+});
+probe('§4.3', '指定行高亮 hl_lines="1 3"（Python-Markdown 写法）',
+  '```python hl_lines="1 3"\nx = 1\ny = 2\nz = 3\n```\n', 'claim', (res) => {
+    const c = blocks(res, K.Code);
+    if (c.length !== 1 || c[0].lang !== 'python') { return 'lang="' + (c[0] ? c[0].lang : '?') + '"'; }
+    const hl = c[0].hlLines || [];
+    return hl.join(',') === '1,3' ? true : 'hlLines=' + JSON.stringify(hl);
+  });
+probe('§4.3', '行内注释标记 // [!code highlight]', '```js\nconst a = 1; // [!code highlight]\nconst b = 2;\n```\n', 'known', (res) => {
+  const c = blocks(res, K.Code);
+  const hl = (c[0] || {}).hlLines || [];
+  return hl.length > 0 ? true : '注释式行高亮不识别';
+});
+probe('§4.4', '代码组 ::: code-group',
+  '::: code-group\n\n```bash [npm]\nnpm i x\n```\n\n```bash [pnpm]\npnpm add x\n```\n\n:::\n', 'claim', (res) => {
+    const g = blocks(res, K.CodeGroup);
+    if (g.length !== 1) { return 'CodeGroup ' + g.length + ' 个（期望 1）'; }
+    const codes = g[0].groupCodes || [];
+    if (codes.length !== 2) { return '组内代码段 ' + codes.length + ' 段（期望 2）'; }
+    return (codes[0].label === 'npm' && codes[0].lang === 'bash') ? true
+      : '页签名/语言没拿到：' + JSON.stringify(codes[0]);
+  });
+probe('§4.5', '4 空格缩进代码块（老式）', '段落文字。\n\n    indented();\n    code();\n', 'claim', (res) => {
+  const c = blocks(res, K.Code);
+  return c.length === 1 && c[0].code.indexOf('indented();') >= 0 ? true : '缩进代码没成块';
+});
+
+// ════ §5 数学 ════
+probe('§5.1', '行内公式 $...$', '质能方程 $E = mc^2$；条件概率 $P(A \\mid B)$。\n', 'claim', (res) =>
+  withKind(res, I.MathInline).length >= 2 ? true : 'MathInline 片段不足');
+probe('§5.2 / §5.4', '块级公式（含 aligned / pmatrix / cases）',
+  '$$\n\\begin{aligned}\na &= b \\\\\nc &= d\n\\end{aligned}\n$$\n\n$$\nA=\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix}\n$$\n', 'claim', (res) =>
+    blocks(res, K.Math).length === 2 ? true : 'Math 块 ' + blocks(res, K.Math).length + ' 个（期望 2）');
+probe('§5.7', '化学方程式 \\ce{}（mhchem）', '$$\\ce{2H2 + O2 ->[点燃] 2H2O}$$\n', 'claim', (res) =>
+  blocks(res, K.Math).length === 1 ? true : '化学式块没识别为 Math');
+
+// ════ §6 图表引擎 ════
+const CHARTS = [
+  ['mermaid', '6.17 packet', '```mermaid\npacket-beta\n0-7: "版本"\n```\n'],
+  ['mermaid', '6.18 kanban', '```mermaid\nkanban\n  Todo\n    Write table\n```\n'],
+  ['mermaid', '6.19 architecture', '```mermaid\narchitecture-beta\n  group api(cloud)[API]\n```\n'],
+  ['graphviz', '6.22 dot', '```graphviz\ndigraph G { a -> b }\n```\n'],
+  ['nomnoml', '6.26', '```nomnoml\n[A] -> [B]\n```\n'],
+  ['echarts', '6.27', '```echarts\n{"series":[]}\n```\n'],
+  ['wavedrom', '6.23', '```wavedrom\n{signal:[{name:"clk",wave:"p..."}]}\n```\n'],
+  ['abc', '6.24', '```abc\nX:1\nK:G\nG3D|G3D|\n```\n'],
+  ['markmap', '6.25', '```markmap\n# root\n## child\n```\n'],
+  ['mermaid', '6.21 PlantUML 时序图（语法桥转成 mermaid）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
+];
+for (const [lang, sec, src] of CHARTS) {
+  probe('§6 ' + sec, lang + ' 进图表通道', src, 'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    return (ch.length === 1 && ch[0].lang === lang) ? true
+      : '没进 Chart（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
+  });
+}
+probe('§6.21', 'PlantUML 类图不硬转（留源码，不出坏图）',
+  '```plantuml\n@startuml\nclass Foo {\n  +bar()\n}\n@enduml\n```\n', 'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    return ch.length === 0 ? true : '类图被塞进 mermaid（会是一张报错卡）';
+  });
+
+// ════ §7 容器与折叠 ════
+probe('§7.1', 'GFM Alerts 五连',
+  '> [!NOTE]\n> 蓝\n\n> [!TIP]\n> 绿\n\n> [!IMPORTANT]\n> 紫\n\n> [!WARNING]\n> 黄\n\n> [!CAUTION]\n> 红\n', 'claim', (res) => {
+    const co = blocks(res, K.Callout).map((b) => b.callout);
+    const want = [C.Note, C.Tip, C.Important, C.Warning, C.Caution];
+    return co.join(',') === want.join(',') ? true : 'callout 序列 ' + JSON.stringify(co);
+  });
+probe('§7.2', '冒号容器 ::: tip / warning / danger / info',
+  '::: tip 提示\n正文 A\n:::\n\n::: warning 注意\n正文 B\n:::\n\n::: danger 危险\n正文 C\n:::\n\n::: info 信息\n正文 D\n:::\n',
+  'claim', (res) => {
+    const co = blocks(res, K.Callout).length;
+    const stray = flatText(res).indexOf(':::') >= 0;
+    return (co >= 1 && !stray) ? true : '容器产出 callout=' + co + '，残留 :::=' + stray;
+  });
+probe('§7.2', '冒号容器 ::: details（折叠）', '::: details 点击展开\n清单内容\n:::\n', 'claim', (res) =>
+  blocks(res, K.Details).length === 1 ? true : 'Details ' + blocks(res, K.Details).length + ' 个（期望 1）');
+probe('§7.3', '原生 <details open> 带属性 summary',
+  '<details open>\n<summary><b>默认展开</b></summary>\n\n正文一行。\n\n</details>\n', 'claim', (res) => {
+    const d = blocks(res, K.Details);
+    return d.length === 1 ? true : 'Details ' + d.length + ' 个（期望 1）';
+  });
+probe('§7.4', 'pymdownx.tabbed 的 +++ 分组',
+  'div.tabbed-set\n\n+++ Tab 一\n\n内容 A\n\n+++ Tab 二\n\n内容 B\n', 'known', (res) =>
+    flatText(res).indexOf('+++') < 0 ? true : '+++ 语法不识别，按普通文本显示');
+
+// ════ §8 原生 HTML ════
+probe('§8.1', 'span style 彩色文本',
+  '<span style="color:#e11d48;font-weight:700">红色强调</span> · <mark>原生高亮</mark> · <small>小号字</small>\n',
+  'claim', (res) => {
+    const c = withKind(res, I.Color);
+    if (c.length === 0) { return '没有 Color 片段'; }
+    if (c[0].color !== '#FFE11D48' && String(c[0].color).toUpperCase().indexOf('E11D48') < 0) {
+      return '颜色解析成 "' + c[0].color + '"';
+    }
+    return true;
+  });
+probe('§8.1', '渐变背景标签（无 padding 能力，需降级不破版）',
+  '<span style="background:linear-gradient(90deg,#a78bfa,#f472b6);padding:2px 8px;border-radius:4px;color:#fff">渐变标签</span>\n',
+  'claim', (res) => {
+    const t = flatText(res);
+    return t.indexOf('渐变标签') >= 0 && t.indexOf('linear-gradient') < 0 && t.indexOf('<span') < 0
+      ? true : '渐变标签退化异常："' + t.trim().slice(0, 50) + '"';
+  });
+probe('§8.2', 'div + progress 徽章进度条',
+  '<div>\n  渲染完成度： <progress value="78" max="100"></progress> 78%\n</div>\n', 'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    return (ch.length === 1 && ch[0].lang === 'html' && ch[0].codeLines.join('\n').indexOf('progress') >= 0)
+      ? true : '没走块级 HTML';
+  });
+probe('§8.3', '内嵌 SVG', '<svg width="220" height="70"><rect x="2" fill="#f8fafc"/></svg>\n', 'claim', (res) => {
+  const ch = blocks(res, K.Chart);
+  return (ch.length === 1 && ch[0].lang === 'html') ? true : 'SVG 没走块级 HTML';
+});
+probe('§8.4', 'audio / video 放行，iframe 摘除',
+  '<audio controls>\n  <source src="demo.mp3" type="audio/mpeg">\n</audio>\n\n<video controls width="260"><source src="a.mp4"></video>\n\n<iframe src="https://x.com" width="280"></iframe>\n',
+  'claim', (res) => {
+    const html = blocks(res, K.Chart).map((b) => b.codeLines.join('\n')).join('\n');
+    if (html.indexOf('<audio') < 0 || html.indexOf('<video') < 0) { return '音视频被吃掉'; }
+    return html.indexOf('<iframe') < 0 ? true : 'iframe 没摘除';
+  });
+probe('§8.5', 'figure / figcaption 图注',
+  '<figure>\n  <img src="https://x.com/a.png" alt="Logo" width="120">\n  <figcaption>图 1：带编号的图注</figcaption>\n</figure>\n',
+  'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    return (ch.length === 1 && ch[0].codeLines.join('\n').indexOf('figcaption') >= 0) ? true : '图注没走块级 HTML';
+  });
+probe('§8.6', 'div style 自定义卡片里嵌 ol/code',
+  '<div style="padding:12px;border-left:4px solid #6366f1;background:#f8fafc">\n  <b>自定义卡片</b>\n  <ol><li>支持 <code>属性</code></li></ol>\n</div>\n',
+  'claim', (res) => blocks(res, K.Chart).length === 1 ? true : '没走块级 HTML');
+
+// ════ §9 元信息与交叉引用 ════
+probe('§9.1', 'YAML Front Matter 收进 meta',
+  '---\ntitle: "总谱"\nauthor: "Yuanbao"\ntags: [markdown, mermaid]\n---\n\n# 正文\n', 'claim', (res) =>
+    res.meta.length >= 3 ? true : 'meta ' + res.meta.length + ' 项（期望 ≥3）');
+probe('§9.2', '自动目录 [TOC]', '[TOC]\n\n# 甲\n\n# 乙\n', 'known', (res) =>
+  flatText(res).indexOf('[TOC]') < 0 ? true : '[TOC] 原样显示（矩阵已标 ❌）');
+probe('§9.3', '显式锚点 <a id> + 站内跳转',
+  '<a id="anchor-demo"></a>\n\n**这里埋了锚点**，用 [跳转到锚点](#anchor-demo) 可以跳。\n\n## 目标标题 {#t2}\n',
+  'claim', (res) => {
+    const links = withKind(res, I.Link).map((x) => x.href);
+    const h = blocks(res, K.Heading);
+    const anchored = h.filter((b) => (b.anchor || '').length > 0).length;
+    return (links.indexOf('#anchor-demo') >= 0 && anchored === 1) ? true
+      : '站内链接 ' + JSON.stringify(links) + '，带 id 的标题 ' + anchored + ' 个';
+  });
+probe('§9.4', 'Pandoc 图表编号 @fig: 与文献 [@key]',
+  '![示意](flow.png){#fig:flow width=60%}\n\n如图 @fig:flow 所示，受[@gruber2004]影响。\n', 'known', (res) => {
+    const t = flatText(res);
+    return (t.indexOf('{#fig:flow') < 0 && t.indexOf('@fig:flow') >= 0)
+      ? true : 'pandoc 标记退化异常："' + t.trim().slice(0, 60) + '"';
+  });
+
+// ════ §10 MDX ════
+probe('§10', 'MDX 围栏按代码显示（不假装能跑组件）',
+  '```mdx\nimport { Chart } from "./Chart"\n\n<Tabs>\n  <TabItem value="js">JS</TabItem>\n</Tabs>\n```\n', 'known',
+  (res) => {
+    const c = blocks(res, K.Code);
+    return (c.length === 1 && c[0].lang === 'mdx') ? true : 'mdx 围栏产物异常';
+  });
+
+// ════ §13 常见坑 ════
+probe('§13', '段内两空格硬换行', '第一行  \n第二行\n', 'known', (res) =>
+  /第一行\n第二行/.test(flatText(res)) ? true : '硬换行被并成空格（矩阵已标 ❌）');
+
+// ════ 导出侧同步（真解析器管不到 MdToHtml，这里按源码字节核）════
+(function exportSync() {
+  const html = fs.readFileSync(path.join(MD, 'MdToHtml.ets'), 'utf8').replace(/\r\n/g, '\n');
+  const probes2 = [
+    ['指定行高亮导出侧有 .hl 行底', /hl\.indexOf\(k \+ 1\) >= 0/.test(html) && /\.hl \{[^}]*rgba\(245,158,11/.test(html)],
+    ['代码族解析仍走 resolveFamily（改 codeBlock 签名时别把高亮链路带断）',
+      /resolveFamily\(lang\)/.test(html)],
+  ];
+  for (const [label, ok] of probes2) {
+    if (ok) { console.log('  ok    导出侧 ' + label); }
+    else {
+      fails++;
+      console.log('  FAIL  导出侧 ' + label);
+      gaps.push('导出侧 ' + label);
+    }
+  }
+})();
+
+console.log('');
+console.log(gaps.length === 0
+  ? 'COVERAGE OK — 真解析器逐条实测通过（known 档 ' + knownFails + ' 条为已标注降级）'
+  : 'COVERAGE GAPS: ' + fails + ' 条 claim 档失败');
+if (fails > 0) {
+  console.log('真缺口清单：');
+  for (const g of gaps) { console.log('  · ' + g); }
+}
+process.exit(fails === 0 ? 0 : 1);

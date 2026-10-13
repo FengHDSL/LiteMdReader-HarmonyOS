@@ -43,6 +43,7 @@ const HTML_CSS: string = `
   .num { color: #0550ae; } .fn { color: #8250df; } .tag { color: #116329; } .attr { color: #0550ae; }
   .add { color: #116329; background: #e6ffec; } .rem { color: #cf222e; background: #ffebe9; }
   .hunk { color: #8250df; background: #fff5e5; }
+  .hl { display: block; background: rgba(245,158,11,0.15); } /* 围栏元数据指定的高亮行，与阅读页同色 */
   blockquote { margin: 1em 0; padding: 10px 16px; border-left: 3px solid #2f63e8;
                background: rgba(47,99,232,0.06); border-radius: 6px; color: #3a4150; }
   .callout { margin: 1em 0; padding: 12px 16px; border-left: 3px solid #888; border-radius: 6px; background: rgba(0,0,0,0.04); }
@@ -230,13 +231,14 @@ export class MdToHtml {
     return raw;
   }
 
-  /** 代码块 → 带语言族高亮的 pre/code。 */
-  static codeBlock(lang: string, lines: string[]): string {
+  /** 代码块 → 带语言族高亮的 pre/code。`hl` 是指定高亮行（围栏元数据，1 起）。 */
+  static codeBlock(lang: string, lines: string[], hl: number[]): string {
     const family: CodeFamily = resolveFamily(lang);
     const state: CodeState = newCodeState();
     let out: string = '<pre><code>';
     for (let k = 0; k < lines.length; k++) {
       const tokens: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state);
+      let lineOut: string = '';
       for (let t = 0; t < tokens.length; t++) {
         const text: string = MdToHtml.esc(tokens[t].text);
         const kind: number = tokens[t].kind;
@@ -262,8 +264,12 @@ export class MdToHtml {
         } else if (kind === CodeTokenKind.Hunk) {
           cls = 'hunk';
         }
-        out += cls.length > 0 ? '<span class="' + cls + '">' + text + '</span>' : text;
+        lineOut += cls.length > 0 ? '<span class="' + cls + '">' + text + '</span>' : text;
       }
+      // 指定行高亮：整行铺琥珀底（与阅读页 #26F59E0B 同一色），空行也要有底所以补一个空格
+      out += hl.indexOf(k + 1) >= 0
+        ? '<span class="hl">' + (lineOut.length > 0 ? lineOut : ' ') + '</span>'
+        : lineOut;
       out += '\n';
     }
     out += '</code></pre>';
@@ -776,7 +782,7 @@ export class MdToHtml {
             // 用户主动写的 ```html 围栏保持原样——导出与阅读页看到的是同一段。
             body += '<div class="htmlblk">' + block.code + '</div>';
           } else if (MdToHtml.engineOffForLang(langLower)) {
-            body += MdToHtml.codeBlock(block.lang, block.codeLines);
+            body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
           } else if (rich && langLower === 'flowchart') {
             body += MdToHtml.chartContainer('mermaid',
               [MdToHtml.flowchartToMermaid(block.code)]);
@@ -785,18 +791,19 @@ export class MdToHtml {
             body += MdToHtml.chartContainer(langLower, block.codeLines);
             chartIndex++;
           } else {
-            body += MdToHtml.codeBlock(block.lang, block.codeLines);
+            body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
           }
         } else if (block.kind === MdBlockKind.Math && rich) {
           // rich 模式：公式块转 katex 容器；KaTeX 关闭 → 保持源码代码块
           if (EngineRegistry.isOff('katex', EngineRegistry.current())) {
-            body += MdToHtml.codeBlock('latex', [block.code]);
+            body += MdToHtml.codeBlock('latex', [block.code], []);
           } else {
             body += MdToHtml.chartContainer('katex', [block.code]);
             chartIndex++;
           }
         } else if (block.kind === MdBlockKind.Code) {
-          body += MdToHtml.codeBlock(block.lang, block.codeLines);
+          body += MdToHtml.codeBlock(block.lang, block.codeLines,
+            block.hlLines === undefined ? [] : block.hlLines);
         } else if (block.kind === MdBlockKind.Quote) {
           // 嵌套引用：按层级套对应层数的 <blockquote>（indent 0 = 一层）
           let quote: string = '<blockquote>' + MdToHtml.inline(block.inlines) + '</blockquote>';

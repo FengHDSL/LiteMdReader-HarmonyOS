@@ -724,7 +724,8 @@ export class MdParser {
 
       // ── 围栏代码块 ────────────────────────────────────────────────
       if (MdParser.isFence(t)) {
-        let lang: string = MdParser.fenceLang(t);
+        const info: string = MdParser.fenceInfo(t);
+        let lang: string = MdParser.fenceLang(info);
         // **围栏长度**：外层围栏可能比内层长（教程里用 4 个反引号包住 3 个反引号的
         // 示例，这是 Markdown 标准写法）—— 只有**同长或更长**的围栏才算结束。
         // 否则内层围栏会被误判为结束标记，外层块内容变成空的（用户实测
@@ -744,34 +745,8 @@ export class MdParser {
         if (i < lines.length) {
           i++;
         }
-        // 围栏元数据：```js{1,3-5} → 语言 js + 高亮行集合（VitePress 语法，1 起）
-        let hlLines: number[] = [];
-        const braceAt: number = lang.indexOf('{');
-        if (braceAt >= 0 && lang.endsWith('}')) {
-          const spec: string = lang.substring(braceAt + 1, lang.length - 1);
-          const parts: string[] = spec.split(',');
-          for (let pi = 0; pi < parts.length; pi++) {
-            const seg: string = parts[pi].trim();
-            if (seg.indexOf('-') >= 0) {
-              const ab: string[] = seg.split('-');
-              if (ab.length === 2) {
-                const a: number = Number(ab[0]);
-                const b: number = Number(ab[1]);
-                if (!isNaN(a) && !isNaN(b) && b >= a) {
-                  for (let v = a; v <= b; v++) {
-                    hlLines.push(v);
-                  }
-                }
-              }
-            } else {
-              const v2: number = Number(seg);
-              if (!isNaN(v2) && v2 > 0) {
-                hlLines.push(v2);
-              }
-            }
-          }
-          lang = lang.substring(0, braceAt).trim();
-        }
+        // 指定行高亮（VitePress / Shiki 的 {1,3-5}、Python-Markdown 的 hl_lines="1 3"，1 起）
+        const hlLines: number[] = MdParser.fenceHlLines(info);
         // PlantUML → mermaid 桥接（时序图子集；无法离线渲染真 PlantUML，转译后用 mermaid 出图）
         let pumlBody: string = '';
         let isPuml: boolean = false;
@@ -2406,27 +2381,100 @@ export class MdParser {
     return n;
   }
 
-  private static fenceLang(t: string): string {
+  /** 围栏 info 串：反引号之后到行尾（VitePress / Shiki / Python-Markdown 的元数据都写在这里） */
+  private static fenceInfo(t: string): string {
     const c: string = t.charAt(0);
     let n: number = 0;
     while (n < t.length && t.charAt(n) === c) {
       n++;
     }
-    let info: string = t.substring(n).trim();
-    if (info.startsWith('{')) {
-      info = info.substring(1);
-    }
-    if (info.endsWith('}')) {
-      info = info.substring(0, info.length - 1);
-    }
-    if (info.startsWith('.')) {
-      info = info.substring(1);
-    }
-    const sp: number = info.indexOf(' ');
+    return t.substring(n).trim();
+  }
+
+  /**
+   * 围栏语言。以前这里顺手把 `{}` 剥掉、只留第一个空格前的词，代价是
+   * ` ```js{1,3-5} ` 的 `{1,3-5}` **在到达高亮行解析之前就被吃掉**——指定行高亮整条分支
+   * 变成死代码，而 lang 还留下半个 `js{1,3-5` 让语法高亮一起失效。
+   * 现在只负责交出语言，元数据交给 fenceHlLines()。
+   */
+  private static fenceLang(info: string): string {
+    let tok: string = info;
+    const sp: number = tok.indexOf(' ');
     if (sp > 0) {
-      info = info.substring(0, sp);
+      tok = tok.substring(0, sp);                 // 空格之后全是元数据
     }
-    return info;
+    const brace: number = tok.indexOf('{');
+    if (brace > 0) {
+      tok = tok.substring(0, brace);              // js{1,3-5}：{ 之前才是语言
+    }
+    if (tok.startsWith('{')) {
+      tok = tok.substring(1);                     // ```{python} / ```{.python}
+      const e: number = tok.indexOf('}');
+      if (e >= 0) {
+        tok = tok.substring(0, e);
+      }
+    }
+    if (tok.startsWith('.')) {
+      tok = tok.substring(1);
+    }
+    // 光给行号不给语言的写法（```{1,3}）：那串数字不是语言，交空串让高亮走纯文本兜底
+    if (/^[0-9,\-\s]*$/.test(tok)) {
+      return '';
+    }
+    return tok;
+  }
+
+  /** 从 info 串里抠指定高亮行：`{1,3-5}`（VitePress / Shiki）、`hl_lines="1 3"`（Python-Markdown） */
+  private static fenceHlLines(info: string): number[] {
+    const out: number[] = [];
+    const bAt: number = info.indexOf('{');
+    const bEnd: number = info.lastIndexOf('}');
+    if (bAt >= 0 && bEnd > bAt) {
+      MdParser.collectLineSpec(info.substring(bAt + 1, bEnd), out);
+    }
+    const hlAt: number = info.indexOf('hl_lines');
+    if (hlAt >= 0) {
+      const q1: number = info.indexOf('"', hlAt);
+      const q2: number = q1 >= 0 ? info.indexOf('"', q1 + 1) : -1;
+      if (q1 >= 0 && q2 > q1) {
+        MdParser.collectLineSpec(info.substring(q1 + 1, q2), out);
+      } else {
+        const k1: number = info.indexOf('[', hlAt);
+        const k2: number = k1 >= 0 ? info.indexOf(']', k1 + 1) : -1;
+        if (k1 >= 0 && k2 > k1) {
+          MdParser.collectLineSpec(info.substring(k1 + 1, k2), out);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** `1,3-5` / `1 3` / `2-4,7` 展开成 1 起的行号数组（去重；区间长度封顶防手滑写 1-99999） */
+  private static collectLineSpec(spec: string, out: number[]): void {
+    const toks: string[] = spec.replace(/[,;\s]+/g, ' ').trim().split(' ');
+    for (let k = 0; k < toks.length; k++) {
+      const seg: string = toks[k];
+      if (seg.length === 0) {
+        continue;
+      }
+      const dash: number = seg.indexOf('-');
+      if (dash > 0) {
+        const a: number = Number(seg.substring(0, dash));
+        const b: number = Number(seg.substring(dash + 1));
+        if (!isNaN(a) && !isNaN(b) && a > 0 && b >= a && b - a < 400) {
+          for (let v = a; v <= b; v++) {
+            if (out.indexOf(v) < 0) {
+              out.push(v);
+            }
+          }
+        }
+      } else {
+        const v: number = Number(seg);
+        if (!isNaN(v) && v > 0 && out.indexOf(v) < 0) {
+          out.push(v);
+        }
+      }
+    }
   }
 
   private static headingInfo(t: string): HeadingHit {
