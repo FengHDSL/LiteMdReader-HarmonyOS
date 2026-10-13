@@ -57,6 +57,10 @@ const HTML_CSS: string = `
   ruby rt { font-size: 0.55em; color: #6e7781; }
   .rt { font-size: 0.62em; color: #6e7781; vertical-align: super; margin-left: 0.1em; }
   u { text-decoration: underline; }
+  .htmlblk { margin: 1.2em 0; }
+  .htmlblk table { border-collapse: collapse; width: 100%; }
+  .htmlblk th, .htmlblk td { border: 1px solid #dde2ea; padding: 6px 10px; }
+  .htmlblk svg, .htmlblk video, .htmlblk iframe { max-width: 100%; }
   .meta { background: #eef1f7; border-radius: 10px; padding: 14px 18px; margin-bottom: 2em; font-size: 0.9em; }
   .meta dt { font-weight: 600; color: #525a68; margin-top: 6px; }
   .meta dd { margin: 0 0 0 0; color: #1b1f27; }
@@ -743,7 +747,13 @@ export class MdToHtml {
           // 「设置 → 引擎管理」里关闭了对应引擎 → 一律保持代码块（关闭后无法渲染，
           // 导出的网页也不能假装能渲染；与阅读页源码兜底卡同一语义）。
           const langLower: string = block.lang.trim().toLowerCase();
-          if (MdToHtml.engineOffForLang(langLower)) {
+          if (langLower === 'html') {
+            // **HTML 块原样输出**：它本身就是渲染结果（表格 colspan/rowspan、内嵌 SVG、
+            // 进度条这类排版没有"渲染库"可言，也不该退化成代码块）。
+            // 解析器对**自动识别**的块级 HTML 已经过安全闸（摘 script/iframe/on*/javascript:），
+            // 用户主动写的 ```html 围栏保持原样——导出与阅读页看到的是同一段。
+            body += '<div class="htmlblk">' + block.code + '</div>';
+          } else if (MdToHtml.engineOffForLang(langLower)) {
             body += MdToHtml.codeBlock(block.lang, block.codeLines);
           } else if (rich && langLower === 'flowchart') {
             body += MdToHtml.chartContainer('mermaid',
@@ -766,7 +776,12 @@ export class MdToHtml {
         } else if (block.kind === MdBlockKind.Code) {
           body += MdToHtml.codeBlock(block.lang, block.codeLines);
         } else if (block.kind === MdBlockKind.Quote) {
-          body += '<blockquote>' + MdToHtml.inline(block.inlines) + '</blockquote>';
+          // 嵌套引用：按层级套对应层数的 <blockquote>（indent 0 = 一层）
+          let quote: string = '<blockquote>' + MdToHtml.inline(block.inlines) + '</blockquote>';
+          for (let d = 0; d < block.indent; d++) {
+            quote = '<blockquote>' + quote + '</blockquote>';
+          }
+          body += quote;
         } else if (block.kind === MdBlockKind.Callout) {
           body += '<div class="callout" style="border-left-color:' + calloutColor(block.callout) + '">'
             + '<span class="t" style="color:' + calloutColor(block.callout) + '">'

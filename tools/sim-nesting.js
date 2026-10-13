@@ -54,9 +54,59 @@ const listInfoBody = (() => {
 check('① ListHit 交出的是原始空格数 spaces（层级留给主循环算，匹配器不猜）',
   /spaces:\s*number/.test(listHitIface) && !/indent/.test(listHitIface)
   && /spaces:\s*indentSpaces/.test(listInfoBody) && !/Math\.floor/.test(listInfoBody));
-check('① 缩进代码仍排除"段落之后"与"列表项之后"两种情况',
-  /canStartIndentedCode/.test(src)
+check('① 缩进代码 / 块级 HTML 共用同一个"块边界"判定（段落与列表项之后都不起块）',
+  /atBlockBoundary/.test(src) && !/canStartIndentedCode/.test(src)
   && /kind !== MdBlockKind\.Paragraph && last\.kind !== MdBlockKind\.ListItem/.test(src));
+
+// ── ⑤ 嵌套引用：每一行自己的 `>` 个数才是它的深度 ──
+// 旧实现只取第一行的深度、整段合并成一块，`> > 二级` 会被剥平成同级文字。
+function quoteDepth(line) {
+  let n = 0; let k = 0;
+  while (k < line.length) {
+    const c = line.charAt(k);
+    if (c === '>') { n++; k++; }
+    else if (c === ' ') { k++; }
+    else { break; }
+  }
+  return n > 0 ? n - 1 : 0;
+}
+/** 端口：主循环的引用分支（按深度切段） */
+function parseQuote(lines) {
+  const out = [];
+  let run = []; let runDepth = 0;
+  for (const line of lines) {
+    const cur = line.trim();
+    if (!cur.startsWith('>')) { continue; }
+    const d = quoteDepth(cur);
+    let s = cur;
+    while (s.startsWith('>')) {
+      s = s.substring(1);
+      if (s.startsWith(' ')) { s = s.substring(1); }
+    }
+    if (run.length > 0 && d !== runDepth) {
+      out.push({ depth: runDepth, text: run.join(' ') });
+      run = [];
+    }
+    if (run.length === 0) { runDepth = d; }
+    run.push(s);
+  }
+  if (run.length > 0) { out.push({ depth: runDepth, text: run.join(' ') }); }
+  return out;
+}
+const doc21 = parseQuote([
+  '> 一级引用：Markdown 的设计哲学是"易读易写"。',
+  '> > 二级嵌套引用',
+  '> > > 三级嵌套引用，内部仍可写 **粗体** 与 `代码`'
+]);
+check('⑤ 文档 2.1：三行三种深度 = 三块引用（旧实现合成一块、层级全丢）',
+  doc21.length === 3 && doc21[0].depth === 0 && doc21[1].depth === 1 && doc21[2].depth === 2,
+  doc21.map((q) => q.depth).join(','));
+const sameQuote = parseQuote(['> 甲', '> 乙', '> 丙']);
+check('⑤ 同层连续引用仍然合成一块（没被切得过碎）',
+  sameQuote.length === 1 && sameQuote[0].text === '甲 乙 丙', JSON.stringify(sameQuote));
+const backQuote = parseQuote(['> 一层', '> > 二层', '> 回到一层']);
+check('⑤ 嵌套写完回到上一层，深度要跟着回落',
+  backQuote.map((q) => q.depth).join(',') === '0,1,0', backQuote.map((q) => q.depth).join(','));
 
 // ── 端口：listInfo（与 ArkTS 版同一条口径）──
 function leadingSpaces(line) {

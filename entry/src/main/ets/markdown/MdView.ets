@@ -1786,14 +1786,22 @@ export struct MdBlockView {
 
   @Builder
   quoteView() {
+    // **嵌套引用要真看得出层级**：`> > >` 三层就是三层缩进。以前这里完全不读
+    // block.indent，所有引用都贴在同一条左边线上，嵌套写法渲染出来是平的。
+    // 外层只做缩进（与列表项同一套做法：外容器 padding + 内层 width('100%')），
+    // 这样左边线、底色、圆角会跟着一起往右移，而不是文字单独躲开自己的竖线。
     Column() {
-      this.richTextSel(this.bodySize, this.palette.textSecondary, this.lineMul, TextAlign.Start, false)
+      Column() {
+        this.richTextSel(this.bodySize, this.palette.textSecondary, this.lineMul, TextAlign.Start, false)
+      }
+      .width('100%')
+      .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
+      .border({ width: { left: 3 }, color: { left: this.palette.quoteBar } })
+      .borderRadius(HwRadius.inline)
+      .backgroundColor(this.palette.quoteBg)
     }
     .width('100%')
-    .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
-    .border({ width: { left: 3 }, color: { left: this.palette.quoteBar } })
-    .borderRadius(HwRadius.inline)
-    .backgroundColor(this.palette.quoteBg)
+    .padding({ left: MdViewUtil.listIndent(this.block.indent) })
   }
 
   @Builder

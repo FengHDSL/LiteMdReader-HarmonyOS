@@ -1005,17 +1005,15 @@ export class MdParser {
 
       // ── 引用 / 提示块 ─────────────────────────────────────────────
       if (t.startsWith('>')) {
-        const quoteStart: number = i;
-        let depth: number = 0;
-        const body: string[] = [];
-        let first: boolean = true;
+        // **每一行自己的 `>` 个数才是它的深度**。以前整段引用只取第一行的深度并合并成
+        // 一块，`> > 二级嵌套引用` 这种写法会被剥成一堆同级文字（用户清单第 3 项）。
+        // 现在按深度切段：深度一变就另起一块引用，配合渲染侧按 indent 缩进。
+        let run: string[] = [];
+        let runDepth: number = 0;
+        let runStart: number = i;
         while (i < lines.length && lines[i].trim().startsWith('>')) {
           const cur: string = lines[i].trim();
           const d: number = MdParser.quoteDepth(cur);
-          if (first) {
-            depth = d;
-            first = false;
-          }
           let s: string = cur;
           while (s.startsWith('>')) {
             s = s.substring(1);
@@ -1023,10 +1021,21 @@ export class MdParser {
               s = s.substring(1);
             }
           }
-          body.push(s);
+          if (run.length > 0 && d !== runDepth) {
+            // 深度变了 = 换了一层引用，先把上一段结算出去
+            MdParser.pushQuoteOrCallout(blocks, run, runDepth, MdParser.orig(runStart));
+            run = [];
+          }
+          if (run.length === 0) {
+            runDepth = d;
+            runStart = i;
+          }
+          run.push(s);
           i++;
         }
-        MdParser.pushQuoteOrCallout(blocks, body, depth, MdParser.orig(quoteStart));
+        if (run.length > 0) {
+          MdParser.pushQuoteOrCallout(blocks, run, runDepth, MdParser.orig(runStart));
+        }
         continue;
       }
 
@@ -1113,7 +1122,7 @@ export class MdParser {
       //    真要写代码得再缩进过内容列，那种交给列表分支处理。
       // 此前这里没有分支，缩进正文会被当普通段落、行首空白被 trim 掉，
       // 老式代码块的等宽与缩进整段丢失。
-      if ((raw.startsWith('    ') || raw.startsWith('\t')) && MdParser.canStartIndentedCode(blocks)) {
+      if ((raw.startsWith('    ') || raw.startsWith('\t')) && MdParser.atBlockBoundary(blocks)) {
         const codeStart: number = i;
         const body: string[] = [];
         while (i < lines.length) {
@@ -1137,6 +1146,36 @@ export class MdParser {
           const ib: MdBlock = MdBlockFactory.code('', body, blocks.length);
           ib.srcLine = MdParser.orig(codeStart);
           blocks.push(ib);
+        }
+        continue;
+      }
+
+      // ── 块级原生 HTML（合并单元格表格 / 内嵌 SVG / 音视频 / figure 图注 / div 样式…）──
+      // 行内那条路只处理成对的小标签，块级标签被 htmlBlockTag 显式排除（否则 `<table>`
+      // 会被当行内标签、把整张表吞成一行文本）。这里补上另一头：整段 HTML 收成一个
+      // `html` 图表块，走 render/html.html 的 WebView 卡片——colspan/rowspan、内嵌 SVG、
+      // 进度条这类排版，ArkUI 的 Text/Span 根本表达不了。
+      const rootTag: string = MdParser.htmlBlockTagAt(raw);
+      if (rootTag.length > 0 && MdParser.atBlockBoundary(blocks)) {
+        const htmlStart: number = i;
+        const picked: string[] = [];
+        let balance: number = 0;
+        while (i < lines.length) {
+          const hl: string = lines[i];
+          if (hl.trim().length === 0) {
+            break;                        // 空行结束一块 HTML（CommonMark 第六类）
+          }
+          picked.push(hl);
+          balance += MdParser.tagDelta(hl, rootTag);
+          i++;
+          if (balance <= 0) {
+            break;                        // 根标签闭合 = 这块结束
+          }
+        }
+        const htmlText: string = MdParser.sanitizeHtmlBlock(picked.join('\n'));
+        if (htmlText.trim().length > 0) {
+          blocks.push(MdBlockFactory.chart('html', htmlText.split('\n'), blocks.length,
+            MdParser.orig(htmlStart)));
         }
         continue;
       }
@@ -1610,6 +1649,194 @@ export class MdParser {
       out.push(inlineOf(MdInlineKind.Plain, buf, '', 0, bold, italic, strike, code));
     }
     return '';
+  }
+
+  /**
+   * 这一行是不是**块级 HTML** 的开头（`<table …>` / `<div …>` / `<svg …>`…）。
+   * 返回根标签名；不是块级开头返回空串。
+   */
+  private static htmlBlockTagAt(line: string): string {
+    const t: string = line.trim();
+    if (t.length < 2 || t.charAt(0) !== '<' || t.charAt(1) === '/') {
+      return '';
+    }
+    const name: string = MdParser.htmlTagName(t, 0);
+    if (name.length === 0 || !MdParser.htmlBlockTag(name)) {
+      return '';
+    }
+    return t.indexOf('>') > 0 ? name : '';
+  }
+
+  /** 这一行让根标签的开合差额变化多少（`<tr>` 这种嵌套同名词不会被误算） */
+  private static tagDelta(line: string, tag: string): number {
+    const lower: string = line.toLowerCase();
+    const openNeedle: string = '<' + tag;
+    const closeNeedle: string = '</' + tag;
+    let delta: number = 0;
+    let k: number = 0;
+    while (k < lower.length) {
+      const at: number = lower.indexOf(openNeedle, k);
+      if (at < 0) {
+        break;
+      }
+      const next: string = at + openNeedle.length < lower.length
+        ? lower.charAt(at + openNeedle.length) : ' ';
+      if (next === ' ' || next === '>' || next === '\t' || next === '/') {
+        delta++;
+      }
+      k = at + openNeedle.length;
+    }
+    k = 0;
+    while (k < lower.length) {
+      const at: number = lower.indexOf(closeNeedle, k);
+      if (at < 0) {
+        break;
+      }
+      delta--;
+      k = at + closeNeedle.length;
+    }
+    return delta;
+  }
+
+  /**
+   * **自动识别**出来的块级 HTML 先过一道闸：
+   *  · `<script>` / `<iframe>` / `<frame>` / `<embed>` / `<object>` 整段摘掉——
+   *    前者会执行，后四者会**自己**发网络请求（`<audio>`/`<video>` 留着：要用户主动点播放）；
+   *  · 标签里的 `on*=` 事件属性与 `javascript:` 地址一律丢掉。
+   * 用户拿 ```html 围栏主动预览时**不**过这道闸——那是"我知道我在跑这段 HTML"；
+   * 这条路径是给"别人发来的文档里正好有段 HTML"兜底，风险口径不一样。
+   */
+  private static sanitizeHtmlBlock(text: string): string {
+    let out: string = MdParser.dropTagPair(text, 'script');
+    out = MdParser.dropTagPair(out, 'iframe');
+    out = MdParser.dropTagPair(out, 'frame');
+    out = MdParser.dropTagPair(out, 'embed');
+    out = MdParser.dropTagPair(out, 'object');
+    return MdParser.scrubHtmlTags(out);
+  }
+
+  /**
+   * 删掉成对标签连同内容（`<script>…</script>`）。
+   * 自闭合标签（`<embed … />`）只删这一个标签；**找不到闭合就删到文末**——
+   * 留半截 `<script>` 在页面里比少显示一段更危险。
+   */
+  private static dropTagPair(text: string, tag: string): string {
+    const lower: string = text.toLowerCase();
+    const openNeedle: string = '<' + tag;
+    let out: string = '';
+    let k: number = 0;
+    while (k < text.length) {
+      const at: number = lower.indexOf(openNeedle, k);
+      if (at < 0) {
+        out = out + text.substring(k);
+        break;
+      }
+      const next: string = at + openNeedle.length < text.length
+        ? text.charAt(at + openNeedle.length) : ' ';
+      if (next !== ' ' && next !== '>' && next !== '\t' && next !== '/' && next !== '\n') {
+        // <scripting> 之类不是目标标签，原样带到它就结束本轮
+        out = out + text.substring(k, at + openNeedle.length);
+        k = at + openNeedle.length;
+        continue;
+      }
+      const gt: number = text.indexOf('>', at);
+      if (gt < 0) {
+        // 标签没写完：保留它前面的正文，只丢这个残片
+        return out + text.substring(k, at);
+      }
+      if (text.charAt(gt - 1) === '/') {
+        out = out + text.substring(k, at);          // 自闭合：只摘这一个标签
+        k = gt + 1;
+        continue;
+      }
+      const closeAt: number = lower.indexOf('</' + tag, gt);
+      if (closeAt < 0) {
+        return out + text.substring(k, at);         // 没有闭合：后面整段都不留
+      }
+      const closeEnd: number = text.indexOf('>', closeAt);
+      out = out + text.substring(k, at);            // ⚠️ 先留住标签**前面**那段正文
+      k = closeEnd < 0 ? text.length : closeEnd + 1;
+    }
+    return out;
+  }
+
+  /** 逐个标签清洗：丢 `on*=` 事件属性与 `javascript:` 地址（引号里的空格不会被误切） */
+  private static scrubHtmlTags(text: string): string {
+    let out: string = '';
+    let k: number = 0;
+    while (k < text.length) {
+      const lt: number = text.indexOf('<', k);
+      if (lt < 0) {
+        out = out + text.substring(k);
+        break;
+      }
+      out = out + text.substring(k, lt);
+      const gt: number = text.indexOf('>', lt + 1);
+      if (gt < 0) {
+        out = out + text.substring(lt);
+        break;
+      }
+      out = out + '<' + MdParser.scrubAttrRun(text.substring(lt + 1, gt)) + '>';
+      k = gt + 1;
+    }
+    return out;
+  }
+
+  /** 把一个标签内部切成属性记号（引号感知），滤掉危险属性再拼回去 */
+  private static scrubAttrRun(inner: string): string {
+    const tokens: string[] = [];
+    let cur: string = '';
+    let quote: string = '';
+    for (let k = 0; k < inner.length; k++) {
+      const c: string = inner.charAt(k);
+      if (quote.length > 0) {
+        cur = cur + c;
+        if (c === quote) {
+          quote = '';
+        }
+        continue;
+      }
+      if (c === '"' || c === '\'') {
+        quote = c;
+        cur = cur + c;
+        continue;
+      }
+      if (c === ' ' || c === '\t' || c === '\n') {
+        if (cur.length > 0) {
+          tokens.push(cur);
+          cur = '';
+        }
+        continue;
+      }
+      cur = cur + c;
+    }
+    if (cur.length > 0) {
+      tokens.push(cur);
+    }
+    let out: string = tokens.length > 0 ? tokens[0] : '';
+    for (let t = 1; t < tokens.length; t++) {
+      const tok: string = tokens[t];
+      const eq: number = tok.indexOf('=');
+      const name: string = (eq < 0 ? tok : tok.substring(0, eq)).toLowerCase();
+      const value: string = eq < 0 ? '' : tok.substring(eq + 1).toLowerCase();
+      if (name.startsWith('on')) {
+        continue;                        // onclick / onerror / onload… 一律不给执行机会
+      }
+      if (value.indexOf('javascript:') >= 0) {
+        continue;
+      }
+      out = out + ' ' + tok;
+    }
+    return out;
+  }
+
+  /** 块级自由格式内容（缩进代码 / 原生 HTML）能不能从这里起一块 */
+  private static atBlockBoundary(blocks: MdBlock[]): boolean {
+    if (blocks.length === 0) {
+      return true;
+    }
+    const last: MdBlock = blocks[blocks.length - 1];
+    return last.kind !== MdBlockKind.Paragraph && last.kind !== MdBlockKind.ListItem;
   }
 
   /** 这些标签是**块级**的：行内不处理（否则会把整张表格吞成一行文本），留给块级路径或原样显示 */
@@ -2363,15 +2590,6 @@ export class MdParser {
       task: task
     };
     return r;
-  }
-
-  /** 缩进代码块能不能从这里开始：上一块是段落或列表项时不行（见主循环里的注释） */
-  private static canStartIndentedCode(blocks: MdBlock[]): boolean {
-    if (blocks.length === 0) {
-      return true;
-    }
-    const last: MdBlock = blocks[blocks.length - 1];
-    return last.kind !== MdBlockKind.Paragraph && last.kind !== MdBlockKind.ListItem;
   }
 
   private static leadingSpaces(line: string): number {
