@@ -173,6 +173,9 @@ export class EngineRegistry {
     if (l === 'nomnoml') {
       return 'nomnoml';
     }
+    if (l === 'plantuml') {
+      return 'mermaid';
+    }
     if (l === 'chart') {
       return 'chartjs';
     }

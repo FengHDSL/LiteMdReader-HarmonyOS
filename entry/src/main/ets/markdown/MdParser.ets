@@ -20,6 +20,7 @@
  *   行内 HTML（按纯文本显示）、缩进代码块（4 空格）、多文件文档。
  */
 
+import { PlantumlBridge } from './PlantumlBridge';
 import {
   MdBlock,
   MdBlockKind,
@@ -631,6 +632,8 @@ export class MdParser {
 
     const noteLabels: string[] = [];
     const noteBodies: string[] = [];
+    // 缩写表（缩写 → 全称），行内阶段做括号注替换
+    const abbrMap: Map<string, string> = new Map<string, string>();
 
     let i: number = 0;
     let headingSeq: number = 0;
@@ -745,17 +748,25 @@ export class MdParser {
           }
           lang = lang.substring(0, braceAt).trim();
         }
-        const langLower: string = lang.toLowerCase();
+        // PlantUML → mermaid 桥接（时序图子集；无法离线渲染真 PlantUML，转译后用 mermaid 出图）
+        let pumlBody: string = '';
+        let isPuml: boolean = false;
+        if (lang.toLowerCase() === 'plantuml') {
+          pumlBody = PlantumlBridge.toMermaid(body.join('\n'));
+          isPuml = true;
+        }
+        const langLower: string = (isPuml ? 'mermaid' : lang.toLowerCase());
+        const bodyStr: string = isPuml ? pumlBody : body.join('\n');
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
           || langLower === 'html') {
-          blocks.push(MdBlockFactory.chart(lang, body, blocks.length, MdParser.orig(fenceLine)));
+          blocks.push(MdBlockFactory.chart(langLower, bodyStr.split('\n'), blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
-          const cb: MdBlock = MdBlockFactory.code(lang, body, blocks.length);
+          const cb: MdBlock = MdBlockFactory.code(langLower, bodyStr.split('\n'), blocks.length);
           cb.srcLine = MdParser.orig(fenceLine);
           if (hlLines.length > 0) {
             cb.hlLines = hlLines;
@@ -923,6 +934,19 @@ export class MdParser {
         continue;
       }
 
+      // ── 缩写定义（PHP Markdown Extra 语法：*[HTML]: HyperText Markup Language）──
+      // 收进 abbr 表（本块剔除），正文行内替换成「缩写(全称)」的括号注形式。
+      if (t.startsWith('*[') && t.includes(']:')) {
+        const abEnd: number = t.indexOf(']:');
+        const abKey: string = t.substring(2, abEnd).trim();
+        const abFull: string = t.substring(abEnd + 2).trim();
+        if (abKey.length > 0 && abFull.length > 0) {
+          abbrMap.set(abKey, abFull);
+          i++;
+          continue;
+        }
+      }
+
       // ── 脚注定义（先于表格/段落，避免 [^1]: 被当成正文） ──────────
       const note: NoteDefHit = MdParser.noteDef(t);
       if (note.hit) {
@@ -1069,6 +1093,23 @@ export class MdParser {
         }
         para.push(nx.trim());
         i++;
+      }
+      // 文献引用（pandoc [@key] → [key] 上标标记；文献列表由文档尾部自理）
+      for (let ak = 0; ak < para.length; ak++) {
+        if (para[ak].indexOf('[@') >= 0) {
+          para[ak] = para[ak].replace(/\[@([^\]]+)\]/g, '[$1]');
+        }
+      }
+      // 缩写括号注替换（命中缩写表的原样词 → 词(全称)，仅首现替换）
+      for (let ak = 0; ak < para.length; ak++) {
+        for (const akey of abbrMap.keys()) {
+          if (para[ak] === akey || para[ak].indexOf(akey) >= 0) {
+            const full: string | undefined = abbrMap.get(akey);
+            if (full !== undefined && para[ak].indexOf('(' + full + ')') < 0) {
+              para[ak] = para[ak].split(akey).join(akey + '(' + full + ')');
+            }
+          }
+        }
       }
       // ── 定义列表（term + 连续 ": 定义" 行，PHP Markdown Extra 语法）──
       // 渲染为「粗体术语 + 分号连接定义」的段落形态，不新增块种类。

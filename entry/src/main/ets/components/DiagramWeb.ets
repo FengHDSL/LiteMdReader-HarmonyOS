@@ -136,7 +136,8 @@ export struct DiagramWeb {
    * 脑图「源码 ↔ 预览」来回切一次就落到另一份模板上，放大行为整个变样。
    */
   private renderTemplate(): string {
-    return this.mode === 'markmap' ? 'markmap-card' : this.mode;
+    // plantuml 已在解析层桥接为 mermaid 语法，复用 mermaid 模板
+    return this.mode === 'markmap' ? 'markmap-card' : (this.mode === 'plantuml' ? 'mermaid' : this.mode);
   }
 
   build() {
