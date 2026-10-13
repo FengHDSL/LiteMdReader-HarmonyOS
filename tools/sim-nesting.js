@@ -26,6 +26,11 @@ const path = require('path');
 
 const SRC = path.join(__dirname, '..', 'entry', 'src', 'main', 'ets', 'markdown', 'MdParser.ets');
 const src = fs.readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
+// ⑥ 的两条同步检查要看导出与阅读页，一并读进来（只读，不改）
+const mdHtmlSrc = fs.readFileSync(path.join(__dirname, '..', 'entry', 'src', 'main', 'ets',
+  'markdown', 'MdToHtml.ets'), 'utf8').replace(/\r\n/g, '\n');
+const mdViewSrc = fs.readFileSync(path.join(__dirname, '..', 'entry', 'src', 'main', 'ets',
+  'markdown', 'MdView.ets'), 'utf8').replace(/\r\n/g, '\n');
 
 let fails = 0;
 function check(label, ok, extra) {
@@ -153,6 +158,59 @@ function parseList(lines) {
   }
   return out;
 }
+
+/**
+ * 端口：段落分支里的定义列表识别（术语行 + 连续 ": 定义" 行）。
+ * 产出：{ kind: 'para'|'def', text } 列表；不识别时整段按普通段落出一条。
+ */
+function parsePara(lines2) {
+  const para = [];
+  for (const l of lines2) {
+    const t = l.trim();
+    if (t.length === 0) { break; }
+    para.push(t);
+  }
+  const allDefs = para.length >= 2 && para.slice(1).every((d) => d.startsWith(':'));
+  if (!allDefs) { return [{ kind: 'para', text: para.join(' ') }]; }
+  const out = [{ kind: 'para', text: para[0], boldTerm: true }];
+  for (let d = 1; d < para.length; d++) {
+    out.push({ kind: 'def', text: para[d].replace(/^:+\s*/, ''), indent: 1 });
+  }
+  return out;
+}
+const defDoc = [
+  'Markdown',
+  ':   轻量级标记语言，John Gruber 2004 年发布。',
+  '',
+  'CommonMark',
+  ':   2014 年启动的标准化规范，用于统一各家方言。'
+];
+const d1 = parsePara(defDoc.slice(0, 2));
+check('⑥ 文档 2.4：术语成一段、定义单独成一块（不再被分号并成一行）',
+  d1.length === 2 && d1[0].kind === 'para' && d1[0].text === 'Markdown'
+  && d1[1].kind === 'def' && d1[1].indent === 1
+  && d1[1].text === '轻量级标记语言，John Gruber 2004 年发布。',
+  JSON.stringify(d1));
+const dMulti = parsePara(['GFM', ':   GitHub flavored Markdown。', ':   CommonMark 的超集。']);
+check('⑥ 一个术语带多条定义时，每条各成一块',
+  dMulti.length === 3 && dMulti[1].kind === 'def' && dMulti[2].kind === 'def',
+  JSON.stringify(dMulti));
+const dColon = parsePara(['术语', ':定义紧贴冒号']);
+check('⑥ ":定义"（冒号后没有空格）也认，且冒号被剥干净',
+  dColon.length === 2 && dColon[1].text === '定义紧贴冒号', JSON.stringify(dColon));
+const dPlain = parsePara(['这只是一段', '继续的换行']);
+check('⑥ 普通段落不会被误判成定义列表（第二行不以冒号开头）',
+  dPlain.length === 1 && dPlain[0].kind === 'para'
+  && dPlain[0].text === '这只是一段 继续的换行', JSON.stringify(dPlain));
+// 旧写法会把术语塞进 '**…**' 字符串再解析：术语里带反引号或星号时就解析错
+const dTermWithCode = parsePara(['`shelf.json`', ':   书架索引文件。']);
+check('⑥ 术语含反引号时不再被字符串拼接破坏（旧写法造出 **`shelf.json`** 再解析）',
+  dTermWithCode[0].text === '`shelf.json`' && dTermWithCode[0].boldTerm === true
+  && dTermWithCode[0].text.indexOf('**') < 0, JSON.stringify(dTermWithCode[0]));
+check('⑥ 端口与 ArkTS 版同步：定义块仍走"空 marker 的列表项"这一表示法',
+  /MdBlockFactory\.listItem\(def, false, '', MdTaskState\.None, 1,/.test(src));
+check('⑥ 导出侧认得空 marker（定义不进 <ul>，出缩进段），阅读页不画圆点',
+  /block\.marker\.length === 0/.test(mdHtmlSrc) && /this\.block\.marker\.length === 0/.test(mdViewSrc));
 
 /** 端口：主循环的缩进代码分支（只看"能不能起块 + 收哪些行"） */
 function parseIndentedCode(lines, lastKind) {

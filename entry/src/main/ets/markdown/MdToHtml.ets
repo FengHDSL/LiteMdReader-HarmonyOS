@@ -63,6 +63,7 @@ const HTML_CSS: string = `
   .htmlblk table { border-collapse: collapse; width: 100%; }
   .htmlblk th, .htmlblk td { border: 1px solid #dde2ea; padding: 6px 10px; }
   .htmlblk svg, .htmlblk video, .htmlblk iframe { max-width: 100%; }
+  .dldef { margin: 0.15em 0 0.5em 1.6em; }
   .meta { background: #eef1f7; border-radius: 10px; padding: 14px 18px; margin-bottom: 2em; font-size: 0.9em; }
   .meta dt { font-weight: 600; color: #525a68; margin-top: 6px; }
   .meta dd { margin: 0 0 0 0; color: #1b1f27; }
@@ -819,6 +820,15 @@ export class MdToHtml {
       // 列表项
       const depth: number = block.indent + 1;
       const ordered: boolean = block.ordered;
+      // **定义列表的定义行**（marker 空串且非任务项）不进 <ul>：
+      // 它在源码里不是一条并列条目，而是上一条术语的解释，导出成缩进段更贴近原意，
+      // 也不会让"术语 + 定义"被读成一堆无关节点。
+      if (!ordered && block.marker.length === 0
+        && block.task !== MdTaskState.Todo && block.task !== MdTaskState.Done) {
+        closeTo(0);
+        body += '<p class="dldef">' + MdToHtml.inline(block.inlines) + '</p>';
+        continue;
+      }
       if (openLists.length === 0 || depth > openLists.length) {
         closeItem();
         if (openLists.length > 0 && listOrdered !== ordered && depth === openLists.length + 1) {

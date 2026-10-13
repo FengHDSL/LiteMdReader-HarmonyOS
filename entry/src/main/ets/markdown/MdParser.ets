@@ -1224,17 +1224,27 @@ export class MdParser {
           }
         }
       }
-      // ── 定义列表（term + 连续 ": 定义" 行，PHP Markdown Extra 语法）──
-      // 渲染为「粗体术语 + 分号连接定义」的段落形态，不新增块种类。
+      // ── 定义列表（术语行 + 连续 ": 定义" 行，PHP Markdown Extra / Pandoc 语法）──
+      // 术语与每条定义**各成一个块**：术语是加粗段落，定义是「无标记的列表项」（indent 1）。
+      // 以前把整组压成一段「**术语**：定义；定义。」——定义之间被分号连成一行、
+      // 没法单独批注，而且术语里带 `*` 或反引号时这层字符串拼接还会解析错。
       const allDefs: boolean = para.length >= 2
         && para.slice(1).every((dl: string) => dl.startsWith(':'));
       if (allDefs) {
         const term: string = para[0].trim();
-        const defs: string[] = para.slice(1).map((dl: string) => dl.substring(1).trim());
-        const dlText: string = '**' + term + '**：' + defs.join('；') + '。';
-        const pb2: MdBlock = MdBlockFactory.paragraph(dlText, MdParser.parseInline(dlText), blocks.length);
-        pb2.srcLine = MdParser.orig(paraStart);
-        blocks.push(pb2);
+        const termInlines: MdInline[] = MdParser.parseInline(term);
+        for (let q = 0; q < termInlines.length; q++) {
+          termInlines[q].bold = true;
+        }
+        const tp: MdBlock = MdBlockFactory.paragraph(term, termInlines, blocks.length);
+        tp.srcLine = MdParser.orig(paraStart);
+        blocks.push(tp);
+        for (let d = 1; d < para.length; d++) {
+          const def: string = para[d].replace(/^:+\s*/, '');
+          const db: MdBlock = MdBlockFactory.listItem(def, false, '', MdTaskState.None, 1,
+            MdParser.parseInline(def), blocks.length, MdParser.orig(paraStart + d));
+          blocks.push(db);
+        }
       } else {
       const paraText: string = para.join(' ');
       const pb: MdBlock = MdBlockFactory.paragraph(paraText, MdParser.parseInline(paraText), blocks.length);

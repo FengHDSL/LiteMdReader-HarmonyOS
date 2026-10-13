@@ -1870,6 +1870,14 @@ export struct MdBlockView {
           .fontColor(this.palette.accent)
           .fontWeight(FontWeight.Medium)
           .margin({ top: this.bodySize * 0.1 })
+      } else if (this.block.marker.length === 0) {
+        // **定义列表的定义行**：解析器给的 marker 是空串（真列表项一定带 '-' / '*' / '1.'）。
+        // 留一个与圆点等宽的占位，好与同级的真实列表项对齐，但**不画点**——
+        // 定义前面的圆点会把"术语—定义"的关系读成并列条目。
+        Column()
+          .width(6)
+          .height(6)
+          .margin({ top: this.bodySize * 0.55 })
       } else {
         Column()
           .width(6)
