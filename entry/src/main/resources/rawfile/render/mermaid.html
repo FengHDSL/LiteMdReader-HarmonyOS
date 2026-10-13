@@ -3661,7 +3661,14 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
     mermaid.render('mmd'+(seq++),src).then(function(r){
       app.innerHTML=r.svg;
       var sv=app.querySelector('svg');
-      if(sv){ if(window.__fit){sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';sv.style.maxHeight='calc(100vh - 24px)';} else {sv.style.maxWidth='100%';} sv.style.height='auto'; }
+      if(sv){ if(window.__fit){sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';sv.style.maxHeight='calc(100vh - 24px)';} else {
+        // 卡片模式：**与正文图片路径同一套限高规则**（chartCardMaxHeight：340～600px，
+        // 随卡宽取值）。以前这里只给 maxWidth:100%，纵向长的图（状态图 141×894 这类
+        // 约 1:6 的）按宽铺开后高度能到两千多 vp，宿主照这个高度把卡片钉起来 —— 要么
+        // 正文被顶到两屏外，要么被外层裁掉看不全（用户实测"状态图卡片下没展示全图"）。
+        // max-height + width/height auto 就是 contain：整图缩进框内，一点不裁。
+        sv.style.maxWidth='100%';sv.style.maxHeight='clamp(340px, 100vw, 600px)';sv.style.width='auto';sv.style.height='auto';sv.style.display='block';sv.style.margin='0 auto';
+      } sv.style.height='auto'; }
       report();
     }).catch(function(e){
       app.innerHTML='<div class="err">'+(e&&e.message?e.message:e)+'</div>';report();
