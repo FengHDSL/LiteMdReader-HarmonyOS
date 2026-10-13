@@ -2800,9 +2800,7 @@ export struct MdBlockView {
 
   /** 代码组的 token 化（活动段） */
   private groupTokens(): CodeToken[][] {
-    const codes: GroupCode[] | undefined = this.block.groupCodes;
-    const cur: GroupCode = (codes !== undefined && codes.length > 0)
-      ? codes[Math.min(this.groupIndex(), codes.length - 1)] : { label: '', lang: '', code: '' };
+    const cur: GroupCode = this.groupActive();
     const family: CodeFamily = resolveFamily(cur.lang);
     const state: CodeState = newCodeState();
     const out: CodeToken[][] = [];
@@ -2813,29 +2811,135 @@ export struct MdBlockView {
     return out;
   }
 
+  /** 当前页签对应的那段代码 */
+  private groupActive(): GroupCode {
+    const codes: GroupCode[] = this.groupCodesSafe();
+    if (codes.length === 0) {
+      return { label: '', lang: '', code: '' };
+    }
+    return codes[Math.min(this.groupIndex(), codes.length - 1)];
+  }
+
+  /**
+   * 代码组卡片代码区高度：与代码块同一算法，但**留了个下限**。
+   * 原来写的是 min(行数) × 行高 + 20 —— 三段一行的 npm/pnpm/yarn 例子，
+   * 展开出来就是一条两行高的缝，用户报"内容展示区域太小了"。
+   */
+  private groupCardH(): number {
+    const h: number = codeBlockHeight(this.groupTokens().length, this.bodySize);
+    return h < 168 ? 168 : h;
+  }
+
+  /** 复制当前页签那段代码（代码块卡片的复制按钮管的是 this.block.code，组里那是空的） */
+  private copyGroupCode(): void {
+    try {
+      const data: pasteboard.PasteData =
+        pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, this.groupActive().code);
+      pasteboard.getSystemPasteboard().setData(data).then(() => {
+        this.copied = true;
+        this.toast(L10n.t('代码已复制'));
+        setTimeout(() => {
+          this.copied = false;
+        }, 1600);
+      }).catch((err: BusinessError) => {
+        this.toast('复制失败：' + err.message);
+      });
+    } catch (err) {
+      this.toast(L10n.t('复制失败'));
+    }
+  }
+
   /** 代码组视图：页签芯片 + 活动段代码（行号 + 高亮） */
   @Builder
   codeGroupView() {
-    Column({ space: HwSpace.xs }) {
-      Row({ space: HwSpace.xs }) {
-        ForEach(this.groupCodesSafe(), (gc: GroupCode, gi: number) => {
-          Text(gc.label)
-            .fontSize(HwType.caption)
-            .fontColor((this.groupActiveKey === this.block.id + '|' + gi)
-              ? this.palette.textPrimary : this.palette.textTertiary)
-            .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 4, bottom: 4 })
-            .borderRadius({ topLeft: 8, topRight: 8, bottomLeft: 0, bottomRight: 0 })
-            .backgroundColor((this.groupActiveKey === this.block.id + '|' + gi)
-              ? this.palette.codeBlockBg : Color.Transparent)
-            .onClick(() => {
-              this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
-                this.groupActiveKey = this.block.id + '|' + gi;
-              });
-            })
-        }, (gc: GroupCode) => this.block.id + '_' + gc.label)
+    // 改成与代码块同一形态的**卡片**（用户要求）：页签条当卡片头，右边带复制与放大，
+    // 代码区有下限高度。原来是一根裸 Column，既没有卡片底也没有放大入口。
+    Column() {
+      ImmersiveCard({
+        cardRadius: HwRadius.inner,
+        cardPadding: 0,
+        cardMaterialShadow: false,
+        cardBackground: this.palette.codeBlockBg,
+        palette: this.palette
+      }) {
+        Column() {
+          Row({ space: HwSpace.xs }) {
+            // 页签多了就横向滚，别把右侧按钮挤出去
+            Scroll() {
+              Row({ space: HwSpace.xs }) {
+                ForEach(this.groupCodesSafe(), (gc: GroupCode, gi: number) => {
+                  Text(gc.label)
+                    .fontSize(HwType.caption)
+                    .fontColor((this.groupActiveKey === this.block.id + '|' + gi)
+                      ? this.palette.textPrimary : this.palette.textTertiary)
+                    .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 4, bottom: 4 })
+                    .borderRadius({ topLeft: 8, topRight: 8, bottomLeft: 0, bottomRight: 0 })
+                    .backgroundColor((this.groupActiveKey === this.block.id + '|' + gi)
+                      ? this.palette.surface : Color.Transparent)
+                    .onClick(() => {
+                      this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+                        this.groupActiveKey = this.block.id + '|' + gi;
+                      });
+                    })
+                }, (gc: GroupCode) => this.block.id + '_' + gc.label)
+              }
+            }
+            .scrollable(ScrollDirection.Horizontal)
+            .scrollBar(BarState.Off)
+            .layoutWeight(1)
+            ImmersiveIconButton({
+              buttonSize: 28,
+              buttonMaterialShadow: false,
+              palette: this.palette,
+              buttonOnTap: () => {
+                this.copyGroupCode();
+              }
+            }) {
+              if (this.copied) {
+                SymbolGlyph($r('sys.symbol.checkmark'))
+                  .fontSize(14)
+                  .fontColor([this.palette.accent])
+              } else {
+                SymbolGlyph($r('sys.symbol.square_on_square_fill'))
+                  .fontSize(14)
+                  .fontColor([this.palette.textTertiary])
+              }
+            }
+            Column()
+              .width(HwSpace.xs)
+            // 放大走与代码块同一套浮层（render/code.html 带行号），看的是当前页签那段
+            ImmersiveIconButton({
+              buttonSize: 28,
+              buttonMaterialShadow: false,
+              palette: this.palette,
+              buttonOnTap: () => {
+                const g: GroupCode = this.groupActive();
+                this.enlargeHandler('code', g.code, 'mdcode_' + this.block.id,
+                  g.lang.length > 0 ? g.lang : 'code');
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.arrow_up_left_and_arrow_down_right'))
+                .fontSize(14)
+                .fontColor([this.palette.textTertiary])
+            }
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+          .padding({ left: HwSpace.sm, right: HwSpace.xs, top: HwSpace.xs, bottom: 0 })
+
+          this.groupCodeArea()
+        }
+        .width('100%')
       }
-      .width('100%')
-      Scroll() {
+    }
+    .width('100%')
+    .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
+  }
+
+  /** 代码组的活动段代码区（行号 + 逐 token 配色），高度见 groupCardH */
+  @Builder
+  groupCodeArea() {
+    Scroll() {
         Column() {
           ForEach(this.groupTokens(), (tokens: CodeToken[], lineIndex: number) => {
             Row() {
@@ -2865,13 +2969,11 @@ export struct MdBlockView {
         .width('100%')
         .alignItems(HorizontalAlign.Start)
         .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.md })
-      }
-      .scrollable(ScrollDirection.Vertical)
-      .scrollBar(BarState.Auto)
-      .width('100%')
-      .height(Math.min(this.groupTokens().length, 14) * this.bodySize * HwType.codeScale * 1.6 + 20)
     }
+    .scrollable(ScrollDirection.Vertical)
+    .scrollBar(BarState.Auto)
     .width('100%')
+    .height(this.groupCardH())
   }
 
   @Builder
