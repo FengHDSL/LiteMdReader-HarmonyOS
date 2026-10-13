@@ -7,8 +7,10 @@
  *
  * 支持的语法：
  *   块级：ATX 标题（#…######）、Setext 标题（=== / ---）、围栏代码块（``` / ~~~，含语言）、
+ *         **缩进代码块（4 空格 / Tab，老式写法）**、
  *         段落、引用（>，支持层级）、GFM 提示块（[!NOTE] 等五种）、
- *         无序 / 有序列表（缩进层级）、任务列表（- [ ] / - [x]）、
+ *         无序 / 有序列表（**嵌套层级按内容列栈算，2/3/4 空格缩进都认**）、
+ *         任务列表（- [ ] / - [x]）、
  *         GFM 表格（含列对齐）、分割线、GFM 脚注定义（[^label]: 内容）
  *   行内：粗体、斜体、粗斜体、删除线、行内代码、链接、图片、高亮（==…==）、
  *         脚注引用（[^label]）、反斜杠转义
@@ -24,7 +26,7 @@
  *
  * 刻意不支持（v1 范围）：
  *   **块级原生 HTML**（`<table>` 合并单元格、`<div>`、内嵌 `<svg>` 等，按文本显示）、
- *   缩进代码块（4 空格）、多文件文档。
+ *   多文件文档。
  */
 
 import { PlantumlBridge } from './PlantumlBridge';
@@ -59,7 +61,8 @@ interface ListHit {
   ordered: boolean;
   marker: string;
   text: string;
-  indent: number;
+  /** 行首空格数（**原文事实**；嵌套层级由 parse 里的内容列栈算，不在这里猜） */
+  spaces: number;
   task: number;
 }
 
@@ -93,7 +96,7 @@ function missHeading(): HeadingHit {
 }
 
 function missList(): ListHit {
-  const r: ListHit = { hit: false, ordered: false, marker: '', text: '', indent: 0, task: MdTaskState.None };
+  const r: ListHit = { hit: false, ordered: false, marker: '', text: '', spaces: 0, task: MdTaskState.None };
   return r;
 }
 
@@ -1054,6 +1057,12 @@ export class MdParser {
       // ── 列表 ──────────────────────────────────────────────────────
       const listHit: ListHit = MdParser.listInfo(raw);
       if (listHit.hit) {
+        // **嵌套层级按"内容列栈"算**，不再用旧的 floor(空格数/2) 一刀切：
+        // 一刀切会把 4 空格缩进（CommonMark 里最常规的嵌套写法）判成第 2 层，
+        // 而每级 +3 空格的五级列表会在第 3 层被截平——用户文档里"嵌套列表全平铺
+        // 在同一层"就是这么来的。栈里存的是**每一层第一次出现时的行首空格数**：
+        // 比栈顶更深 = 新开一层；比栈顶浅 = 弹回对应层；相等 = 同层兄弟。
+        const levels: number[] = [];
         while (i < lines.length) {
           const cur: ListHit = MdParser.listInfo(lines[i]);
           if (!cur.hit) {
@@ -1063,6 +1072,17 @@ export class MdParser {
           const itemLine: number = i;
           let text: string = cur.text;
           const baseIndent: number = MdParser.leadingSpaces(lines[i]);
+          if (levels.length === 0) {
+            levels.push(baseIndent);
+          } else {
+            while (levels.length > 1 && baseIndent < levels[levels.length - 1]) {
+              levels.pop();
+            }
+            if (baseIndent > levels[levels.length - 1]) {
+              levels.push(baseIndent);
+            }
+          }
+          const depth: number = levels.length - 1;
           i++;
           // 续行：缩进比标记更深、且不是新的块起始
           while (i < lines.length) {
@@ -1080,8 +1100,43 @@ export class MdParser {
               break;
             }
           }
-          blocks.push(MdBlockFactory.listItem(text, cur.ordered, cur.marker, cur.task, cur.indent,
+          blocks.push(MdBlockFactory.listItem(text, cur.ordered, cur.marker, cur.task, depth,
             MdParser.parseInline(text), blocks.length, MdParser.orig(itemLine)));
+        }
+        continue;
+      }
+
+      // ── 缩进代码块（4 空格 / Tab，老式写法）────────────────────────
+      // CommonMark 的两条限制都在这儿落地：
+      //  · **不能打断段落**——紧跟段落的缩进行是段落的"惰性续行"，不是代码；
+      //  · **不算在列表项内容区里**——那里 4+ 空格是"这一项的后续段落"，
+      //    真要写代码得再缩进过内容列，那种交给列表分支处理。
+      // 此前这里没有分支，缩进正文会被当普通段落、行首空白被 trim 掉，
+      // 老式代码块的等宽与缩进整段丢失。
+      if ((raw.startsWith('    ') || raw.startsWith('\t')) && MdParser.canStartIndentedCode(blocks)) {
+        const codeStart: number = i;
+        const body: string[] = [];
+        while (i < lines.length) {
+          const ln: string = lines[i];
+          if (ln.trim().length === 0) {
+            body.push('');
+            i++;
+            continue;
+          }
+          if (!(ln.startsWith('    ') || ln.startsWith('\t'))) {
+            break;
+          }
+          body.push(ln.startsWith('\t') ? ln.substring(1) : ln.substring(4));
+          i++;
+        }
+        // 结尾空行不属于代码（它们只是"这块结束了"的记号）
+        while (body.length > 0 && body[body.length - 1].length === 0) {
+          body.pop();
+        }
+        if (body.length > 0) {
+          const ib: MdBlock = MdBlockFactory.code('', body, blocks.length);
+          ib.srcLine = MdParser.orig(codeStart);
+          blocks.push(ib);
         }
         continue;
       }
@@ -2299,19 +2354,24 @@ export class MdParser {
       }
     }
 
-    let indent: number = Math.floor(indentSpaces / 2);
-    if (indent > 3) {
-      indent = 3;
-    }
     const r: ListHit = {
       hit: true,
       ordered: ordered,
       marker: marker,
       text: rest,
-      indent: indent,
+      spaces: indentSpaces,
       task: task
     };
     return r;
+  }
+
+  /** 缩进代码块能不能从这里开始：上一块是段落或列表项时不行（见主循环里的注释） */
+  private static canStartIndentedCode(blocks: MdBlock[]): boolean {
+    if (blocks.length === 0) {
+      return true;
+    }
+    const last: MdBlock = blocks[blocks.length - 1];
+    return last.kind !== MdBlockKind.Paragraph && last.kind !== MdBlockKind.ListItem;
   }
 
   private static leadingSpaces(line: string): number {

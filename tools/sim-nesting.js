@@ -1,0 +1,176 @@
+#!/usr/bin/env node
+/**
+ * 嵌套列表层级 + 缩进代码块的**行为仿真**（在临时内存里跑，不动仓库代码）
+ * ====================================================================
+ *
+ * 起因（用户清单第 3、4、11 项）：文档里的五级嵌套列表渲染出来是平的、
+ * 4 空格缩进的老式代码块整段失去格式。
+ *
+ * 旧算法把层级写成 `floor(行首空格 / 2)` 再截到 3：
+ *   · 4 空格缩进（CommonMark 最常见的嵌套写法）被判成**第 2 层**；
+ *   · 每级 +3 空格的五级列表在第 3 层被**截平**；
+ *   · 缩进代码块则根本没有分支，段落分支把行首空白 trim 掉。
+ *
+ * 现在换成"内容列栈"（每一层第一次出现时的行首空格数）：更深=新开一层、
+ * 更浅=弹回、相等=同层兄弟；缩进代码只在上一块既不是段落也不是列表项时成立。
+ *
+ * 这里把 MdParser 的两段判定**逐行端口**过来，喂真实样例（含反例）跑一遍。
+ * ⚠️ 端口不是被测代码本身：改了 ArkTS 版记得同步这里，并看 ① 的源码同步检查。
+ *
+ * 用法：node tools/sim-nesting.js
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+const SRC = path.join(__dirname, '..', 'entry', 'src', 'main', 'ets', 'markdown', 'MdParser.ets');
+const src = fs.readFileSync(SRC, 'utf8').replace(/\r\n/g, '\n');
+
+let fails = 0;
+function check(label, ok, extra) {
+  if (!ok) { fails++; console.log('  FAIL  ' + label + (extra ? '  ' + extra : '')); }
+  else { console.log('  ok    ' + label); }
+}
+
+// ── ① 源码同步：端口所依据的两条规则还在原地 ──
+check('① 列表层级仍由内容列栈算（不再是 floor(空格/2) 一刀切）',
+  /const levels: number\[\] = \[\]/.test(src) && !/Math\.floor\(indentSpaces \/ 2\)/.test(src));
+const listHitIface = (() => {
+  const at = src.indexOf('interface ListHit');
+  const open = src.indexOf('{', at);
+  return src.slice(open, src.indexOf('}', open));
+})();
+const listInfoBody = (() => {
+  const at = src.indexOf('private static listInfo(');
+  const open = src.indexOf('{', at);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') { depth++; }
+    else if (src[i] === '}') { depth--; if (depth === 0) { return src.slice(open, i + 1); } }
+  }
+  return '';
+})();
+check('① ListHit 交出的是原始空格数 spaces（层级留给主循环算，匹配器不猜）',
+  /spaces:\s*number/.test(listHitIface) && !/indent/.test(listHitIface)
+  && /spaces:\s*indentSpaces/.test(listInfoBody) && !/Math\.floor/.test(listInfoBody));
+check('① 缩进代码仍排除"段落之后"与"列表项之后"两种情况',
+  /canStartIndentedCode/.test(src)
+  && /kind !== MdBlockKind\.Paragraph && last\.kind !== MdBlockKind\.ListItem/.test(src));
+
+// ── 端口：listInfo（与 ArkTS 版同一条口径）──
+function leadingSpaces(line) {
+  let n = 0;
+  while (n < line.length && line.charAt(n) === ' ') { n++; }
+  return n;
+}
+function listInfo(line) {
+  const spaces = leadingSpaces(line);
+  const t = line.trim();
+  if (t.length === 0) { return { hit: false }; }
+  const c0 = t.charAt(0);
+  let ordered = false; let marker = ''; let rest = '';
+  if (c0 === '-' || c0 === '*' || c0 === '+') {
+    if (t.length > 1 && t.charAt(1) !== ' ' && t.charAt(1) !== '\t') { return { hit: false }; }
+    marker = c0; rest = t.substring(1).trim();
+  } else {
+    let k = 0;
+    while (k < t.length && t.charAt(k) >= '0' && t.charAt(k) <= '9') { k++; }
+    if (k === 0 || k > 9 || k >= t.length) { return { hit: false }; }
+    const sep = t.charAt(k);
+    if (sep !== '.' && sep !== ')') { return { hit: false }; }
+    if (k + 1 < t.length && t.charAt(k + 1) !== ' ' && t.charAt(k + 1) !== '\t') { return { hit: false }; }
+    marker = t.substring(0, k + 1); rest = t.substring(k + 1).trim(); ordered = true;
+  }
+  return { hit: true, text: rest, marker: marker, ordered: ordered, spaces: spaces };
+}
+
+/** 端口：主循环的列表分支（内容列栈） */
+function parseList(lines) {
+  const out = [];
+  const levels = [];
+  for (const line of lines) {
+    const cur = listInfo(line);
+    if (!cur.hit) { continue; }
+    const baseIndent = leadingSpaces(line);
+    if (levels.length === 0) {
+      levels.push(baseIndent);
+    } else {
+      while (levels.length > 1 && baseIndent < levels[levels.length - 1]) { levels.pop(); }
+      if (baseIndent > levels[levels.length - 1]) { levels.push(baseIndent); }
+    }
+    out.push({ depth: levels.length - 1, text: cur.text });
+  }
+  return out;
+}
+
+/** 端口：主循环的缩进代码分支（只看"能不能起块 + 收哪些行"） */
+function parseIndentedCode(lines, lastKind) {
+  const canStart = lastKind === undefined
+    || (lastKind !== 'Paragraph' && lastKind !== 'ListItem');
+  const first = lines.length > 0 ? lines[0] : '';
+  if (!(first.startsWith('    ') || first.startsWith('\t')) || !canStart) {
+    return null;
+  }
+  const body = [];
+  for (const ln of lines) {
+    if (ln.trim().length === 0) { body.push(''); continue; }
+    if (!(ln.startsWith('    ') || ln.startsWith('\t'))) { break; }
+    body.push(ln.startsWith('\t') ? ln.substring(1) : ln.substring(4));
+  }
+  while (body.length > 0 && body[body.length - 1].length === 0) { body.pop(); }
+  return body.length > 0 ? { kind: 'Code', lang: '', lines: body } : null;
+}
+
+// ── ② 真实样例：用户文档 2.2 的五级嵌套列表（每级 +3 空格）──
+const doc22 = [
+  '1. 一级有序项',
+  '   1. 二级有序项',
+  '      - 三级无序项',
+  '        - 四级无序项',
+  '          - 五级',
+  '2. 另一个一级项',
+  '   - 混排无序'
+];
+const r22 = parseList(doc22).map((x) => x.depth);
+check('② 文档 2.2：五级嵌套就是五级，回到一级项要弹回 0（旧算法这里被截成 0,1,2,3,3,0,1）',
+  JSON.stringify(r22) === JSON.stringify([0, 1, 2, 3, 4, 0, 1]), r22.join(','));
+
+// ── ③ 另外两种缩进惯例 ──
+const r4 = parseList(['- a', '    - b', '    - c', '- d', '    - e']);
+check('③ 4 空格缩进 = 第 1 层（旧算法会判成第 2 层，凭空多一级）',
+  r4.map((x) => x.depth).join(',') === '0,1,1,0,1', r4.map((x) => x.depth).join(','));
+// 层级是**相对当前打开的那一项**算的，不是空格的绝对刻度：
+// 已经回到顶层之后，下一项再深缩进只算"当前项的一层孩子"（第 1 层），不会跳到第 2 层。
+// 这是 CommonMark 的语义——想真到第 2 层，必须先有一层第 1 层把上下文撑开。
+const rDeep = parseList(['- a', '    - b', '        - c', '- d', '        - e']);
+check('③ 回到顶层后再深缩进，只算当前项的一层孩子（层级相对，不认绝对空格刻度）',
+  rDeep.map((x) => x.depth).join(',') === '0,1,2,0,1', rDeep.map((x) => x.depth).join(','));
+const r2 = parseList(['- a', '  - b', '    - c', '- d']);
+check('③ 2 空格缩进同样正确，回到顶层要弹回 0',
+  r2.map((x) => x.depth).join(',') === '0,1,2,0', r2.map((x) => x.depth).join(','));
+const rMix = parseList(['1. 甲', '   - 子项', '2. 乙', '   - 子项', '     - 孙项']);
+check('③ 有序/无序混排的层级互不串（列表标记宽度不同也按空格归层）',
+  rMix.map((x) => x.depth).join(',') === '0,1,0,1,2', rMix.map((x) => x.depth).join(','));
+
+// ── ④ 缩进代码块 ──
+const code = parseIndentedCode(
+  ['    这是用 4 空格缩进的代码块', '    属于 CommonMark 原生语法', '    无法指定语言'], 'Heading');
+check('④ 文档 4.5：4 空格缩进收成代码块，且**保留行间格式**、去掉每行 4 空格',
+  code !== null && code.lines.length === 3 && code.lines[0] === '这是用 4 空格缩进的代码块',
+  code === null ? '收成 null' : JSON.stringify(code.lines));
+check('④ 段落之后不算代码（CommonMark 的惰性续行）',
+  parseIndentedCode(['    接着上一段说', '    还是上一段'], 'Paragraph') === null);
+check('④ 列表项之后的缩进是"这一项的后续段落"，不算代码',
+  parseIndentedCode(['      列表项里的第二个段落'], 'ListItem') === null);
+const tabCode = parseIndentedCode(['\tTab 缩进的代码', '\t第二行'], 'Divider');
+check('④ Tab 缩进也算，且只去掉一个 Tab',
+  tabCode !== null && tabCode.lines[0] === 'Tab 缩进的代码', tabCode && tabCode.lines[0]);
+const blankTail = parseIndentedCode(['    代码一行', '', '    中间空行保留', '', ''], 'Heading');
+check('④ 代码块内部空行保留、结尾空行不吸进代码',
+  blankTail !== null && blankTail.lines.length === 3
+  && blankTail.lines[1] === '' && blankTail.lines[2] === '中间空行保留',
+  blankTail && JSON.stringify(blankTail.lines));
+
+console.log(fails === 0 ? 'NESTING OK' : 'NESTING FAILED: ' + fails);
+process.exit(fails === 0 ? 0 : 1);

@@ -436,7 +436,10 @@ export class MdViewUtil {
 
   /** 列表缩进（vp）。 */
   static listIndent(level: number): number {
-    return level * 22;
+    // 层级现在是"真实嵌套深度"（可到 5、6 级），不能再线性乘 22：
+    // 手机上 5 级就是 110vp 左边距，正文只剩一条缝。前三级照常，第四级起每级 12vp，
+    // 既保留"更深一层"的可辨层级感，又不会把字压没。
+    return level <= 3 ? level * 22 : 66 + (level - 3) * 12;
   }
 
   /**
