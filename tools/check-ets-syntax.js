@@ -7,10 +7,17 @@
  * 而本机没有 hvigor / Java，唯一的反馈渠道是用户在 DevEco 里点构建 —— 等构建失败
  * 再改，一轮就是几十分钟。所以能在提交前自己拦住的，就别等编译器。
  *
- * 两道检查按文件类型分开：
+ * 三道检查按文件类型分开：
  *  ① **纯逻辑文件**（不含 ArkUI 声明式语法）：直接用 SDK 自带的 TypeScript 解析，
  *     要求 0 条 parse 诊断。ets-loader 用的就是这份 typescript，判定口径与编译器一致。
- *  ② **组件文件**（有 struct / @Component / @Builder）：TS 天生读不懂 UI 语法
+ *  ② 同一批逻辑文件再做**真类型检查**（createProgram + getPreEmitDiagnostics）：
+ *     重复声明、对象字面量缺字段这类错误 ① 看不见（语法完全合法），必须走完语义分析。
+ *     模块解析按 ets-loader 的口径补齐：`@kit.X` → SDK/ets/kits、`@ohos.x`/`@arkts.x` →
+ *     SDK/ets/api|arkts、相对导入补 `.ets` 后缀，并把 `ets-loader/declarations/*.d.ts`
+ *     当全局声明带上（否则 AppStorage / setTimeout 全是"找不到名字"）。
+ *     实测口径：当前树 42 条诊断全部落在两类环境噪音里（见 NOISE_CODES），
+ *     而 ab823a0 那次真正打断构建的改动被原样复现成 3 条（TS2393 ×2 + TS2741 ×1）。
+ *  ③ **组件文件**（有 struct / @Component / @Builder）：TS 天生读不懂 UI 语法
  *     （MdView.ets 在今天的改动**之前**就有 148 条 parse 诊断），错误数只能随代码量涨，
  *     不是信号。这类改查**定界符配平**：括号/方括号/花括号在跳过字符串、模板串、
  *     注释、正则字面量之后必须各自归零。
@@ -21,7 +28,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'entry', 'src', 'main');
@@ -48,6 +54,7 @@ function walk(dir, out) {
 /** 组件文件：UI 声明式语法 TS 读不懂 */
 function isComponentFile(src) {
   return /\bstruct\s+[A-Za-z_$]/.test(src) || /@Component\b/.test(src)
+    || /@ComponentV2\b/.test(src) || /@ObservedV2\b/.test(src)
     || /@CustomDialog\b/.test(src) || /@Extend\b/.test(src) || /@Builder\b/.test(src);
 }
 
@@ -139,10 +146,117 @@ function parseErrors(file, src) {
   return sf.parseDiagnostics || [];
 }
 
+/** ets-loader 用的就是这份 SDK，kit 声明跟着 TS_MOD 走，避免两处版本号各写各的 */
+const SDK_ETS = path.resolve(TS_MOD, '..', '..', '..', '..').replace(/\\/g, '/');
+
+/**
+ * 环境噪音：不是代码写错，是本机 SDK 与真机构成的差异，放行。
+ *  · 2307 —— `@kit.ShareKit` / `@kit.UIDesignKit` 只存在于 HarmonyOS SDK，
+ *    OpenHarmony SDK 的 ets/kits 里就没有这两个文件（真机构建由华为侧 SDK 提供）。
+ *  · 28040 —— "Function may throw exceptions"：OpenHarmony 改版 TS 对带 @throws 标注的
+ *    平台接口一律报这一条，DevEco 构建里它是 WARN（用户那次的 WARN:108 就包含这些），
+ *    不影响编译产物，也不构成我们需要拦的错。
+ */
+const NOISE_CODES = new Set([2307, 28040]);
+
+function sdkRoots() {
+  return [SDK_ETS + '/kits', SDK_ETS + '/api', SDK_ETS + '/arkts'];
+}
+
+/** 相对导入补后缀：ArkTS 工程里 `./MdParser` 指的是 `MdParser.ets` */
+function resolveLocal(base) {
+  for (const ext of ['.ets', '.d.ets', '.ts', '.d.ts']) {
+    if (fs.existsSync(base + ext)) { return base + ext; }
+  }
+  for (const ext of ['.ets', '.ts']) {
+    if (fs.existsSync(path.join(base, 'index' + ext))) { return path.join(base, 'index' + ext); }
+  }
+  return undefined;
+}
+
+function resolveModule(moduleName, containingFile) {
+  if (/^@(kit|ohos|arkts)[./]/.test(moduleName)) {
+    for (const root of sdkRoots()) {
+      for (const ext of ['.d.ts', '.d.ets']) {
+        const p = path.join(root, moduleName + ext).replace(/\\/g, '/');
+        if (fs.existsSync(p)) {
+          return { resolvedFileName: p, extension: ext, isExternalLibraryImport: true };
+        }
+      }
+    }
+    return undefined;
+  }
+  if (moduleName.startsWith('.') || path.isAbsolute(moduleName)) {
+    const dir = path.isAbsolute(moduleName) ? path.dirname(moduleName) : path.dirname(containingFile);
+    const hit = resolveLocal(path.resolve(dir, moduleName).replace(/\\/g, '/'));
+    if (hit !== undefined) {
+      return { resolvedFileName: hit, extension: path.extname(hit), isExternalLibraryImport: false };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * ② 类型检查。返回**非噪音**诊断列表（rel / line / code / msg）。
+ * 组件文件不送检，但它们会被逻辑文件 import 进来 —— 只用于取类型，诊断按 checked 过滤掉。
+ */
+function typecheck(logicFiles) {
+  const options = {
+    target: ts.ScriptTarget.ES2021,
+    module: ts.ModuleKind.CommonJS,
+    moduleResolution: ts.ModuleResolutionKind.NodeJs,
+    lib: ['lib.es2021.d.ts'],
+    types: [],
+    typeRoots: [],
+    skipLibCheck: true,
+    alwaysStrict: true,
+    experimentalDecorators: true,
+    noEmit: true,
+  };
+  const host = ts.createCompilerHost(options, true);
+  // 这份 SDK 打包的是 typescript 4.9.5：program 只认 host.resolveModuleNames（复数、数组式），
+  // 5.0 才有的 resolveModuleNameLiterals 在这里永远不会被调用；而 4.9 的 createCompilerHost
+  // 又不再自带 resolveModuleName，所以必须自己挂上。
+  host.resolveModuleNames = function (names, containingFile, reused, redirected, opts) {
+    return names.map((name) => {
+      const mine = resolveModule(name, containingFile);
+      if (mine !== undefined) { return mine; }
+      return ts.resolveModuleName(name, containingFile, opts, host).resolvedModule;
+    });
+  };
+  const origGetSourceFile = host.getSourceFile;
+  host.getSourceFile = function (fileName, langVersion, onError, shouldCreate) {
+    const sf = origGetSourceFile.call(host, fileName, langVersion, onError, shouldCreate);
+    if (sf !== undefined || !fileName.endsWith('.ets')) { return sf; }
+    return ts.createSourceFile(fileName, fs.readFileSync(fileName, 'utf8').replace(/\r\n/g, '\n'),
+      langVersion, true, ts.ScriptKind.TS);
+  };
+  const declDir = SDK_ETS + '/build-tools/ets-loader/declarations';
+  const globals = fs.existsSync(declDir)
+    ? fs.readdirSync(declDir).filter((f) => f.endsWith('.d.ts')).map((f) => declDir + '/' + f)
+    : [];
+  const checked = new Set(logicFiles.map((f) => f.replace(/\\/g, '/')));
+  const program = ts.createProgram({ rootNames: Array.from(checked).concat(globals), options, host });
+  const out = [];
+  for (const d of ts.getPreEmitDiagnostics(program)) {
+    if (d.file === undefined || NOISE_CODES.has(d.code)) { continue; }
+    const fn = d.file.fileName.replace(/\\/g, '/');
+    if (!checked.has(fn)) { continue; }
+    out.push({
+      rel: path.relative(SRC, fn).replace(/\\/g, '/'),
+      line: d.file.getLineAndCharacterOfPosition(d.start || 0).line + 1,
+      code: 'TS' + d.code,
+      msg: ts.flattenDiagnosticMessageText(d.messageText, ' ').split('\n')[0],
+    });
+  }
+  return out;
+}
+
 const files = walk(SRC, []);
 let bad = 0;
 let logic = 0;
 let comp = 0;
+const logicFiles = [];
 for (const file of files) {
   const src = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const rel = path.relative(SRC, file).replace(/\\/g, '/');
@@ -153,6 +267,7 @@ for (const file of files) {
     continue;
   }
   logic++;
+  logicFiles.push(file);
   const d = parseErrors(file, src);
   if (d.length > 0) {
     bad++;
@@ -161,7 +276,21 @@ for (const file of files) {
     console.log('  语法 FAIL  ' + rel + '  ×' + d.length + ' —— ' + first.join(' | '));
   }
 }
+let typeBad = 0;
+try {
+  const t = typecheck(logicFiles);
+  typeBad = t.length;
+  for (const x of t.slice(0, 20)) {
+    console.log('  类型 FAIL  ' + x.rel + ':' + x.line + '  ' + x.code + ' ' + x.msg);
+  }
+  if (t.length > 20) { console.log('  …… 另有 ' + (t.length - 20) + ' 条类型诊断'); }
+} catch (e) {
+  console.log('  类型检查未能运行：' + e.message);
+  process.exit(1);
+}
+bad += typeBad;
 const verdict = bad === 0 ? 'ETS SYNTAX OK' : 'ETS SYNTAX FAILED: ' + bad;
-console.log(verdict + ' — ' + logic + ' 个逻辑文件 TS 解析零诊断，'
+console.log(verdict + ' — ' + logic + ' 个逻辑文件 TS 解析零诊断、类型检查 '
+  + (typeBad === 0 ? '零诊断' : typeBad + ' 条诊断') + '，'
   + comp + ' 个组件文件定界符配平');
 process.exit(bad === 0 ? 0 : 1);
