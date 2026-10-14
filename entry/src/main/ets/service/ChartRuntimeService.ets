@@ -38,6 +38,16 @@ export class ChartRuntimeService {
     if (lang === 'mermaid') {
       return ['mermaid.min.js'];
     }
+    // 三个自绘图种：导出 HTML 里内联同源的纯函数渲染库（由模板提取，勿两处改不一致）
+    if (lang === 'salt') {
+      return ['salt-render.js'];
+    }
+    if (lang === 'ditaa') {
+      return ['ditaa-render.js'];
+    }
+    if (lang === 'nwdiag') {
+      return ['nwdiag-render.js'];
+    }
     if (lang === 'zenuml') {
       // zenuml 现在在解析层**转译成 mermaid 时序图**（见 ZenumlBridge），
       // 只用 mermaid 本身；6.56MB 的 zenuml.html 与 3.14MB 的插件已从包里删除。

@@ -1391,12 +1391,9 @@ export struct MdBlockView {
 
   /** 代码块折叠阈值：超过这个行数就默认折叠（用户要求：默认开启、阈值 10）。 */
   private visibleCodeLines(): number {
-    const total: number = this.block.codeLines.length;
-    // 折叠阈值 = 10 行
-    if (this.codeExpanded || total <= 10) {
-      return total;
-    }
-    return 10;
+    // **完全展开**（用户要求）：代码块不再默认折叠 10 行、也不再限高滚动，
+    // 与"放大后"的形态一致——全量直接铺在正文里。
+    return this.block.codeLines.length;
   }
 
   /** 选区内的纯文本。 */
@@ -2189,28 +2186,8 @@ export struct MdBlockView {
         // 展开 / 收起控制条已移到 Scroll 之外（固定在卡片底部），
         // 这里把它的高度一并算进去 —— 否则卡片比内容矮，下边缘会压住正文
         //（用户实测：代码块下方的文字被卡片遮住）。
-        .height(codeBlockHeight(this.visibleCodeLines(), this.bodySize)
-          + (this.block.codeLines.length > 10 ? 32 : 0))
+        // **不再限高**：全部行直接铺开（用户要求），高度随内容自然生长
 
-        // **折叠控制条固定在卡片底部**（用户要求：不随代码一起滚动）——
-        // 之前它放在 Scroll 内部，长代码滚下去就看不到入口了；移出来常驻卡片底部。
-        if (this.block.codeLines.length > 10) {
-          Row() {
-            Text(this.codeExpanded
-              ? L10n.t('收起代码')
-              : L10n.t('展开全部 ') + this.block.codeLines.length + ' 行')
-              .fontSize(HwType.caption)
-              .fontColor(this.palette.accent)
-          }
-          .width('100%')
-          .justifyContent(FlexAlign.Center)
-          .padding({ top: HwSpace.xs, bottom: HwSpace.sm })
-          .onClick(() => {
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
-              this.codeExpanded = !this.codeExpanded;
-            });
-          })
-        }
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

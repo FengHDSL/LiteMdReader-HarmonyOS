@@ -4753,23 +4753,15 @@ export struct Reader {
     .id('shBright_' + this.sheetEpoch)
   }
 
+  /** 「全部编辑功能」磁贴宽：按面板实测宽自适应列数（用户要求大屏一排更多列） */
+  @State moreTileW: number = 110;
+
   @Builder
   moreSheet() {
-    // **内容限高 + 内部滚动**（工程约定；用户截图：磁贴最后一行被面板底边裁掉一半）：
-    // 「更多」面板的磁贴网格比 MEDIUM 档的面板高，不滚动就是硬裁。
-    // 限高按屏高 55%（面板标题栏 + 拖拽条之外还有余量），里面自己滚，
-    // 拖拽条仍可把面板拉到 LARGE 看全量。
-    Scroll() {
-      Column() {
-        this.morePanel()
-      }
-      .width('100%')
+    Column() {
+      this.morePanel()
     }
     .width('100%')
-    .scrollBar(BarState.Off)
-    .edgeEffect(EdgeEffect.Spring)
-    .align(Alignment.Top)
-    .constraintSize({ maxHeight: this.rootHeight > 0 ? this.rootHeight * 0.55 : 480 })
     .padding(HwSpace.lg)
     .id('shMore_' + this.sheetEpoch)
   }
@@ -4792,20 +4784,20 @@ export struct Reader {
       Row({ space: HwSpace.xs }) {
         this.moreTile('关闭此标签', $r('sys.symbol.xmark'), (): void => {
           this.closeTab(this.tabMenuFor);
-        })
+        }, -1)
         this.moreTile('关闭其他', $r('sys.symbol.square_on_square_fill'), (): void => {
           this.closeOtherTabs(this.tabMenuFor);
-        })
+        }, -1)
       }
       .width('100%')
 
       Row({ space: HwSpace.xs }) {
         this.moreTile('关闭全部', $r('sys.symbol.trash'), (): void => {
           this.closeAllTabs();
-        })
+        }, -1)
         this.moreTile('重新加载', $r('sys.symbol.arrow_counterclockwise'), (): void => {
           this.reloadActiveDoc();
-        })
+        }, -1)
       }
       .width('100%')
 
@@ -5504,63 +5496,58 @@ export struct Reader {
         .width('100%')
       }
 
-      // ── 主磁贴：等宽平铺（用户要求）──
-      Row({ space: HwSpace.xs }) {
+      // ── 主磁贴：**列数随面板宽自适应**（用户要求：大屏横屏一排更多列，
+      //    手机 3 列；不再写死每行 2~3 个）。列数 = 面板宽 ÷ 110（2~10 列），
+      //    磁贴宽由 onAreaChange 实测回填。──
+      Flex({ wrap: FlexWrap.Wrap }) {
         this.moreTile('注释与批注', $r('sys.symbol.paintbrush'), (): void => {
           this.openNotes();
-        })
+        }, this.moreTileW)
         this.moreTile('回到顶部', $r('sys.symbol.arrow_up_circle'), (): void => {
           this.lockAutoHide();
           try {
             this.scroller.scrollToIndex(0, true);
           } catch (err) {
-            // 忽略
           }
-        })
-      }
-      .width('100%')
-
-      Row({ space: HwSpace.xs }) {
+        }, this.moreTileW)
         this.moreTile('阅读设置', $r('sys.symbol.gearshape'), (): void => {
           this.openSettings();
-        })
+        }, this.moreTileW)
         this.moreTile('导出与分享', $r('sys.symbol.doc_text_badge_arrow_up'), (): void => {
           this.openExport();
-        })
-        // 合并导出：多篇拼一篇（选篇 + 排序 + HTML/打印/MD/TXT）
+        }, this.moreTileW)
         this.moreTile('合并导出', $r('sys.symbol.doc_plaintext'), (): void => {
           this.openMergeExport();
-        })
-      }
-      .width('100%')
-
-      Row({ space: HwSpace.xs }) {
-        // EPUB 导出（批 5）：整篇转成电子书（单章 + 内嵌样式）
+        }, this.moreTileW)
         this.moreTile('EPUB 电子书', $r('sys.symbol.book'), (): void => {
           this.exportEpub();
-        })
-        // 反向链接：哪些文档引用了本篇（知识图谱的单篇视角）
+        }, this.moreTileW)
         this.moreTile('被引用', $r('sys.symbol.arrow_up_left_and_arrow_down_right'), (): void => {
           this.openBacklinks();
-        })
-        // 图片管理：本文档引用过的图，逐张查看 / 另存 / 替换 / 删除引用
+        }, this.moreTileW)
         this.moreTile('图片管理', $r('sys.symbol.picture'), (): void => {
           this.openImageManager();
-        })
-      }
-      .width('100%')
-
-      Row({ space: HwSpace.xs }) {
-        // 分屏对照（批 5）：选另一篇文档与当前并排对照
+        }, this.moreTileW)
         this.moreTile('对照阅读', $r('sys.symbol.rectangle_split_2x1'), (): void => {
           this.openCompare();
-        })
-        // 文献引用（批 5）：GB/T 7714 / APA / BibTeX 三格式一次复制
+        }, this.moreTileW)
         this.moreTile('文献引用', $r('sys.symbol.doc_text'), (): void => {
           this.copyCitation();
-        })
+        }, this.moreTileW)
       }
       .width('100%')
+      .onAreaChange((_o: Area, n: Area) => {
+        const w: number = Number(n.width);
+        if (w <= 0 || isNaN(w)) {
+          return;
+        }
+        const cols: number = Math.max(2, Math.min(10, Math.floor(w / 110)));
+        const gap: number = 6;
+        const tw: number = Math.floor((w - (cols - 1) * gap) / cols);
+        if (Math.abs(tw - this.moreTileW) > 1) {
+          this.moreTileW = tw;
+        }
+      })
 
       // ── 朗读全文：系统 TTS 逐段读（自持状态子组件，与自动滚屏互斥）──
       ReadAloudTile({
@@ -5647,7 +5634,7 @@ export struct Reader {
 
   /** 「更多」面板的等宽磁贴：图标 + 文字，点击整块响应。 */
   @Builder
-  moreTile(label: string, icon: Resource, action: () => void) {
+  moreTile(label: string, icon: Resource, action: () => void, fixedW: number = -1) {
     Column({ space: 6 }) {
       SymbolGlyph(icon)
         .fontSize(22)
@@ -5657,7 +5644,10 @@ export struct Reader {
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
     }
-    .layoutWeight(1)
+    // fixedW > 0 = 主磁贴网格的定宽模式；-1 = 标签菜单的均分模式（layoutWeight）
+    .layoutWeight(fixedW > 0 ? 0 : 1)
+    .width(fixedW > 0 ? fixedW : undefined)
+    .margin(fixedW > 0 ? { right: 6, bottom: 6 } : { right: 0, bottom: 0 })
     .height(72)
     .justifyContent(FlexAlign.Center)
     .borderRadius(HwRadius.inner)

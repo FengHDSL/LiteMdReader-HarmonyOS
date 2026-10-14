@@ -2018,13 +2018,15 @@ export struct Editor {
     // barPaddingH 保持 0：视口铺满整个胶囊，芯片在滑出过程中透明度/模糊度
     // 按"已滑出胶囊边缘的量"逐帧变化（见上方 chipAlphas 一组方法），
     // 静止时的缩进由 Row 自己的 padding 承担。
-    ImmersiveBar({ palette: this.palette(), barPaddingH: 0, barPaddingV: 4, barHeight: HwBar.pill }) {
-      // 展开钮**钉在最左边**（在 Scroll 外面，横向滚动不跟着走），且是**圆形**按钮
+    // barPaddingH 8：展开钮与胶囊左缘的间距加大（用户要求往右移一点，别太挤）
+    ImmersiveBar({ palette: this.palette(), barPaddingH: 8, barPaddingV: 4, barHeight: HwBar.pill }) {
+      // 展开钮**钉在最左边**（在 Scroll 外面，横向滚动不跟着走），且是**圆形**按钮（在 Scroll 外面，横向滚动不跟着走），且是**圆形**按钮
       // —— 之前用胶囊芯片包一枚圆框箭头，外面一层长条、里面一个圆，看着别扭。
       Row({ space: 4 }) {
         ImmersiveIconButton({
           buttonSize: 30,
           buttonRadius: 15,
+          // 展开钮整体右移 8vp（用户要求：与胶囊左缘/首颗芯片的间距别太挤）
           buttonMaterialShadow: false,
           palette: this.palette(),
           buttonOnTap: () => {

@@ -3610,6 +3610,18 @@ struct Index {
    */
   private buildItems(ctx: common.UIAbilityContext, list: DocMeta[]): ShelfItem[] {
     const out: ShelfItem[] = [];
+    // **标签筛选时平铺展示**（用户要求）：匹配文档直接排在顶层，
+    // 不再按文件夹分组 —— 筛选语义是"找出所有带这个标签的文档"，
+    // 藏进文件夹里反而要一个个点开找。
+    if (this.tagFilter.length > 0) {
+      for (let k = 0; k < list.length; k++) {
+        const meta: DocMeta = list[k];
+        if (this.tagMatches(meta)) {
+          out.push({ kind: 'doc', name: meta.name, folder: null, meta: meta });
+        }
+      }
+      return out;
+    }
     const order: string[] = DocStore.shelfOrder(ctx);
     for (let k = 0; k < order.length; k++) {
       const entry: string = order[k];
@@ -7371,7 +7383,9 @@ struct Index {
           // ⚠️ 上一版把 this.tagBar() 塞进上面那个顶栏 Row 里 —— Row 是**横排**，
           // 它会紧挨着胶囊排在右边（被挤没 / 看不见），所以"顶栏下方没有标签栏"。
           // 这里另起一层、绝对定位到胶囊下方；只属书架页，切页随之渐隐（带动画）。
-          if (this.shelfPage === 1) {
+          if (this.shelfPage === 1 && this.allTags().length > 0) {
+            // **没有任何文档带标签时不显示标签栏**（用户要求）：空栏没有信息量，
+            // 还平白占一行高度。allTags 有缓存开销可控（文档数 × 标签数）。
             Column() {
               this.tagBar()
             }

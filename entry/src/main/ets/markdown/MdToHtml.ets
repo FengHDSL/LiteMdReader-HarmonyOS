@@ -374,7 +374,8 @@ export class MdToHtml {
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
     [// zenuml 已在解析层转译成 mermaid，不再作为独立 lang 出现在块里
-    'markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
+    // salt / ditaa / nwdiag：澄笺自绘的三个图种，导出时内联同源纯函数渲染库
+    'markmap', 'mermaid', 'salt', 'ditaa', 'nwdiag', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
       'nomnoml', 'chart', 'vega', 'plantuml'];
 
   private static isChartLang(lang: string): boolean {
@@ -460,6 +461,15 @@ export class MdToHtml {
       // zenuml 是 mermaid 的**外部图种**（首行 zenuml 由插件的 detector 认），
       // 所以只要插件注册过，这个容器不需要第二条渲染分支
       return '<div class="mermaid" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'salt') {
+      return '<div class="cj-salt" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'ditaa') {
+      return '<div class="cj-ditaa" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'nwdiag') {
+      return '<div class="cj-nwdiag" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'katex') {
       return '<div class="ktx" data-b64="' + b64 + '"></div>';
@@ -683,6 +693,21 @@ export class MdToHtml {
         + '    }\n'
         + '  }\n' : '')
       + '  window.addEventListener("load", function() {\n'
+      + (has('salt') || has('ditaa') || has('nwdiag')
+        ? '    if (window.__chengjianRender) {\n'
+        + '      var cjMap = { "cj-salt": "salt", "cj-ditaa": "ditaa", "cj-nwdiag": "nwdiag" };\n'
+        + '      Object.keys(cjMap).forEach(function(cls) {\n'
+        + '        var fn = window.__chengjianRender[cjMap[cls]];\n'
+        + '        if (!fn) { return; }\n'
+        + '        document.querySelectorAll("." + cls).forEach(function(el) {\n'
+        + '          try {\n'
+        + '            el.innerHTML = fn(b64u(el.dataset.b64));\n'
+        + '            el.style.overflowX = "auto";\n'
+        + '          } catch (e) { console.error("selfdraw render failed", e); }\n'
+        + '        });\n'
+        + '      });\n'
+        + '    }\n'
+        : '')
       + (has('markmap') ? '    if (window.markmap && markmap.Transformer && markmap.Markmap) {\n'
         + '      document.querySelectorAll(".markmap").forEach(async function(el) {\n'
         + '        try {\n'
