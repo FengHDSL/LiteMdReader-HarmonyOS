@@ -375,7 +375,10 @@ export struct DiagramWeb {
     // 拍早了抓到的是 fit 之前的原始布局（未缩放被裁切 = "只有窄窄一条"，用户实测）。
     // 延迟窗口内任务若已切换（webId 变化），放弃本次（池子的 4s 超时仍兜底）。
     const capturedId: string = this.webId;
-    const settle: number = this.mode === 'markmap' ? 700 : 120;
+    // ⚠️ 默认 250ms（原来 120）：组件高度是收到回传后**下一帧**才重排完的，
+    // 120ms 抓到的还是旧内容留在旧表面上的那一帧（设备实测：一篇文档 29 张
+    // mermaid 里 21 张烘成了初始 100vp 的窄条，判据与兜底见 ChartRenderPool.staleSnapshot）
+    const settle: number = this.mode === 'markmap' ? 700 : 250;
     setTimeout(() => {
       if (this.webId !== capturedId) {
         return;

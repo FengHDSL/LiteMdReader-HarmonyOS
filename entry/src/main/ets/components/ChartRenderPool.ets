@@ -61,6 +61,8 @@ export struct ChartRenderPool {
   private captureDebounce: number = -1;
   /** 本次快照归属的任务键（onCaptured 校验用：丢弃迟到快照，防止串图） */
   private pendingKey: string = '';
+  /** 当前任务已重拍次数（拍到旧表面时重来，见 staleCapture） */
+  private captureRetry: number = 0;
 
   aboutToAppear(): void {
     this.pump();
@@ -82,6 +84,7 @@ export struct ChartRenderPool {
       }
       this.current = t;
       this.busyRendering = true;
+      this.captureRetry = 0;
       // 启动"等高度"兜底：超时仍未回传 → 跳过该任务，队列继续
       if (this.waitTimer >= 0) {
         clearTimeout(this.waitTimer);
@@ -140,7 +143,7 @@ export struct ChartRenderPool {
     }, 150);
   }
 
-  /** 收到快照产物 → 归属校验 → 空白自检 → 入库（含逻辑尺寸 sidecar）→ 收尾。 */
+  /** 收到快照产物 → 归属校验 → **旧表面校验（拒收并重拍）** → 空白自检 → 入库（含逻辑尺寸 sidecar）→ 收尾。 */
   private onCaptured(pixel: image.PixelMap, w: number, h: number): void {
     if (this.guardTimer >= 0) {
       clearTimeout(this.guardTimer);
@@ -153,25 +156,100 @@ export struct ChartRenderPool {
     if (t === null || c === null || t.key !== this.pendingKey) {
       return;
     }
-    this.pixelLooksBlank(pixel).then((blank: boolean) => {
-      if (blank) {
-        // **空白自检**：整张同色（= 只有烘焙进去的卡片底色、什么都没画出来）的图
-        // 不落盘——宁可任务保持"未就绪"（正文回落实时 Web / 线性化文本），
-        // 也不把空白写进持久缓存：一旦落盘，正文每次命中缓存键都显示这张空白图，
-        // 重开文档也不会恢复。记入失败集让队列继续。
+    this.staleSnapshot(pixel, w, h).then((stale: boolean) => {
+      if (stale) {
+        if (this.captureRetry < 2) {
+          // 组件高度是收到回传后才改的（@State → 下一帧重排），而快照是在回传的
+          // **同一时刻**派出去的 → 拍到的是上一张图留在旧表面上的那一帧。
+          // 等一帧再拍同一张（重新武装 4s 兜底，别让队列悬着）。
+          this.captureRetry++;
+          const waitKey: string = t.key;
+          if (this.captureDebounce >= 0) {
+            clearTimeout(this.captureDebounce);
+          }
+          this.captureDebounce = setTimeout(() => {
+            this.captureDebounce = -1;
+            const cur: ChartTask | null = this.current;
+            if (cur === null || !this.busyRendering || cur.key !== waitKey) {
+              return;
+            }
+            this.pendingKey = waitKey;
+            this.captureTick++;
+            this.armGuard();
+          }, 450);
+          return;
+        }
+        // 重拍两次还是旧表面：这张不入库（正文回落实时 Web，显示的是对的图）
         this.failed.add(t.key);
         this.finishOne(t);
         return;
       }
-      ChartCache.save(c, t.key, pixel, w, h).then(() => {
-        // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
-        ChartCache.rememberPayloadKey(c, t.mode, t.payload, t.key);
-        this.finishOne(t);
-      }).catch(() => {
-        this.failed.add(t.key);
-        this.finishOne(t);
+      this.pixelLooksBlank(pixel).then((blank: boolean) => {
+        if (blank) {
+          // **空白自检**：整张同色（= 只有烘焙进去的卡片底色、什么都没画出来）的图
+          // 不落盘——宁可任务保持"未就绪"（正文回落实时 Web / 线性化文本），
+          // 也不把空白写进持久缓存：一旦落盘，正文每次命中缓存键都显示这张空白图，
+          // 重开文档也不会恢复。记入失败集让队列继续。
+          this.failed.add(t.key);
+          this.finishOne(t);
+          return;
+        }
+        ChartCache.save(c, t.key, pixel, w, h).then(() => {
+          // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
+          ChartCache.rememberPayloadKey(c, t.mode, t.payload, t.key);
+          this.finishOne(t);
+        }).catch(() => {
+          this.failed.add(t.key);
+          this.finishOne(t);
+        });
       });
     });
+  }
+
+  /** 快照兜底超时（与 onHeightReady 里同一口径；重拍时要用它续命）。 */
+  private armGuard(): void {
+    if (this.guardTimer >= 0) {
+      clearTimeout(this.guardTimer);
+    }
+    this.guardTimer = setTimeout(() => {
+      this.guardTimer = -1;
+      const cur: ChartTask | null = this.current;
+      if (cur !== null && this.busyRendering) {
+        this.failed.add(cur.key);
+        this.finishOne(cur);
+      }
+    }, 4000);
+  }
+
+  /**
+   * 拍到的还是"上一张图的表面"吗？判据 = **快照两轴的缩放倍数不相等**。
+   *
+   * 像素尺寸 = 逻辑尺寸 × 屏幕密度，横纵同一个倍数；纵向明显小于横向，说明组件
+   * 还没按新回传的高度重排，抓下来的是旧内容留在初始 100vp 表面上的那一条。
+   * 设备实锤（2026-10-14 拉取用户手机 charts/ 全量比对 png 与 .dim）：一篇文档
+   * 29 张 mermaid 里 **21 张**的 PNG 高度正好是 100vp×3.5，而 .dim 记的是真实高度
+   * （81~381），其中一张键属于时序图、像素却是上一块的公式 —— 正文按 .dim 撑框
+   * + Contain 显示，图就缩成卡片中间一条（用户报"正常阅读页面渲染也是错误"）。
+   * PlantUML / KaTeX 出图慢一拍，高度回传发生在重排之后，所以躲过这一枪。
+   *
+   * 只判"拍矮了"：矮 = 漏画（串图 / 截断）；高 = 保底高度撑出的空白，显示端
+   * Contain 会居中，无害，不该因此丢缓存。
+   */
+  private async staleSnapshot(pixel: image.PixelMap, w: number, h: number): Promise<boolean> {
+    if (w <= 0 || h <= 0) {
+      return false;
+    }
+    try {
+      const info: image.ImageInfo = await pixel.getImageInfo();
+      const rx: number = info.size.width / w;
+      const ry: number = info.size.height / h;
+      if (rx <= 0 || ry <= 0) {
+        return false;
+      }
+      return rx - ry > 0.5;
+    } catch (err) {
+      return false;
+    }
   }
 
   /**

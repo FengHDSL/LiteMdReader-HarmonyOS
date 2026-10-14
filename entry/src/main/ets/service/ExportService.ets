@@ -17,9 +17,10 @@ import { uniformTypeDescriptor } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DocStore } from './DocStore';
 import { MdParser } from '../markdown/MdParser';
-import { MdBlockKind } from '../markdown/MdTypes';
+import { MdBlockKind, MdBlock } from '../markdown/MdTypes';
 import { MdToHtml, InlineRuntime } from '../markdown/MdToHtml';
 import { ChartRuntimeService } from './ChartRuntimeService';
+import { ChartCache } from './ChartCache';
 
 const TAG: string = 'ExportService';
 
@@ -163,6 +164,23 @@ export class ExportService {
    * · 下载失败 → 回退 CDN 引用模式并提示。
    * 完成后自行走 saveText（用户选保存位置），notify 全程汇报。
    */
+  /** 文档里的 PlantUML 块是否**全部**已有缓存快照（有一张没烘出来就还得带内核现场出图）。 */
+  private static allPlantumlShot(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                                 dark: boolean, bg: string): boolean {
+    let n: number = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      const b: MdBlock = blocks[k];
+      if (b.kind !== MdBlockKind.Chart || b.lang.trim().toLowerCase() !== 'plantuml') {
+        continue;
+      }
+      n++;
+      if (!ChartCache.hasShot(ctx, 'plantuml', b.code, dark, bg)) {
+        return false;
+      }
+    }
+    return n > 0;
+  }
+
   static async exportHtmlSmart(ctx: common.UIAbilityContext, docName: string,
                                content: string, notify: Notify,
                                dark: boolean = false, chartBg: string = ''): Promise<void> {
@@ -190,6 +208,15 @@ export class ExportService {
           needed.push(files[f]);
         }
       }
+    }
+    // **PlantUML 内核 5.6MB 只在没有快照可嵌时才带上**：设备实测一篇全图种文档的
+    // 导出 HTML 有 12.1MB（内核 5.6 + mermaid 3.4 + viz 1.2 + …），手机浏览器打开
+    // 直接"不渲染"。阅读页预渲染池已经把每张 PlantUML 烘成 PNG，导出走 <img> 就够，
+    // 文件能掉一个数量级；只有图还没烘好（刚打开就导出）才退回带内核现场出图。
+    const kernelAt: number = needed.indexOf('plantuml-kernel.js');
+    if (kernelAt >= 0
+      && ExportService.allPlantumlShot(ctx, parsed.blocks, dark, chartBg)) {
+      needed.splice(kernelAt, 1);
     }
     notify('正在导入图表组件…');
     const inline: InlineRuntime[] | null =

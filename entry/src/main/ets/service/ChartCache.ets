@@ -111,9 +111,15 @@ export class ChartCache {
    *    module 版在真机上整族画不出（用例/活动/组件/部署/mindmap/WBS/甘特/JSON/YAML/
    *    Archimate/ER），而失败态的**错误文字会被预渲染池烘成 PNG**（"PlantUML 引擎未就绪"
    *    那张红字卡），键不升就会一直拿那张坏卡当缓存图显示——修好了也看不见。
+   *  · v24（2026-10-15 二十一次升级）：**预渲染池拍到旧表面就入库**这一整类坏图。
+   *    拉取用户手机 charts/ 与 .dim 逐张比对：1595 张里 **104 张**的 PNG 高度正好是
+   *    初始 100vp×密度，而 .dim 记的是真实高度（其中一篇文档 29 张 mermaid 中 21 张中招，
+   *    一张时序图的键下存的是上一块公式的像素）。正文按 .dim 撑框 + Contain 显示 =
+   *    图缩成卡片中间一条，且**重开文档也不会恢复**（用户报"正常阅读页面渲染也是错误"）。
+   *    池子现在会拒收这类快照并重拍，这批已落盘的坏图必须靠升键作废。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v23|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf('v24|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {
@@ -331,6 +337,32 @@ export class ChartCache {
    * 所有切到图片的位置全部空白。文件系统读写（EpubExport 读字节等）仍用
    * `path()` 的裸路径，两者不可互相替换。
    */
+  /**
+   * 这张图**是否已有缓存快照**（只判文件在不在，不读字节）。
+   *
+   * 键的取法与 `pngBase64` 同一口径（深浅两个 bg 直查 + payload 索引反查）。
+   * 导出侧用它决定要不要再背 5.6MB 的 PlantUML 内核：阅读页已经把每张图烘好了，
+   * 导出嵌 PNG 就够 —— 设备实测一篇全图种文档的导出 HTML **12.1MB**（内核 5.6 +
+   * mermaid 3.4 + viz 1.2 + …），手机浏览器打开它就是"不渲染"。
+   */
+  static hasShot(ctx: common.UIAbilityContext, mode: string, payload: string,
+                 dark: boolean, bg: string): boolean {
+    const variants: string[] = [
+      ChartCache.keyFor(mode, payload, dark, bg),
+      ChartCache.keyFor(mode, payload, !dark, bg),
+    ];
+    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload);
+    if (idxKey.length > 0) {
+      variants.push(idxKey);
+    }
+    for (let k = 0; k < variants.length; k++) {
+      if (ChartCache.path(ctx, variants[k]).length > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * 导出用：把阅读页预渲染池**已烘好的缓存 PNG**读成 base64 dataURL。
    * 深浅两个 key 都试（导出时的主题与渲染时不一定一致）。都没有返回空串。
