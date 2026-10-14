@@ -3655,7 +3655,12 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
     // **甘特图刻度密度**：默认按跨度自动铺刻度，跨度只有十几天时日期标签会密到
     // 糊成一片（用户实测"坐标轴文字全贴在一起"）。这里固定成**一周一个刻度**
     // 并把字号收小，标签间距立刻拉开；其它图表类型不受影响。
-    mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:dark?'dark':'neutral',flowchart:{useMaxWidth:false},sequence:{useMaxWidth:false},gantt:{useMaxWidth:false,fontSize:11,sectionFontSize:11,tickInterval:'1 week'}});
+    // ⚠️ 浅色用 **default**，不用 neutral：实测两种主题下流程图 / 类图 / 状态图 / ER 的
+    // 节点填充都是 #ECECFF，**只有时序图的参与者框不同**——neutral 是 rgb(238,238,238) 灰框
+    // 黑字，default 才是 #ECECFF 淡紫（用户拿别家渲染对比说"图表家族大多数没有颜色、
+    // 全是黑白"，量的就是这个）。改这一行必须同时升 ChartCache 的键盐，
+    // 否则用户机上还是旧主题烘出来的灰框 PNG（"卡片灰、放大才有色"）。
+    mermaid.initialize({startOnLoad:false,securityLevel:'loose',theme:dark?'dark':'default',flowchart:{useMaxWidth:false},sequence:{useMaxWidth:false},gantt:{useMaxWidth:false,fontSize:11,sectionFontSize:11,tickInterval:'1 week'}});
     var app=document.getElementById('app');
     app.innerHTML='';
     mermaid.render('mmd'+(seq++),src).then(function(r){

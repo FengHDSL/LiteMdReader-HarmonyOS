@@ -119,6 +119,27 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
   }
 }
 
+// 浅色主题必须是 default：neutral 下时序图参与者框是 rgb(238,238,238) 灰框黑字，
+// 只有 default 才是 #ECECFF 淡紫（浏览器实测四种图种 × 三种配置；用户对比别家渲染
+// 说"图表家族大多数没有颜色，全是黑白"，量的就是这一条）。改这里必须同时升 ChartCache 键盐。
+{
+  const mm = fs.readFileSync(path.join(ROOT, 'entry/src/main/resources/rawfile/render/mermaid.html'), 'utf8');
+  const init = /theme:dark\?'dark':'default'/.test(mm);
+  if (init) {
+    console.log('  ok    mermaid 浅色主题 = default（时序图参与者淡紫，与导出网页同口径）');
+  } else {
+    fails++;
+    console.log('  FAIL  mermaid 浅色主题不是 default：neutral 会把参与者框画成灰框黑字');
+  }
+  const salt = fs.readFileSync(path.join(ROOT, 'entry/src/main/ets/service/ChartCache.ets'), 'utf8');
+  if (/['"]v18\|['"]/.test(salt)) {
+    console.log('  ok    缓存键盐已随主题升级（旧主题烘出的灰框 PNG 不会留在机上）');
+  } else {
+    fails++;
+    console.log('  FAIL  改了 mermaid 主题但没升 ChartCache 键盐 → 卡片读旧图、放大才更新');
+  }
+}
+
 console.log('清单 → ' + OUT);
 console.log(fails === 0 ? 'CHART TEMPLATES OK' : 'CHART TEMPLATES FAILED: ' + fails);
 process.exit(fails === 0 ? 0 : 1);

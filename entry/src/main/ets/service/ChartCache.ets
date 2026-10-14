@@ -87,9 +87,13 @@ export class ChartCache {
    *    重开文档也不恢复（放大浮层走实时 Web，所以"卡片空白、放大正常"，
    *    用户实测 chart.js「数据可视化卡片上不显示，浅色模式也不显示」正是这一条）。
    *    自检改成"整张同色才算空白"，同时升键把已经躺在用户机上的空白图作废重生成。
+   *  · v18（2026-10-14 十五次升级）：mermaid 浅色主题 **neutral → default**（实测时序图
+   *    参与者框 neutral 是灰框黑字、default 才是淡紫；用户对比别家渲染说"图表没颜色"）。
+   *    主题只改渲染产物、不改缓存键 → 不升键就会出现"卡片还是灰的、放大才有色"，
+   *    与 v16 那条"引擎升级必须升键"是同一个坑。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v17|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v18|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
