@@ -1391,9 +1391,12 @@ export struct MdBlockView {
 
   /** 代码块折叠阈值：超过这个行数就默认折叠（用户要求：默认开启、阈值 10）。 */
   private visibleCodeLines(): number {
-    // **完全展开**（用户要求）：代码块不再默认折叠 10 行、也不再限高滚动，
-    // 与"放大后"的形态一致——全量直接铺在正文里。
-    return this.block.codeLines.length;
+    const total: number = this.block.codeLines.length;
+    // 折叠阈值 = **5 行**（用户要求）：超过就默认折叠，点底部"展开全部"看全量
+    if (this.codeExpanded || total <= 5) {
+      return total;
+    }
+    return 5;
   }
 
   /** 选区内的纯文本。 */
@@ -2186,8 +2189,27 @@ export struct MdBlockView {
         // 展开 / 收起控制条已移到 Scroll 之外（固定在卡片底部），
         // 这里把它的高度一并算进去 —— 否则卡片比内容矮，下边缘会压住正文
         //（用户实测：代码块下方的文字被卡片遮住）。
-        // **不再限高**：全部行直接铺开（用户要求），高度随内容自然生长
+        .height(codeBlockHeight(this.visibleCodeLines(), this.bodySize)
+          + (this.block.codeLines.length > 5 ? 32 : 0))
 
+        // **折叠控制条固定在卡片底部**：超过 5 行才出现（用户要求阈值 5）
+        if (this.block.codeLines.length > 5) {
+          Row() {
+            Text(this.codeExpanded
+              ? L10n.t('收起代码')
+              : L10n.t('展开全部 ') + this.block.codeLines.length + ' 行')
+              .fontSize(HwType.caption)
+              .fontColor(this.palette.accent)
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.Center)
+          .padding({ top: HwSpace.xs, bottom: HwSpace.sm })
+          .onClick(() => {
+            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+              this.codeExpanded = !this.codeExpanded;
+            });
+          })
+        }
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
@@ -3252,6 +3274,10 @@ export struct MdBlockView {
    */
   private refreshAllCharts(): void {
     this.chartReloadTick = this.chartReloadTick + 1;
+    // 缓存图路径的卡也要"重新出图"：清掉失效标记让 blockImage 分支按新主题重查缓存
+    if (this.brokenCharts.length > 0) {
+      this.brokenCharts = [];
+    }
   }
 
   private refreshHandler(mode: string): void {

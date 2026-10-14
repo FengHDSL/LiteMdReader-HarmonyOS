@@ -91,7 +91,7 @@ export struct DiagramWeb {
    * 就是黑底（用户实测"黑屏"）。渲染时铺上该底色，与正文卡片一致。
    * 纯展示场景（放大浮层）留空即可。
    */
-  @Prop cardBg: string = '';
+  @Prop @Watch('onPayloadChanged') cardBg: string = '';
   /** 触摸上报：双指落在图表上时通知页面抑制根级捏合（改字号） */
   onWebTouch: (down: boolean) => void = () => {
   };

@@ -109,7 +109,10 @@ export class ChartCache {
    *    按"引擎有变动就升键"的统一口径升一次。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v22|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    return ChartCache.hashOf('v22|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+  }
+
+  private static hashOf(raw: string): string {
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');
@@ -122,8 +125,56 @@ export class ChartCache {
       }
       return hex;
     } catch (err) {
-      // 哈希失败退到简易摘要（几乎不会发生）
-      return 'h' + (mode.length * 31 + payload.length * 17 + (dark ? 7 : 0)).toString(16);
+      return raw.length.toString(16);
+    }
+  }
+
+  /**
+   * **payload 索引**（导出反查用）：池子每烘成一张图，就登记
+   * `md5(mode|payload) → 实际缓存 key`。
+   * key 里混着 bg 与深浅位，导出侧拿不到渲染当时的准确组合 —— 有了这份索引，
+   * 导出只凭 (mode, payload) 就能反查到图（用户实测：bg 对不上时导出全是代码块）。
+   */
+  static rememberPayloadKey(ctx: common.UIAbilityContext, mode: string, payload: string, key: string): void {
+    try {
+      const dir: string = ctx.cacheDir + '/charts/payload';
+      if (!fs.accessSync(dir)) {
+        fs.mkdirSync(dir, true);
+      }
+      const p: string = dir + '/' + ChartCache.hashOf(mode + '|' + payload) + '.txt';
+      const file: fs.File = fs.openSync(p, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(file.fd, key);
+      fs.closeSync(file);
+    } catch (err) {
+      // 索引写失败不影响缓存本体
+    }
+  }
+
+  /** payload 索引反查：拿到该 (mode, payload) 实际落盘的缓存 key（没有返回空串）。 */
+  static payloadKey(ctx: common.UIAbilityContext, mode: string, payload: string): string {
+    try {
+      const p: string = ctx.cacheDir + '/charts/payload/'
+        + ChartCache.hashOf(mode + '|' + payload) + '.txt';
+      if (!fs.accessSync(p)) {
+        return '';
+      }
+      const file: fs.File = fs.openSync(p, fs.OpenMode.READ_ONLY);
+      let key: string = '';
+      try {
+        const buf: ArrayBuffer = new ArrayBuffer(128);
+        const n: number = fs.readSync(file.fd, buf);
+        if (n > 0) {
+          key = util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buf, 0, n)).trim();
+        }
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+        }
+      }
+      return key;
+    } catch (err) {
+      return '';
     }
   }
 
@@ -282,9 +333,18 @@ export class ChartCache {
    */
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
-    const variants: boolean[] = dark ? [true, false] : [false, true];
+    // 先按 (dark, bg) 组合直查；miss 再走 payload 索引反查（bg/深浅对不上也能命中）
+    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload);
+    const variants: string[] = [];
+    const ds: boolean[] = dark ? [true, false] : [false, true];
+    for (let k = 0; k < ds.length; k++) {
+      variants.push(ChartCache.keyFor(mode, payload, ds[k], bg));
+    }
+    if (idxKey.length > 0) {
+      variants.push(idxKey);
+    }
     for (let k = 0; k < variants.length; k++) {
-      const key: string = ChartCache.keyFor(mode, payload, variants[k], bg);
+      const key: string = variants[k];
       const path: string = ChartCache.srcPath(ctx, key);
       if (path.length === 0) {
         continue;
