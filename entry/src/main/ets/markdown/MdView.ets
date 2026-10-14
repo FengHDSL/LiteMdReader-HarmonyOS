@@ -2184,7 +2184,7 @@ export struct MdBlockView {
           .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.md })
         }
         .scrollable(ScrollDirection.Vertical)
-        .scrollBar(BarState.Auto)
+        .scrollBar(BarState.Off)
         .width('100%')
         // 展开 / 收起控制条已移到 Scroll 之外（固定在卡片底部），
         // 这里把它的高度一并算进去 —— 否则卡片比内容矮，下边缘会压住正文
@@ -2402,7 +2402,7 @@ export struct MdBlockView {
         .alignItems(HorizontalAlign.Start)
       }
       .scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Auto)
+      .scrollBar(BarState.Off)
       .width('100%')
     }
     .width('100%')
@@ -2927,7 +2927,7 @@ export struct MdBlockView {
               .copyOption(CopyOptions.LocalDevice)
           }
           .scrollable(ScrollDirection.Vertical)
-          .scrollBar(BarState.Auto)
+          .scrollBar(BarState.Off)
           .width('100%')
           .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
           .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.sm })
@@ -3138,7 +3138,7 @@ export struct MdBlockView {
                       .textAlign(TextAlign.Start)
                   }
                   .scrollable(ScrollDirection.Vertical)
-                  .scrollBar(BarState.Auto)
+                  .scrollBar(BarState.Off)
                   .width('100%')
                   .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
                   .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
@@ -3484,7 +3484,7 @@ export struct MdBlockView {
         .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.md })
     }
     .scrollable(ScrollDirection.Vertical)
-    .scrollBar(BarState.Auto)
+    .scrollBar(BarState.Off)
     .width('100%')
     .height(this.groupCardH())
   }

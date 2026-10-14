@@ -6,6 +6,10 @@
 <style>
   html,body{margin:0;padding:0;background:transparent;}
   #mhold{position:absolute;left:-9999px;top:0;}
+
+  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */
+  ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  html, body { scrollbar-width: none; -ms-overflow-style: none; }
 </style>
 </head>
 <body>

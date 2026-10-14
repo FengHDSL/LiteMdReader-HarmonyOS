@@ -5543,7 +5543,9 @@ export struct Reader {
         }
         const cols: number = Math.max(2, Math.min(10, Math.floor(w / 110)));
         const gap: number = 6;
-        const tw: number = Math.floor((w - (cols - 1) * gap) / cols);
+        // ⚠️ 每颗磁贴带**右缝 6**（含行尾）：不把它算进分母，行末那颗就会放不下
+        // 被挤到下一行 → 「左边有按钮、右边空空」（用户实测）。缝计入后每行正好占满。
+        const tw: number = Math.floor((w - gap * cols) / cols);
         if (Math.abs(tw - this.moreTileW) > 1) {
           this.moreTileW = tw;
         }
@@ -8546,14 +8548,18 @@ export struct Reader {
       // **网页面板近乎满屏**（用户要求：参考本地 xjau 网页登录面板）：
       // 大尺寸 + 标题区换成「刷新 / 复制链接」操作条 + 隐藏拖拽条（避免与网页内滚动打架）
       large: this.activeSheet === 'web',
+
       titleBuilder: this.activeSheet === 'web' ? this.webSheetTitle.bind(this) : undefined,
-      hideDragBar: this.activeSheet === 'web',
+      // 拖拽条隐藏（用户要求：滑动条太丑）——网页面板与「全部编辑功能」面板
+      hideDragBar: this.activeSheet === 'web' || this.activeSheet === 'more',
       // 横屏也是全宽大面板（不转 480vp 居中窗口）——「差不多屏幕一样大」
       fullWidth: this.activeSheet === 'web',
       // **批注面板贴合内容起档**：手机形态下 ModalSheet 会把它排成
       // [FIT_CONTENT, MEDIUM, LARGE] 三档（拖拽条可往上拉），横屏平台不支持多档、
       // 退成 height=FIT_CONTENT。其余面板仍从 MEDIUM 起档、可拖到 LARGE。
-      fitContent: this.activeSheet === 'note',
+      // 「全部编辑功能」也贴合内容：拖拽条已按用户要求隐藏，内容自适应高度
+      // 才不会出现"面板比磁贴矮、底部被裁"（磁贴已改自适应列数，高度可控）。
+      fitContent: this.activeSheet === 'note' || this.activeSheet === 'more',
       // 竖屏（含平板竖屏）按手机形态出底部面板；平板竖屏宽度收一半
       phoneLayout: this.rootWidth <= this.rootHeight,
       screenWidth: this.rootWidth,

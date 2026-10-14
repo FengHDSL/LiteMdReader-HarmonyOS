@@ -23,6 +23,10 @@
      显式 px 写法时的一致性） */
   #app font{line-height:inherit;}
   .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
+
+  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */
+  ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  html, body { scrollbar-width: none; -ms-overflow-style: none; }
 </style>
 </head>
 <body>

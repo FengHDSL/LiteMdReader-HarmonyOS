@@ -17,6 +17,10 @@
      lc 拉满表宽，短行的色带才不会比长行短一截（浮层里"亮度不一样"的观感来自带宽）。 */
   tr.hl td{background:rgba(245,158,11,0.15);}
   body.dark tr.hl td{background:rgba(245,158,11,0.24);}
+
+  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */
+  ::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  html, body { scrollbar-width: none; -ms-overflow-style: none; }
 </style>
 </head>
 <body>
