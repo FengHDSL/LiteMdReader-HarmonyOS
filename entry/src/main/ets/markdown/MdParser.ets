@@ -987,7 +987,13 @@ export class MdParser {
           }
         }
         const isPuml: boolean = pumlRoute === 'timeline';
-        const bodyStr: string = (pumlRoute === 'plantuml' || pumlRoute === '') ? body.join('\n') : pumlOut;
+        // 走**原文**的四种：交内核的 plantuml、不路由的（空串）、以及三个自绘模板
+        // （salt / ditaa / nwdiag —— 它们自己在模板里解析源码）。其余路由（timeline 等）
+        // 才用桥接产物 pumlOut。⚠️ nwdiag 漏在这条判断外时，块里会残留 mermaid 桥文
+        // （探针实测：lang 是 nwdiag、内容却是 flowchart LR）。
+        const bodyStr: string = (pumlRoute === 'plantuml' || pumlRoute === ''
+          || pumlRoute === 'salt' || pumlRoute === 'ditaa' || pumlRoute === 'nwdiag')
+          ? body.join('\n') : pumlOut;
         // ZenUML：**不走 mermaid 外部图种插件**。
         // 随包 mermaid 已升到 11.17.2，而 @mermaid-js/mermaid-zenuml 1.0.1（靠 React 渲染）
         // 与新版 mermaid 的内部约定错位，真机 parse 阶段必抛错 → 被 mermaid 画成
@@ -999,28 +1005,32 @@ export class MdParser {
         const zenumlOut: string = isZenumlBlock ? ZenumlBridge.toMermaid(zenumlSrc) : '';
         // 转译不出内容（不是可识别的 ZenUML）→ 强制留代码块，别喂给 mermaid 报语法错
         const zenumlBad: boolean = isZenumlBlock && zenumlOut.length === 0;
-        // nwdiag 桥不出内容（写法不在识别范围内）→ 同样留代码块
-        const pumlBad: boolean = pumlRoute === 'nwdiag' && pumlOut.length === 0;
+        // nwdiag 已走独立模板（模板内解析失败会显示提示），不再需要桥接失败判定
+        const pumlBad: boolean = false;
+        // nwdiag 与 salt / ditaa 同款：**走各自的独立模板**（HTML 直排，不经 mermaid）。
+        // 上一版把它桥成 mermaid flowchart，真机只画出一个孤零零的"1"（节点/连线没成图），
+        // 桥接对这张图弊大于利——网络分组本来就是"网络的盒子 + 设备行"，HTML 直排最稳。
         const baseLang: string = pumlRoute === 'plantuml' ? 'plantuml'
-          : (pumlRoute === 'salt' || pumlRoute === 'ditaa' ? pumlRoute
-            : (pumlRoute === 'nwdiag' || isPuml || zenumlOut.length > 0
+          : (pumlRoute === 'salt' || pumlRoute === 'ditaa' || pumlRoute === 'nwdiag'
+            ? pumlRoute
+            : (isPuml || zenumlOut.length > 0
               ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase())));
         const langLower: string = baseLang;
-        const bodyFinal: string = zenumlOut.length > 0 ? zenumlOut
-          : (pumlRoute === 'nwdiag' ? pumlOut : bodyStr);
+        const bodyFinal: string = zenumlOut.length > 0 ? zenumlOut : bodyStr;
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         // ⚠️ `plantuml` 只有在**路由判定交给内核**时才进图表通道：内核没有渲染器的
         // （盐图 / nwdiag / ditaa）pumlRoute 是空串，必须留代码块，否则会喂给内核
         // 画出一张「Diagram not supported」错误卡（verify-syntax-coverage §6.21 钉住）。
         const chartPlantuml: boolean = (langLower !== 'plantuml' || pumlRoute === 'plantuml')
-          && !zenumlBad && !pumlBad && (pumlRoute !== 'nwdiag' || pumlOut.length > 0);
+          && !zenumlBad && !pumlBad;
         if (chartPlantuml && (langLower === 'mermaid' || langLower === 'zenuml' || langLower === 'markmap'
           || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
           || langLower === 'vega' || langLower === 'plantuml'
-          || langLower === 'salt' || langLower === 'ditaa' || langLower === 'html')) {
+          || langLower === 'salt' || langLower === 'ditaa' || langLower === 'nwdiag'
+          || langLower === 'html')) {
           blocks.push(MdBlockFactory.chart(langLower, bodyFinal.split('\n'), blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码

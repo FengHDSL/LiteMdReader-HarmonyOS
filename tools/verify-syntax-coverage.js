@@ -447,8 +447,8 @@ const PUML_ROUTE = [
    '文件树内核没有渲染器 → 制表符树（代码块，离线也能看）'],
   ['@startsalt\n{+[OK]|[Cancel]}\n@endsalt\n', 'chart:salt',
    '盐图 → render/salt.html 画 HTML 线框（内核无渲染器，不再留源码）'],
-  ['@startnwdiag\nnetwork L {\n  device [address = "10.0.0.1"]\n}\n@endnwdiag\n', 'nwdiag',
-   'nwdiag → 桥成 mermaid 网络图（总线画法）'],
+  ['@startnwdiag\nnetwork L {\n  device [address = "10.0.0.1"]\n}\n@endnwdiag\n', 'chart:nwdiag',
+   'nwdiag → render/nwdiag.html 直排网络分组（不再桥 mermaid：真机只画出一个"1"）'],
   ['@startditaa\n+--+\n| X |\n+--+\n@endditaa\n', 'chart:ditaa',
    'ditaa → render/ditaa.html 画 SVG 方框'],
 ];
@@ -473,12 +473,6 @@ for (const [body, want, title] of PUML_ROUTE) {
       const shape = ['entry', '└── src', '    └── main', '        ├── ets', '        └── resources'].join('\n');
       return (cd.length === 1 && cd[0].lang === 'filetree' && tree === shape) ? true
         : '没转成制表符树（kind 序列 ' + kindSeq + '）：\n' + tree;
-    }
-    if (want === 'nwdiag') {
-      const ch = blocks(res, K.Chart);
-      const first = ch.length === 1 ? ch[0].code.split('\n')[0].trim() : '';
-      return (ch.length === 1 && ch[0].lang === 'mermaid' && first === 'flowchart LR') ? true
-        : '没桥成 mermaid 网络图（实际 ' + (ch[0] ? ch[0].lang + '/' + first : '无图表块') + '）';
     }
     if (want === 'code:plantuml') {
       const cd = blocks(res, K.Code);

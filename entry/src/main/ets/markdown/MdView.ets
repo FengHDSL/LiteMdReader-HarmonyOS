@@ -367,6 +367,36 @@ export class MdViewUtil {
     return MdViewUtil.rubyFit(bt, ot, size, family).center;
   }
 
+  /**
+   * 注音单元的**基准字宽度**（vp）——用来把外层 Stack 卡到基准字的实际宽度。
+   *
+   * 为什么必须显式给宽度：Stack 若不设宽，会被 Flex 拉伸到整行可用宽，
+   * 里面 `width('100%')` 的读音就会"整行居中"——用户看到的是拼音飞到屏幕中间
+   *（实测反馈"哈强制屏幕居中"）。给 Stack 定死基准字宽，读音的 100% 才有正确参照。
+   * 量不出（字体未就绪等）时退回按字数估算，保证永远给得出一个正数。
+   */
+  static rubyBaseWidth(baseText: string, size: number, family: string): number {
+    if (baseText.length === 0 || size <= 0) {
+      return 0;
+    }
+    let w: number = 0;
+    try {
+      w = MeasureText.measureText({ textContent: baseText, fontSize: size, fontFamily: family });
+    } catch (e) {
+      w = 0;
+    }
+    if (w > 0) {
+      return Math.ceil(w);
+    }
+    // 兜底估算：CJK 按 1em、其余按 0.6em 逐字累加
+    let est: number = 0;
+    for (let k = 0; k < baseText.length; k++) {
+      const c: string = baseText.charAt(k);
+      est += (c.charCodeAt(0) > 0x2E80) ? size : size * 0.6;
+    }
+    return Math.ceil(est);
+  }
+
   static pieceKey(piece: MdPiece, index: number): string {
     return piece.kind + '_' + index + '_' + piece.text.length + '_' + piece.num
       + '_' + piece.highlight.length + (piece.wavy ? '_w' : '')
@@ -1158,14 +1188,6 @@ export struct MdBlockView {
     if (l === 'swift') {
       return 'SW';
     }
-    // 仓颉（Cangjie）：官方标识的橙红调，压暗一档保证方块里白字够对比
-    if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
-      return '#FFB4441C';
-    }
-    // diff：绿（新增侧）压暗一档
-    if (l === 'diff' || l === 'patch' || l === 'udiff') {
-      return '#FF1F7A46';
-    }
     if (l === 'kotlin' || l === 'kt') {
       return 'KT';
     }
@@ -1258,6 +1280,14 @@ export struct MdBlockView {
     }
     if (l === 'kotlin' || l === 'kt') {
       return '#FF7F52FF';
+    }
+    // 仓颉（Cangjie）：官方标识的橙红调，压暗一档保证方块里白字够对比
+    if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
+      return '#FFB4441C';
+    }
+    // diff：绿（新增侧）压暗一档
+    if (l === 'diff' || l === 'patch' || l === 'udiff') {
+      return '#FF1F7A46';
     }
     if (l === 'html' || l === 'htm') {
       return '#FFE34F26';
@@ -1716,6 +1746,8 @@ export struct MdBlockView {
                 .width('100%')
                 .position({ x: 0, y: -Math.round(size * 0.56) })
             }
+            // **卡死到基准字实际宽度**：不设宽会被 Flex 拉伸到整行，读音随之整行居中
+            .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
           } else {
             Text() {
               this.pieceRun(atom.pieces, size, baseColor)
@@ -1846,6 +1878,7 @@ export struct MdBlockView {
                 .width('100%')
                 .position({ x: 0, y: -Math.round(size * 0.56) })
             }
+            .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
           } else {
             Text() {
               this.spanRun(atom.pieces, size, baseColor)

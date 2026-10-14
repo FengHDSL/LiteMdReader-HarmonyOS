@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes">
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{color:#1B1F27;-webkit-text-size-adjust:100%;}
+  body.dark{color:#ECEFF4;}
+  #app{padding:10px 12px;box-sizing:border-box;}
+  .nw-net{border:1px solid rgba(128,128,128,.55);border-radius:10px;padding:10px 12px;
+          margin:8px 0;display:block;}
+  .nw-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+           padding-bottom:6px;margin-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.4);}
+  .nw-name{font:600 14px/1.5 system-ui,"HarmonyOS Sans SC",sans-serif;}
+  .nw-addr{font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;opacity:.75;}
+  .nw-dev{display:flex;align-items:baseline;gap:8px;padding:3px 0;flex-wrap:wrap;}
+  .nw-devname{font:13px/1.6 system-ui,"HarmonyOS Sans SC",sans-serif;}
+  .nw-devaddr{font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;opacity:.8;}
+  .nw-shared{font-size:11px;opacity:.7;padding:0 6px;border-radius:6px;
+             border:1px solid rgba(128,128,128,.4);}
+  .nw-empty{font:12px/1.6 system-ui,sans-serif;opacity:.7;}
+  .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  var app=document.getElementById('app');
+
+  function esc(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function unq(s){
+    var t=String(s).replace(/^\s+|\s+$/g,'');
+    if(t.length>=2 && ((t.charAt(0)==='"'&&t.charAt(t.length-1)==='"')||(t.charAt(0)==="'"&&t.charAt(t.length-1)==="'"))){ t=t.slice(1,-1); }
+    return t;
+  }
+
+  /**
+   * nwdiag 源码 → HTML（网络分组卡片 + 设备行）。
+   * 支持两种写法：带 `nwdiag { … }` 外层（独立工具写法）与直接 `network x { … }`。
+   */
+  function render(src){
+    var lines=String(src||'').replace(/\r\n?/g,'\n').split('\n');
+    var nets=[];         // {name, attrs:[], devs:[{name, addr}]}
+    var curNet=null;     // 当前网络
+    for(var k=0;k<lines.length;k++){
+      var t=lines[k].replace(/\t/g,'  ').replace(/^\s+|\s+$/g,'');
+      if(t.length===0){ continue; }
+      if(/^@(start|end)/i.test(t)){ continue; }
+      if(/^\/\//.test(t) || /^#/.test(t)){ continue; }
+      // 外层包裹 `nwdiag {` / `nwdiag{`
+      if(/^nwdiag\s*\{?$/i.test(t)){ continue; }
+      // 网络声明
+      var nm=t.match(/^network\s*([^\s{]*)\s*\{?$/i);
+      if(nm){
+        curNet={ name:(nm[1]&&nm[1].length?nm[1]:('net'+(nets.length+1))), attrs:[], devs:[] };
+        nets.push(curNet);
+        continue;
+      }
+      // 网段地址 / 描述（网络级）
+      var at=t.match(/^(address|description)\s*=\s*(.+?);?$/i);
+      if(at && curNet){
+        curNet.attrs.push(unq(at[2]));
+        continue;
+      }
+      // 设备行：`web01 [address = "x", description = "y"];` / `web01;`
+      var dv=t.match(/^([A-Za-z_][\w.\-]*)\s*(?:\[(.*?)\])?\s*;?$/);
+      if(dv && curNet){
+        if(/^[A-Za-z_]+\s*=/.test(t)){ continue; }   // 其它属性行跳过
+        var attrs=dv[2]||'';
+        var am=attrs.match(/address\s*=\s*"([^"]*)"/i) || attrs.match(/address\s*=\s*([^,\]]+)/i);
+        curNet.devs.push({ name:dv[1], addr: am? am[1].replace(/^\s+|\s+$/g,'') : '' });
+        continue;
+      }
+      if(t==='}' || t==='};'){ curNet=null; continue; }
+      // 认不出的行：忽略（如 group 属性）
+    }
+    if(nets.length===0){
+      return '<div class="err">nwdiag：没解析出 network 块（写法需形如 network dmz { address = "10.0.0.0/24" web01 [address = "10.0.0.1"]; }）</div>';
+    }
+    // 统计设备出现在几个网络里（>1 时标"多网络"）
+    var devCount={};
+    for(var a=0;a<nets.length;a++){
+      for(var b=0;b<nets[a].devs.length;b++){
+        var n=nets[a].devs[b].name;
+        devCount[n]=(devCount[n]||0)+1;
+      }
+    }
+    var html='';
+    for(var i=0;i<nets.length;i++){
+      var net=nets[i];
+      html+='<div class="nw-net">';
+      html+='<div class="nw-head"><span class="nw-name">'+esc(net.name)+'</span>';
+      for(var m=0;m<net.attrs.length;m++){
+        html+='<span class="nw-addr">'+esc(net.attrs[m])+'</span>';
+      }
+      html+='</div>';
+      if(net.devs.length===0){
+        html+='<div class="nw-empty">（该网络没有设备）</div>';
+      }
+      for(var d=0;d<net.devs.length;d++){
+        var dev=net.devs[d];
+        html+='<div class="nw-dev"><span class="nw-devname">'+esc(dev.name)+'</span>';
+        if(dev.addr.length){ html+='<span class="nw-devaddr">'+esc(dev.addr)+'</span>'; }
+        if(devCount[dev.name]>1){ html+='<span class="nw-shared">多网络</span>'; }
+        html+='</div>';
+      }
+      html+='</div>';
+    }
+    return html;
+  }
+
+  function report(){
+    try{
+      var app=document.getElementById('app');
+      if(window.__fit){
+        var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                       document.documentElement.scrollHeight, document.documentElement.offsetHeight);
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      } else {
+        // 卡片模式：按内容高度钉死整页并禁滚动（宿主据此裁切快照）
+        if(app.offsetHeight<=60){return;}
+        var h2=Math.max(app.offsetHeight,40);
+        document.documentElement.style.height=h2+'px';
+        document.body.style.height=h2+'px';
+        document.documentElement.style.overflow='hidden';
+        document.body.style.overflow='hidden';
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h2);}
+      }
+    }catch(e){}
+  }
+
+  // **宿主入口**（与 salt/ditaa 同款协议；改协议时入口与转发必须成对改）
+  window.__render=function(src,dark){
+    app.className='';
+    app.innerHTML=render(src);
+    report();
+  };
+  window.renderPayload=function(json){
+    try{
+      var o=(typeof json==='string')?JSON.parse(json):json;
+      if(o.dark){document.body.classList.add('dark');}
+      if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
+      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
+      window.__fit=!!o.fit;
+      window.__render(o.src, o.dark, !!o.fit);
+      setTimeout(report,60); setTimeout(report,300);
+    }catch(e){
+      app.className='err';
+      app.textContent='nwdiag 渲染失败：'+(e&&e.message?e.message:e);
+      report();
+    }
+  };
+  window.__exportBg=function(on){
+    try{
+      var els=[document.documentElement,document.body];
+      var a=document.getElementById('app');
+      if(a){ els.push(a); }
+      for(var i=0;i<els.length;i++){
+        var e=els[i];
+        if(!e){ continue; }
+        if(on){
+          if(e.__prevBg===undefined){ e.__prevBg=e.style.background||''; e.__prevBgc=e.style.backgroundColor||''; }
+          e.style.background='#ff00ff'; e.style.backgroundColor='#ff00ff';
+        } else if(e.__prevBg!==undefined){
+          e.style.background=e.__prevBg; e.style.backgroundColor=e.__prevBgc;
+        }
+      }
+    }catch(e){}
+  };
+  window.addEventListener('load',report);
+})();
+</script>
+</body></html>

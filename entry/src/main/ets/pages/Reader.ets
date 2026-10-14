@@ -1343,6 +1343,12 @@ export struct Reader {
       if (mode === 'markmap') {
         continue;
       }
+      // **salt / ditaa / nwdiag 走实时卡片**（用户实测"阅读界面显示了 2 层卡片、覆盖掉了"）：
+      // 这三张是澄笺自绘的 HTML 模板，进后台池会先出一张 PNG、正文再叠实时 Web 占位，
+      // 两层尺寸口径稍有差就是"图压在图上"。与脑图同理，实时渲染最稳、还省一次截图。
+      if (mode === 'salt' || mode === 'ditaa' || mode === 'nwdiag') {
+        continue;
+      }
       // **HTML 预览必须留在实时 Web 上**（用户实测"卡片上无法操作，只能放大后才行"）：
       // html 块的产物是**可交互网页**（按钮、canvas 触摸），一旦进后台池烘焙成 PNG，
       // 正文就会走 chartImagePath 的静态图分支——看着一样，点起来是死的。
