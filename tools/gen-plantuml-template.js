@@ -68,13 +68,21 @@ const page = `<!DOCTYPE html>
 <script>${viz}</script>
 <script>${themes}</script>
 <script>${openiconic}</script>
-<!-- 引擎是 ES module（结尾有 export），必须用 type="module" 内联；
-     type="module" 会推迟到解析完才执行，所以上面三个全局先就位。 -->
-<script type="module">
+<!-- ⚠️ **必须是普通脚本，不能用 type="module"**：包里唯一的 ESM 语法只有结尾那行
+     export{…}（上面已改写成挂全局），除此之外没有任何 import / import.meta / 顶层 await
+     （全文只有两处 "import" 字样，都在字符串常量里："Cannot import"、"!import"）。
+     用 module 的代价实测到了：这是**全部模板里唯一一页 module**，真机上 PlantUML 一整族
+     （用例/活动/组件/部署/mindmap/WBS/甘特/JSON/YAML/Archimate/ER）画不出、退回显示源码，
+     而 mermaid / graphviz / abc / salt / nwdiag 这些普通脚本页都正常。
+     外面再套一层 IIFE：3.9MB 的顶层 let/const 不少，直接进全局有跟宿主脚本撞名的风险
+     （撞了就是 SyntaxError，整页白屏），套起来后它们全是函数作用域，只往外挂两个函数。
+     "use strict" 保住 module 本来的严格语义。 -->
+<script>"use strict";(function () {
 ${lib}
-</script>
+})();</script>
 <script>
-  // 上一个是 module（异步执行），所以这里等全局挂上再干活
+  // 引擎现在是同步执行（不再是 module 的"解析完才跑"），全局早已就位；
+  // 这里仍留一轮轮询，兜住极端情况下脚本被推迟执行的场景
   function whenReady(fn) {
     if (window.plantumlRenderToString) { fn(); return; }
     var tries = 0;

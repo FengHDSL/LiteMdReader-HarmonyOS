@@ -103,13 +103,17 @@ export class ChartCache {
    *    （模板 render/plantuml.html，阅读侧不再桥成 mermaid）。同一份源码在旧键里是
    *    "mermaid 桥出来的图"，新键才是"内核原生图"，不升盐就会**卡片读旧桥图、放大才变**
    *    （v17 那轮 blank 图的同款坑）。
-   *  · v22（2026-10-14 十九次升级）：**新增 ZenUML 引擎**（mermaid 外部图种插件
-   *    @mermaid-js/mermaid-zenuml 1.0.1，模板 render/zenuml.html = mermaid 引擎 + 插件）。
-   *    以前 zenuml 块走 mermaid 模板必然 "No diagram type detected"，现在是另一条 mode，
-   *    按"引擎有变动就升键"的统一口径升一次。
+   *  · v22（2026-10-14 十九次升级）：**新增 ZenUML 引擎**（当时走 mermaid 外部图种插件，
+   *    模板 render/zenuml.html）。⚠️ 插件路线后来废掉了（真机报 Syntax error，
+   *    zenuml.html 与 3.14MB 插件已从包里删，现在由 ZenumlBridge 在解析层转成 mermaid 时序图），
+   *    这条盐只是当时的记录。
+   *  · v23（2026-10-14 二十次升级）：**PlantUML 内核模板由 ES module 改成普通脚本**。
+   *    module 版在真机上整族画不出（用例/活动/组件/部署/mindmap/WBS/甘特/JSON/YAML/
+   *    Archimate/ER），而失败态的**错误文字会被预渲染池烘成 PNG**（"PlantUML 引擎未就绪"
+   *    那张红字卡），键不升就会一直拿那张坏卡当缓存图显示——修好了也看不见。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v22|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf('v23|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {

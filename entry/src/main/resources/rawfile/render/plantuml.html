@@ -8,10 +8,6 @@
   #app{padding:8px 10px;box-sizing:border-box;overflow:hidden;}
   #app svg{max-width:100%;}
   .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
-
-  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */
-  ::-webkit-scrollbar { width: 0; height: 0; display: none; }
-  html, body { scrollbar-width: none; -ms-overflow-style: none; }
 </style>
 </head>
 <body>
@@ -313,9 +309,16 @@ window.PLANTUML_OPENICONIC["zoom-out"]="<path d=\"M3.5 0c-1.93 0-3.5 1.57-3.5 3.
 
 })();
 </script>
-<!-- 引擎是 ES module（结尾有 export），必须用 type="module" 内联；
-     type="module" 会推迟到解析完才执行，所以上面三个全局先就位。 -->
-<script type="module">
+<!-- ⚠️ **必须是普通脚本，不能用 type="module"**：包里唯一的 ESM 语法只有结尾那行
+     export{…}（上面已改写成挂全局），除此之外没有任何 import / import.meta / 顶层 await
+     （全文只有两处 "import" 字样，都在字符串常量里："Cannot import"、"!import"）。
+     用 module 的代价实测到了：这是**全部模板里唯一一页 module**，真机上 PlantUML 一整族
+     （用例/活动/组件/部署/mindmap/WBS/甘特/JSON/YAML/Archimate/ER）画不出、退回显示源码，
+     而 mermaid / graphviz / abc / salt / nwdiag 这些普通脚本页都正常。
+     外面再套一层 IIFE：3.9MB 的顶层 let/const 不少，直接进全局有跟宿主脚本撞名的风险
+     （撞了就是 SyntaxError，整页白屏），套起来后它们全是函数作用域，只往外挂两个函数。
+     "use strict" 保住 module 本来的严格语义。 -->
+<script>"use strict";(function () {
 "use strict";
 let CSS=2463534242,B_u=()=>{let x=CSS;x^=x<<13;x^=x>>>17;x^=x<<5;CSS=x;return x;},L=f=>function(){return f(this);},R=f=>function(p1){return f(this,p1);},Bb=f=>function(p1,p2){return f(this,p1,p2);},B5=f=>function(p1,p2,p3){return f(this,p1,p2,p3);},BC=f=>function(p1,p2,p3,p4){return f(this,p1,p2,p3,p4);},EOZ=f=>function(){let args=Array.prototype.slice.apply(arguments);DUE(function(){f.apply(this,args);});},Bj=target=>target.$clinit=()=>{},EWT=obj=>{let cls=obj.constructor;let arrayDegree=0;while(cls[GZ]&&cls[GZ].item)
 {++arrayDegree;cls=cls[GZ].item;}let clsName="";if(cls[GZ].primitiveKind!==0){clsName=cls[GZ].name;}else {clsName=cls[GZ]?cls[GZ].name||"a/"+cls.name:"@"+cls.name;}while(arrayDegree-->0){clsName+="[]";}return clsName;},S=superclass=>{if(superclass===0){return function(){};}if(superclass===void 0){superclass=AUa();}return function(){superclass.call(this);};},GZ=Symbol("teavm_meta"),Bu=cls=>{if(cls[GZ].classObject===null){cls[GZ].classObject=D0R(cls);}return cls[GZ].classObject;},AUa=()=>H,Bed=()=>{{return QW();}},AIL
@@ -10405,9 +10408,10 @@ let E$y=Symbol('jsoClass');
 (()=>{let c;c=BP1.prototype;c.onTimer=AIw(Ejs);c=BAu.prototype;c.accept=AIw(EiC);c=BAt.prototype;c.accept=AIw(E5n);c=B1O.prototype;c.invoke=AIw(DVY);c=B1N.prototype;c.invoke=AIw(EUc);c=BXC.prototype;c.call=AIw(EMy);c=BXB.prototype;c.call=AIw(Ehv);c=B6W.prototype;c.stateChanged=AIw(ESh);})();
 globalThis.plantumlRender = C; globalThis.plantumlRenderToString = D;
 
-</script>
+})();</script>
 <script>
-  // 上一个是 module（异步执行），所以这里等全局挂上再干活
+  // 引擎现在是同步执行（不再是 module 的"解析完才跑"），全局早已就位；
+  // 这里仍留一轮轮询，兜住极端情况下脚本被推迟执行的场景
   function whenReady(fn) {
     if (window.plantumlRenderToString) { fn(); return; }
     var tries = 0;
@@ -10484,7 +10488,7 @@ globalThis.plantumlRender = C; globalThis.plantumlRenderToString = D;
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}else{document.body.classList.remove('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
-      if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;}
+      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark);
       setTimeout(report,120); setTimeout(report,600);
