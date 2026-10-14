@@ -30,6 +30,7 @@
  */
 
 import { PlantumlBridge } from './PlantumlBridge';
+import { ZenumlBridge } from './ZenumlBridge';
 import {
   MdBlock,
   MdBlockKind,
@@ -812,28 +813,36 @@ export class MdParser {
         }
         const isPuml: boolean = pumlRoute === 'timeline';
         const bodyStr: string = (pumlRoute === 'plantuml' || pumlRoute === '') ? body.join('\n') : pumlOut;
-        // ZenUML：mermaid 的外部图种插件（@mermaid-js/mermaid-zenuml）。用户在 ```mermaid
-        // 围栏里以 `zenuml` 开头写（官方文档就是这个形状），也可能是 ```zenuml 直接当语言名。
-        // 内容**原样不动**（插件的 detector 认的就是首行的 zenuml），只是换模板：
-        // mermaid.html 没带插件，zenuml.html 带了（3.14MB，别让所有 mermaid 卡片一起背）。
+        // ZenUML：**不走 mermaid 外部图种插件**。
+        // 随包 mermaid 已升到 11.17.2，而 @mermaid-js/mermaid-zenuml 1.0.1（靠 React 渲染）
+        // 与新版 mermaid 的内部约定错位，真机 parse 阶段必抛错 → 被 mermaid 画成
+        // 「Syntax error in text」错误卡（用户实测）。改走 **纯文本转译**：
+        // ZenUML 语句形状与时序图同构，译成 mermaid sequenceDiagram 后由已在用的
+        // mermaid 引擎出图 —— 确定性、可离线验证，也不再背 3.3MB 插件 + React。
+        const zenumlSrc: string = bodyStr;
+        const isZenumlBlock: boolean = lang.toLowerCase() === 'zenuml' || MdParser.isZenumlBody(zenumlSrc);
+        const zenumlOut: string = isZenumlBlock ? ZenumlBridge.toMermaid(zenumlSrc) : '';
+        // 转译不出内容（不是可识别的 ZenUML）→ 强制留代码块，别喂给 mermaid 报语法错
+        const zenumlBad: boolean = isZenumlBlock && zenumlOut.length === 0;
         const baseLang: string = pumlRoute === 'plantuml' ? 'plantuml'
-          : (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
-        const langLower: string = baseLang === 'mermaid' && MdParser.isZenumlBody(bodyStr) ? 'zenuml' : baseLang;
+          : (isPuml || zenumlOut.length > 0 ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
+        const langLower: string = baseLang;
+        const bodyFinal: string = zenumlOut.length > 0 ? zenumlOut : bodyStr;
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         // ⚠️ `plantuml` 只有在**路由判定交给内核**时才进图表通道：内核没有渲染器的
         // （盐图 / nwdiag / ditaa）pumlRoute 是空串，必须留代码块，否则会喂给内核
         // 画出一张「Diagram not supported」错误卡（verify-syntax-coverage §6.21 钉住）。
-        const chartPlantuml: boolean = langLower !== 'plantuml' || pumlRoute === 'plantuml';
+        const chartPlantuml: boolean = (langLower !== 'plantuml' || pumlRoute === 'plantuml') && !zenumlBad;
         if (chartPlantuml && (langLower === 'mermaid' || langLower === 'zenuml' || langLower === 'markmap'
           || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
           || langLower === 'vega' || langLower === 'plantuml' || langLower === 'html')) {
-          blocks.push(MdBlockFactory.chart(langLower, bodyStr.split('\n'), blocks.length, MdParser.orig(fenceLine)));
+          blocks.push(MdBlockFactory.chart(langLower, bodyFinal.split('\n'), blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
-          const cb: MdBlock = MdBlockFactory.code(langLower, bodyStr.split('\n'), blocks.length);
+          const cb: MdBlock = MdBlockFactory.code(langLower, bodyFinal.split('\n'), blocks.length);
           cb.srcLine = MdParser.orig(fenceLine);
           if (hlLines.length > 0) {
             cb.hlLines = hlLines;

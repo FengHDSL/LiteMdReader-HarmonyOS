@@ -92,6 +92,27 @@ class RubyFit {
   center: boolean = false;
 }
 
+/**
+ * 段落排版的最小单元：普通片段成串（一个 Text），注音单元单独成一个「上下堆叠」块。
+ *
+ * 为什么必须这样：ArkUI 的 `Span` 是**线性**的，注音（读音在基准字正上方）根本不是
+ * 一行能排出来的东西。旧实现想用 `letterSpacing` 把读音挪到字上方——但 SDK 明确
+ * 「letterSpacing 对**每个字符**生效」，位移量被放大到字符数倍；负数稍大还会把内容
+ * 压缩为零（官方注释：Excessive compression may reduce content area to zero）。
+ * 用户实测的「注音跑到右上角」正是这条路的必然结果。因此改为 Stack/Column 堆叠。
+ */
+class MdAtom {
+  /** true = 注音单元（读音在上、基准字在下） */
+  isRuby: boolean = false;
+  /** 普通单元的片段串 */
+  pieces: MdPiece[] = [];
+  /** 注音单元：基准字与读音 */
+  base: string = '';
+  reading: string = '';
+  /** 注音单元的样式（跟随基准片段的粗斜体等） */
+  sample: MdPiece | null = null;
+}
+
 export class MdViewUtil {
   /** 提示块视觉规格。颜色刻意在深浅主题下都保持可读。 */
   static calloutSpec(kind: MdCalloutKind): CalloutSpec {
@@ -144,6 +165,65 @@ export class MdViewUtil {
   }
 
   /** 把一组的行内片段转成不带批注的 piece（表格单元格用）。 */
+  /**
+   * 片段串 → 排版单元串：普通片段按连续段合成一个 Text，注音对（基准字 + 读音）
+   * 单独成一个上下堆叠单元。没有注音的段落只会得到**一个**单元，与旧路径等价。
+   */
+  static toAtoms(pieces: MdPiece[]): MdAtom[] {
+    const out: MdAtom[] = [];
+    let run: MdPiece[] = [];
+    for (let k = 0; k < pieces.length; k++) {
+      const p: MdPiece = pieces[k];
+      if (p.kind !== MdInlineKind.Ruby) {
+        run.push(p);
+        continue;
+      }
+      // 读音片段：需要与前一个基准字配对，配对不上就当普通文字带过
+      const reading: string = p.text;
+      if (run.length === 0 || reading.length === 0) {
+        run.push(p);
+        continue;
+      }
+      const base: MdPiece = run[run.length - 1];
+      const baseText: string = base.kind === MdInlineKind.Ruby
+        ? (base.rubyBase === undefined ? '' : base.rubyBase) : base.text;
+      if (baseText.length === 0 || base.kind === MdInlineKind.Ruby) {
+        run.push(p);
+        continue;
+      }
+      run.pop();
+      if (run.length > 0) {
+        const atom: MdAtom = new MdAtom();
+        atom.pieces = run;
+        out.push(atom);
+        run = [];
+      }
+      const rb: MdAtom = new MdAtom();
+      rb.isRuby = true;
+      rb.base = baseText;
+      rb.reading = reading;
+      rb.sample = base;
+      out.push(rb);
+    }
+    if (run.length > 0) {
+      const tail: MdAtom = new MdAtom();
+      tail.pieces = run;
+      out.push(tail);
+    }
+    return out;
+  }
+
+  /** 片段串里是否存在可用的注音对（决定走堆叠排版还是旧的线性 Span 路径） */
+  static hasRuby(pieces: MdPiece[]): boolean {
+    const atoms: MdAtom[] = MdViewUtil.toAtoms(pieces);
+    for (let k = 0; k < atoms.length; k++) {
+      if (atoms[k].isRuby) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static toPieces(items: MdInline[], dark: boolean): MdPiece[] {
     const out: MdPiece[] = [];
     for (let k = 0; k < items.length; k++) {
@@ -251,37 +331,14 @@ export class MdViewUtil {
    *    全搬到组件实例上，代价不值）。
    */
   static rubySpanShift(piece: MdPiece, size: number, family: string): number {
-    if (piece.kind === MdInlineKind.Ruby) {
-      const baseText: string = piece.rubyBase === undefined ? '' : piece.rubyBase;
-      const fit: RubyFit = MdViewUtil.rubyFit(baseText, piece.text, size, family);
-      if (!fit.center) {
-        return 0;
-      }
-      const wb: number = MeasureText.measureText(
-        { textContent: baseText, fontSize: size, fontFamily: family });
-      const wr: number = MeasureText.measureText(
-        { textContent: piece.text, fontSize: size * fit.scale, fontFamily: family });
-      if (wb <= 0 || wr <= 0) {
-        return 0;
-      }
-      return (wb - wr) / 2;
-    }
-    const over: string = piece.rubyOver === undefined ? '' : piece.rubyOver;
-    if (over.length === 0 || piece.text.length === 0) {
-      return 0;
-    }
-    const fit2: RubyFit = MdViewUtil.rubyFit(piece.text, over, size, family);
-    if (!fit2.center) {
-      return 0;
-    }
-    const wb2: number = MeasureText.measureText(
-      { textContent: piece.text, fontSize: size, fontFamily: family });
-    const wr2: number = MeasureText.measureText(
-      { textContent: over, fontSize: size * fit2.scale, fontFamily: family });
-    if (wb2 <= 0 || wr2 <= 0) {
-      return 0;
-    }
-    return -(wb2 + wr2) / 2;
+    // **已废弃为 0**：注音改走 richText 的「上下堆叠」分支（Column：读音在上、基准字在下），
+    // 不再用线性 Span 位移。这条保留是因为 spanRun 里仍会调用它（非注音片段恒为 0）。
+    //
+    // 旧的位移思路（结果不对，留档）：想用 letterSpacing 把读音挪到基准字正上方。
+    // 但 SDK 明确「letterSpacing 对**每个字符**生效，含行尾」——按"整体位移一次"算出来的
+    // 数值会被放大到字符数倍，负数稍大还会把内容压缩为零（官方注释：Excessive compression
+    // may reduce content area to zero, hiding content）。用户实测的「注音跑到右上角」即此。
+    return 0;
   }
 
   /** 这段片段是否"读音已经居中压到字上方"（决定要不要抬得更高）。
@@ -1636,9 +1693,10 @@ export struct MdBlockView {
    * 所以 v1 明确不支持在表格里做批注。
    */
   @Builder
-  richText(pieces: MdPiece[], size: number, baseColor: string, lineMul: number, align: TextAlign) {
-    Text() {
-      ForEach(pieces, (piece: MdPiece) => {
+  /** 片段串 → 一串 Span（线性排版路径）。注音不走这里，见 richText 的堆叠分支。 */
+  @Builder
+  spanRun(pieces: MdPiece[], size: number, baseColor: string) {
+    ForEach(pieces, (piece: MdPiece) => {
         if (piece.kind === MdInlineKind.MathInline) {
           if (this.inlineMathImg(piece.text, size).length > 0) {
             ImageSpan(this.inlineMathImg(piece.text, size))
@@ -1677,14 +1735,59 @@ export struct MdBlockView {
             }
           })
         }
-      }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
+    }, (piece: MdPiece, index: number) => MdViewUtil.pieceKey(piece, index))
+  }
+
+  /**
+   * 富文本渲染：**含注音**的段落走「上下堆叠」排版——读音（小号）压在基准字正上方，
+   * 这是 ArkUI 里唯一能做出真注音的形态（Span 线性排不出上下结构，见 MdAtom 注释）。
+   * 不含注音的段落仍走原来的整段 Text，批注坐标与选区行为完全不变。
+   */
+  @Builder
+  richText(pieces: MdPiece[], size: number, baseColor: string, lineMul: number, align: TextAlign) {
+    if (MdViewUtil.hasRuby(pieces)) {
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
+        ForEach(MdViewUtil.toAtoms(pieces), (atom: MdAtom, ai: number) => {
+          if (atom.isRuby) {
+            Column({ space: 0 }) {
+              Text(atom.reading)
+                .fontSize(Math.max(9, Math.round(size * 0.5)))
+                .fontColor(this.palette.textTertiary)
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+              Text(atom.base)
+                .fontSize(size)
+                .fontColor(baseColor)
+                .fontWeight(atom.sample !== null && atom.sample.bold ? FontWeight.Bold : FontWeight.Normal)
+                .fontFamily(HwFont.resolve(this.fontKey))
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+            }
+            .alignItems(HorizontalAlign.Center)
+          } else {
+            Text() {
+              this.spanRun(atom.pieces, size, baseColor)
+            }
+            .fontSize(size)
+            .fontColor(baseColor)
+            .fontFamily(HwFont.resolve(this.fontKey))
+          }
+        }, (atom: MdAtom, ai: number) => 'a' + ai + '_'
+          + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
+      }
+      .width('100%')
+      .margin({ top: Math.round(size * 0.1), bottom: Math.round(size * 0.1) })
+    } else {
+      Text() {
+        this.spanRun(pieces, size, baseColor)
+      }
+      .fontSize(size)
+      .fontColor(baseColor)
+      .lineHeight(size * this.lineMulFor(lineMul))
+      .textAlign(align)
+      .fontFamily(HwFont.resolve(this.fontKey))
+      .width('100%')
     }
-    .fontSize(size)
-    .fontColor(baseColor)
-    .lineHeight(size * this.lineMulFor(lineMul))
-    .textAlign(align)
-    .fontFamily(HwFont.resolve(this.fontKey))
-    .width('100%')
   }
 
   /** 胶囊菜单里的紧凑动作段：宽度可控，整条菜单不再被屏幕右缘裁切。 */
