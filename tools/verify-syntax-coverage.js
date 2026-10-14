@@ -726,11 +726,40 @@ probe('§9.4', '不是属性块的花括号不误吞（`# 集合 { x }`、`[文�
   });
 
 // ════ §10 MDX ════
-probe('§10', 'MDX 围栏按代码显示（不假装能跑组件）',
-  '```mdx\nimport { Chart } from "./Chart"\n\n<Tabs>\n  <TabItem value="js">JS</TabItem>\n</Tabs>\n```\n', 'known',
-  (res) => {
-    const c = blocks(res, K.Code);
-    return (c.length === 1 && c[0].lang === 'mdx') ? true : 'mdx 围栏产物异常';
+// MDX 子集（2026-10-14 起）：import 丢弃；<Chart> 转真图表；<Tabs>/<TabItem> 转标签组；
+// 认不出的组件保留名字并渲染其内容。JSX 本体的"运行组件"仍需构建期编译，这里只做
+// 能静态翻译的那部分（别再退回"整段按源码显示"）。
+probe('§10', 'MDX：<Chart data={[...]} type="bar" /> 转成 chart 图表块',
+  '```mdx\nimport { Chart } from "./Chart"\n\n# 用 MDX 写文档\n\n<Chart data={[1, 2, 3]} type="bar" />\n```\n',
+  'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    if (ch.length !== 1 || ch[0].lang !== 'chart') {
+      return '没转成 chart（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
+    }
+    if (ch[0].code.indexOf('"type":"bar"') < 0 || ch[0].code.indexOf('"data":[1,2,3]') < 0) {
+      return 'chart 配置不对：' + ch[0].code;
+    }
+    const hs = blocks(res, K.Heading);
+    return hs.length === 1 ? true : '正文标题没保留';
+  });
+probe('§10', 'MDX：<Tabs>/<TabItem> 转标签组（CodeGroup），import 不显示',
+  '```mdx\nimport Tabs from "@theme/Tabs"\n\n<Tabs>\n  <TabItem value="js">JS 内容</TabItem>\n  <TabItem value="py">Python 内容</TabItem>\n</Tabs>\n```\n',
+  'claim', (res) => {
+    const cg = blocks(res, K.CodeGroup);
+    if (cg.length !== 1) {
+      return '没转成标签组（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
+    }
+    const t = flatText(res);
+    if (t.indexOf('import') >= 0) {
+      return 'import 行没被丢弃';
+    }
+    return cg[0].groupCodes.length === 2 ? true : '页签数量不对：' + cg[0].groupCodes.length;
+  });
+probe('§10', 'MDX：认不出的组件保留组件名 + 渲染其内容（不静默吞掉）',
+  '```mdx\n<MyCard title="x">卡片正文</MyCard>\n```\n', 'claim', (res) => {
+    const t = flatText(res);
+    return (t.indexOf('MyCard') >= 0 && t.indexOf('卡片正文') >= 0)
+      ? true : '组件内容/名字丢了："' + t.trim().slice(0, 60) + '"';
   });
 
 // ════ §13 常见坑 ════

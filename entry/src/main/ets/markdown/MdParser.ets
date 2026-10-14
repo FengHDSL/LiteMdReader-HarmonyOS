@@ -387,6 +387,160 @@ class MdBlockFactory {
     return b;
   }
 
+  /**
+   * MDX 子集 → 多个块（见调用处注释的映射规则）。
+   * 认不出的组件不吞内容：按 Markdown 原样渲染 children，组件名留成小标题，
+   * 让作者一眼看出"这个组件没有被运行、只显示了它的内容"。
+   */
+  static emitMdx(body: string[], blocks: MdBlock[], srcLine: number): void {
+    let mdBuf: string[] = [];
+
+    const flushMd = (): void => {
+      if (mdBuf.length === 0) {
+        return;
+      }
+      const text: string = mdBuf.join('\n');
+      mdBuf = [];
+      const rows: string[] = text.split('\n');
+      let i2: number = 0;
+      while (i2 < rows.length) {
+        const t: string = rows[i2].trim();
+        if (t.length === 0) {
+          i2++;
+          continue;
+        }
+        const h: RegExpMatchArray | null = t.match(/^(#{1,6})\s+(.*)$/);
+        if (h !== null) {
+          const lv: number = h[1].length;
+          const tx: string = h[2].trim();
+          blocks.push(MdBlockFactory.heading(lv, tx, blocks.length, MdParser.parseInline(tx), blocks.length));
+          blocks[blocks.length - 1].srcLine = srcLine;
+          i2++;
+          continue;
+        }
+        const para: string[] = [t];
+        i2++;
+        while (i2 < rows.length && rows[i2].trim().length > 0
+          && !/^#{1,6}\s/.test(rows[i2].trim()) && rows[i2].trim().charAt(0) !== '<') {
+          para.push(rows[i2].trim());
+          i2++;
+        }
+        const ptx: string = para.join(' ');
+        blocks.push(MdBlockFactory.paragraph(ptx, MdParser.parseInline(ptx), blocks.length));
+        blocks[blocks.length - 1].srcLine = srcLine;
+      }
+    };
+
+    let i: number = 0;
+    while (i < body.length) {
+      const line: string = body[i];
+      const t: string = line.trim();
+      // import / export 行：渲染态不显示
+      if (/^(import|export)\b/.test(t)) {
+        i++;
+        continue;
+      }
+      // <Chart ... />：转 Chart.js 真图表
+      const chartM: RegExpMatchArray | null = t.match(/^<Chart\s+([\s\S]*?)\/?>$/);
+      if (chartM !== null) {
+        flushMd();
+        const cfg: string = MdBlockFactory.mdxChartConfig(chartM[1]);
+        if (cfg.length > 0) {
+          blocks.push(MdBlockFactory.chart('chart', cfg.split('\n'), blocks.length, srcLine));
+          blocks[blocks.length - 1].srcLine = srcLine;
+        } else {
+          blocks.push(MdBlockFactory.code('jsx', t.split('\n'), blocks.length));
+          blocks[blocks.length - 1].srcLine = srcLine;
+        }
+        i++;
+        continue;
+      }
+      // <Tabs>…</Tabs>：收集整段，转标签组
+      if (/^<Tabs\b/.test(t)) {
+        flushMd();
+        const seg: string[] = [];
+        while (i < body.length) {
+          seg.push(body[i]);
+          if (body[i].indexOf('</Tabs>') >= 0) {
+            i++;
+            break;
+          }
+          i++;
+        }
+        const codes: GroupCode[] = MdBlockFactory.mdxTabItems(seg.join('\n'));
+        if (codes.length > 0) {
+          blocks.push(MdBlockFactory.codeGroup(codes, blocks.length));
+          blocks[blocks.length - 1].srcLine = srcLine;
+        } else {
+          blocks.push(MdBlockFactory.code('jsx', seg, blocks.length));
+          blocks[blocks.length - 1].srcLine = srcLine;
+        }
+        continue;
+      }
+      // 其它组件：<组件 …>内容</组件> → 小标题 + 内容（内容按 Markdown 渲染）
+      const compM: RegExpMatchArray | null = t.match(/^<([A-Z][\w.]*)\b[^>]*>([\s\S]*?)<\/\1>$/);
+      if (compM !== null) {
+        flushMd();
+        const name: string = compM[1];
+        const inner: string = compM[2];
+        const note: string = '⟨' + name + '⟩';
+        blocks.push(MdBlockFactory.paragraph(note, MdParser.parseInline(note), blocks.length));
+        blocks[blocks.length - 1].srcLine = srcLine;
+        mdBuf = mdBuf.concat(inner.split('\n'));
+        flushMd();
+        i++;
+        continue;
+      }
+      mdBuf.push(line);
+      i++;
+    }
+    flushMd();
+  }
+
+  /** `<Chart data={[1,2,3]} type="bar" />` → Chart.js JSON 配置（认不出返回空串） */
+  private static mdxChartConfig(props: string): string {
+    const tm: RegExpMatchArray | null = props.match(/type\s*=\s*"([\w]+)"/);
+    const dm: RegExpMatchArray | null = props.match(/data\s*=\s*\{\s*\[([^\]]*)\]\s*\}/);
+    if (tm === null || dm === null) {
+      return '';
+    }
+    const nums: string[] = [];
+    const parts: string[] = dm[1].split(',');
+    for (let k = 0; k < parts.length; k++) {
+      const v: string = parts[k].trim();
+      const n: number = Number(v);
+      if (v.length > 0 && !isNaN(n)) {
+        nums.push(v);
+      }
+    }
+    if (nums.length === 0) {
+      return '';
+    }
+    const labels: string[] = [];
+    for (let k = 0; k < nums.length; k++) {
+      labels.push('"' + (k + 1) + '"');
+    }
+    return '{"type":"' + tm[1] + '","data":{"labels":[' + labels.join(',')
+      + '],"datasets":[{"label":"data","data":[' + nums.join(',')
+      + '],"backgroundColor":"rgba(47,99,232,0.65)"}]},'
+      + '"options":{"width":520,"height":280}}';
+  }
+
+  /** `<Tabs>` 段里的每个 `<TabItem value|label="x">内容</TabItem>` → 一个页签段 */
+  private static mdxTabItems(seg: string): GroupCode[] {
+    const out: GroupCode[] = [];
+    const re: RegExp = /<TabItem\b([^>]*)>([\s\S]*?)<\/TabItem>/g;
+    let m: RegExpExecArray | null = re.exec(seg);
+    while (m !== null && out.length < 12) {
+      const attrs: string = m[1];
+      const lm: RegExpMatchArray | null = attrs.match(/(?:value|label)\s*=\s*"([^"]*)"/);
+      const label: string = lm !== null ? lm[1] : ('Tab' + (out.length + 1));
+      out.push({ label: label, lang: 'text', code: m[2].trim() });
+      m = re.exec(seg);
+    }
+    return out;
+  }
+
   static details(summary: string, body: string, id: number, srcLine: number): MdBlock {
     const b: MdBlock = {
       id: 'b' + id,
@@ -781,6 +935,19 @@ export class MdParser {
         }
         // 指定行高亮（VitePress / Shiki 的 {1,3-5}、Python-Markdown 的 hl_lines="1 3"，1 起）
         const hlLines: number[] = MdParser.fenceHlLines(info);
+        // ── MDX 子集（````mdx`）────────────────────────────────────────
+        // MDX 的本体是"构建期把 JSX 编译成 React 组件"，离线阅读器没有组件运行时；
+        // 但示例里的常见形状是**可静态翻译**的，这里按能落地的语义渲染：
+        //   · import 行      → 丢掉（渲染态里本来就不显示）
+        //   · <Chart …/>     → 转 Chart.js 真图表（data/type 直接映射）
+        //   · <Tabs>…<TabItem>…</Tabs> → 转标签组（复用 CodeGroup 的页签 UI）
+        //   · 其它 <组件>文本</组件> → 按 Markdown 渲染其内容，标签名保留为小标题
+        //   · 其余行         → 原样按 Markdown 解析
+        if (lang.toLowerCase() === 'mdx') {
+          MdBlockFactory.emitMdx(body, blocks, MdParser.orig(fenceLine));
+          continue;
+        }
+
         // PlantUML 路由（2026-10-14 起有离线内核 @plantuml/core，不再一律桥成 mermaid）：
         //   · 内核有渲染器的图种 → lang 'plantuml' + **原文**，交给 render/plantuml.html
         //   · 内核没有渲染器的：`@startmath` → 公式块（走 KaTeX）、`@starttimeline` → 桥成
