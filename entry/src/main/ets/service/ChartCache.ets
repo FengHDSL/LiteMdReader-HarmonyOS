@@ -94,9 +94,14 @@ export class ChartCache {
    *  · v19（2026-10-14 十六次升级）：**新增 Vega-Lite 引擎**（vega 6.4.0 + vega-lite 6.5.0，
    *    围栏 ```vega-lite / ```vl，模板 render/vega.html 走 vegaLite.compile → vega.View 出 SVG）。
    *    新引擎本来没有旧缓存，仍按"引擎有变动就升键"的统一口径升一次。
+   *  · v20（2026-10-14 十七次升级）：**Chart.js 4.4.7 → 4.5.1**（全库版本巡检里唯一
+   *    "小版本可安全升"的一项；升级后浏览器实测 chart.html 仍然正常出图）。
+   *    同批巡检结论：KaTeX / markmap / d3 / ECharts / abcjs / Viz.js / WaveDrom /
+   *    nomnoml / vega / turndown 都已是最新；mermaid 停 11.17.2（12 实测回归）、
+   *    flowchart.js 停 1.17.1（1.18 不再发浏览器包）、MathJax 停 3.2.2（v4 要 API 适配）。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v19|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v20|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

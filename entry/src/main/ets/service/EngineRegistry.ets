@@ -45,7 +45,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: L10n.t('行内公式排版为矢量图（正文内联显示；v4 需专项离线适配，暂缓升级）')
   },
   {
-    id: 'mermaid', name: 'Mermaid', version: '10.9.3', date: '2024-10-22',
+    id: 'mermaid', name: 'Mermaid', version: '11.17.2', date: '2026-10-13',
     repo: 'https://github.com/mermaid-js/mermaid',
     desc: '流程图 / 时序图 / 甘特图 / 类图 / 状态图 / 饼图（12.x 应用内渲染异常，已回退 10.x 终版）'
   },
@@ -85,7 +85,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）')
   },
   {
-    id: 'chartjs', name: 'Chart.js', version: '4.4.7', date: '2026-10-13',
+    id: 'chartjs', name: 'Chart.js', version: '4.5.1', date: '2026-10-14',
     repo: 'https://github.com/chartjs/Chart.js',
     desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）'
   },
@@ -95,7 +95,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: L10n.t('Vega-Lite 声明式统计图（JSON spec：柱状 / 折线 / 散点 / 面积 / 分面等），出 SVG')
   },
   {
-    id: 'marked', name: 'marked', version: '18.1.0', date: '2026-10-05',
+    id: 'marked', name: 'marked', version: '18.1.1', date: '2026-10-14',
     repo: 'https://github.com/markedjs/marked',
     desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析'
   },

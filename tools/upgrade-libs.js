@@ -1,8 +1,10 @@
 // 渲染引擎批量升级器（2026-10 全库升级）：
 //   · render/*.html 里内联的库 → 「整段替换」（只换库文本，保留模板其余手工逻辑）
 //   · rawfile/runtimes + tools/runtimes 的源库文件 → 同步为新版
-// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|viz|mathjax|all]
-// ⚠️ 无法升级/需 API 适配的（mathjax v4 / viz v3）在脚本内单独处理或手动。
+// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|chartjs|vega|viz|mathjax|all]
+// 新库文件先放进 $LOCALAPPDATA/Temp/upgrade（文件名见各函数里的 up(...)）。
+// ⚠️ 不升级的：mathjax v4（要 API 适配）、flowchart.js 1.18（npm 不再发浏览器包）、
+//    mermaid 12（实测把 requirementDiagram 跑挂）。理由都写在对应函数上方。
 const fs = require('fs');
 const path = require('path');
 
@@ -81,9 +83,12 @@ function katex() {
 }
 
 function mermaid() {
-  // ⚠️ **已回退 12.1.0 → 10.9.3**（用户实测：流程图/状态图/类图/饼图在应用内
-  // 渲染异常，不如 10.x；10.9.3 是 10.x 终版）。再升级前先过 check-mermaid-rollback.html。
-  console.log('== Mermaid 10.9.3（自 12.1.0 回退）==');
+  // ⚠️ 版本历史（别再只信下面这行旧注释）：10.9.3 →（v15）11.4.1 →（v16）11.17.2。
+  // 更早确实从 12.1.0 回退过一次（用户实测 12 系在应用内渲染异常）。
+  // 2026-10-14 再把 12.2.0 拉下来跑同一批 33 个样本：时序图参与者类型仍只认
+  // actor/participant、C4 画法没变、反而把 requirementDiagram 跑挂 → 不升。
+  // 再升级前必须重跑 .workbuddy/c4probe 那套样本，不能只看一两种图。
+  console.log('== Mermaid 11.17.2 ==');
   swapSegment('mermaid.html', { contains: 'sequenceDiagram', min: 1000000 }, up('mermaid.min.js'));
   // flowchart（借 mermaid 渲染的导出链路）与 mermaid.html 共用
   deploy(up('mermaid.min.js'), path.join(RAW_RUN, 'mermaid.min.js'), 'rawfile mermaid.min.js');
@@ -105,7 +110,10 @@ function abc() {
 }
 
 function flowchart() {
-  console.log('== flowchart.js 1.17.1 ==');
+  // ⚠️ 1.18.0 **不再发布浏览器包**（npm tarball 里只有 src/ 与 index.js，没有
+  // release/flowchart.min.js），要用得自己接 bundler。这是条借 raphael 画的老引擎，
+  // 不值得为它引一套构建链 → 停在 1.17.1，升级前先确认新版是否重新附带 UMD。
+  console.log('== flowchart.js 1.17.1（1.18.0 无浏览器包，暂不升）==');
   swapSegment('flowchart.html', { contains: 'flowchart.js, v', min: 20000 }, up('flowchart.min.js'));
   deploy(up('flowchart.min.js'), path.join(RAW_RUN, 'flowchart.min.js'), 'rawfile flowchart.min.js');
   deploy(up('flowchart.min.js'), path.join(TOOL_RUN, 'flowchart.min.js'), 'tools flowchart.min.js');
@@ -134,7 +142,7 @@ function viz() {
 }
 
 function marked() {
-  console.log('== marked 18.1.0 ==');
+  console.log('== marked 18.1.1 ==');
   deploy(up('marked.umd.js'), path.join(EDITOR, 'marked.min.js'), 'editor marked.min.js');
   deploy(up('marked.umd.js'), path.join(TOOL_RUN, 'marked.min.js'), 'tools marked.min.js');
 }
@@ -143,6 +151,29 @@ function turndown() {
   console.log('== turndown 7.2.4 ==');
   deploy(up('turndown.js'), path.join(EDITOR, 'turndown.js'), 'editor turndown.js');
   deploy(up('turndown.js'), path.join(TOOL_RUN, 'turndown.js'), 'tools turndown.js');
+}
+
+/**
+ * Chart.js：只存在于 render/chart.html 的内联段里（runtimes/ 一直没有它的副本，
+ * 所以导出的网页里 chart 围栏画不出来 —— 那是待办 #51，本函数只负责升版本）。
+ */
+function chartjs() {
+  console.log('== Chart.js 4.5.1 ==');
+  swapSegment('chart.html', { contains: 'Chart.js v', min: 100000 }, up('chart.umd.js'));
+}
+
+/**
+ * Vega-Lite（2026-10-14 新增引擎）：render/vega.html 里内联了**两段**库，
+ * 顺序必须是 vega 在前（vega-lite 的 UMD 按全局 vega 取依赖），runtimes/ 同步两份。
+ */
+function vega() {
+  console.log('== Vega 6.4.0 + Vega-Lite 6.5.0 ==');
+  swapSegment('vega.html', { contains: 'vega', min: 300000 }, up('vega.min.js'));
+  swapSegment('vega.html', { contains: 'vega-lite', min: 100000 }, up('vega-lite.min.js'));
+  deploy(up('vega.min.js'), path.join(RAW_RUN, 'vega.min.js'), 'rawfile vega.min.js');
+  deploy(up('vega-lite.min.js'), path.join(RAW_RUN, 'vega-lite.min.js'), 'rawfile vega-lite.min.js');
+  deploy(up('vega.min.js'), path.join(TOOL_RUN, 'vega.min.js'), 'tools vega.min.js');
+  deploy(up('vega-lite.min.js'), path.join(TOOL_RUN, 'vega-lite.min.js'), 'tools vega-lite.min.js');
 }
 
 if (TASK === 'katex' || TASK === 'all') { katex(); }
@@ -154,4 +185,6 @@ if (TASK === 'raphael' || TASK === 'all') { raphael(); }
 if (TASK === 'viz' || TASK === 'all') { viz(); }
 if (TASK === 'marked' || TASK === 'all') { marked(); }
 if (TASK === 'turndown' || TASK === 'all') { turndown(); }
+if (TASK === 'chartjs' || TASK === 'all') { chartjs(); }
+if (TASK === 'vega' || TASK === 'all') { vega(); }
 console.log('done.');

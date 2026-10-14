@@ -19,7 +19,7 @@
 | `markmap` | markmap | 0.18.12 | 思维导图（Markdown 大纲直接成图） |
 | `graphviz`（别名 `dot` / `gv` / `viz`） | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
 | `nomnoml`（别名 `noml` / `nml`） | nomnoml（UMD，只依赖 graphre） | 1.x | 极简 UML：`[A] -> [B]`、`[类\|字段\|方法]` |
-| `chart`（别名 `chartjs` / `chart.js`） | Chart.js | 4.4.7 | 统计图，配置写 JSON（与 `echarts` 重叠，写法不同） |
+| `chart`（别名 `chartjs` / `chart.js`） | Chart.js | 4.5.1 | 统计图，配置写 JSON（与 `echarts` 重叠，写法不同） |
 | `vega-lite`（别名 `vl` / `vega`） | Vega 6.4.0 + Vega-Lite 6.5.0（BSD-3-Clause） | 6.5.0 | 声明式统计图：JSON spec 写 `data` / `mark` / `encoding`，出**矢量 SVG**；分面、聚合、交互选择子集都认 |
 | `flowchart` | flowchart.js | 1.17.1 | 经典 `st=>start:` 写法的流程图 |
 | `abc` | abcjs | 6.7.1 | ABC 记谱法五线谱 |
@@ -29,6 +29,31 @@
 
 **关闭某个引擎**：设置 → 引擎管理。关闭后该语言的代码块在阅读页与导出 HTML 里
 都退回成**普通代码块**（不会渲染失败留白），导出的网页也不会假装能渲染。
+
+### 随包库版本巡检（2026-10-14，逐个对过 npm 最新版）
+
+版本号一律从**实际文件**里读出来对，不抄声明：
+
+| 库 | 随包 | npm 最新 | 结论 |
+| --- | --- | --- | --- |
+| KaTeX | 0.19.0 | 0.19.0 | 已最新 |
+| Mermaid | 11.17.2 | 12.2.0 | **不升**：33 个样本实测 12.2.0 把 `requirementDiagram` 跑挂，且时序图参与者类型、C4 画法都没改善 |
+| markmap-lib / -view | 0.18.12 | 0.18.12 | 已最新 |
+| d3 | 7.9.0 | 7.9.0 | 已最新 |
+| Apache ECharts | 6.1.0 | 6.1.0 | 已最新 |
+| abcjs | 6.7.1 | 6.7.1 | 已最新 |
+| Viz.js（Graphviz 16.1.0） | 3.31.0 | 3.31.0 | 已最新 |
+| WaveDrom | 3.7.0 | 3.7.0 | 已最新 |
+| nomnoml | 1.7.0 | 1.7.0 | 已最新 |
+| Chart.js | **4.5.1** | 4.5.1 | 本轮升级（原 4.4.7；升级后浏览器实测仍正常出图） |
+| Vega / Vega-Lite | 6.4.0 / 6.5.0 | 6.4.0 / 6.5.0 | 已最新（本轮刚引入） |
+| flowchart.js | 1.17.1 | 1.18.0 | **不升**：1.18.0 的 npm 包里只剩 `src/` 与 `index.js`，**不再发布浏览器 UMD**，接它得自搭 bundler，而这是条借 raphael 画的老引擎 |
+| MathJax | 3.2.2 | 4.1.3 | **不升**：v4 要 API 适配（`mjformula.html` 的加载与 `tex.packages` 配置按 v3 写）；它是 KaTeX 之外的兜底引擎，动它风险大于收益 |
+| marked | **18.1.1** | 18.1.1 | 本轮升级（编辑器即时渲染用；Node 里跑过一遍解析自检） |
+| turndown | 7.2.4 | 7.2.4 | 已最新 |
+
+巡检顺带修了一处**声明与实际不符**：引擎管理页里 Mermaid 一直写着 10.9.3，
+而随包文件早就是 11.17.2 —— 界面上的版本号也是承诺，不能滞后于包里真正带的东西。
 
 ---
 
