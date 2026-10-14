@@ -4755,10 +4755,21 @@ export struct Reader {
 
   @Builder
   moreSheet() {
-    Column() {
-      this.morePanel()
+    // **内容限高 + 内部滚动**（工程约定；用户截图：磁贴最后一行被面板底边裁掉一半）：
+    // 「更多」面板的磁贴网格比 MEDIUM 档的面板高，不滚动就是硬裁。
+    // 限高按屏高 55%（面板标题栏 + 拖拽条之外还有余量），里面自己滚，
+    // 拖拽条仍可把面板拉到 LARGE 看全量。
+    Scroll() {
+      Column() {
+        this.morePanel()
+      }
+      .width('100%')
     }
     .width('100%')
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .align(Alignment.Top)
+    .constraintSize({ maxHeight: this.rootHeight > 0 ? this.rootHeight * 0.55 : 480 })
     .padding(HwSpace.lg)
     .id('shMore_' + this.sheetEpoch)
   }
