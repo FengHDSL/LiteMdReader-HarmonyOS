@@ -43,9 +43,11 @@ export class ExportService {
   }
 
   /** 渲染自包含 HTML（与阅读页导出 HTML 同一渲染器）。rich = 预装图表渲染工具。 */
-  static buildHtml(docName: string, content: string, rich: boolean = false): string {
+  static buildHtml(docName: string, content: string, rich: boolean = false,
+    ctx: common.UIAbilityContext | null = null, dark: boolean = false,
+    chartBg: string = ''): string {
     const parsed = MdParser.parse(content);
-    return MdToHtml.export(docName, parsed.meta, parsed.blocks, rich);
+    return MdToHtml.export(docName, parsed.meta, parsed.blocks, rich, null, ctx, dark, chartBg);
   }
 
   /**
@@ -162,13 +164,14 @@ export class ExportService {
    * 完成后自行走 saveText（用户选保存位置），notify 全程汇报。
    */
   static async exportHtmlSmart(ctx: common.UIAbilityContext, docName: string,
-                               content: string, notify: Notify): Promise<void> {
+                               content: string, notify: Notify,
+                               dark: boolean = false, chartBg: string = ''): Promise<void> {
     const parsed = MdParser.parse(content);
     const chartCount: number = MdToHtml.countCharts(parsed.blocks);
     if (chartCount === 0) {
       const plain: string =
         ExportService.inlineLocalImages(ctx,
-          MdToHtml.export(docName, parsed.meta, parsed.blocks, false, null));
+          MdToHtml.export(docName, parsed.meta, parsed.blocks, false, null, ctx, dark, chartBg));
       ExportService.saveText(ctx, docName + '.html', plain, notify);
       return;
     }
@@ -215,7 +218,7 @@ export class ExportService {
     }
     const html: string =
       ExportService.inlineLocalImages(ctx,
-        MdToHtml.export(docName, parsed.meta, parsed.blocks, true, inline));
+        MdToHtml.export(docName, parsed.meta, parsed.blocks, true, inline, ctx, dark, chartBg));
     ExportService.saveText(ctx, docName + '.html', html, notify);
   }
 

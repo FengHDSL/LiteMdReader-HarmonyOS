@@ -276,6 +276,47 @@ export class ChartCache {
    * 所有切到图片的位置全部空白。文件系统读写（EpubExport 读字节等）仍用
    * `path()` 的裸路径，两者不可互相替换。
    */
+  /**
+   * 导出用：把阅读页预渲染池**已烘好的缓存 PNG**读成 base64 dataURL。
+   * 深浅两个 key 都试（导出时的主题与渲染时不一定一致）。都没有返回空串。
+   */
+  static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
+    dark: boolean, bg: string): string {
+    const variants: boolean[] = dark ? [true, false] : [false, true];
+    for (let k = 0; k < variants.length; k++) {
+      const key: string = ChartCache.keyFor(mode, payload, variants[k], bg);
+      const path: string = ChartCache.srcPath(ctx, key);
+      if (path.length === 0) {
+        continue;
+      }
+      try {
+        const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+        let dataUrl: string = '';
+        try {
+          const stat: fs.Stat = fs.statSync(path);
+          const buf: ArrayBuffer = new ArrayBuffer(stat.size);
+          const n: number = fs.readSync(file.fd, buf);
+          if (n > 0) {
+            const b64: string = new util.Base64Helper()
+              .encodeToStringSync(new Uint8Array(buf, 0, n));
+            dataUrl = 'data:image/png;base64,' + b64;
+          }
+        } finally {
+          try {
+            fs.closeSync(file);
+          } catch (closeErr) {
+          }
+        }
+        if (dataUrl.length > 0) {
+          return dataUrl;
+        }
+      } catch (err) {
+        // 读失败 → 试下一个变体
+      }
+    }
+    return '';
+  }
+
   static srcPath(ctx: common.UIAbilityContext, key: string): string {
     const hit: string | undefined = ChartCache.uriMemo.get(key);
     if (hit !== undefined) {

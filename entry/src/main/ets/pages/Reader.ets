@@ -2614,7 +2614,7 @@ export struct Reader {
       const content: string = DocStore.readText(ctx, DocStore.find(ctx, this.docName)!, this.docEncoding);
       ExportService.exportHtmlSmart(ctx, this.docName, content, (m: string) => {
         this.toast(m);
-      });
+      }, this.isDark(), withAlpha(this.palette().codeBlockBg, 'FF'));
     } catch (err) {
       this.toast(L10n.t('导出失败'));
     }

@@ -12,12 +12,14 @@
  * 数学公式、Mermaid——与阅读页范围保持一致，不做假实现。
  */
 
+import { ChartCache } from '../service/ChartCache';
 import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCodeState, resolveFamily } from './CodeHighlight';
 import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
 import { MdParser } from './MdParser';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { PlantumlBridge } from './PlantumlBridge';
 import { util } from '@kit.ArkTS';
+import { common } from '@kit.AbilityKit';
 
 /** 内嵌 CSS。浅色纸面配色，与阅读器浅色主题同一气质。 */
 const HTML_CSS: string = `
@@ -39,7 +41,7 @@ const HTML_CSS: string = `
   a:hover { text-decoration: underline; }
   code { font-family: "HarmonyOS Sans SC Mono", Consolas, Menlo, monospace; font-size: 0.88em;
          background: rgba(47,99,232,0.08); color: #2350c4; border-radius: 4px; padding: 0.1em 0.35em; }
-  pre { background: #f6f8fb; border: 1px solid #e2e6ee; border-radius: 10px; padding: 14px 16px; overflow: auto; }
+  pre { background: #f6f8fb; border: 1px solid #e2e6ee; border-radius: 10px; padding: 14px 16px; white-space: pre-wrap; word-break: break-word; overflow-x: hidden; }
   pre code { background: transparent; color: #1b1f27; padding: 0; }
   .kw { color: #cf222e; } .str { color: #0a3069; } .cmt { color: #6e7781; font-style: italic; }
   .num { color: #0550ae; } .fn { color: #8250df; } .tag { color: #116329; } .attr { color: #0550ae; }
@@ -901,7 +903,8 @@ export class MdToHtml {
 
   /** 整份文档导出。rich = true 时图表块转渲染容器并预装 CDN（导出面板询问用户后传入）。 */
   static export(docName: string, meta: MdMetaItem[], blocks: MdBlock[], rich: boolean = false,
-    inline: InlineRuntime[] | null = null): string {
+    inline: InlineRuntime[] | null = null, ctx: common.UIAbilityContext | null = null,
+    dark: boolean = false, chartBg: string = ''): string {
     let body: string = '';
     // 列表嵌套：用已打开的列表层缩进栈表达，遇到 indent 变化就闭合 / 打开列表
     let openLists: number[] = [];
@@ -940,7 +943,18 @@ export class MdToHtml {
           // 「设置 → 引擎管理」里关闭了对应引擎 → 一律保持代码块（关闭后无法渲染，
           // 导出的网页也不能假装能渲染；与阅读页源码兜底卡同一语义）。
           const langLower: string = block.lang.trim().toLowerCase();
-          if (langLower === 'html') {
+          // **缓存图优先**（用户要求：导出 / 打印直接展示完整图）：
+          // 阅读页预渲染池已把每张图（PlantUML 全家族 / mermaid / 自绘图种…）
+          // 烘成 PNG，导出直接内嵌 base64 —— 离线打开、打印都是所见即所得。
+          let pngFound: string = '';
+          if (ctx !== null && langLower !== 'html' && !MdToHtml.engineOffForLang(langLower)) {
+            pngFound = ChartCache.pngBase64(ctx, langLower, block.code, dark, chartBg);
+          }
+          if (pngFound.length > 0) {
+            body += '<img class="chartimg" src="' + pngFound
+              + '" style="max-width:100%;height:auto">';
+            chartIndex++;
+          } else if (langLower === 'html') {
             // **HTML 块原样输出**：它本身就是渲染结果（表格 colspan/rowspan、内嵌 SVG、
             // 进度条这类排版没有"渲染库"可言，也不该退化成代码块）。
             // 解析器对**自动识别**的块级 HTML 已经过安全闸（摘 script/iframe/on*/javascript:），
@@ -969,6 +983,17 @@ export class MdToHtml {
             chartIndex++;
           } else {
             body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
+          }
+        } else if (block.kind === MdBlockKind.Math && ctx !== null
+          && !EngineRegistry.isOff('katex', EngineRegistry.current())) {
+          const mathPng: string = ChartCache.pngBase64(ctx, 'katex', block.code, dark, chartBg);
+          if (mathPng.length > 0) {
+            body += '<img class="chartimg" src="' + mathPng
+              + '" style="max-width:100%;height:auto">';
+            chartIndex++;
+          } else {
+            body += MdToHtml.chartContainer('katex', [block.code]);
+            chartIndex++;
           }
         } else if (block.kind === MdBlockKind.Math && rich) {
           // rich 模式：公式块转 katex 容器；KaTeX 关闭 → 保持源码代码块
