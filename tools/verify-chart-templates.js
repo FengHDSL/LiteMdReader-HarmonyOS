@@ -183,5 +183,37 @@ console.log('清单 → ' + OUT);
   }
 })();
 
+// PlantUML 两条硬约束（都是真机/真导出实测踩出来的，别再退回去）：
+//   ① 内核必须是**普通脚本**：它是全部模板里唯一一页 module，真机上整族画不出
+//      （2026-10-14 事故：桌面浏览器全正常，手机上用例/活动/组件/部署/mindmap/WBS/
+//       甘特/JSON/YAML/Archimate/ER 全退回显示源码）。
+//   ② 导出用的内核运行时两份拷贝必须逐字一致（tools/gen-plantuml-template.js 一次写两份，
+//      漂移了就是"阅读页能画、导出画不出"这种最难查的分裂）。
+{
+  const tpl = fs.readFileSync(path.join(ROOT, 'entry/src/main/resources/rawfile/render/plantuml.html'), 'utf8');
+  // 只看真正的开标签，注释里提一句 "type=module" 不算
+  const moduleTag = /<script[^>]*\stype=["']module["']/i.test(tpl);
+  if (!moduleTag) {
+    console.log('  ok    plantuml.html 内核是普通脚本（module 版在真机上整族画不出）');
+  } else {
+    fails++;
+    console.log('  FAIL  plantuml.html 又用回 type="module" 了 → 真机 PlantUML 全族失效，跑 node tools/gen-plantuml-template.js');
+  }
+  const a = path.join(ROOT, 'entry/src/main/resources/rawfile/runtimes/plantuml-kernel.js');
+  const b = path.join(ROOT, 'tools/runtimes/plantuml-kernel.js');
+  if (!fs.existsSync(a) || !fs.existsSync(b)) {
+    fails++;
+    console.log('  FAIL  内核运行时缺一份（rawfile/runtimes 或 tools/runtimes）→ 导出会没有 PlantUML');
+  } else {
+    const sa = fs.readFileSync(a), sb = fs.readFileSync(b);
+    if (sa.length === sb.length && sa.equals(sb)) {
+      console.log('  ok    导出内核运行时两份拷贝一致（' + (sa.length / 1048576).toFixed(2) + 'MB）');
+    } else {
+      fails++;
+      console.log('  FAIL  导出内核运行时两份拷贝不一致 → 重跑 tools/gen-plantuml-template.js');
+    }
+  }
+}
+
 console.log(fails === 0 ? 'CHART TEMPLATES OK' : 'CHART TEMPLATES FAILED: ' + fails);
 process.exit(fails === 0 ? 0 : 1);

@@ -28,8 +28,8 @@ const HTML_CSS: string = `
          font-size: 16px; line-height: 1.75; color: #1b1f27; background: #f3f6fb; }
   /* rich 导出的图表容器：markmap-autoloader 要求容器有确定高度 */
   .markmap { width: 100%; height: 420px; }
-  .mermaid, .ktx, .gv, .abc, .wfx, .vgl { width: 100%; overflow-x: auto; text-align: center; }
-  .gv svg, .abc svg, .wfx svg, .vgl svg { max-width: 100%; height: auto; }
+  .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml { width: 100%; overflow-x: auto; text-align: center; }
+  .gv svg, .abc svg, .wfx svg, .vgl svg, .puml svg { max-width: 100%; height: auto; }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
   .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
@@ -423,6 +423,24 @@ export class MdToHtml {
     return PlantumlBridge.toMermaid(src);
   }
 
+  /**
+   * 内联模式是否真的带上了某个运行时库。
+   * 导出有两条路：`inline != null` 是自包含（库文本已在 head 里），
+   * `null` 是 CDN 回退（只有联网才渲染）。"这页能不能画某类图"必须问这个，
+   * 不能只看块的语言 —— 容器发出去而库里没带，读者拿到的就是一个洞。
+   */
+  static hasRuntime(inline: InlineRuntime[] | null, name: string): boolean {
+    if (inline === null) {
+      return false;
+    }
+    for (let k = 0; k < inline.length; k++) {
+      if (inline[k].name === name) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** 扫描文档包含的图表块数（Chart 块 + Math 公式块；导出面板据此决定内联哪些库）。 */
   static countCharts(blocks: MdBlock[]): number {
     let n: number = 0;
@@ -472,6 +490,10 @@ export class MdToHtml {
     }
     if (lang === 'nwdiag') {
       return '<div class="cj-nwdiag" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'plantuml') {
+      // 内核在场时的容器：runner 解码后交给 window.plantumlRenderToString 现场出图
+      return '<div class="puml" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'katex') {
       return '<div class="ktx" data-b64="' + b64 + '"></div>';
@@ -742,6 +764,41 @@ export class MdToHtml {
         + '        } catch (e) { console.error("mermaid render failed", e); }\n'
         + '      });\n'
         + '    }\n' : '')
+      + (has('plantuml') ? '    // PlantUML 内核（runtimes/plantuml-kernel.js：viz-global + themes +\n'
+        + '    // openiconic + 引擎，全普通脚本，挂 window.plantumlRenderToString）。\n'
+        + '    // 与阅读页模板同源，所以导出与阅读页画的是**同一套官方渲染**，不再是桥出来的简化图。\n'
+        + '    // ⚠️ 必须**一张一张串行**渲染：内核是 TeaVM 编译的，renderToString 共用一组模块级\n'
+        + '    // 全局状态，并发调用会互相覆盖（实测 11 张一起发只有第一张出图，其余容器永久空着）。\n'
+        + '    // 单张超时或失败 → 退回显示源码，绝不留空洞。深色不在导出里做（导出页是浅色文档）。\n'
+        + '    if (window.plantumlRenderToString) {\n'
+        + '      var pEsc = function (s) {\n'
+        + '        return String(s).replace(/&/g, "\\u0026amp;").replace(/</g, "\\u0026lt;").replace(/>/g, "\\u0026gt;");\n'
+        + '      };\n'
+        + '      var pNodes = Array.prototype.slice.call(document.querySelectorAll(".puml"));\n'
+        + '      var pIdx = 0;\n'
+        + '      var pRun = function () {\n'
+        + '        if (pIdx >= pNodes.length) { return; }\n'
+        + '        var el = pNodes[pIdx++];\n'
+        + '        var src = b64u(el.dataset.b64);\n'
+        + '        var done = false;\n'
+        + '        var pFail = function () {\n'
+        + '          if (el.querySelector("svg") === null) { el.innerHTML = "<pre>" + pEsc(src) + "</pre>"; }\n'
+        + '          pRun();\n'
+        + '        };\n'
+        + '        var timer = setTimeout(function () { if (done) { return; } done = true; pFail(); }, 20000);\n'
+        + '        try {\n'
+        + '          window.plantumlRenderToString(src.split("\\n"), function (out) {\n'
+        + '            if (done) { return; } done = true; clearTimeout(timer);\n'
+        + '            var svg = typeof out === "string" ? out : String(out);\n'
+        + '            if (/<svg/i.test(svg)) { el.innerHTML = svg; pRun(); } else { pFail(); }\n'
+        + '          }, function () { if (done) { return; } done = true; clearTimeout(timer); pFail(); }, undefined);\n'
+        + '        } catch (e) {\n'
+        + '          if (!done) { done = true; clearTimeout(timer); } pFail();\n'
+        + '          console.error("plantuml render failed", e);\n'
+        + '        }\n'
+        + '      };\n'
+        + '      pRun();\n'
+        + '    }\n' : '')
       + (has('katex') ? '    if (window.katex) {\n'
         + '      document.querySelectorAll(".ktx").forEach(function(el) {\n'
         + '        tryRun(function() { renderKx(el, true); });\n'
@@ -967,16 +1024,25 @@ export class MdToHtml {
               [MdToHtml.flowchartToMermaid(block.code)]);
             chartIndex++;
           } else if (rich && langLower === 'plantuml') {
-            // 导出**不带 PlantUML 离线内核**（@plantuml/core 一份 5.7MB，不能塞进每个
-            // 导出产物）：能桥成 mermaid 的（时序 / 状态 / 类）桥出去，其余保持源码。
-            // 阅读页走的是真内核，所以同一份文档里导出与阅读的 PlantUML 详略不同——
-            // 这一点在能力矩阵里写明，不假装一致。
-            const bridged: string = MdToHtml.plantumlForExport(block.code);
-            if (bridged.length > 0) {
-              body += MdToHtml.chartContainer('mermaid', [bridged]);
+            // 用户拍板"导出必带 PlantUML 内核"：阅读页那 11 类（用例 / 活动 / 组件 / 部署 /
+            // mindmap / WBS / 甘特 / JSON / YAML / Archimate / ER）只有内核画得出来，
+            // 光靠"桥成 mermaid"它们就只能退成代码块。
+            // 优先级：**快照 > 内核 > 桥 > 源码**。
+            //  · 快照在上面已经试过（上面 pngFound 分支），有就直接用——它连深色都对得上；
+            //  · 没快照则内联 runtimes/plantuml-kernel.js（5.5MB 普通脚本），离线打开现场出图；
+            //  · 内核没在手（CDN 回退模式：@plantuml/core 没有可用的浏览器全局版 CDN 产物）
+            //    → 才回到 PlantumlBridge 的三张图，桥不动的留源码。
+            if (MdToHtml.hasRuntime(inline, 'plantuml-kernel.js')) {
+              body += MdToHtml.chartContainer('plantuml', block.codeLines);
               chartIndex++;
             } else {
-              body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
+              const bridged: string = MdToHtml.plantumlForExport(block.code);
+              if (bridged.length > 0) {
+                body += MdToHtml.chartContainer('mermaid', [bridged]);
+                chartIndex++;
+              } else {
+                body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
+              }
             }
           } else if (rich && MdToHtml.isChartLang(langLower)) {
             body += MdToHtml.chartContainer(langLower, block.codeLines);

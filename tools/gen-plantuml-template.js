@@ -186,3 +186,24 @@ ${lib}
 </body></html>`;
 fs.writeFileSync(OUT, page);
 console.log('模板 -> ' + OUT + '  ' + (page.length / 1048576).toFixed(2) + 'MB');
+
+// ── 导出用运行时：内核的**单文件普通脚本**版 ──
+// 用户拍板"导出必带 PlantUML 内核"：导出的 HTML 不带内核就画不出那 11 类
+// （用例 / 活动 / 组件 / 部署 / mindmap / WBS / 甘特 / JSON / YAML / Archimate / ER），
+// 只能靠阅读页烘好的快照 PNG（没滚到、清了缓存、引擎关着 → 就退成代码块）。
+// 四个包拼成一个文件、按依赖顺序排列（viz 必须最先，README 要求），
+// 引擎那段单独套一层 IIFE 并把 "use strict" 放在**函数内**：
+// 放在文件头会把 viz / themes / openiconic 这三个没为严格模式写过的外层包一起拽进严格语义。
+const kernel = '/*! PlantUML 离线内核（@plantuml/core 1.2026.8，MIT）\n'
+  + '    = viz-global 3.24.0 + themes.js + openiconic.js + 引擎（结尾 export 改挂全局）。\n'
+  + '    由 tools/gen-plantuml-template.js 与 render/plantuml.html 同源生成，勿手改。\n'
+  + '    导出 HTML 内联用：window.plantumlRenderToString(lines, onSuccess, onError, {dark}) */\n'
+  + viz.trim() + '\n'
+  + themes.trim() + '\n'
+  + openiconic.trim() + '\n'
+  + '(function () { "use strict";\n' + lib + '\n})();\n';
+const RUN_OUT = path.join(ROOT, 'entry/src/main/resources/rawfile/runtimes/plantuml-kernel.js');
+const TOOL_OUT = path.join(ROOT, 'tools/runtimes/plantuml-kernel.js');
+fs.writeFileSync(RUN_OUT, kernel);
+fs.writeFileSync(TOOL_OUT, kernel);
+console.log('运行时 -> ' + RUN_OUT + '  ' + (kernel.length / 1048576).toFixed(2) + 'MB（镜像一份到 tools/runtimes）');

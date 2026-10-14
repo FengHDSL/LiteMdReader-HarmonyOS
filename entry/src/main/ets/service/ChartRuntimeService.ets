@@ -54,7 +54,11 @@ export class ChartRuntimeService {
       return ['mermaid.min.js'];
     }
     if (lang === 'plantuml') {
-      return MdToHtml.plantumlForExport(src).length > 0 ? ['mermaid.min.js'] : [];
+      // 导出带官方内核（用户拍板）：11 类只有内核画得出来，桥只能给三张图。
+      // 内核没在手的那条路（CDN 回退）由 MdToHtml.hasRuntime 判定，
+      // 那边会退回 PlantumlBridge / 源码，不会留一个空容器。
+      // 快照图优先（MdToHtml.export 里先试 ChartCache.pngBase64），命中的话这里只是备用弹药。
+      return ['plantuml-kernel.js'];
     }
     if (lang === 'echarts') {
       return ['echarts.min.js'];
