@@ -2262,12 +2262,21 @@ export class MdParser {
       }
       return { consumed: consumed, items: items } as HtmlHit;
     }
+    if (name === 'small') {
+      // `<small>` 以前落到"脱标签留内容"，字号信息整个丢了（用户实测 8.1「小号字」
+      // 和正文一样大）。这里给内容打上相对字号，正文与导出都按八成字号走。
+      return {
+        consumed: consumed,
+        items: MdParser.setScale(MdParser.scan(inner, bold, italic, strike, code), 0.82)
+      } as HtmlHit;
+    }
     if (name === 'span' || name === 'font') {
       const boldInner: boolean = bold || MdParser.attrsBold(attrs);
       const items: MdInline[] = MdParser.scan(inner, boldInner, italic, strike, code);
       const color: string = MdParser.htmlColor(attrs);
       const bg: string = MdParser.htmlBgColor(attrs);
-      if (color.length === 0 && bg.length === 0) {
+      const scale: number = MdParser.styleFontSizeEm(MdParser.htmlAttr(attrs, 'style'));
+      if (color.length === 0 && bg.length === 0 && scale === 0) {
         return { consumed: consumed, items: items } as HtmlHit;
       }
       for (let q = 0; q < items.length; q++) {
@@ -2278,6 +2287,9 @@ export class MdParser {
         // 背景只登记色值，**不改 kind**：彩色底 + 任意字色要能同时成立（徽章就是这型）
         if (bg.length > 0) {
           items[q].bg = bg;
+        }
+        if (scale > 0) {
+          items[q].size = scale;
         }
         if (boldInner && !bold) {
           items[q].bold = true;
@@ -2440,8 +2452,11 @@ export class MdParser {
 
   /**
    * 背景色（徽章、进度条底、彩色标签这类排版的最小可用子集）：
-   * 只放行**实心十六进制**色，`linear-gradient(...)` 那种画不出来，直接不要——
-   * 与其渲成黑底不如没有底，文字仍然带着自己的颜色可读。
+   * 实心十六进制直接放行；`url()` 画不出来不要；**渐变取第一个色标当实心近似底**。
+   *
+   * ⚠️ 渐变以前是"干脆没有底"，但那类写法几乎总是同时把字色设成白色
+   * （`background:linear-gradient(…);color:#fff`）——底一丢就是**白字白底，整块看不见**
+   * （用户实测 8.1「渐变标签」在正文里消失）。留个紫色底 chip，形状与可读性都保住。
    */
   private static htmlBgColor(attrs: string): string {
     const style: string = MdParser.htmlAttr(attrs, 'style');
@@ -2449,12 +2464,56 @@ export class MdParser {
     if (raw.length === 0) {
       raw = MdParser.styleDecl(style, 'background');
     }
-    if (raw.indexOf('gradient') >= 0 || raw.indexOf('url(') >= 0) {
+    if (raw.indexOf('url(') >= 0) {
       return '';
+    }
+    if (raw.indexOf('gradient') >= 0) {
+      return MdParser.firstHexIn(raw);
     }
     // `background:#eee;padding:2px` 这类简写：取第一段是色值时才用
     const first: string = raw.split(' ')[0].trim();
     return MdParser.normalizeHexColor(first);
+  }
+
+  /** 串里第一个十六进制色值（渐变取首个色标用） */
+  private static firstHexIn(s: string): string {
+    const m: RegExpMatchArray | null = s.match(/#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?/);
+    return m === null ? '' : MdParser.normalizeHexColor(m[0]);
+  }
+
+  /**
+   * `font-size:.8em` / `font-size:80%` → 相对字号（0.8）；认不出或是 px 单位 → 0。
+   * px 不接：正文本身要能调字号，写死像素会让这段在放大字号后与其它正文脱节。
+   */
+  private static styleFontSizeEm(style: string): number {
+    const raw: string = MdParser.styleDecl(style, 'font-size');
+    if (raw.length === 0) {
+      return 0;
+    }
+    const v: string = raw.trim().toLowerCase();
+    if (v.endsWith('em') && v.indexOf('px') < 0) {
+      const n: number = parseFloat(v.substring(0, v.length - 2));
+      if (!isNaN(n) && n > 0.3 && n <= 3) {
+        return n;
+      }
+      return 0;
+    }
+    if (v.endsWith('%')) {
+      const p: number = parseFloat(v.substring(0, v.length - 1));
+      if (!isNaN(p) && p > 30 && p <= 300) {
+        return p / 100;
+      }
+    }
+    return 0;
+  }
+
+  /** 给一批片段打相对字号（已有字号的按乘法叠加，`<small>` 套 `<small>` 会更小） */
+  private static setScale(items: MdInline[], scale: number): MdInline[] {
+    for (let k = 0; k < items.length; k++) {
+      const prev: number = items[k].size === undefined ? 1 : items[k].size as number;
+      items[k].size = Math.round(prev * scale * 100) / 100;
+    }
+    return items;
   }
 
   private static htmlColor(attrs: string): string {

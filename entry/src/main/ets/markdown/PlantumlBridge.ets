@@ -380,7 +380,15 @@ export class PlantumlBridge {
           aliasFrom.push(bare);
           aliasTo.push(id);
         }
-        out.push('    participant ' + id + ' as ' + bare);
+        // ⚠️ **参与者类型只留得住 `actor`**：实测这个 mermaid 构建（11.17.2）的时序图语法
+        // 只认 `actor` 与 `participant` 两种声明，`database` / `boundary` / `control` /
+        // `entity` / `collections` / `queue` 带不带 `as`、裸写、引号写法**全部 Parse error**
+        // （30 个组合逐个渲染核对过）。所以 actor 翻成 actor（小人 + 淡紫底，用户要的
+        // "有颜色"就在这里），其余一律退回 participant —— 以前那种"三种类型都支持"的说法
+        // 是想当然，画出来是圆柱的期望会直接变成一张报错卡。
+        const mk: string = decl[1].toLowerCase();
+        const mermaidKw: string = mk === 'actor' ? 'actor' : 'participant';
+        out.push('    ' + mermaidKw + ' ' + id + ' as ' + bare);
         continue;
       }
       if (/^autonumber\b/i.test(raw) || /^title\s/i.test(raw)) {

@@ -116,6 +116,11 @@ export interface MdInline {
    * 画不出来，解析器就不会写这个字段；渲染层拿它当"实色底"，与学习卡同一套通道。
    */
   bg?: string;
+  /**
+   * **相对字号**（1 = 正文字号）：`<small>` / `<span style="font-size:.8em">` 这类
+   * 只改大小的写法。没设 = 跟随正文。渲染端乘在 bodySize 上，导出侧写成 `font-size:em`。
+   */
+  size?: number;
 }
 
 /** 表格行 */
@@ -305,6 +310,8 @@ export interface MdPiece {
   annotated: boolean;
   /** 是否命中当前搜索关键词 */
   searchHit: boolean;
+  /** **相对字号**（`<small>` / `font-size:.8em`），未设 = 跟随正文 */
+  size?: number;
 }
 
 /**

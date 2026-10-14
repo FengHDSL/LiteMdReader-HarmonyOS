@@ -202,12 +202,16 @@ export class MdToHtml {
         body = '<span class="rt">' + body + '</span>';
       } else if (item.kind === MdInlineKind.Under) {
         body = '<u>' + body + '</u>';
-      } else if (item.kind === MdInlineKind.Color || (item.bg !== undefined && item.bg.length > 0)) {
-        // 字色与底色各管各的：徽章/彩色标签是"浅底 + 深字"，只放行其中一个就会丢一半
+      } else if (item.kind === MdInlineKind.Color || (item.bg !== undefined && item.bg.length > 0)
+        || (item.size !== undefined && item.size > 0)) {
+        // 字色 / 底色 / 相对字号三条各管各的：徽章是"浅底 + 深字"，`<small>` 只带字号
         const hexColor: string = item.kind === MdInlineKind.Color
           ? MdToHtml.safeHexColor(item.color === undefined ? '' : item.color) : '';
         const hexBg: string = MdToHtml.safeHexColor(item.bg === undefined ? '' : item.bg);
         let decl: string = '';
+        if (item.size !== undefined && item.size > 0) {
+          decl += 'font-size:' + item.size + 'em;';
+        }
         if (hexColor.length > 0) {
           decl += 'color:' + hexColor + ';';
         }

@@ -160,7 +160,8 @@ export class MdViewUtil {
         wavy: false,
         dblLine: false,
         annotated: false,
-        searchHit: false
+        searchHit: false,
+        size: item.size
       };
       out.push(piece);
     }
@@ -251,6 +252,13 @@ export class MdViewUtil {
 
   /** 片段字号：脚注引用与行内代码略小。 */
   static pieceSize(piece: MdPiece, size: number): number {
+    if (piece.size !== undefined && piece.size > 0
+      && piece.kind !== MdInlineKind.Ruby && piece.kind !== MdInlineKind.Sup
+      && piece.kind !== MdInlineKind.Sub && piece.kind !== MdInlineKind.FootnoteRef) {
+      // `<small>` / `font-size:.8em`：按**正文字号的相对倍率**算，用户调字号时它跟着缩放
+      // （写死 px 会让这段在放大字号后与正文脱节，所以解析器只收 em / %）
+      return Math.round(size * piece.size * 10) / 10;
+    }
     if (piece.kind === MdInlineKind.Ruby) {
       // 注音（`<ruby>` 的 `<rt>`）：ArkUI 没有真注音排版，用"小号 + 上移"贴在基准字右侧
       return Math.round(size * 0.62 * 10) / 10;
@@ -683,7 +691,8 @@ export class MdViewUtil {
           wavy: wavy,
           dblLine: dblLine,
           annotated: annotated,
-          searchHit: searchHit
+          searchHit: searchHit,
+          size: item.size
         };
         out.push(piece);
       }
