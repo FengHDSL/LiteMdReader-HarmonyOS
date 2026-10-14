@@ -86,6 +86,12 @@ class CalloutSpec {
   icon: Resource | null = null;
 }
 
+/** 注音排版的一次判定：用多大字号（scale）+ 要不要压在字正上方（center）。 */
+class RubyFit {
+  scale: number = 0.62;
+  center: boolean = false;
+}
+
 export class MdViewUtil {
   /** 提示块视觉规格。颜色刻意在深浅主题下都保持可读。 */
   static calloutSpec(kind: MdCalloutKind): CalloutSpec {
@@ -190,6 +196,45 @@ export class MdViewUtil {
   }
 
   /**
+   * 注音字号倍率：基准 0.62，**读音比基准字宽就继续缩到刚好压在字上方**（下限 0.34，
+   * 再小就不能读了）。量不到宽（引擎异常返回 0）时保持 0.62。
+   *
+   * 这条是"拼音落在右上角而不是正上方"的根因：单字 `<ruby>中<rt>zhōng</rt></ruby>` 的读音
+   * 按 0.62 排出来约是基准宽的 1.78 倍，旧逻辑判"太宽（>1.6）不居中"直接放弃 → 落到右边。
+   * 现在改成**缩字号来适配**，常见注音全部居中；只有缩到下限还是压不进基准字宽度
+   * （量完还宽 1.3 倍以上，即一个字挂四五条读音那种）才退回旧观感，
+   * 免得后文被压进注音里。判"要不要居中"与"用多大字号"是同一个函数出的，不会打架。
+   */
+  static rubyFit(baseText: string, overText: string, size: number, family: string): RubyFit {
+    const out: RubyFit = { scale: 0.62, center: true };
+    if (baseText.length === 0 || overText.length === 0 || size <= 0) {
+      out.center = false;
+      return out;
+    }
+    const wb: number = MeasureText.measureText(
+      { textContent: baseText, fontSize: size, fontFamily: family });
+    const wr0: number = MeasureText.measureText(
+      { textContent: overText, fontSize: size * 0.62, fontFamily: family });
+    if (wb <= 0 || wr0 <= 0) {
+      out.center = false;
+      return out;
+    }
+    if (wr0 <= wb) {
+      return out;                          // 本来就压得进：0.62 直接居中
+    }
+    const fit: number = 0.62 * wb / wr0;
+    out.scale = Math.max(0.34, Math.round(fit * 100) / 100);
+    // 缩完之后还比基准字宽 1.3 倍以上 → 居中会顶到后文，退回"小号排右侧"的老观感
+    const wrFitted: number = MeasureText.measureText(
+      { textContent: overText, fontSize: size * out.scale, fontFamily: family });
+    out.center = wrFitted <= wb * 1.3;
+    if (!out.center) {
+      out.scale = 0.62;
+    }
+    return out;
+  }
+
+  /**
    * 注音的水平微调（letterSpacing，fp）——让读音**落在基准字正上方**而不是排在它后面。
    *
    * 设基准宽 Wb、注音宽 Wr，ArkUI 的 letterSpacing 与 CSS 同口径（每个字符后都算，
@@ -198,26 +243,25 @@ export class MdViewUtil {
    *   · 注音片段尾随 L2 → 后文起点 = (Wb + Wr)/2 + Wr + L2，要等于 Wb → **L2 = (Wb − Wr)/2**
    * 于是注音自身不占推进宽度（与网页 ruby 的观感一致）。
    *
-   * 两种情况退回旧观感（小号上标排在右边，字距全 0）：
-   *   · 量不到宽（引擎异常返回 0）；
-   *   · 注音比基准字宽出 1.6 倍以上——强行居中会让后文压进注音里，比偏右更难读。
+   * ⚠️ Wr 一律按 **rubyFit 给的字号**量，跟 Span 真正用的字号是同一个数，否则居中会偏；
+   *    量不到宽 / 判定不居中时返回 0（退回小号上标排右边）。
    *
    * ⚠️ 用静态 `MeasureText.measureText` 而不是 `getMeasureUtils()`：这两个是纯静态方法，
    *    拿不到 UIContext；该接口在 SDK 里标了 deprecated 但仍可用（换实例通道要把调用点
    *    全搬到组件实例上，代价不值）。
    */
   static rubySpanShift(piece: MdPiece, size: number, family: string): number {
-    const rubySize: number = Math.round(size * 0.62 * 10) / 10;
     if (piece.kind === MdInlineKind.Ruby) {
       const baseText: string = piece.rubyBase === undefined ? '' : piece.rubyBase;
-      if (baseText.length === 0) {
+      const fit: RubyFit = MdViewUtil.rubyFit(baseText, piece.text, size, family);
+      if (!fit.center) {
         return 0;
       }
       const wb: number = MeasureText.measureText(
         { textContent: baseText, fontSize: size, fontFamily: family });
       const wr: number = MeasureText.measureText(
-        { textContent: piece.text, fontSize: rubySize, fontFamily: family });
-      if (wb <= 0 || wr <= 0 || wr > wb * 1.6) {
+        { textContent: piece.text, fontSize: size * fit.scale, fontFamily: family });
+      if (wb <= 0 || wr <= 0) {
         return 0;
       }
       return (wb - wr) / 2;
@@ -226,22 +270,34 @@ export class MdViewUtil {
     if (over.length === 0 || piece.text.length === 0) {
       return 0;
     }
+    const fit2: RubyFit = MdViewUtil.rubyFit(piece.text, over, size, family);
+    if (!fit2.center) {
+      return 0;
+    }
     const wb2: number = MeasureText.measureText(
       { textContent: piece.text, fontSize: size, fontFamily: family });
     const wr2: number = MeasureText.measureText(
-      { textContent: over, fontSize: rubySize, fontFamily: family });
-    if (wb2 <= 0 || wr2 <= 0 || wr2 > wb2 * 1.6) {
+      { textContent: over, fontSize: size * fit2.scale, fontFamily: family });
+    if (wb2 <= 0 || wr2 <= 0) {
       return 0;
     }
     return -(wb2 + wr2) / 2;
   }
 
-  /** 这段片段是否"读音已经居中压到字上方"（决定要不要抬得更高） */
-  static rubyCentered(piece: MdPiece): boolean {
-    if (piece.kind === MdInlineKind.Ruby) {
-      return (piece.rubyBase === undefined ? '' : piece.rubyBase).length > 0;
+  /** 这段片段是否"读音已经居中压到字上方"（决定要不要抬得更高）。
+   *  判定与 rubySpanShift / pieceSize 同源（都走 rubyFit），不会出现"水平居中、垂直没抬"。*/
+  static rubyCentered(piece: MdPiece, size: number = 0, family: string = ''): boolean {
+    const bt: string = piece.kind === MdInlineKind.Ruby
+      ? (piece.rubyBase === undefined ? '' : piece.rubyBase) : piece.text;
+    const ot: string = piece.kind === MdInlineKind.Ruby
+      ? piece.text : (piece.rubyOver === undefined ? '' : piece.rubyOver);
+    if (bt.length === 0 || ot.length === 0) {
+      return false;
     }
-    return (piece.rubyOver === undefined ? '' : piece.rubyOver).length > 0;
+    if (size <= 0) {
+      return true;                         // 没有字号上下文（旧调用）→ 按配对成功处理
+    }
+    return MdViewUtil.rubyFit(bt, ot, size, family).center;
   }
 
   static pieceKey(piece: MdPiece, index: number): string {
@@ -251,8 +307,8 @@ export class MdViewUtil {
       + (piece.solid ? '_c' : '');
   }
 
-  /** 片段字号：脚注引用与行内代码略小。 */
-  static pieceSize(piece: MdPiece, size: number): number {
+  /** 片段字号：脚注引用与行内代码略小；注音按 rubyFit 收缩（读音要压得进基准字上方）。 */
+  static pieceSize(piece: MdPiece, size: number, family: string = ''): number {
     if (piece.size !== undefined && piece.size > 0
       && piece.kind !== MdInlineKind.Ruby && piece.kind !== MdInlineKind.Sup
       && piece.kind !== MdInlineKind.Sub && piece.kind !== MdInlineKind.FootnoteRef) {
@@ -261,8 +317,10 @@ export class MdViewUtil {
       return Math.round(size * piece.size * 10) / 10;
     }
     if (piece.kind === MdInlineKind.Ruby) {
-      // 注音（`<ruby>` 的 `<rt>`）：ArkUI 没有真注音排版，用"小号 + 上移"贴在基准字右侧
-      return Math.round(size * 0.62 * 10) / 10;
+      // 注音（`<ruby>` 的 `<rt>`）：ArkUI 没有真注音排版，用"小号 + 上移 + letterSpacing
+      // 抵消推进量"贴在基准字**正上方**（水平量见 rubySpanShift，两边共用 rubyFit 一个判定）
+      return Math.round(size * MdViewUtil.rubyFit(
+        piece.rubyBase === undefined ? '' : piece.rubyBase, piece.text, size, family).scale * 100) / 100;
     }
     if (piece.kind === MdInlineKind.Sup || piece.kind === MdInlineKind.Sub) {
       return Math.round(size * 0.74 * 10) / 10;
@@ -514,7 +572,7 @@ export class MdViewUtil {
   }
 
   /** 脚注引用做成上标。 */
-  static pieceBaseline(piece: MdPiece, size: number): LengthMetrics {
+  static pieceBaseline(piece: MdPiece, size: number, family: string = ''): LengthMetrics {
     if (piece.kind === MdInlineKind.Sup) {
       return LengthMetrics.vp(Math.round(size * 0.26));
     }
@@ -526,8 +584,8 @@ export class MdViewUtil {
     }
     if (piece.kind === MdInlineKind.Ruby) {
       // 能居中到字上方的抬到基准字之上（配合 rubySpanShift 的水平量）；
-      // 量不出来退化成小号上标时，只抬一点点，免得顶到上一行
-      return LengthMetrics.vp(MdViewUtil.rubyCentered(piece)
+      // 量不出来 / 缩到下限还是压不进时退化成小号上标，只抬一点点，免得顶到上一行
+      return LengthMetrics.vp(MdViewUtil.rubyCentered(piece, size, family)
         ? Math.round(size * 0.62)
         : Math.round(size * 0.34));
     }
@@ -1473,7 +1531,7 @@ export struct MdBlockView {
             // 图未就绪（或渲染失败）时的兜底：线性化文本——点开**公式操作菜单**
             //（内含放大查看 / 批注 / 发送AI 等，与图态一致；此前只能点开浮层看大图）
             Span(MathLite.inlineText(piece.text))
-              .fontSize(MdViewUtil.pieceSize(piece, size))
+              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
               .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
               .onClick(() => {
                 this.openMathMenu(piece);
@@ -1481,13 +1539,13 @@ export struct MdBlockView {
           }
         } else {
         Span(piece.text)
-          .fontSize(MdViewUtil.pieceSize(piece, size))
+          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
-          .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
+          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
           // 注音：基准字与读音两段互相抵消推进量，读音才落得在字**正上方**
           .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
           .onClick(() => {
@@ -1597,18 +1655,21 @@ export struct MdBlockView {
               })
           } else {
             Span(MathLite.inlineText(piece.text))
-              .fontSize(MdViewUtil.pieceSize(piece, size))
+              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
               .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           }
         } else {
         Span(piece.text)
-          .fontSize(MdViewUtil.pieceSize(piece, size))
+          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
-          .baselineOffset(MdViewUtil.pieceBaseline(piece, size))
+          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
+          // 注音在表格单元格里也要压在字**正上方**（此前这条路没有 letterSpacing，
+          // 同一份注音在正文里居中、在表格里跑到右边）
+          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
           // 表格单元格里的链接要能点（与正文同一套跳转）。非链接片段在这条路上是空操作。
           .onClick(() => {
             if (piece.kind === MdInlineKind.Link) {

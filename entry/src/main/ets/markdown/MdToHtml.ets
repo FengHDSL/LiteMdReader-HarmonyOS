@@ -210,6 +210,7 @@ export class MdToHtml {
       } else if (item.kind === MdInlineKind.Key) {
         body = '<kbd>' + body + '</kbd>';
       } else if (item.kind === MdInlineKind.Ruby) {
+        // 读音单独出现（前面没有基准字可配）时的兜底：仍写成上标，不丢字
         body = '<span class="rt">' + body + '</span>';
       } else if (item.kind === MdInlineKind.Under) {
         body = '<u>' + body + '</u>';
@@ -232,6 +233,22 @@ export class MdToHtml {
         if (decl.length > 0) {
           body = '<span style="' + decl + '">' + body + '</span>';
         }
+      }
+      // 注音配对：解析器把 `<ruby>汉<rt>hàn</rt></ruby>` 拍平成「基准片段 + Ruby 片段」两段。
+      // 以前导出只把读音包成 `<span class="rt">`（上标排在**右边**），阅读页已经改成
+      // 压在字正上方，两边观感不一致（用户实测"拼音怎么在字符右上角"）。
+      // 这里拼成**原生 `<ruby><rt>`**，浏览器自己把读音放到字正上方，与阅读页同形。
+      if (item.kind === MdInlineKind.Ruby) {
+        // 配上前一个基准片段时，读音已经由那边一起包进 <ruby>；孤立读音留上面的 .rt 上标兜底
+        if (k > 0 && items[k - 1].kind !== MdInlineKind.Ruby) {
+          continue;
+        }
+        out += body;
+        continue;
+      }
+      if (k + 1 < items.length && items[k + 1].kind === MdInlineKind.Ruby) {
+        out += '<ruby>' + body + '<rt>' + MdToHtml.esc(items[k + 1].text) + '</rt></ruby>';
+        continue;
       }
       out += body;
     }
