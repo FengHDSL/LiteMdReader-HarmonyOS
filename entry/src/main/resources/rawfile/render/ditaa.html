@@ -177,24 +177,62 @@
 
   function report(){
     try{
-      var h=Math.max(app.scrollHeight, document.body.scrollHeight);
-      if(window.arkHost&&window.arkHost.postHeight){ window.arkHost.postHeight(h); }
+      var app=document.getElementById('app');
+      if(window.__fit){
+        // 撑满模式（放大 / 导出抓图）：整页高度按滚动高度反映（抓全图）
+        var h=Math.max(app.scrollHeight, document.body.scrollHeight,
+                       document.documentElement.scrollHeight, document.documentElement.offsetHeight);
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
+      } else {
+        // 卡片模式：高度 = 内容实际布局高度（app.offsetHeight）；整页钉死该高度、禁止滚动。
+        // ⚠️ 内容未就绪（app 还空着）时不 pin、不上报小高度——否则宿主立刻截图会裁成一条。
+        if(app.offsetHeight<=60){return;}
+        var h2=Math.max(app.offsetHeight,40);
+        document.documentElement.style.height=h2+'px';
+        document.body.style.height=h2+'px';
+        document.documentElement.style.overflow='hidden';
+        document.body.style.overflow='hidden';
+        if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h2);}
+      }
     }catch(e){}
   }
-
   window.renderPayload=function(json){
     try{
       var o=(typeof json==='string')?JSON.parse(json):json;
-      if(o&&o.bg){ document.documentElement.style.background=o.bg; document.body.style.background=o.bg; }
-      app.innerHTML=toSvg(o&&o.src, !!(o&&o.dark));
-      report();
-      setTimeout(report,80);
-      setTimeout(report,260);
-    }catch(err){
-      app.className='err';
-      app.textContent='ditaa 渲染失败：'+(err&&err.message?err.message:err);
+      if(o.dark){document.body.classList.add('dark');}
+      if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
+      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
+      window.__fit=!!o.fit;
+      window.__render(o.src, o.dark, !!o.fit);
+      setTimeout(report,60); setTimeout(report,300);
+    }catch(e){
+      document.getElementById('app').innerHTML='<div class="err">'+e.message+'</div>';
       report();
     }
+  };
+  // **导出图片用**：临时把所有背景置为透明（PNG 走品红键控，导出后把品红转透明）
+  window.__exportBg=function(on){
+    try{
+      var els=[document.documentElement,document.body];
+      var app=document.getElementById('app');
+      if(app){ els.push(app); }
+      for(var i=0;i<els.length;i++){
+        var e=els[i];
+        if(!e){ continue; }
+        if(on){
+          if(e.__prevBg===undefined){ e.__prevBg=e.style.background||''; e.__prevBgc=e.style.backgroundColor||''; }
+          e.style.background='#ff00ff'; e.style.backgroundColor='#ff00ff';
+        } else if(e.__prevBg!==undefined){
+          e.style.background=e.__prevBg; e.style.backgroundColor=e.__prevBgc;
+        }
+      }
+      var svgs=document.querySelectorAll('svg');
+      for(var k=0;k<svgs.length;k++){
+        var sv=svgs[k];
+        if(on){ if(sv.__prevBg===undefined){ sv.__prevBg=sv.style.background||''; } sv.style.background='#ff00ff'; }
+        else if(sv.__prevBg!==undefined){ sv.style.background=sv.__prevBg; }
+      }
+    }catch(e){}
   };
   window.addEventListener('load',report);
 })();

@@ -113,6 +113,16 @@ class MdAtom {
   sample: MdPiece | null = null;
 }
 
+/**
+ * 折叠面板（`<details>`）的手动展开状态：**模块级**保存，跨"勾选任务 → 写回源码 →
+ * 整篇重解析 → 组件重建"存活。
+ *
+ * 为什么不能只用 @State：面板里的勾选框会改源码，宿主重新解析后 ForEach 键变化、
+ * MdBlockView 被重建，@State detailsOpen 归零 → 面板自己收起（用户实测：
+ * "展开后勾选会收起面板"）。键取 `block.id | summary`，勾选只改正文不改这两者。
+ */
+const detailsManualOpen: Map<string, boolean> = new Map<string, boolean>();
+
 export class MdViewUtil {
   /** 提示块视觉规格。颜色刻意在深浅主题下都保持可读。 */
   static calloutSpec(kind: MdCalloutKind): CalloutSpec {
@@ -1148,8 +1158,16 @@ export struct MdBlockView {
     if (l === 'swift') {
       return 'SW';
     }
+    // 仓颉（Cangjie）：官方标识的橙红调，压暗一档保证方块里白字够对比
+    if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
+      return '#FFB4441C';
+    }
     if (l === 'kotlin' || l === 'kt') {
       return 'KT';
+    }
+    // 仓颉（Cangjie）：华为自研语言，徽标 CJ
+    if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
+      return 'CJ';
     }
     if (l === 'html' || l === 'htm') {
       return 'HTML';
@@ -1556,7 +1574,13 @@ export struct MdBlockView {
    */
   @Builder
   inlinePieces(size: number, baseColor: string) {
-    ForEach(this.pieces(), (piece: MdPiece) => {
+    this.pieceRun(this.pieces(), size, baseColor)
+  }
+
+  /** 片段串 → Span 序列（inlinePieces 与注音堆叠路径共用）。 */
+  @Builder
+  pieceRun(list: MdPiece[], size: number, baseColor: string) {
+    ForEach(list, (piece: MdPiece) => {
         if (piece.kind === MdInlineKind.MathInline) {
           if (this.inlineMathImg(piece.text, size).length > 0) {
             // **公式图**（ContainerSpan **恒包**：结构不跨分支——批注底纹画在
@@ -1652,7 +1676,48 @@ export struct MdBlockView {
    */
   @Builder
   richTextSel(size: number, baseColor: string, lineMul: number, align: TextAlign, firstIndent: boolean) {
-    if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
+    if (MdViewUtil.hasRuby(this.pieces())) {
+      // **含注音 → 上下堆叠排版**：ArkUI 的 Span 是线性的，排不出"读音在基准字正上方"，
+      // 旧实现用 letterSpacing 硬挪（SDK 明确该属性对**每个字符**生效）只会把读音甩到
+      // 右上角。这里把注音对拆成 Column（读在上、字在下）与普通片段（Text）混排在
+      // Flex 里换行——这是唯一能做出真注音的形状。无注音段落完全不走这条，选区与
+      // 批注坐标不受影响。
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
+        ForEach(MdViewUtil.toAtoms(this.pieces()), (atom: MdAtom, ai: number) => {
+          if (atom.isRuby) {
+            Column({ space: 0 }) {
+              Text(atom.reading)
+                .fontSize(Math.max(9, Math.round(size * 0.5)))
+                .fontColor(this.palette.textTertiary)
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+              Text(atom.base)
+                .fontSize(size)
+                // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
+                .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
+                  ? atom.sample.highlight : baseColor)
+                .fontWeight(atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontFamily(HwFont.resolve(this.fontKey))
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+            }
+            .alignItems(HorizontalAlign.Center)
+          } else {
+            Text() {
+              this.pieceRun(atom.pieces, size, baseColor)
+            }
+            .fontSize(size)
+            .fontColor(baseColor)
+            .fontFamily(HwFont.resolve(this.fontKey))
+            .copyOption(CopyOptions.LocalDevice)
+          }
+        }, (atom: MdAtom, ai: number) => 'ra' + ai + '_'
+          + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
+      }
+      .width('100%')
+      .margin({ top: Math.round(size * 0.12), bottom: Math.round(size * 0.12) })
+    } else if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
       // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
       // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
       Text() {
@@ -3075,7 +3140,28 @@ export struct MdBlockView {
    */
   @State detailsOpen: boolean | null = null;
   private detailsShown(): boolean {
-    return this.detailsOpen === null ? this.block.open === true : this.detailsOpen;
+    if (this.detailsOpen !== null) {
+      return this.detailsOpen;
+    }
+    const manual: boolean | undefined = detailsManualOpen.get(this.detailsKey());
+    if (manual !== undefined) {
+      return manual;
+    }
+    return this.block.open === true;
+  }
+
+  /** 展开状态表的键：勾选任务只改正文，这两段都不变 → 状态能跨重建续上 */
+  private detailsKey(): string {
+    return this.block.id + '|' + this.block.plain;
+  }
+
+  /** 记录手动展开状态并回写 @State（触发本次重绘） */
+  private setDetailsShown(next: boolean): void {
+    if (detailsManualOpen.size > 128) {
+      detailsManualOpen.clear();
+    }
+    detailsManualOpen.set(this.detailsKey(), next);
+    this.detailsOpen = next;
   }
 
   /** 面板正文这一行的任务状态：-1 不是任务行 / 0 未勾 / 1 已勾 */
@@ -3340,7 +3426,7 @@ export struct MdBlockView {
       .onClick(() => {
         // 展开收起包 animateTo：内容出现 / 消失才有过渡动画
         this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
-          this.detailsOpen = !this.detailsShown();
+          this.setDetailsShown(!this.detailsShown());
         });
       })
 

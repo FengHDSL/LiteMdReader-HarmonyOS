@@ -792,7 +792,14 @@ export class MdParser {
         let pumlOut: string = '';
         if (MdParser.isPumlLang(lang.toLowerCase())) {
           const pumlSrc: string = body.join('\n');
-          pumlRoute = MdParser.pumlRouteOf(pumlSrc);
+          const fenceLang: string = lang.toLowerCase();
+          // 裸围栏名（```nwdiag / ```salt / ```ditaa）：内容里没有 @startXxx，
+          // 用围栏名本身当路由头，否则会走到"未知头部 → 留源码"那一支。
+          const bareHead: string = (fenceLang === 'nwdiag' || fenceLang === 'salt'
+            || fenceLang === 'ditaa') ? fenceLang : '';
+          pumlRoute = bareHead.length > 0 && MdParser.pumlHeadOf(pumlSrc).length === 0
+            ? MdParser.pumlRouteOf('@start' + bareHead + '\n' + pumlSrc)
+            : MdParser.pumlRouteOf(pumlSrc);
           pumlOut = pumlRoute === 'math' ? PlantumlBridge.mathSource(pumlSrc)
             : (pumlRoute === 'timeline' ? PlantumlBridge.toMermaidTimeline(pumlSrc)
               : (pumlRoute === 'tree' ? PlantumlBridge.toTree(pumlSrc)
@@ -3213,7 +3220,10 @@ export class MdParser {
 
   /** PlantUML 的几种写法（puml / iuml 是官方文件扩展名） */
   private static isPumlLang(l: string): boolean {
-    return l === 'plantuml' || l === 'puml' || l === 'iuml' || l === 'startuml';
+    // 独立图种也允许**裸围栏名**：```nwdiag / ```salt / ```ditaa（不少人这么写，
+    // 与 ```plantuml 里写 @startnwdiag 等价）
+    return l === 'plantuml' || l === 'puml' || l === 'iuml' || l === 'startuml'
+      || l === 'nwdiag' || l === 'salt' || l === 'ditaa';
   }
 
   /**

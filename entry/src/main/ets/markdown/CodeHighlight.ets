@@ -106,7 +106,9 @@ export function resolveFamily(lang: string): CodeFamily {
   if (l === 'js' || l === 'javascript' || l === 'jsx' || l === 'ts' || l === 'typescript'
     || l === 'tsx' || l === 'java' || l === 'c' || l === 'cpp' || l === 'c++' || l === 'cs'
     || l === 'csharp' || l === 'kotlin' || l === 'kt' || l === 'swift' || l === 'go'
-    || l === 'golang' || l === 'rust' || l === 'rs' || l === 'php' || l === 'ets' || l === 'arkts') {
+    || l === 'golang' || l === 'rust' || l === 'rs' || l === 'php' || l === 'ets' || l === 'arkts'
+    // 仓颉（Cangjie）：func / let / var / class / if 的形状与 C 系同源，走 C 系着色
+    || l === 'cangjie' || l === 'cj' || l === '仓颉') {
     return CodeFamily.CLike;
   }
   if (l === 'py' || l === 'python') {
