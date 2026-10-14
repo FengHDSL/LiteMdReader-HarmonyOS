@@ -25,8 +25,8 @@ const HTML_CSS: string = `
          font-size: 16px; line-height: 1.75; color: #1b1f27; background: #f3f6fb; }
   /* rich 导出的图表容器：markmap-autoloader 要求容器有确定高度 */
   .markmap { width: 100%; height: 420px; }
-  .mermaid, .ktx, .gv, .abc, .wfx { width: 100%; overflow-x: auto; text-align: center; }
-  .gv svg, .abc svg, .wfx svg { max-width: 100%; height: auto; }
+  .mermaid, .ktx, .gv, .abc, .wfx, .vgl { width: 100%; overflow-x: auto; text-align: center; }
+  .gv svg, .abc svg, .wfx svg, .vgl svg { max-width: 100%; height: auto; }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
   .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
@@ -355,7 +355,8 @@ export class MdToHtml {
 
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
-    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom', 'nomnoml', 'chart', 'plantuml'];
+    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
+      'nomnoml', 'chart', 'vega', 'plantuml'];
 
   private static isChartLang(lang: string): boolean {
     const l: string = lang.trim().toLowerCase();
@@ -433,6 +434,10 @@ export class MdToHtml {
     if (lang === 'wavedrom') {
       return '<div class="wfx" data-b64="' + b64 + '"></div>';
     }
+    if (lang === 'vega') {
+      // Vega-Lite：容器给一个最小高度，SVG 出图后由自身尺寸撑开
+      return '<div class="vgl" data-b64="' + b64 + '" style="width:100%;min-height:200px;overflow-x:auto"></div>';
+    }
     return '';
   }
 
@@ -496,6 +501,11 @@ export class MdToHtml {
     }
     if (has('echarts')) {
       scripts += '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>\n';
+    }
+    if (has('vega')) {
+      // 顺序不能反：vega-lite 的 UMD 按全局 vega 取依赖
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/vega@6.4.0/build/vega.min.js"></script>\n'
+        + '<script src="https://cdn.jsdelivr.net/npm/vega-lite@6.5.0/build/vega-lite.min.js"></script>\n';
     }
     if (has('abc')) {
       scripts += '<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>\n';
@@ -674,6 +684,19 @@ export class MdToHtml {
         + '          el.innerHTML = \'<div id="WaveDrom_Display_\' + i + \'"></div>\';\n'
         + '          window.WaveDrom.RenderWaveForm(i, src, "WaveDrom_Display_");\n'
         + '        } catch (e) { console.error("wavedrom render failed", e); el.textContent = b64u(el.dataset.b64); }\n'
+        + '      });\n'
+        + '    }\n' : '')
+      + (has('vega') ? '    if (window.vega && window.vegaLite) {\n'
+        + '      document.querySelectorAll(".vgl").forEach(function(el) {\n'
+        + '        try {\n'
+        + '          var sp = JSON.parse(b64u(el.dataset.b64));\n'
+        + '          if (sp.width === undefined) { sp.width = Math.max(240, el.clientWidth - 8); }\n'
+        + '          if (sp.height === undefined) { sp.height = 240; }\n'
+        + '          var v = new vega.View(vega.parse(vegaLite.compile(sp).spec),\n'
+        + '            { renderer: "svg", logLevel: vega.Warn, header: null, footer: null });\n'
+        + '          v.toSVG().then(function(svg) { el.innerHTML = svg; },\n'
+        + '            function(e) { console.error("vega render failed", e); el.textContent = b64u(el.dataset.b64); });\n'
+        + '        } catch (e) { console.error("vega render failed", e); el.textContent = b64u(el.dataset.b64); }\n'
         + '      });\n'
         + '    }\n' : '')
       + '  });\n'

@@ -37,6 +37,10 @@ export class ChartRuntimeService {
     if (lang === 'echarts') {
       return ['echarts.min.js'];
     }
+    if (lang === 'vega') {
+      // 顺序即依赖顺序：vega-lite 的 UMD 按全局 vega 取依赖，反了会 "vega is not defined"
+      return ['vega.min.js', 'vega-lite.min.js'];
+    }
     if (lang === 'katex') {
       // mhchem 必须排在 katex 之后：它是 KaTeX 的扩展包，加载时把自己的 \ce / \pu
       // 注册到**当时已存在**的 katex 对象上（阅读页的 render/katex.html 早就内联了它，

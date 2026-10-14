@@ -368,6 +368,7 @@ const CHARTS = [
   ['wavedrom', '6.23', '```wavedrom\n{signal:[{name:"clk",wave:"p..."}]}\n```\n'],
   ['abc', '6.24', '```abc\nX:1\nK:G\nG3D|G3D|\n```\n'],
   ['markmap', '6.25', '```markmap\n# root\n## child\n```\n'],
+  ['vega', '6.26 Vega-Lite（vega-lite / vl 别名）', '```vega-lite\n{"data":{"values":[{"a":1}]},"mark":"bar"}\n```\n'],
   ['mermaid', '6.21 PlantUML 时序图（语法桥转成 mermaid）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
 ];
 for (const [lang, sec, src] of CHARTS) {

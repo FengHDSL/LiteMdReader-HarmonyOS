@@ -91,9 +91,12 @@ export class ChartCache {
    *    参与者框 neutral 是灰框黑字、default 才是淡紫；用户对比别家渲染说"图表没颜色"）。
    *    主题只改渲染产物、不改缓存键 → 不升键就会出现"卡片还是灰的、放大才有色"，
    *    与 v16 那条"引擎升级必须升键"是同一个坑。
+   *  · v19（2026-10-14 十六次升级）：**新增 Vega-Lite 引擎**（vega 6.4.0 + vega-lite 6.5.0，
+   *    围栏 ```vega-lite / ```vl，模板 render/vega.html 走 vegaLite.compile → vega.View 出 SVG）。
+   *    新引擎本来没有旧缓存，仍按"引擎有变动就升键"的统一口径升一次。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v18|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v19|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

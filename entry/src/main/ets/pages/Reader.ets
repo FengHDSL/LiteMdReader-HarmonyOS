@@ -1416,7 +1416,7 @@ export struct Reader {
     }
     return m === 'mermaid' || m === 'markmap' || m === 'echarts' || m === 'abc'
       || m === 'graphviz' || m === 'flowchart' || m === 'wavedrom' || m === 'html'
-      || m === 'nomnoml' || m === 'chart' || m === 'plantuml' || m === 'code';
+      || m === 'nomnoml' || m === 'chart' || m === 'vega' || m === 'plantuml' || m === 'code';
   }
 
   /**

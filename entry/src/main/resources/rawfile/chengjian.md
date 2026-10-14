@@ -1102,6 +1102,62 @@ packet-beta
 
 > nomnoml 语法极简但表达力有限，复杂 UML（泳道 / 时序）请用 mermaid。
 
+### 5.12b Vega-Lite 声明式统计图（vega-lite）
+
+语言名 `vega-lite`（别名 `vl` / `vega`），内容是 **Vega-Lite 的 JSON spec**：
+`data` 给数据、`mark` 给图形类型、`encoding` 说哪个字段映射到什么通道。
+引擎是随包的 Vega 6.4.0 + Vega-Lite 6.5.0（BSD-3-Clause），出的是**矢量 SVG**，
+放大浮层里捏合不会糊：
+
+```vega-lite
+{
+  "data": { "values": [
+    { "平台": "鸿蒙", "篇数": 42 },
+    { "平台": "Web", "篇数": 88 },
+    { "平台": "iOS", "篇数": 31 }
+  ] },
+  "mark": { "type": "bar", "cornerRadiusEnd": 4 },
+  "encoding": {
+    "x": { "field": "平台", "type": "nominal" },
+    "y": { "field": "篇数", "type": "quantitative" },
+    "color": { "field": "平台", "type": "nominal" }
+  },
+  "width": 320,
+  "height": 200
+}
+```
+
+聚合与折线也一样写（`aggregate` 直接挂在通道上）：
+
+```vl
+{
+  "data": { "values": [
+    { "周": 1, "字数": 820 }, { "周": 2, "字数": 932 },
+    { "周": 3, "字数": 901 }, { "周": 4, "字数": 1290 }
+  ] },
+  "layer": [
+    { "mark": { "type": "line", "point": true } },
+    { "mark": { "type": "rule", "color": "firebrick", "strokeDash": [4, 4] },
+      "encoding": { "y": { "aggregate": "mean", "field": "字数" } } }
+  ],
+  "encoding": {
+    "x": { "field": "周", "type": "ordinal" },
+    "y": { "field": "字数", "type": "quantitative" }
+  },
+  "width": 320,
+  "height": 200
+}
+```
+
+三条边界说清楚：
+
+1. **内容必须是合法 JSON**（双引号、无注释、无尾随逗号），与 `chart` / `echarts` 同一口径。
+2. `width` / `height` 不写时按卡片宽度出图；写了就尊重作者的，但**超过卡宽会等比缩**，
+   不会把正文横向撑破。
+3. 深色卡片下只兜底色与文字颜色（轴标签、图例、网格线跟着翻），
+   **作者自己写过的 `config` 一律不覆盖** —— 自定义配色不会被引擎冲掉。
+   纯 Vega 语法（`"mark": {"type": ...}` 那套底层写法）也支持，但推荐用 Lite。
+
 ### 5.13 化学方程式（mhchem）
 
 数学公式引擎挂载了 **mhchem 扩展**，`\ce{}` 命令直接写化学式，自动处理
@@ -1134,6 +1190,9 @@ $$
 | `flowchart` | `st=>start: 开始` | 末尾要有 `e=>end:` |
 | `abc` | `X:1` | `K:` 调号行不能少 |
 | `wavedrom` | `{` 开头的 WaveJSON | 值必须带引号；顶层要有 signal / reg / assign |
+| `chart` | `{` 开头的 Chart.js 配置 | 颜色写 **CSS 格式**（`#2F63E8`），不是应用内部的 `#AARRGGBB` |
+| `nomnoml` | `[框 \| 字段 \| 方法]` | 复杂 UML（泳道 / 时序）改用 mermaid |
+| `vega-lite` | `{` 开头的 spec，含 `data` / `mark` / `encoding` | 必须合法 JSON；`width` / `height` 不写就按卡宽出图 |
 
 ---
 

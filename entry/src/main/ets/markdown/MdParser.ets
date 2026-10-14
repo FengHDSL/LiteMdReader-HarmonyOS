@@ -800,7 +800,7 @@ export class MdParser {
         if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
-          || langLower === 'html') {
+          || langLower === 'vega' || langLower === 'html') {
           blocks.push(MdBlockFactory.chart(langLower, bodyStr.split('\n'), blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
@@ -3125,6 +3125,11 @@ export class MdParser {
     }
     if (l === 'chartjs' || l === 'chart.js' || l === 'chart-js') {
       return 'chart';
+    }
+    // Vega-Lite 的常见写法：`vega-lite`（官方文档口径）、`vl`（缩写）、
+    // 以及只写 `vega` 的（内容是 Lite 语法时同样能出图；纯 Vega 语法走同一条路）
+    if (l === 'vega-lite' || l === 'vega_lite' || l === 'vega-lite-json' || l === 'vl' || l === 'vega') {
+      return 'vega';
     }
     if (l === 'mmd' || l === 'mermaidjs' || l === 'mermaid-js') {
       return 'mermaid';

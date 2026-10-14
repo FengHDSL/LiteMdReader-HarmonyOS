@@ -90,6 +90,11 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）'
   },
   {
+    id: 'vega', name: 'Vega / Vega-Lite', version: '6.4.0 / 6.5.0', date: '2026-10-14',
+    repo: 'https://github.com/vega/vega-lite',
+    desc: L10n.t('Vega-Lite 声明式统计图（JSON spec：柱状 / 折线 / 散点 / 面积 / 分面等），出 SVG')
+  },
+  {
     id: 'marked', name: 'marked', version: '18.1.0', date: '2026-10-05',
     repo: 'https://github.com/markedjs/marked',
     desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析'
@@ -178,6 +183,9 @@ export class EngineRegistry {
     }
     if (l === 'chart') {
       return 'chartjs';
+    }
+    if (l === 'vega' || l === 'vega-lite' || l === 'vega-lite-json' || l === 'vl') {
+      return 'vega';
     }
     return '';
   }

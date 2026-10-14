@@ -20,6 +20,7 @@
 | `graphviz`（别名 `dot` / `gv` / `viz`） | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
 | `nomnoml`（别名 `noml` / `nml`） | nomnoml（UMD，只依赖 graphre） | 1.x | 极简 UML：`[A] -> [B]`、`[类\|字段\|方法]` |
 | `chart`（别名 `chartjs` / `chart.js`） | Chart.js | 4.4.7 | 统计图，配置写 JSON（与 `echarts` 重叠，写法不同） |
+| `vega-lite`（别名 `vl` / `vega`） | Vega 6.4.0 + Vega-Lite 6.5.0（BSD-3-Clause） | 6.5.0 | 声明式统计图：JSON spec 写 `data` / `mark` / `encoding`，出**矢量 SVG**；分面、聚合、交互选择子集都认 |
 | `flowchart` | flowchart.js | 1.17.1 | 经典 `st=>start:` 写法的流程图 |
 | `abc` | abcjs | 6.7.1 | ABC 记谱法五线谱 |
 | `wavedrom` | WaveDrom | 3.7.0 | **数字波形图**、逻辑门图、寄存器位段图 |
@@ -56,6 +57,20 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
 | C4 架构图 | `C4Context` / `C4Container` / `C4Component` | ✅（能画，但⚠️ 见下面第 5 条：图天生 1000px+ 宽，卡片里缩得小） |
 | 数据包图 | `packet-beta` | ✅（中文标签实测可用） |
 | 架构图 | `architecture-beta` | ✅（中文 / 空格 / 点号标签实测可解析——见下面第 3 条，这条是升级到 11.17.2 才通的） |
+| 雷达图 | `radar-beta` | ✅（轴名英文） |
+| 矩形树图 | `treemap-beta` | ✅（节点名英文） |
+| 韦恩图 | `venn-beta` | ✅ |
+| 鱼骨图 | `ishikawa-beta` | ✅ |
+| 树形视图 | `treeView-beta` | ✅ |
+| Wardley 战略地图 | `wardley-beta` | ✅ |
+| 语法图 / EBNF | `railroad-ebnf-beta` | ✅ |
+| 事件建模 | `eventmodeling` | ✅ |
+| 泳道图 | `swimlane-beta` | ✅ |
+| ZenUML | `zenuml` | ❌ —— 要额外插件 `@mermaid-js/mermaid-zenuml`，实测它的浏览器包 **3.2MB**（自带一份 mermaid），比主库还大，为一种图种不值当；等价内容直接写 `sequenceDiagram` 就行 |
+
+上面这 33 个围栏不是照抄官方清单：是把《鸿蒙 Markdown 全量渲染示例》里的**每一个 mermaid 块**
+逐个喂给随包的 11.17.2 实测出来的结果（32 个出图、只有 ZenUML 不行），
+同一批样本也跑过 12.2.0 —— 结论是升级并不划算（见本节第 9 条）。
 
 实测踩到的坑（逐条在**随包引擎**上跑过；下面每条都在 11.17.2 重新验过一遍，不再拿旧构建的话糊弄你）：
 
@@ -85,6 +100,10 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    **只有时序图不同**——"图表家族没颜色"这一条从头到尾就是主题选择，不是引擎不支持。
    现在浅色走 `default`，与导出的网页同口径。
 8. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
+9. **"换最新库"不解决问题，实测过**：把 12.2.0 拉下来跑同一批样本 —— 时序图的参与者类型
+   仍然只认 `actor` / `participant`（`database` 等 6 种照样 Parse error）、C4 仍然是大圆头 +
+   `[Person]` 的新画法，反而把 `requirementDiagram` 从"能画"变成 `Parse error on line 8`。
+   所以随包版本停在 11.17.2，升级要连同 33 个样本一起重验，不是换文件那么简单。
 
 ## PlantUML（```plantuml）：时序 / 状态 / 类三张图桥成 mermaid，其余显示源码
 
