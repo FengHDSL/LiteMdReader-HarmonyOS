@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.05,maximum-scale=10,user-scalable=yes">
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{color:#1B1F27;-webkit-text-size-adjust:100%;}
+  body.dark{color:#ECEFF4;}
+  #app{padding:10px 12px;box-sizing:border-box;}
+  .salt-box{border:1px solid rgba(128,128,128,.55);border-radius:8px;padding:10px 12px;
+            margin:6px 0;display:inline-block;min-width:220px;vertical-align:top;}
+  .salt-box.nb{border:none;padding:2px 0;}
+  .salt-title{font:600 13px/1.6 system-ui,"HarmonyOS Sans SC",sans-serif;
+              margin:-2px 0 8px;padding-bottom:6px;border-bottom:1px solid rgba(128,128,128,.35);}
+  .salt-tabs{display:flex;gap:4px;margin:-4px 0 8px;}
+  .salt-tab{font:12px/1.6 system-ui,sans-serif;padding:2px 10px;border:1px solid rgba(128,128,128,.45);
+            border-bottom:none;border-radius:6px 6px 0 0;opacity:.7;}
+  .salt-tab.on{opacity:1;font-weight:600;background:rgba(128,128,128,.14);}
+  .salt-row{display:flex;align-items:center;gap:10px;min-height:24px;flex-wrap:wrap;}
+  .salt-cell{font:13px/1.7 system-ui,"HarmonyOS Sans SC",sans-serif;min-width:0;}
+  .salt-sep{height:1px;background:rgba(128,128,128,.45);margin:5px 0;width:100%;}
+  .salt-btn{font:12.5px/1 system-ui,sans-serif;padding:6px 12px;border:1px solid rgba(128,128,128,.6);
+            border-radius:6px;background:rgba(128,128,128,.12);display:inline-block;}
+  .salt-input{font:13px/1.2 ui-monospace,Menlo,Consolas,monospace;padding:5px 9px;min-width:118px;
+              border:1px solid rgba(128,128,128,.6);border-radius:5px;display:inline-block;
+              background:rgba(128,128,128,.07);}
+  .salt-check{display:inline-flex;align-items:center;gap:6px;font:13px/1.6 system-ui,sans-serif;}
+  .salt-mark{display:inline-block;width:13px;height:13px;border:1.5px solid currentColor;
+             border-radius:3px;text-align:center;font:11px/11px system-ui,sans-serif;}
+  .salt-mark.radio{border-radius:50%;}
+  .salt-bullet{display:inline-block;width:12px;color:rgba(128,128,128,.9);}
+  .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  var app=document.getElementById('app');
+
+  function esc(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  /**
+   * salt 单元格 → 线框控件。
+   *   [文字]   → 按钮        [x]/[ ] → 勾选框
+   *   (x)/( )  → 单选        "文字"  → 输入框
+   *   * 文字   → 列表项      其余    → 普通标签
+   */
+  function cell(txt){
+    // 同一格里可能并排多个控件（`[登录]  [注册]`）：拆出来逐个转，最多 6 个防死循环
+    var parts=String(txt).split(/\s{2,}/);
+    if(parts.length>1 && parts.length<=6){
+      var multi='';
+      for(var pi=0;pi<parts.length;pi++){
+        if(parts[pi].replace(/^\s+|\s+$/g,'').length===0){ continue; }
+        multi+=cell(parts[pi]);
+      }
+      return multi;
+    }
+    var s=String(txt).replace(/^\s+|\s+$/g,'');
+    if(s.length===0){ return '<span class="salt-cell"></span>'; }
+    var m=s.match(/^\[(.*?)\]\s*(.*)$/);
+    if(m){
+      var mark=m[1].trim();
+      var rest=m[2].replace(/^\s+|\s+$/g,'');
+      var label=rest.length? ' '+esc(rest) : '';
+      if(mark==='' || mark==='x' || mark==='X' || mark===' '){
+        var on=(mark==='x'||mark==='X');
+        return '<span class="salt-check"><span class="salt-mark">'+(on?'✓':'')+'</span>'+label+'</span>';
+      }
+      return '<span class="salt-btn">'+esc(mark)+'</span>'+label;
+    }
+    m=s.match(/^\((.*?)\)\s*(.*)$/);
+    if(m){
+      var rmark=m[1].trim();
+      var rrest=m[2].replace(/^\s+|\s+$/g,'');
+      var rlab=rrest.length? ' '+esc(rrest) : '';
+      var ron=(rmark==='x'||rmark==='X'||rmark==='o'||rmark==='O');
+      return '<span class="salt-check"><span class="salt-mark radio">'+(ron?'●':'')+'</span>'+rlab+'</span>';
+    }
+    m=s.match(/^"(.*?)"\s*(.*)$/);
+    if(m){
+      var val=m[1];
+      var tail=m[2].replace(/^\s+|\s+$/g,'');
+      return '<span class="salt-input">'+esc(val)+'</span>'+(tail.length? ' '+esc(tail):'');
+    }
+    m=s.match(/^\*\s+(.*)$/);
+    if(m){ return '<span class="salt-cell"><span class="salt-bullet">•</span>'+esc(m[1])+'</span>'; }
+    return '<span class="salt-cell">'+esc(s)+'</span>';
+  }
+
+  function isSep(l){
+    var t=l.replace(/\s+/g,'');
+    return t.length>0 && /^-+$|^=+$/.test(t);
+  }
+
+  /** salt 源码 → HTML 线框 */
+  function render(src){
+    var raw=String(src||'').replace(/\r\n?/g,'\n').split('\n');
+    var out='';
+    var stack=[];       // 打开的 box：{title, nb, rows}
+    var cur=null;
+
+    function flushBox(){
+      if(!cur){ return ''; }
+      var html='<div class="salt-box'+(cur.nb?' nb':'')+'">';
+      if(cur.title.length){ html+='<div class="salt-title">'+esc(cur.title)+'</div>'; }
+      if(cur.tabs.length){
+        html+='<div class="salt-tabs">';
+        for(var t=0;t<cur.tabs.length;t++){
+          html+='<span class="salt-tab'+(t===0?' on':'')+'">'+esc(cur.tabs[t])+'</span>';
+        }
+        html+='</div>';
+      }
+      html+=cur.body;
+      html+='</div>';
+      return html;
+    }
+
+    for(var k=0;k<raw.length;k++){
+      var line=raw[k].replace(/\t/g,'  ');
+      var t=line.replace(/^\s+|\s+$/g,'');
+      if(t.length===0){ continue; }
+      if(/^@start/i.test(t)||/^@end/i.test(t)){ continue; }
+      if(/^\/\//.test(t)){ continue; }
+      // 开 box：{  /  {+  /  {-  /  {^"标题"  /  {#
+      var open=t.match(/^\{([+\-#*]?)(?:\^"([^"]*)")?/);
+      if(open){
+        var body=flushBox();
+        if(body.length){ out+=body; }
+        cur={ nb:(open[1]==='-'), title:(open[2]||''), tabs:[], body:'' };
+        stack.push(cur);
+        continue;
+      }
+      // 关 box
+      if(t==='}'){
+        var b2=flushBox();
+        if(b2.length){ out+=b2; }
+        stack.pop();
+        cur=stack.length? stack[stack.length-1] : null;
+        continue;
+      }
+      if(!cur){ cur={ nb:true, title:'', tabs:[], body:'' }; stack.push(cur); }
+      // 页签：{|"A"|"B"} 形态
+      var tbs=t.match(/^\{\|\s*(.*)\}$/);
+      if(tbs){
+        var parts=tbs[1].split('|');
+        for(var q=0;q<parts.length;q++){
+          var nm=parts[q].replace(/"/g,'').replace(/^\s+|\s+$/g,'');
+          if(nm.length){ cur.tabs.push(nm); }
+        }
+        continue;
+      }
+      if(isSep(t)){
+        cur.body+='<div class="salt-sep"></div>';
+        continue;
+      }
+      // 一行：竖线分格
+      var cells=t.split('|');
+      var row='<div class="salt-row">';
+      for(var c=0;c<cells.length;c++){
+        row+=cell(cells[c]);
+      }
+      row+='</div>';
+      cur.body+=row;
+    }
+    var last=flushBox();
+    if(last.length){ out+=last; }
+    return out;
+  }
+
+  function report(){
+    try{
+      var h=Math.max(app.scrollHeight, document.body.scrollHeight);
+      if(window.arkHost&&window.arkHost.postHeight){ window.arkHost.postHeight(h); }
+    }catch(e){}
+  }
+
+  window.renderPayload=function(json){
+    try{
+      var o=(typeof json==='string')?JSON.parse(json):json;
+      document.body.className=(o&&o.dark)?'dark':'';
+      if(o&&o.bg){ document.documentElement.style.background=o.bg; document.body.style.background=o.bg; }
+      app.className='';
+      app.innerHTML=render(o&&o.src);
+      report();
+      setTimeout(report,80);
+      setTimeout(report,260);
+    }catch(err){
+      app.className='err';
+      app.textContent='salt 渲染失败：'+(err&&err.message?err.message:err);
+      report();
+    }
+  };
+  window.addEventListener('load',report);
+})();
+</script>
+</body></html>

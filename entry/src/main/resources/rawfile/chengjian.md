@@ -1192,6 +1192,60 @@ $$
 
 > 行内也可以用：水的电离 $\ce{H2O <=> H+ + OH-}$ 是可逆反应。
 
+### 5.13b PlantUML 的独立图种（网络图 / 盐图 / ditaa）
+
+PlantUML 官方离线内核**自带 14 个图种**（时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 /
+WBS / 甘特 / JSON / YAML / Archimate / ER），另外三个内核没有渲染器的图种由澄笺自己出图：
+
+**网络图 nwdiag**（`@startnwdiag`）——按「网络」归组设备并标出网段地址：
+
+```plantuml
+@startnwdiag
+network dmz {
+  address = "210.x.x.x/24"
+  web01 [address = "210.x.x.1"];
+  web02 [address = "210.x.x.2"];
+}
+network internal {
+  web01 [address = "172.16.x.1"];
+  db01 [address = "172.16.x.2"];
+}
+@endnwdiag
+```
+
+**盐图 salt**（`@startsalt`）——界面线框走查：`{+` 开带框容器，`|` 分列，`[按钮]`、
+`[x]` 勾选、`(o)` 单选、`"输入"` 输入框：
+
+```plantuml
+@startsalt
+{+
+  用户名 | "alice"
+  密码   | "******"
+  ----
+  [ ] 记住我 | (o) 保持登录
+  [登录]   [取消]
+}
+@endsalt
+```
+
+**ditaa**（`@startditaa`）——ASCII 图元转成带色方框（方框里写 `cBLU` / `cGRE` 之类
+颜色码就能着色，字母是色调：R 红 / G 绿 / B 蓝 / Y 黄 / C 青 / M 品红 / O 橙 / W 白 / K 灰）：
+
+```plantuml
+@startditaa
++---------+     +---------------+
+| 客户端  |---->| 服务端 cBLU   |
++---------+     +---------------+
+     |                |
+     v                v
++---------------------------+
+|      数据库 cGRE          |
++---------------------------+
+@endditaa
+```
+
+> 这三个图种归在「设置 → 引擎管理 → PlantUML」开关下，关掉 PlantUML 就一起关。
+
 ### 5.14 图表速查
 
 | 语言名 | 首行怎么写 | 最容易踩的坑 |

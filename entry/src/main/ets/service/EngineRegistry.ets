@@ -94,7 +94,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     id: 'plantuml', name: 'PlantUML（官方内核）', version: '1.2026.8', date: '2026-09-06',
     repo: 'https://github.com/plantuml/plantuml',
     desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；'
-      + '盐图、nwdiag、ditaa、数学公式、时间线、文件树这六个图种内核没有渲染器，改走 KaTeX / mermaid / 制表符树 / 源码')
+      + '内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树')
   },
   {
     id: 'chartjs', name: 'Chart.js', version: '4.5.1', date: '2026-10-14',
@@ -194,6 +194,12 @@ export class EngineRegistry {
       return 'nomnoml';
     }
     if (l === 'plantuml') {
+      return 'plantuml';
+    }
+    // nwdiag / salt / ditaa：PlantUML 家族的独立图种，内核没有渲染器，
+    // 由澄笺自己出图（nwdiag 桥 mermaid、salt 译 HTML 线框、ditaa 解析成 SVG）。
+    // 统一归到 plantuml 引擎开关下，用户在「引擎管理」关一次就全关。
+    if (l === 'nwdiag' || l === 'salt' || l === 'ditaa') {
       return 'plantuml';
     }
     if (l === 'chart') {

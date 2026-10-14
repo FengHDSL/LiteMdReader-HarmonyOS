@@ -675,4 +675,128 @@ export class PlantumlBridge {
     }
     return out.join('\n');
   }
+
+  /**
+   * nwdiag（网络图）→ mermaid flowchart。
+   *
+   * PlantUML 离线内核**没有 nwdiag 渲染器**（只会画「Diagram not supported」错误卡），
+   * ditaa 与 salt 同理。nwdiag 的语义其实很简单：一组「网络」各自挂若干设备
+   * （设备可带 address）。用 mermaid 的**总线画法**表达最贴切也最好读：
+   * 每个 network 画一个方节点（标题 + 网段），成员设备连到它；同一设备属于多个网络
+   * 就连到多个网络节点 —— 结构一目了然，且完全复用已在跑的 mermaid 引擎。
+   *
+   * 输入形态：
+   *   network dmz {
+   *     address = "210.x.x.x/24"
+   *     web01 [address = "210.x.x.1"];
+   *     web02 [address = "210.x.x.2"];
+   *   }
+   * 返回空串 = 不是可识别的 nwdiag（调用侧回落代码块）。
+   */
+  static toMermaidNwdiag(src: string): string {
+    const body: string[] = PlantumlBridge.blockBody(src, false);
+    if (body.length === 0) {
+      return '';
+    }
+    const out: string[] = ['flowchart LR'];
+    // 网络节点：id → 显示标签
+    const netId: string[] = [];
+    const netLabel: string[] = [];
+    // 设备：id → 显示名；地址按「网络序号」记录（同一设备在多个网络可有不同地址）
+    const devId: string[] = [];
+    const devName: string[] = [];
+    const edges: string[] = [];
+    let curNet: string = '';
+    let curNetIdx: number = -1;
+    let netAddr: string = '';
+
+    const netIndex = (name: string): number => {
+      for (let k = 0; k < netId.length; k++) {
+        if (netId[k] === name) {
+          return k;
+        }
+      }
+      netId.push(name);
+      netLabel.push(name);
+      return netId.length - 1;
+    };
+    const devIndex = (name: string): number => {
+      for (let k = 0; k < devId.length; k++) {
+        if (devId[k] === name) {
+          return k;
+        }
+      }
+      devId.push(name);
+      devName.push(name);
+      return devId.length - 1;
+    };
+
+    for (let k = 0; k < body.length; k++) {
+      let l: string = body[k];
+      if (l.length === 0) {
+        continue;
+      }
+      // 网络开始：`network 名字 {`（也容忍 `network {`）
+      const netOpen: RegExpMatchArray | null = l.match(/^network\s*([^\s{]*)\s*\{?$/i);
+      if (netOpen !== null) {
+        const rawName: string = netOpen[1].length > 0 ? netOpen[1] : ('net' + (netId.length + 1));
+        curNetIdx = netIndex(rawName);
+        curNet = rawName;
+        netAddr = '';
+        continue;
+      }
+      // 网段地址：`address = "x.x.x.x/24"` / `description = "..."`（补进网络节点标签）
+      const addrLine: RegExpMatchArray | null = l.match(/^(?:address|description)\s*=\s*"?([^"]*)"?$/i);
+      if (addrLine !== null && curNetIdx >= 0) {
+        const v: string = addrLine[1].trim();
+        if (v.length > 0) {
+          netAddr = netAddr.length === 0 ? v : (netAddr + ' / ' + v);
+          netLabel[curNetIdx] = (netId[curNetIdx] + '<br/>' + netAddr);
+        }
+        continue;
+      }
+      // 闭合大括号
+      if (l === '}' || l === '};') {
+        curNet = '';
+        curNetIdx = -1;
+        continue;
+      }
+      // 其它 `key = value` 属性行（group / color / visible 之类）忽略
+      if (/^[A-Za-z_]+\s*=/.test(l)) {
+        continue;
+      }
+      // 设备行：`web01 [address = "…", description = "…"];` / `web01;` / `web01`
+      const dev: RegExpMatchArray | null = l.match(/^([A-Za-z_][\w.-]*)\s*(?:\[(.*?)\])?\s*;?$/);
+      if (dev !== null && curNetIdx >= 0) {
+        const name: string = dev[1];
+        const attrs: string = (dev[2] === undefined || dev[2] === null) ? '' : dev[2];
+        const am: RegExpMatchArray | null = attrs.match(/address\s*=\s*"?([^",]*)"?/i);
+        const addr: string = am !== null ? am[1].trim() : '';
+        const di: number = devIndex(name);
+        const label: string = addr.length > 0 ? (name + '<br/>' + addr) : name;
+        // 同一设备在不同网络里的地址可能不同：以「网络下标」建独立节点，用同一显示名
+        const nodeId: string = name + '__n' + curNetIdx;
+        devName[di] = devName[di].length > 0 ? devName[di] : name;
+        edges.push('    ' + nodeId + '["' + label + '"] --- ' + curNet + 'nw');
+        continue;
+      }
+      // `group { ... }` 之类容器：跳过关键字行
+      if (/^(group|network)\b/i.test(l)) {
+        continue;
+      }
+      // 认得形状却认不出的行：保守返回空串（半桥比不桥更糟）
+      return '';
+    }
+
+    if (netId.length === 0 || edges.length === 0) {
+      return '';
+    }
+    for (let k = 0; k < netId.length; k++) {
+      out.push('    ' + netId[k] + 'nw(["' + netLabel[k] + '"])');
+    }
+    for (let k = 0; k < edges.length; k++) {
+      out.push(edges[k]);
+    }
+    return out.join('\n');
+  }
 }

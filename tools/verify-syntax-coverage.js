@@ -31,7 +31,7 @@ const ts = require(TS_MOD);
 const ROOT = path.join(__dirname, '..');
 const MD = path.join(ROOT, 'entry', 'src', 'main', 'ets', 'markdown');
 const OUT = path.join(ROOT, '.workbuddy', 'parser-cjs');
-const NEED = ['MdTypes', 'Emoji', 'MathLite', 'PlantumlBridge', 'MdParser'];
+const NEED = ['MdTypes', 'Emoji', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser'];
 
 function build() {
   fs.mkdirSync(OUT, { recursive: true });
@@ -406,9 +406,10 @@ const CHARTS = [
   ['markmap', '6.25', '```markmap\n# root\n## child\n```\n'],
   ['vega', '6.26 Vega-Lite（vega-lite / vl 别名）', '```vega-lite\n{"data":{"values":[{"a":1}]},"mark":"bar"}\n```\n'],
   ['plantuml', '6.21 PlantUML 时序图（离线内核原生渲染，源码不桥）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
-  ['zenuml', '5.30 ZenUML 写在 mermaid 围栏里（首行 zenuml → 换 zenuml 模板）',
-   '```mermaid\nzenuml\n    title Flow\n    @Actor User\n    User->App.open()\n```\n'],
-  ['zenuml', '5.30 ZenUML 直接把语言名当围栏（```zenuml）',
+  ['mermaid', '5.30 ZenUML 写在 mermaid 围栏里 → 转译成 mermaid 时序图（不再走外部插件，'
+   + '插件与随包 mermaid 11.17.2 约定错位会画 Syntax error）',
+   '```mermaid\nzenuml\n    title Flow\n    User->App: open()\n```\n'],
+  ['mermaid', '5.30 ZenUML 直接把语言名当围栏（```zenuml）同样转译',
    '```zenuml\nzenuml\n    Alice->Bob: hi\n```\n'],
   ['mermaid', '5.30 反向检查：普通 mermaid 块不许被认成 zenuml',
    '```mermaid\ngraph TD\n  A[开始] --> B[结束]\n```\n'],
@@ -444,12 +445,12 @@ const PUML_ROUTE = [
    '时间线内核没有渲染器 → 桥成 mermaid timeline'],
   ['@startfiles\n* entry\n  * src\n    * main\n      * ets\n      * resources\n@endfiles\n', 'code:filetree',
    '文件树内核没有渲染器 → 制表符树（代码块，离线也能看）'],
-  ['@startsalt\n{+[OK]|[Cancel]}\n@endsalt\n', 'code:plantuml',
-   '盐图没有便宜等价画法 → 保留源码（不许出现内核的错误卡）'],
-  ['@startnwdiag\nnetwork L {\n  device "P"\n}\n@endnwdiag\n', 'code:plantuml',
-   'nwdiag → 保留源码'],
-  ['@startditaa\n+--+\n| X |\n+--+\n@endditaa\n', 'code:plantuml',
-   'ditaa → 保留源码'],
+  ['@startsalt\n{+[OK]|[Cancel]}\n@endsalt\n', 'chart:salt',
+   '盐图 → render/salt.html 画 HTML 线框（内核无渲染器，不再留源码）'],
+  ['@startnwdiag\nnetwork L {\n  device [address = "10.0.0.1"]\n}\n@endnwdiag\n', 'nwdiag',
+   'nwdiag → 桥成 mermaid 网络图（总线画法）'],
+  ['@startditaa\n+--+\n| X |\n+--+\n@endditaa\n', 'chart:ditaa',
+   'ditaa → render/ditaa.html 画 SVG 方框'],
 ];
 for (const [body, want, title] of PUML_ROUTE) {
   probe('§6.21', title, '```plantuml\n' + body + '```', 'claim', (res) => {
@@ -473,6 +474,12 @@ for (const [body, want, title] of PUML_ROUTE) {
       return (cd.length === 1 && cd[0].lang === 'filetree' && tree === shape) ? true
         : '没转成制表符树（kind 序列 ' + kindSeq + '）：\n' + tree;
     }
+    if (want === 'nwdiag') {
+      const ch = blocks(res, K.Chart);
+      const first = ch.length === 1 ? ch[0].code.split('\n')[0].trim() : '';
+      return (ch.length === 1 && ch[0].lang === 'mermaid' && first === 'flowchart LR') ? true
+        : '没桥成 mermaid 网络图（实际 ' + (ch[0] ? ch[0].lang + '/' + first : '无图表块') + '）';
+    }
     if (want === 'code:plantuml') {
       const cd = blocks(res, K.Code);
       return (cd.length === 1 && cd[0].lang === 'plantuml') ? true
@@ -485,6 +492,30 @@ for (const [body, want, title] of PUML_ROUTE) {
         + (ch[0] ? ch[0].lang + '：' + ch[0].code.split('\n')[0] : '没有图表块（' + kindSeq + '）');
   });
 }
+// ZenUML 转译（2026-10-14 起）：插件路线废弃，改纯文本译成 mermaid 时序图。
+// 断言"首行是 sequenceDiagram"且"消息被译出来"——只判 lang 会漏掉"转成空图"。
+const ZENUML_ROUTE = [
+  ['```mermaid\nzenuml\n  title 登录\n  Alice -> Bob: 请求\n  Bob -> Alice: 回复\n```\n',
+   'Alice->>Bob: 请求', 'ZenUML 消息 → mermaid 时序消息'],
+  ['```mermaid\nzenuml\n  Alice.login() {\n    Bob.verify()\n    return ok\n  }\n```\n',
+   'Bob: verify()', 'ZenUML 调用块 → 发起者到被调者的消息'],
+  ['```mermaid\nzenuml\n  A -> B: hi\n  if (cache hit) {\n    B -> A: 命中\n  }\n```\n',
+   'alt cache hit', 'ZenUML if → mermaid alt（sequenceDiagram 没有 if 关键字）'],
+];
+for (const [src, needle, title] of ZENUML_ROUTE) {
+  probe('§5.30', title, src, 'claim', (res) => {
+    const ch = blocks(res, K.Chart);
+    if (ch.length !== 1 || ch[0].lang !== 'mermaid') {
+      return '没转成 mermaid 图表块（' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
+    }
+    const first = ch[0].code.split('\n')[0].trim();
+    if (first !== 'sequenceDiagram') {
+      return '首行不是 sequenceDiagram，实际 ' + first;
+    }
+    return ch[0].code.indexOf(needle) >= 0 ? true : '译文里找不到「' + needle + '」：\n' + ch[0].code;
+  });
+}
+
 // 导出侧的桥（PlantumlBridge 本身就是验收器：认不出一行就整体返回空串）
 const PUML_BRIDGE = [
   ['@startuml\n[*] --> 草稿\n草稿 --> 已发布 : 发布\n@enduml\n', 'stateDiagram-v2',
