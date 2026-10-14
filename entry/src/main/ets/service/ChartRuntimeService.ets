@@ -83,6 +83,13 @@ export class ChartRuntimeService {
     if (lang === 'abc') {
       return ['abcjs.min.js'];
     }
+    if (lang === 'nomnoml') {
+      // 顺序即依赖顺序：nomnoml 的 UMD 按全局 graphre 取布局引擎
+      return ['graphre.min.js', 'nomnoml.js'];
+    }
+    if (lang === 'chart') {
+      return ['chart.umd.js'];
+    }
     if (lang === 'wavedrom') {
       // 皮肤必须先于主库加载（主库读全局 WaveSkin，缺皮肤抛 "no skins found"）
       return ['wavedrom-skin-default.js', 'wavedrom.min.js'];

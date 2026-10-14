@@ -28,8 +28,8 @@ const HTML_CSS: string = `
          font-size: 16px; line-height: 1.75; color: #1b1f27; background: #f3f6fb; }
   /* rich 导出的图表容器：markmap-autoloader 要求容器有确定高度 */
   .markmap { width: 100%; height: 420px; }
-  .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml { width: 100%; overflow-x: auto; text-align: center; }
-  .gv svg, .abc svg, .wfx svg, .vgl svg, .puml svg { max-width: 100%; height: auto; }
+  .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml, .nml, .cjs { width: 100%; overflow-x: auto; text-align: center; }
+  .gv svg, .abc svg, .wfx svg, .vgl svg, .puml svg, .nml svg { max-width: 100%; height: auto; }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
   .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
@@ -495,6 +495,14 @@ export class MdToHtml {
       // 内核在场时的容器：runner 解码后交给 window.plantumlRenderToString 现场出图
       return '<div class="puml" data-b64="' + b64 + '"></div>';
     }
+    if (lang === 'nomnoml') {
+      return '<div class="nml" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'chart') {
+      // Chart.js 要 canvas（不是 SVG）：源码放外层 div（与其它容器同一读法），
+      // canvas 由 runner 塞进容器并按卡片宽定尺寸（responsive:false，避免导出页里无限 resize）
+      return '<div class="cjs" data-b64="' + b64 + '"><canvas></canvas></div>';
+    }
     if (lang === 'katex') {
       return '<div class="ktx" data-b64="' + b64 + '"></div>';
     }
@@ -579,12 +587,18 @@ export class MdToHtml {
     }
     if (has('mermaid') || has('zenuml')) {
       // CDN 兜底版本跟随包引擎对齐（原来钉在 10.9.3：内联失败时导出页会换一个
-      // 更老的 mermaid 渲染，与阅读页观感不一致）。zenuml 也走这一段：它就是 mermaid 的
-      // **外部图种插件**，先 mermaid 后插件（顺序即依赖顺序），同一个页面只挂一份 mermaid。
+      // 更老的 mermaid 渲染，与阅读页观感不一致）。
+      // zenuml **不需要插件**：解析层已由 ZenumlBridge 把它转成 mermaid 时序图源码
+      // （外部插件那条路在真机上报 Syntax error，资产已随 b7370ba 从包里删除）。
       scripts += '<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>\n';
-      if (has('zenuml')) {
-        scripts += '<script src="https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@1.0.1/dist/mermaid-zenuml.min.js"></script>\n';
-      }
+    }
+    if (has('nomnoml')) {
+      // 顺序不能反：nomnoml 的 UMD 按全局 graphre 取布局引擎
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/graphre@0.4.2/index.js"></script>\n'
+        + '<script src="https://cdn.jsdelivr.net/npm/nomnoml@1.7.0/dist/nomnoml.js"></script>\n';
+    }
+    if (has('chart')) {
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.js"></script>\n';
     }
     if (has('echarts')) {
       scripts += '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>\n';
@@ -595,7 +609,8 @@ export class MdToHtml {
         + '<script src="https://cdn.jsdelivr.net/npm/vega-lite@6.5.0/build/vega-lite.min.js"></script>\n';
     }
     if (has('abc')) {
-      scripts += '<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>\n';
+      // 版本跟包里那份对齐（原来钉 6.4.4，实际随包是 6.7.1）
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/abcjs@6.7.1/dist/abcjs-basic-min.js"></script>\n';
     }
     if (has('wavedrom')) {
       // 皮肤必须先于主库：wavedrom 读全局 WaveSkin，缺皮肤直接抛 "no skins found"
@@ -648,6 +663,10 @@ export class MdToHtml {
     const runnerCode: string = '\n<script>\n(function() {\n'
       + '  function b64u(b64) { var bin = atob(b64); var u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) { u[i] = bin.charCodeAt(i); } return new TextDecoder().decode(u); }\n'
       + '  function tryRun(fn) { try { fn(); } catch (e) { console.error("chart render failed", e); } }\n'
+      + '  // 渲染失败时的源码兜底（各图种共用）：源码要能安全塞进 <pre>\n'
+      + '  function escPre(s) {\n'
+      + '    return String(s).replace(/&/g, "\\u0026amp;").replace(/</g, "\\u0026lt;").replace(/>/g, "\\u0026gt;");\n'
+      + '  }\n'
       + (has('katex') ? '  // 宏定义宽容化（与 render/katex.html 的 __normalizeMacros 保持一致）：\n'
         + '  // \\newcommand / \\renewcommand / \\providecommand → \\def —— KaTeX 内置 texvc 宏\n'
         + '  // （\\R=\\mathbb{R} 等）与用户宏同名时会报 "attempting to redefine"，\\def 可静默覆盖。\n'
@@ -746,15 +765,11 @@ export class MdToHtml {
       + (has('mermaid') || has('zenuml') ? '    // 内联模式带的打包件与阅读页模板同一份（esbuild IIFE，只挂 '
         + '__esbuild_esm_mermaid）；\n'
         + '    // CDN 模式的 UMD 直接挂 window.mermaid。这里补齐前者，两种模式共用下面这段。\n'
+        + '    // zenuml 不需要注册：解析层 ZenumlBridge 已把它翻成 mermaid 时序图源码，\n'
+        + '    // 容器也是 .mermaid（外部插件那条路真机报 Syntax error，资产已从包里删除）。\n'
         + '    if (!window.mermaid && window.__esbuild_esm_mermaid) {\n'
         + '      window.mermaid = window.__esbuild_esm_mermaid.default;\n'
         + '    }\n'
-        + (has('zenuml') ? '    // zenuml 是 mermaid 的**外部图种插件**：注册之后 .mermaid 容器里\n'
-          + '    // 首行为 zenuml 的源码才会被认出来（实测 11.17.2 有 registerExternalDiagrams）。\n'
-          + '    // 注册失败不拦其它 mermaid 图种。\n'
-          + '    if (window.mermaid && window["mermaid-zenuml"]) {\n'
-          + '      tryRun(function() { mermaid.registerExternalDiagrams([window["mermaid-zenuml"]]); });\n'
-          + '    }\n' : '')
         + '    if (window.mermaid) {\n'
         + '      tryRun(function() { mermaid.initialize({ startOnLoad: false }); });\n'
         + '      document.querySelectorAll(".mermaid").forEach(async function(el, i) {\n'
@@ -798,6 +813,64 @@ export class MdToHtml {
         + '        }\n'
         + '      };\n'
         + '      pRun();\n'
+        + '    }\n' : '')
+      + (has('nomnoml') ? '    // nomnoml 极简 UML：与阅读页同一份 graphre + nomnoml（UMD，\n'
+        + '    // 导出侧此前**既没容器也没库，整块直接消失** —— 待办 #51 的正身）。\n'
+        + '    if (window.nomnoml) {\n'
+        + '      document.querySelectorAll(".nml").forEach(function(el) {\n'
+        + '        var src = b64u(el.dataset.b64);\n'
+        + '        try {\n'
+        + '          var out = nomnoml.renderSvg(src, document);\n'
+        + '          if (out && typeof out.then === "function") {\n'
+        + '            out.then(function (t) { el.innerHTML = t; })\n'
+        + '              .catch(function () { el.innerHTML = "<pre>" + escPre(src) + "</pre>"; });\n'
+        + '          } else if (out && out.nodeType) { el.appendChild(out); }\n'
+        + '          else if (typeof out === "string") { el.innerHTML = out; }\n'
+        + '          else { el.innerHTML = "<pre>" + escPre(src) + "</pre>"; }\n'
+        + '        } catch (e) {\n'
+        + '          el.innerHTML = "<pre>" + escPre(src) + "</pre>";\n'
+        + '          console.error("nomnoml render failed", e);\n'
+        + '        }\n'
+        + '      });\n'
+        + '    }\n' : '')
+      + (has('chart') ? '    // Chart.js 统计图（canvas）：配置就是容器里那份 JSON。\n'
+        + '    // 浅色常量与 render/chart.html 成对写死的那套保持一致（深色导出不做，\n'
+        + '    // 导出页本身是浅色文档）；数据集没给色时按类型补默认色，否则浅色底上看不见。\n'
+        + '    if (window.Chart) {\n'
+        + '      Chart.defaults.color = "#2A2F3A";\n'
+        + '      Chart.defaults.borderColor = "rgba(0,0,0,0.14)";\n'
+        + '      var PAL = ["#2F63E8", "#E8603B", "#1F9E66", "#8A5AF0", "#E08000", "#0E8FA8"];\n'
+        + '      document.querySelectorAll(".cjs").forEach(function(el, i) {\n'
+        + '        var cv = el.querySelector("canvas");\n'
+        + '        if (!cv) { return; }\n'
+        + '        var src = b64u(el.dataset.b64);\n'
+        + '        try {\n'
+        + '          var cfg = JSON.parse(src);\n'
+        + '          cfg.options = cfg.options || {};\n'
+        + '          cfg.options.responsive = false; cfg.options.animation = false;\n'
+        + '          cfg.options.maintainAspectRatio = false;\n'
+        + '          var w = Math.max(320, Math.min(el.parentNode ? el.parentNode.clientWidth || 900 : 900, 1200));\n'
+        + '          cv.width = w; cv.height = 420;\n'
+        + '          cv.style.maxWidth = "100%";\n'
+        + '          var t = (cfg.type || "").toLowerCase();\n'
+        + '          var ds = (cfg.data && cfg.data.datasets) || [];\n'
+        + '          for (var k = 0; k < ds.length; k++) {\n'
+        + '            var d = ds[k] || {}; var c = PAL[k % PAL.length];\n'
+        + '            if (t === "line" || t === "radar") {\n'
+        + '              if (!d.borderColor) { d.borderColor = c; }\n'
+        + '              if (!d.backgroundColor) { d.backgroundColor = "rgba(0,0,0,0)"; }\n'
+        + '              if (!d.pointBackgroundColor) { d.pointBackgroundColor = c; }\n'
+        + '            } else if (!d.backgroundColor) {\n'
+        + '              d.backgroundColor = c;\n'
+        + '              d.borderColor = c;\n'
+        + '            }\n'
+        + '          }\n'
+        + '          new Chart(cv, cfg);\n'
+        + '        } catch (e) {\n'
+        + '          el.innerHTML = "<pre>" + escPre(src) + "</pre>";\n'
+        + '          console.error("chart.js render failed", e);\n'
+        + '        }\n'
+        + '      });\n'
         + '    }\n' : '')
       + (has('katex') ? '    if (window.katex) {\n'
         + '      document.querySelectorAll(".ktx").forEach(function(el) {\n'

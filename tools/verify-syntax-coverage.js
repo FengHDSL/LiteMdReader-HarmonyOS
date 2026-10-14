@@ -64,6 +64,7 @@ build();
 for (const n of NEED) { delete require.cache[path.join(OUT, n + '.js')]; }
 const { MdParser, } = require(path.join(OUT, 'MdParser.js'));
 const { PlantumlBridge, } = require(path.join(OUT, 'PlantumlBridge.js'));
+const { ZenumlBridge, } = require(path.join(OUT, 'ZenumlBridge.js'));
 const { MdBlockKind, MdInlineKind, MdCalloutKind, MdTaskState, } = require(path.join(OUT, 'MdTypes.js'));
 
 // ── 取产物的几个小工具 ──
@@ -510,7 +511,41 @@ for (const [src, needle, title] of ZENUML_ROUTE) {
   });
 }
 
-// 导出侧的桥（PlantumlBridge 本身就是验收器：认不出一行就整体返回空串）
+// ZenUML 转译桥：判"翻出来的 mermaid 形状对不对"。这些形状每一条都对应一个真踩过的坑：
+// 标识符只认 ASCII 时中文参与者整条不匹配（→ 空串 → 退回代码块）；
+// 虚线箭头 `-->` 被贪心标识符吞成 `App-` 幻影参与者；
+// 花括号容器不补 end / mermaid 没有的 group 只丢开头 → 孤儿 end → mermaid 语法错。
+// 产物能否真被 mermaid 画出来，另用 .workbuddy/check-zen-mermaid.js 在浏览器里逐例验。
+const ZENUML = [
+  ['zenuml\n    title 流程\n    @Actor 读者\n    读者->App.open()\n    App-->读者: 渲染完成',
+   ['actor 读者', '读者->>App: open()', 'App-->>读者: 渲染完成'],
+   '中文参与者能翻（@Actor → actor，--> 走虚线 -->>）'],
+  ['zenuml\n    User->App.login()\n    group 批量导入\n      App->Store.import(files)\n    end',
+   ['User->>App: login()', 'App->>Store: import()'],
+   'mermaid 没有的 group：整块连 end 一起丢（产物里不许出现 end）'],
+  ['zenuml\n    A->B: hi\n    if (有公式) {\n      B->C: katex\n    }',
+   ['alt 有公式', 'B->>C: katex', 'end'],
+   'if{} → alt，`}` 必须补 end（否则孤儿 alt 不闭合，mermaid 直接语法错）'],
+  ['zenuml\n    Alice->Bob.check() {\n      Bob->Db: query\n      return rows\n    }\n    return ok',
+   ['Alice->>Bob: check()', 'Bob-->>Alice: rows', 'Bob-->>Alice: ok'],
+   '调用块的 return 回给**发起者**（以前 callerOf 找不到调用方，两条 return 都写成 Bob-->>Bob）'],
+  ['zenuml\n    A->B: hi\n    end', ['A->>B: hi'],
+   '孤立 end 不许透传（没有开过容器就没有 end）'],
+];
+for (const [body, need, title] of ZENUML) {
+  probe('§5.30', title, '', 'claim', () => {
+    const got = ZenumlBridge.toMermaid(body);
+    if (got.length === 0) { return '桥出了空（等于退回代码块）'; }
+    const miss = need.filter((s) => got.indexOf(s) < 0);
+    if (miss.length > 0) { return '缺 ' + JSON.stringify(miss) + '，实际：\n' + got; }
+    if (title.indexOf('不许出现 end') >= 0 || title.indexOf('整块连 end 一起丢') >= 0) {
+      const orphan = got.split('\n').some((l) => l.trim() === 'end');
+      if (orphan && need.indexOf('end') < 0) { return '出现孤儿 end：\n' + got; }
+    }
+    return true;
+  });
+}
+
 const PUML_BRIDGE = [
   ['@startuml\n[*] --> 草稿\n草稿 --> 已发布 : 发布\n@enduml\n', 'stateDiagram-v2',
    '导出：状态图桥成 stateDiagram-v2（不能塞进 sequenceDiagram）'],
