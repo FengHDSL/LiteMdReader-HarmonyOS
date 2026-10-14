@@ -12,6 +12,7 @@
  * 保证抽屉的玻璃质感和卡片完全同源。
  */
 
+import { TagStyle } from '../service/TagStyle';
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
@@ -5001,6 +5002,29 @@ export struct Reader {
             }
             .width('100%')
             .padding({ top: HwSpace.xxs })
+          }
+
+          // **文档标签**（用户要求）：信息卡里展示，样式按标签名确定性生成
+          //（同名同色、异名错开色相），深浅主题各有一套明暗值。
+          if (this.docTags.length > 0) {
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(this.docTags, (tag: string) => {
+                Text('#' + tag)
+                  .fontSize(HwType.caption)
+                  .fontColor(TagStyle.fg(tag, this.isDark()))
+                  .backgroundColor(TagStyle.bg(tag, this.isDark()))
+                  .borderRadius(HwRadius.pill)
+                  .border({ width: 1, color: TagStyle.border(tag, this.isDark()) })
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                  .margin({ right: 6, bottom: 6 })
+                  .onClick(() => {
+                    // 点标签 → 打开标签面板（与信息卡里的入口一致）
+                    this.openTagEditor();
+                  })
+              }, (tag: string) => 'ctxTag_' + tag)
+            }
+            .width('100%')
+            .padding({ top: HwSpace.xs })
           }
 
           Text(L10n.t('右滑目录 · 左滑注释 · 底部工具条可调字号与亮度 · 长按选中可荧光笔/批注'))

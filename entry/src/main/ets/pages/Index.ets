@@ -1512,6 +1512,8 @@ struct Index {
     .scrollable(ScrollDirection.Horizontal)
     .scrollBar(BarState.Off)
     .width('100%')
+    // 随分页切换渐入渐出（与页名同一节奏）
+    .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
   }
 
   /** 按标签过滤重建书架网格（保持书架顺序） */
@@ -7343,7 +7345,11 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
             }
             this.topBar()
-            this.tagBar()
+            // 标签筛选条**只属于书架页**（用户要求）：切到文房 / 写作日志时随之收起。
+            // 出现/消失走 transition（工程约定：任何显隐都要有过渡，不要硬切）。
+            if (this.shelfPage === 1) {
+              this.tagBar()
+            }
           }
           .width('100%')
           .justifyContent(this.isWideShelf() ? FlexAlign.SpaceBetween : FlexAlign.Start)
