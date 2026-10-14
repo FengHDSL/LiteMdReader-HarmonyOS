@@ -1831,7 +1831,11 @@ export class MdParser {
         const nextOk: boolean = from < n && src.charAt(from) !== ' ' && src.charAt(from) !== c;
         if (prevOk && nextOk) {
           const end: number = MdParser.findEmphClose(src, c, delim.length, from);
-          if (end > from) {
+          // 闭口侧同样要查词边界：CommonMark 对 `_` 的要求是**两侧都贴着词字符就不是定界符**，
+          // 只查开口会漏掉 `user_name_` 这种"开头合法、结尾在词内"的写法
+          // （charAt 越界给空串，isWordChar('') 为假 → 行尾闭口天然合法）
+          const closeOk: boolean = c !== '_' || !MdParser.isWordChar(src.charAt(end + delim.length));
+          if (end > from && closeOk) {
             buf = MdParser.flush(out, buf, bold, italic, strike, code);
             const kids: MdInline[] = MdParser.scan(src.substring(from, end),
               isDouble ? true : bold,
@@ -2989,12 +2993,23 @@ export class MdParser {
     return -1;
   }
 
+  /**
+   * 是否算"词内字符"（决定 `_` 能不能当强调定界符）。
+   *
+   * ⚠️ **必须连非 ASCII 字母一起算**：CommonMark 的 flanking 规则按 Unicode 字母/数字判定，
+   * 只量 ASCII（a-zA-Z0-9_）会让中文里的下划线全部误变斜体 ——
+   * `这是_一_个测试` 曾被排成斜体"一"，用户报的就是这条"下划线异常，没有区分斜体"
+   * （GitHub / commonmark.js 都按字面输出）。ASCII 部分保留位运算走快路，其余交给正则。
+   */
   private static isWordChar(ch: string): boolean {
     const code: number = ch.charCodeAt(0);
     const isDigit: boolean = code >= 48 && code <= 57;
     const isUpper: boolean = code >= 65 && code <= 90;
     const isLower: boolean = code >= 97 && code <= 122;
-    return isDigit || isUpper || isLower || ch === '_';
+    if (isDigit || isUpper || isLower || ch === '_') {
+      return true;
+    }
+    return code > 127 && /[\p{L}\p{N}]/u.test(ch);
   }
 
   // ────────────────────────── 块级匹配 ──────────────────────────

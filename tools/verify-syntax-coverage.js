@@ -84,6 +84,10 @@ function allInlines(res) {
 function withKind(res, kind) {
   return allInlines(res).filter((x) => x.kind === kind);
 }
+/** 带某个样式标志位的片段（bold / italic / strike / code 都是标志位，kind 仍是 Plain）。 */
+function withFlag(res, flag) {
+  return allInlines(res).filter((x) => x[flag] === true);
+}
 function blocks(res, kind) {
   return res.blocks.filter((b) => b.kind === kind);
 }
@@ -185,6 +189,37 @@ probe('§1.7', '反斜杠转义 \\* \\_ \\# \\` \\\\',
     if (t.indexOf('* 不是斜体 *') < 0) { return '转义的 * 没还原："' + t.slice(0, 40) + '"'; }
     if (t.indexOf('` 反引号 `') < 0) { return '转义的反引号没还原："' + t.slice(0, 60) + '"'; }
     return true;
+  });
+
+// 下划线 `_` 的**词边界**判定（用户报"下划线异常，没有区分斜体"）。
+// CommonMark 的 flanking 按 **Unicode** 字母/数字算，旧实现只量 ASCII(a-zA-Z0-9_)，
+// 于是中文里的下划线全变斜体：`这是_一_个测试` 被排成斜体"一"。
+// 这几条钉住三件事：中文词内不算强调、ASCII 词内不算强调、真正的 `_x_` 仍要算。
+probe('§1.7', '中文词内的下划线不转斜体（这是_一_个测试 按字面输出）',
+  '中文下划线：这是_一_个测试\n', 'claim', (res) => {
+    const it = withFlag(res, 'italic');
+    if (it.length > 0) { return '被排成斜体：' + JSON.stringify(it.map((x) => x.text)); }
+    if (flatText(res).indexOf('这是_一_个测试') < 0) { return '字面下划线丢了：' + flatText(res); }
+    return true;
+  });
+probe('§1.7', '中英混排词内的下划线不转斜体（Markdown_语法 / user_name_ / _name_x）',
+  '用 Markdown_语法 写，字段 user_name_ 与 _name_x 都要原样\n', 'claim', (res) => {
+    const it = withFlag(res, 'italic');
+    return it.length === 0 ? true : '被排成斜体：' + JSON.stringify(it.map((x) => x.text));
+  });
+probe('§1.7', '真正的下划线强调仍然生效（_斜体_ / __粗体__ / 词后空格 _README_）',
+  '_斜体_ 与 __粗体__ 与 见 _README_ 文件\n', 'claim', (res) => {
+    const ital = withFlag(res, 'italic').map((x) => x.text);
+    const bold = withFlag(res, 'bold').map((x) => x.text);
+    if (ital.indexOf('斜体') < 0) { return '_斜体_ 没成斜体：' + JSON.stringify(ital); }
+    if (bold.indexOf('粗体') < 0) { return '__粗体__ 没成粗体：' + JSON.stringify(bold); }
+    if (ital.indexOf('README') < 0) { return '_README_ 没成斜体：' + JSON.stringify(ital); }
+    return true;
+  });
+probe('§1.7', '星号可以做词内强调（这是*一*个测试 仍是斜体，与下划线不同规则）',
+  '星号中文：这是*一*个测试\n', 'claim', (res) => {
+    const it = withFlag(res, 'italic').map((x) => x.text);
+    return it.indexOf('一') >= 0 ? true : 'CommonMark 允许 * 词内强调，这里丢了：' + JSON.stringify(it);
   });
 
 // ════ §2 块级结构 ════
