@@ -1,7 +1,7 @@
 // 渲染引擎批量升级器（2026-10 全库升级）：
 //   · render/*.html 里内联的库 → 「整段替换」（只换库文本，保留模板其余手工逻辑）
 //   · rawfile/runtimes + tools/runtimes 的源库文件 → 同步为新版
-// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|chartjs|vega|viz|mathjax|plantuml|all]
+// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|chartjs|vega|viz|mathjax|plantuml|zenuml|all]
 // 新库文件先放进 $LOCALAPPDATA/Temp/upgrade（文件名见各函数里的 up(...)）。
 // ⚠️ 不升级的：mathjax v4（要 API 适配）、flowchart.js 1.18（npm 不再发浏览器包）、
 //    mermaid 12（实测把 requirementDiagram 跑挂）。理由都写在对应函数上方。
@@ -225,6 +225,33 @@ function plantuml() {
   console.log('  ' + out.trim());
 }
 
+/**
+ * ZenUML（@mermaid-js/mermaid-zenuml，mermaid 的外部图种插件）：
+ * 模板 render/zenuml.html 是**从 mermaid.html 派生**的（引擎段 + 插件 + 注册行），
+ * 所以升级顺序不能反 —— 先升 mermaid（mermaid()），再跑本函数重拼 zenuml.html，
+ * 否则会变成"新引擎配旧宿主"。本函数不做段落替换（派生物就该整页重拼）。
+ * 新文件放 $UP/mermaid-zenuml.min.js；同时同步 rawfile/runtimes 与 tools/runtimes
+ * 两份拷贝（导出 HTML 内联用，与 graphviz / vega 同样的双拷贝口径）。
+ */
+function zenuml() {
+  console.log('== ZenUML 插件 1.0.1 ==');
+  const srcPath = up('mermaid-zenuml.min.js');
+  if (fs.existsSync(srcPath)) {
+    const dst = path.join(ROOT, '.workbuddy/zenuml/package/dist/mermaid-zenuml.min.js');
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(srcPath, dst);
+    console.log('  in    mermaid-zenuml.min.js  ' + (fs.statSync(srcPath).size / 1048576).toFixed(2) + 'MB');
+  } else {
+    console.log('  --    $UP 里没有新插件，用现有副本重拼模板');
+  }
+  console.log('  ' + require('child_process')
+    .execSync('node "' + path.join(ROOT, 'tools/gen-zenuml-template.js') + '"', { encoding: 'utf8' }).trim());
+  deploy(path.join(ROOT, '.workbuddy/zenuml/package/dist/mermaid-zenuml.min.js'),
+    path.join(RAW_RUN, 'mermaid-zenuml.min.js'), 'rawfile mermaid-zenuml.min.js');
+  deploy(path.join(ROOT, '.workbuddy/zenuml/package/dist/mermaid-zenuml.min.js'),
+    path.join(TOOL_RUN, 'mermaid-zenuml.min.js'), 'tools mermaid-zenuml.min.js');
+}
+
 if (TASK === 'katex' || TASK === 'all') { katex(); }
 if (TASK === 'mermaid' || TASK === 'all') { mermaid(); }
 if (TASK === 'echarts' || TASK === 'all') { echarts(); }
@@ -237,4 +264,6 @@ if (TASK === 'turndown' || TASK === 'all') { turndown(); }
 if (TASK === 'chartjs' || TASK === 'all') { chartjs(); }
 if (TASK === 'vega' || TASK === 'all') { vega(); }
 if (TASK === 'plantuml' || TASK === 'all') { plantuml(); }
+// ⚠️ 必须排在 mermaid() 之后：zenuml.html 是从 mermaid.html 派生的
+if (TASK === 'zenuml' || TASK === 'all') { zenuml(); }
 console.log('done.');

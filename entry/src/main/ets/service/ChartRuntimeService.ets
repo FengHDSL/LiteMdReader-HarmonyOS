@@ -38,6 +38,10 @@ export class ChartRuntimeService {
     if (lang === 'mermaid') {
       return ['mermaid.min.js'];
     }
+    if (lang === 'zenuml') {
+      // 顺序即依赖顺序：插件要挂到已存在的 mermaid 上再注册
+      return ['mermaid.min.js', 'mermaid-zenuml.min.js'];
+    }
     if (lang === 'plantuml') {
       return MdToHtml.plantumlForExport(src).length > 0 ? ['mermaid.min.js'] : [];
     }

@@ -103,9 +103,13 @@ export class ChartCache {
    *    （模板 render/plantuml.html，阅读侧不再桥成 mermaid）。同一份源码在旧键里是
    *    "mermaid 桥出来的图"，新键才是"内核原生图"，不升盐就会**卡片读旧桥图、放大才变**
    *    （v17 那轮 blank 图的同款坑）。
+   *  · v22（2026-10-14 十九次升级）：**新增 ZenUML 引擎**（mermaid 外部图种插件
+   *    @mermaid-js/mermaid-zenuml 1.0.1，模板 render/zenuml.html = mermaid 引擎 + 插件）。
+   *    以前 zenuml 块走 mermaid 模板必然 "No diagram type detected"，现在是另一条 mode，
+   *    按"引擎有变动就升键"的统一口径升一次。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v21|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v22|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

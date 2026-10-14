@@ -371,6 +371,14 @@ const CHARTS = [
   ['markmap', '6.25', '```markmap\n# root\n## child\n```\n'],
   ['vega', '6.26 Vega-Lite（vega-lite / vl 别名）', '```vega-lite\n{"data":{"values":[{"a":1}]},"mark":"bar"}\n```\n'],
   ['plantuml', '6.21 PlantUML 时序图（离线内核原生渲染，源码不桥）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
+  ['zenuml', '5.30 ZenUML 写在 mermaid 围栏里（首行 zenuml → 换 zenuml 模板）',
+   '```mermaid\nzenuml\n    title Flow\n    @Actor User\n    User->App.open()\n```\n'],
+  ['zenuml', '5.30 ZenUML 直接把语言名当围栏（```zenuml）',
+   '```zenuml\nzenuml\n    Alice->Bob: hi\n```\n'],
+  ['mermaid', '5.30 反向检查：普通 mermaid 块不许被认成 zenuml',
+   '```mermaid\ngraph TD\n  A[开始] --> B[结束]\n```\n'],
+  ['mermaid', '5.30 反向检查：注释行开头 + 正文里出现 zenuml 字样不算 zenuml',
+   '```mermaid\n%% zenuml 的说明\ngraph TD\n  A[zenuml 字样在标签里] --> B[结束]\n```\n'],
 ];
 for (const [lang, sec, src] of CHARTS) {
   probe('§6 ' + sec, lang + ' 进图表通道', src, 'claim', (res) => {

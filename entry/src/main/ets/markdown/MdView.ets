@@ -2921,6 +2921,10 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'mermaid') {
                   DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'zenuml') {
+                  // zenuml 走**单独一页模板**（zenuml.html = mermaid 引擎 + zenuml 插件），
+                  // 插件自带 React，3.14MB 不塞进 mermaid.html 让所有 mermaid 卡片一起背
+                  DiagramWeb({ mode: 'zenuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'echarts') {
                   DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'abc') {

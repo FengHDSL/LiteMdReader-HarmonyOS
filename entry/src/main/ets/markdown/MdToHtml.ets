@@ -373,7 +373,7 @@ export class MdToHtml {
 
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
-    ['markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
+    ['markmap', 'mermaid', 'zenuml', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
       'nomnoml', 'chart', 'vega', 'plantuml'];
 
   private static isChartLang(lang: string): boolean {
@@ -397,6 +397,12 @@ export class MdToHtml {
     const l: string = lang.trim().toLowerCase();
     if (l === 'flowchart') {
       return EngineRegistry.isOff('flowchart', EngineRegistry.current())
+        || EngineRegistry.isOff('mermaid', EngineRegistry.current());
+    }
+    // zenuml 模板 = mermaid 引擎 + zenuml 插件（zenuml.html 由 mermaid.html 派生），
+    // 两者任一关闭都画不出 → 同 flowchart 的双闸口径
+    if (l === 'zenuml') {
+      return EngineRegistry.isOff('zenuml', EngineRegistry.current())
         || EngineRegistry.isOff('mermaid', EngineRegistry.current());
     }
     return EngineRegistry.isOff(EngineRegistry.langId(l), EngineRegistry.current());
@@ -446,6 +452,12 @@ export class MdToHtml {
       return '<div class="markmap" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'mermaid') {
+      return '<div class="mermaid" data-b64="' + b64 + '"></div>';
+    }
+    if (lang === 'zenuml') {
+      // **复用 .mermaid 容器**：导出页的 runner 是同一段 mermaid.render，
+      // zenuml 是 mermaid 的**外部图种**（首行 zenuml 由插件的 detector 认），
+      // 所以只要插件注册过，这个容器不需要第二条渲染分支
       return '<div class="mermaid" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'katex') {
@@ -530,8 +542,14 @@ export class MdToHtml {
         + '<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18.12/dist/browser/index.iife.min.js"></script>\n'
         + '<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.18.12/dist/browser/index.min.js"></script>\n';
     }
-    if (has('mermaid')) {
-      scripts += '<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>\n';
+    if (has('mermaid') || has('zenuml')) {
+      // CDN 兜底版本跟随包引擎对齐（原来钉在 10.9.3：内联失败时导出页会换一个
+      // 更老的 mermaid 渲染，与阅读页观感不一致）。zenuml 也走这一段：它就是 mermaid 的
+      // **外部图种插件**，先 mermaid 后插件（顺序即依赖顺序），同一个页面只挂一份 mermaid。
+      scripts += '<script src="https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js"></script>\n';
+      if (has('zenuml')) {
+        scripts += '<script src="https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@1.0.1/dist/mermaid-zenuml.min.js"></script>\n';
+      }
     }
     if (has('echarts')) {
       scripts += '<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>\n';
@@ -675,12 +693,18 @@ export class MdToHtml {
         + '        } catch (e) { console.error("markmap render failed", e); }\n'
         + '      });\n'
         + '    }\n' : '')
-      + (has('mermaid') ? '    // 内联模式带的打包件与阅读页模板同一份（esbuild IIFE，只挂 '
+      + (has('mermaid') || has('zenuml') ? '    // 内联模式带的打包件与阅读页模板同一份（esbuild IIFE，只挂 '
         + '__esbuild_esm_mermaid）；\n'
         + '    // CDN 模式的 UMD 直接挂 window.mermaid。这里补齐前者，两种模式共用下面这段。\n'
         + '    if (!window.mermaid && window.__esbuild_esm_mermaid) {\n'
         + '      window.mermaid = window.__esbuild_esm_mermaid.default;\n'
         + '    }\n'
+        + (has('zenuml') ? '    // zenuml 是 mermaid 的**外部图种插件**：注册之后 .mermaid 容器里\n'
+          + '    // 首行为 zenuml 的源码才会被认出来（实测 11.17.2 有 registerExternalDiagrams）。\n'
+          + '    // 注册失败不拦其它 mermaid 图种。\n'
+          + '    if (window.mermaid && window["mermaid-zenuml"]) {\n'
+          + '      tryRun(function() { mermaid.registerExternalDiagrams([window["mermaid-zenuml"]]); });\n'
+          + '    }\n' : '')
         + '    if (window.mermaid) {\n'
         + '      tryRun(function() { mermaid.initialize({ startOnLoad: false }); });\n'
         + '      document.querySelectorAll(".mermaid").forEach(async function(el, i) {\n'

@@ -811,16 +811,22 @@ export class MdParser {
           }
         }
         const isPuml: boolean = pumlRoute === 'timeline';
-        const langLower: string = pumlRoute === 'plantuml' ? 'plantuml'
-          : (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
         const bodyStr: string = (pumlRoute === 'plantuml' || pumlRoute === '') ? body.join('\n') : pumlOut;
+        // ZenUML：mermaid 的外部图种插件（@mermaid-js/mermaid-zenuml）。用户在 ```mermaid
+        // 围栏里以 `zenuml` 开头写（官方文档就是这个形状），也可能是 ```zenuml 直接当语言名。
+        // 内容**原样不动**（插件的 detector 认的就是首行的 zenuml），只是换模板：
+        // mermaid.html 没带插件，zenuml.html 带了（3.14MB，别让所有 mermaid 卡片一起背）。
+        const baseLang: string = pumlRoute === 'plantuml' ? 'plantuml'
+          : (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
+        const langLower: string = baseLang === 'mermaid' && MdParser.isZenumlBody(bodyStr) ? 'zenuml' : baseLang;
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
         // ⚠️ `plantuml` 只有在**路由判定交给内核**时才进图表通道：内核没有渲染器的
         // （盐图 / nwdiag / ditaa）pumlRoute 是空串，必须留代码块，否则会喂给内核
         // 画出一张「Diagram not supported」错误卡（verify-syntax-coverage §6.21 钉住）。
         const chartPlantuml: boolean = langLower !== 'plantuml' || pumlRoute === 'plantuml';
-        if (chartPlantuml && (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
+        if (chartPlantuml && (langLower === 'mermaid' || langLower === 'zenuml' || langLower === 'markmap'
+          || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
           || langLower === 'vega' || langLower === 'plantuml' || langLower === 'html')) {
@@ -3146,6 +3152,10 @@ export class MdParser {
     if (l === 'dot' || l === 'gv' || l === 'viz' || l === 'graphviz-dot') {
       return 'graphviz';
     }
+    // ZenUML 平时写在 ```mermaid 围栏里（首行 zenuml），也有直接拿语言名当围栏的
+    if (l === 'zenuml') {
+      return 'zenuml';
+    }
     if (l === 'chartjs' || l === 'chart.js' || l === 'chart-js') {
       return 'chart';
     }
@@ -3172,6 +3182,22 @@ export class MdParser {
   /** PlantUML 的几种写法（puml / iuml 是官方文件扩展名） */
   private static isPumlLang(l: string): boolean {
     return l === 'plantuml' || l === 'puml' || l === 'iuml' || l === 'startuml';
+  }
+
+  /**
+   * mermaid 块的首个有效行是不是 `zenuml`（插件的 detector 用的就是这条正则）。
+   * 判定与插件保持一致，不做多余发挥：`; zenuml`、注释行开头的都不算。
+   */
+  private static isZenumlBody(src: string): boolean {
+    const lines: string[] = src.split('\n');
+    for (let k = 0; k < lines.length; k++) {
+      const t: string = lines[k].trim();
+      if (t.length === 0 || t.startsWith('%%')) {
+        continue;
+      }
+      return /^zenuml\b/i.test(t);
+    }
+    return false;
   }
 
   /**

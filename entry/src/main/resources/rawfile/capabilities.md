@@ -15,6 +15,7 @@
 | 语言名 | 引擎 | 版本 | 用来画 |
 | --- | --- | --- | --- |
 | `mermaid`（别名 `mmd`） | Mermaid | 11.17.2 | 流程图、时序图、类图、状态图、ER 图、甘特、饼图、思维导图、时间线、C4、看板、数据包、架构图、块图、象限、需求、git 分支等 |
+| `zenuml`（也写在 ` ```mermaid ` 里，首行 `zenuml`） | Mermaid + ZenUML 插件 | 11.17.2 + 1.0.1 | ZenUML 时序图（`@Actor User` / `A->B: 文本` / `group`）。走单独一页 zenuml.html，插件自带 React（3.14MB），深色卡片里仍是白底面板 |
 | `echarts` | Apache ECharts | 6.1.0 | 统计图（柱 / 折线 / 饼 / 散点 / 雷达 / 仪表盘 / 关系图 / 树 / 矩形树图 等） |
 | `markmap` | markmap | 0.18.12 | 思维导图（Markdown 大纲直接成图） |
 | `graphviz`（别名 `dot` / `gv` / `viz`） | Viz.js（内嵌 Graphviz 16.1.0） | 3.31.0 | DOT 语言关系图、有向图、聚类 |
@@ -49,6 +50,7 @@
 | Chart.js | **4.5.1** | 4.5.1 | 本轮升级（原 4.4.7；升级后浏览器实测仍正常出图） |
 | Vega / Vega-Lite | 6.4.0 / 6.5.0 | 6.4.0 / 6.5.0 | 已最新（本轮刚引入） |
 | @plantuml/core | 1.2026.8 | 1.2026.8 | 已最新（本轮引入；随它打包的 Viz.js 是 **3.24.0**，与 ```dot 用的 3.31.0 是两份，各配各的引擎） |
+| @mermaid-js/mermaid-zenuml | 1.0.1 | 1.0.1 | 已最新（本轮引入；peer 支持 mermaid 10/11/12，随包这份在 11.17.2 上实测注册成功并出图） |
 | flowchart.js | 1.17.1 | 1.18.0 | **不升**：1.18.0 的 npm 包里只剩 `src/` 与 `index.js`，**不再发布浏览器 UMD**，接它得自搭 bundler，而这是条借 raphael 画的老引擎 |
 | MathJax | 3.2.2 | 4.1.3 | **不升**：v4 要 API 适配（`mjformula.html` 的加载与 `tex.packages` 配置按 v3 写）；它是 KaTeX 之外的兜底引擎，动它风险大于收益 |
 | marked | **18.1.1** | 18.1.1 | 本轮升级（编辑器即时渲染用；Node 里跑过一遍解析自检） |
@@ -93,10 +95,11 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
 | 语法图 / EBNF | `railroad-ebnf-beta` | ✅ |
 | 事件建模 | `eventmodeling` | ✅ |
 | 泳道图 | `swimlane-beta` | ✅ |
-| ZenUML | `zenuml` | ❌ —— 要额外插件 `@mermaid-js/mermaid-zenuml`，实测它的浏览器包 **3.2MB**（自带一份 mermaid），比主库还大，为一种图种不值当；等价内容直接写 `sequenceDiagram` 就行 |
+| ZenUML | `zenuml` | ✅ —— 2026-10-14 补上插件 `@mermaid-js/mermaid-zenuml` 1.0.1（见下面第 10 条：它自带一份 React，单独成页 zenuml.html，不并进 mermaid.html） |
 
 上面这 33 个围栏不是照抄官方清单：是把《鸿蒙 Markdown 全量渲染示例》里的**每一个 mermaid 块**
-逐个喂给随包的 11.17.2 实测出来的结果（32 个出图、只有 ZenUML 不行），
+逐个喂给随包的 11.17.2 实测出来的结果（当时 32 个出图、ZenUML 因缺插件不行；插件补齐后
+§5.30 那个样本实测出图 624×345，中文参与者与 `group` 也都验过）。
 同一批样本也跑过 12.2.0 —— 结论是升级并不划算（见本节第 9 条）。
 
 实测踩到的坑（逐条在**随包引擎**上跑过；下面每条都在 11.17.2 重新验过一遍，不再拿旧构建的话糊弄你）：
@@ -131,6 +134,27 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    仍然只认 `actor` / `participant`（`database` 等 6 种照样 Parse error）、C4 仍然是大圆头 +
    `[Person]` 的新画法，反而把 `requirementDiagram` 从"能画"变成 `Parse error on line 8`。
    所以随包版本停在 11.17.2，升级要连同 33 个样本一起重验，不是换文件那么简单。
+10. **ZenUML 的插件不并进 mermaid.html**：`@mermaid-js/mermaid-zenuml` 的浏览器包 3.14MB，
+   里面自带的是**一份 React + @zenuml/core**（不是第二份 mermaid）。并进主模板等于让所有
+   mermaid 卡片（包括不用 zenuml 的文档）多背 3.14MB，所以单独出一页 `zenuml.html`
+   = mermaid 引擎段 + 插件段 + 一行 `registerExternalDiagrams` 注册，宿主逻辑整份沿用
+   mermaid.html（由 `tools/gen-zenuml-template.js` 派生，`verify-chart-templates.js`
+   比对两份宿主段是否漂移）。⚠️ 插件的配色是它自己的（`.frame-border-inner` 写死 `#ffffff`），
+   **深色卡片里仍是白底面板**，mermaid 的 `theme:'dark'` 管不到它 —— 与 WaveDrom 同一类限制。
+   ⚠️ 代价也说清：`zenuml` 块要加载 6.5MB 的那一页（首次出图比 mermaid 慢一拍），
+   一篇文档里同时有 zenuml 与 mermaid 时两份模板各自驻留一份引擎。
+
+这一段就是**本文档自己渲染出来的** ZenUML（首行 `zenuml`，写在 ` ```mermaid ` 围栏里）：
+
+```mermaid
+zenuml
+    title 读一篇文档
+    @Actor 读者
+    @Application 澄笺
+    读者->MdParser.parse(markdown)
+    MdParser->MdView.render(blocks)
+    return 富文本
+```
 
 ## PlantUML（```plantuml）：官方内核离线渲染 14 个图种，另外 6 个分流
 

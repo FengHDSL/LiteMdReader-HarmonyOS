@@ -1184,6 +1184,7 @@ $$
 | 语言名 | 首行怎么写 | 最容易踩的坑 |
 | --- | --- | --- |
 | `mermaid` | `graph TD` / `sequenceDiagram` / `stateDiagram-v2` / `classDiagram` / `gantt` / `pie` | 语言名必须全小写；一张图一个代码块 |
+| `zenuml` | 写在 ` ```mermaid ` 里，首行 `zenuml`，然后 `@Actor User` / `User->App.open()` | 澄笺带了这个插件，直接画；深色卡片里仍是白底面板（插件自己的配色） |
 | `echarts` | 直接写 JSON 的 `{` | 必须是合法 JSON |
 | `markmap` | `# 根节点` | 根节点就是第一行标题 |
 | `graphviz` | `digraph 名字 {` | 别忘了最外层大括号 |

@@ -6,7 +6,7 @@
  * onPageEnd 后把源码 JSON 注入 window.renderPayload，页面渲染完成后通过
  * javaScriptProxy(arkHost.postHeight) 把真实高度回传，组件高度自适应。
  *
- * mode: katex | mermaid | echarts | abc | graphviz | flowchart | plantuml
+ * mode: katex | mermaid | zenuml | echarts | abc | graphviz | flowchart | plantuml
  *
  * **rawfile 资源分区说明**（体积敏感，勿混放）：
  *   · render/        —— 离屏渲染模板（库**已内联**进 html，整目录只被本组件加载；

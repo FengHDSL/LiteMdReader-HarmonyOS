@@ -132,11 +132,40 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
     console.log('  FAIL  mermaid 浅色主题不是 default：neutral 会把参与者框画成灰框黑字');
   }
   const salt = fs.readFileSync(path.join(ROOT, 'entry/src/main/ets/service/ChartCache.ets'), 'utf8');
-  if (/['"]v21\|['"]/.test(salt)) {
+  if (/['"]v22\|['"]/.test(salt)) {
     console.log('  ok    缓存键盐已随主题升级（旧主题烘出的灰框 PNG 不会留在机上）');
   } else {
     fails++;
-    console.log('  FAIL  改了 mermaid 主题或 PlantUML 内核但没升 ChartCache 键盐 → 卡片读旧图、放大才更新');
+    console.log('  FAIL  改了 mermaid 主题 / PlantUML 内核 / ZenUML 引擎但没升 ChartCache 键盐 → 卡片读旧图、放大才更新');
+  }
+}
+
+// zenuml.html 是**从 mermaid.html 派生**的（引擎段 + 插件 + 注册行，宿主逻辑整份沿用）。
+// 派生物最容易烂：mermaid.html 的宿主改了、zenuml.html 还停在旧的一份，
+// 于是"卡片在 mermaid 里正常、在 zenuml 里高度回传坏了"这类问题极难查。
+// 这里比对两者的宿主段（最后一个 <script>）是否只差注册行。
+{
+  const dir = path.join(ROOT, 'entry/src/main/resources/rawfile/render');
+  const mm = fs.readFileSync(path.join(dir, 'mermaid.html'), 'utf8');
+  const zuPath = path.join(dir, 'zenuml.html');
+  if (fs.existsSync(zuPath)) {
+    const zu = fs.readFileSync(zuPath, 'utf8');
+    const lastSeg = (s) => {
+      const re = /<script([^>]*)>([\s\S]*?)<\/script>/g;
+      let m, last = '';
+      while ((m = re.exec(s)) !== null) { last = m[2]; }
+      return last;
+    };
+    const same = lastSeg(mm) === lastSeg(zu);
+    const registered = /registerExternalDiagrams\(\[globalThis\["mermaid-zenuml"\]\]\)/.test(zu);
+    if (same && registered) {
+      console.log('  ok    zenuml.html 的宿主段与 mermaid.html 一致，且已注册 zenuml 插件');
+    } else {
+      fails++;
+      console.log('  FAIL  zenuml.html 与 mermaid.html 不同步（宿主段'
+        + (same ? '一致' : '已漂移') + '，注册行' + (registered ? '在' : '缺')
+        + '）→ 跑 node tools/gen-zenuml-template.js 重建');
+    }
   }
 }
 

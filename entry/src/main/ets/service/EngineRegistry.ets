@@ -50,6 +50,12 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: '流程图 / 时序图 / 甘特图 / 类图 / 状态图 / 饼图（12.x 应用内渲染异常，已回退 10.x 终版）'
   },
   {
+    id: 'zenuml', name: 'ZenUML（mermaid 插件）', version: '1.0.1', date: '2026-09-18',
+    repo: 'https://github.com/mermaid-js/mermaid/tree/main/packages/mermaid-zenuml',
+    desc: L10n.t('`zenuml` 首行的时序图（@Actor / A->B: 文本 / group）。插件自带 React 与 @zenuml/core，'
+      + '单独一页模板 zenuml.html，不并进 mermaid.html；深浅两套主题下都画白底面板（插件自己的配色）')
+  },
+  {
     id: 'markmap', name: 'markmap', version: '0.18.12', date: '2025-06-12',
     repo: 'https://github.com/markmap/markmap',
     desc: L10n.t('Markdown 思维导图（脑图，可缩放可折叠）')
@@ -162,6 +168,9 @@ export class EngineRegistry {
     }
     if (l === 'mermaid') {
       return 'mermaid';
+    }
+    if (l === 'zenuml') {
+      return 'zenuml';
     }
     if (l === 'markmap') {
       return 'markmap';
