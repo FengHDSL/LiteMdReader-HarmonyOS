@@ -624,13 +624,43 @@ probe('§8.1', 'span 的 font-weight 与背景色（不只认字色）',
     const dark = badge.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('1B1F27') >= 0);
     return dark.length === badge.length ? true : '底色那块自己的文字颜色丢了';
   });
-probe('§8.1', '渐变背景画不出来就不兜底（宁缺底不渲成黑块）',
+probe('§8.1', '渐变背景降成第一个色标的实心近似底（不再"没底"→ 白字白底看不见）',
   '<span style="background:linear-gradient(90deg,#a78bfa,#f472b6);color:#fff">渐变标签</span>\n', 'claim', (res) => {
     const all = allInlines(res);
     const withBg = all.filter((x) => (x.bg === undefined ? '' : x.bg).length > 0);
-    if (withBg.length > 0) { return '渐变被当成实心色登记了：' + JSON.stringify(withBg.map((x) => x.bg)); }
-    const white = all.filter((x) => (x.color === undefined ? '' : x.color).toUpperCase().indexOf('FFFFFF') >= 0);
-    return white.length > 0 ? true : '字色也一起丢了：' + JSON.stringify(all.map((x) => x.color));
+    // 政策改过来的那一条：以前"渐变画不出来就干脆没底"，可这类写法几乎总把字色设成白色，
+    // 底一丢 = 白字白底整块看不见（用户实测 8.1「渐变标签」消失）。现在取首个色标兜底。
+    if (withBg.length === 0) { return '渐变没兜底：白字白底会整块看不见'; }
+    if ((withBg[0].bg || '').toUpperCase() !== '#A78BFA') { return '没取第一个色标：' + withBg[0].bg; }
+    return true;
+  });
+probe('§8.1', 'url() 背景仍然丢（画不出也不瞎兜一个色）',
+  '<span style="background:url(a.png);color:#123456">图片底</span>\n', 'claim', (res) => {
+    const withBg = allInlines(res).filter((x) => (x.bg === undefined ? '' : x.bg).length > 0);
+    return withBg.length === 0 ? true : 'url() 被当成色值兜底了：' + JSON.stringify(withBg.map((x) => x.bg));
+  });
+probe('§8.1', '<small> 与 font-size:em/% 走相对字号通道',
+  '<small>小号字</small> <span style="font-size:1.4em">大字</span> <span style="font-size:12px">像素</span>\n',
+  'claim', (res) => {
+    const all = allInlines(res);
+    const small = all.find((x) => x.text === '小号字');
+    const big = all.find((x) => x.text === '大字');
+    const px = all.find((x) => x.text === '像素');
+    if (!small || small.size !== 0.82) { return '<small> 没拿到相对字号：' + JSON.stringify(small); }
+    if (!big || big.size !== 1.4) { return 'font-size:1.4em 没落地：' + JSON.stringify(big); }
+    // px 刻意不接：写死像素会让这段在用户放大字号后与正文脱节
+    if (!px || px.size !== undefined) { return 'px 字号不该被接受：' + JSON.stringify(px); }
+    return true;
+  });
+probe('§7.3', '折叠面板正文连空行按原样收，行号能对上原文（勾选要写回这一行）',
+  '<details>\n<summary>清单</summary>\n\n- [x] 甲\n- [ ] 乙\n\n</details>\n', 'claim', (res) => {
+    const d = blocks(res, K.Details);
+    if (d.length !== 1) { return '没收成 Details'; }
+    const b = d[0];
+    if ((b.codeLines || []).length !== 4) { return '正文行数 ' + ((b.codeLines || []).length) + '（空行被丢了）'; }
+    // 行号口径与 DocStore 的 lines[] 一致：**0 起**（orig() 给的就是 0 起）
+    if (b.bodyStart === undefined || b.bodyStart !== 2) { return 'bodyStart=' + b.bodyStart + '，对不上原文行号'; }
+    return true;
   });
 
 console.log('');

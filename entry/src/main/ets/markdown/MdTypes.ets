@@ -149,6 +149,12 @@ export interface MdBlock {
    * 没有这个字段时，带属性的写法整块会被块级 HTML 路径吞掉、正文被空行拆散。
    */
   open?: boolean;
+  /**
+   * 折叠面板**正文第一行的原文行号**（1 起；kind=Details 时有效）。
+   * 面板里的 `- [ ]` 要能勾选并写回文件，靠的就是"这一行在原文第几行"——
+   * 所以 codeLines 必须**连空行一起收**（索引与行号一一对应，渲染时空行只当间距）。
+   */
+  bodyStart?: number;
   /** 稳定 key（块序号） */
   id: string;
   kind: MdBlockKind;

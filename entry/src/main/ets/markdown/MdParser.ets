@@ -893,8 +893,16 @@ export class MdParser {
         // pandoc 写法 `::: {#x .details}` 同理（类名驱动的折叠面板）。
         if (ctnName === 'details' || (ctnAt.hit && MdParser.hasClass(ctnAt, 'details'))) {
           const dSum: string = ctnTitle.length > 0 ? ctnTitle : '点击展开';
-          const db: MdBlock = MdBlockFactory.details(dSum, innerLines.join('\n'), blocks.length,
+          // 面板正文**连空行一起按原样收**（索引 ↔ 原文行号一一对应）：
+          // 里面的 `- [ ]` 勾选要写回文件，缺行号就写不回（用户实测"展开后没法勾选"）。
+          const bodyRaw: string[] = [];
+          for (let q = ctnStart + 1; q <= i - 2; q++) {
+            bodyRaw.push(lines[q].trim());
+          }
+          const db: MdBlock = MdBlockFactory.details(dSum, bodyRaw.join('\n'), blocks.length,
             MdParser.orig(ctnStart));
+          db.codeLines = bodyRaw;
+          db.bodyStart = MdParser.orig(ctnStart + 1);
           if (ctnAt.id.length > 0) {
             db.anchor = ctnAt.id;
           }
@@ -938,29 +946,40 @@ export class MdParser {
       // 还会显成一段白字。
       if (MdParser.isDetailsStart(t)) {
         const detailsStart: number = i;
-        const bodyLines: string[] = [];
         let summary: string = '';
-        let openDefault: boolean = MdParser.tagHasOpen(t);
-        i++;
-        while (i < lines.length) {
-          const cur: string = lines[i].trim();
+        const openDefault: boolean = MdParser.tagHasOpen(t);
+        // 先扫一遍定位 summary 与 </details> 的行号：正文要**连空行按原样收**，
+        // 这样"面板里第 k 行"能直接换算成原文行号（勾选写回要用）。
+        let sumIdx: number = -1;
+        let closeIdx: number = lines.length;
+        let j: number = detailsStart + 1;
+        while (j < lines.length) {
+          const cur: string = lines[j].trim();
           const sumInner: string | null = MdParser.summaryText(cur);
           if (sumInner !== null) {
-            summary = sumInner;
-          } else if (cur.startsWith('</details')) {
-            i++;
-            break;
-          } else {
-            if (cur.length > 0) {
-              bodyLines.push(cur);
+            if (sumIdx < 0) {
+              sumIdx = j;
             }
+            summary = sumInner;
           }
-          i++;
+          if (cur.startsWith('</details')) {
+            closeIdx = j;
+            break;
+          }
+          j++;
+        }
+        const bodyFrom: number = sumIdx >= 0 ? sumIdx + 1 : detailsStart + 1;
+        const bodyLines: string[] = [];
+        for (let q = bodyFrom; q < closeIdx; q++) {
+          bodyLines.push(lines[q].trim());
         }
         const db: MdBlock = MdBlockFactory.details(summary, bodyLines.join('\n'), blocks.length,
           MdParser.orig(detailsStart));
         db.open = openDefault;
+        db.codeLines = bodyLines;
+        db.bodyStart = MdParser.orig(bodyFrom);
         blocks.push(db);
+        i = closeIdx >= lines.length ? lines.length : closeIdx + 1;
         continue;
       }
 

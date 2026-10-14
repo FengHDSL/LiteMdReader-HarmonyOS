@@ -1,4 +1,5 @@
 import { L10n } from '../service/L10n';
+import { MdParser } from './MdParser';
 /**
  * LiteMdReader · Markdown 渲染视图
  * ==================================
@@ -874,6 +875,13 @@ export struct MdBlockView {
 
   /** 任务列表勾选切换（点勾选框）：页面负责改写原文并保存/重载。 */
   taskToggleHandler: (blockId: string) => void = () => {
+  };
+
+  /**
+   * **折叠面板里**的任务行勾选：参数是"原文第几行"（0 起，由 block.bodyStart + 行索引算出）。
+   * 面板正文不是独立块，没有 blockId 可查，只能按行号回写（页面负责同步块内文本与文件）。
+   */
+  taskLineHandler: (blockId: string, lineNo: number) => void = () => {
   };
 
   /** 点击表格块：打开可视化表格编辑（页面按 srcLine 写回原文；只读文档由页面拦截）。 */
@@ -2876,6 +2884,32 @@ export struct MdBlockView {
   private detailsShown(): boolean {
     return this.detailsOpen === null ? this.block.open === true : this.detailsOpen;
   }
+
+  /** 面板正文这一行的任务状态：-1 不是任务行 / 0 未勾 / 1 已勾 */
+  private detailTaskOf(line: string): number {
+    const m: RegExpMatchArray | null = line.match(/^\s*[-*+]\s+\[( |x|X)\]\s*\S/);
+    return m === null ? -1 : (m[1] === ' ' ? 0 : 1);
+  }
+
+  /** 任务行去掉 `- [x] ` 前缀后的内容（走行内解析，粗体/代码/颜色都还在） */
+  private detailPieces(line: string): MdPiece[] {
+    const m: RegExpMatchArray | null = line.match(/^\s*[-*+]\s+\[[ xX]\]\s*(.*)$/);
+    return MdViewUtil.toPieces(MdParser.parseInline(m === null ? line : m[1]), this.dark);
+  }
+
+  /** 普通行：`- 事项` 这类列表项补一个圆点，其余原样走行内解析 */
+  private detailPlainPieces(line: string): MdPiece[] {
+    const c: string = line.charAt(0);
+    const text: string = (c === '-' || c === '*' || c === '+') && line.charAt(1) === ' '
+      ? '• ' + line.substring(2).trim() : line;
+    return MdViewUtil.toPieces(MdParser.parseInline(text), this.dark);
+  }
+
+  /** 面板正文第 idx 行对应的**原文行号**（0 起，与 DocStore 的 lines[] 同口径） */
+  private detailLineNo(idx: number): number {
+    const bs: number = this.block.bodyStart === undefined ? this.block.srcLine + 1 : this.block.bodyStart;
+    return bs + idx;
+  }
   /** 代码组的活动页签：blockId|index（多代码组各自独立） */
   @State groupActiveKey: string = '';
 
@@ -3118,14 +3152,44 @@ export struct MdBlockView {
       })
 
       if (this.detailsShown() && this.block.code.length > 0) {
-        Text(this.block.code)
-          .fontSize(this.bodySize)
-          .fontColor(this.palette.textSecondary)
-          .lineHeight(this.bodySize * this.lineMul)
-          .width('100%')
-          .padding({ left: HwSpace.sm, right: HwSpace.sm, bottom: HwSpace.sm })
-          // 出入场：展开时淡入下落，收起时淡出上移
-          .transition({ opacity: 0, translate: { y: -6 } })
+        // ⚠️ 正文**按行解析后渲染**，不是 `Text(block.code)` 一坨原文：
+        // 以前面板里的 `- [x] 确认…` 会带着字面 `- [ ]` 显示、也不能勾（用户实测），
+        // 而同一份清单写在面板外就是真勾选框——差别只在这条分支没走解析器。
+        Column({ space: 2 }) {
+          ForEach(this.block.codeLines, (line: string, idx: number) => {
+            if (this.detailTaskOf(line) >= 0) {
+              Row({ space: HwSpace.sm }) {
+                if (this.detailTaskOf(line) === 1) {
+                  SymbolGlyph($r('sys.symbol.checkmark_square_fill'))
+                    .fontSize(16)
+                    .fontColor([this.palette.accent])
+                    .margin({ top: this.bodySize * 0.28 })
+                } else {
+                  Column()
+                    .width(15)
+                    .height(15)
+                    .borderRadius(4)
+                    .border({ width: 1.5, color: this.palette.textTertiary })
+                    .margin({ top: this.bodySize * 0.32 })
+                }
+                this.richText(this.detailPieces(line), this.bodySize, this.palette.textSecondary,
+                  this.lineMul, TextAlign.Start)
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
+              .onClick(() => {
+                this.taskLineHandler(this.block.id, this.detailLineNo(idx));
+              })
+            } else if (line.length > 0) {
+              this.richText(this.detailPlainPieces(line), this.bodySize, this.palette.textSecondary,
+                this.lineMul, TextAlign.Start)
+            }
+          }, (line: string, idx: number) => 'dt' + idx + '_' + line.length + '_' + this.detailTaskOf(line))
+        }
+        .width('100%')
+        .padding({ left: HwSpace.sm, right: HwSpace.sm, bottom: HwSpace.sm })
+        // 出入场：展开时淡入下落，收起时淡出上移
+        .transition({ opacity: 0, translate: { y: -6 } })
       }
     }
     .width('100%')

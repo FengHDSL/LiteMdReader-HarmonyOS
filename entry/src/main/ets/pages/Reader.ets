@@ -2784,24 +2784,9 @@ export struct Reader {
       }
       const text: string = DocStore.readText(ctx, meta, this.docEncoding);
       const lines: string[] = text.split('\n');
-      const lineNo: number = block.srcLine;
-      if (lineNo < 0 || lineNo >= lines.length) {
-        this.toast(L10n.t('无法定位原文行'));
+      if (!this.flipTaskMarker(lines, block.srcLine)) {
+        this.toast(L10n.t('无法定位勾选框'));
         return;
-      }
-      const line: string = lines[lineNo];
-      const at: number = line.indexOf('[ ]');
-      if (at >= 0) {
-        lines[lineNo] = line.substring(0, at) + '[x]' + line.substring(at + 3);
-      } else {
-        const atLower: number = line.indexOf('[x]');
-        const atUpper: number = line.indexOf('[X]');
-        const atX: number = atLower >= 0 && (atUpper < 0 || atLower < atUpper) ? atLower : atUpper;
-        if (atX < 0) {
-          this.toast(L10n.t('无法定位勾选框'));
-          return;
-        }
-        lines[lineNo] = line.substring(0, atX) + '[ ]' + line.substring(atX + 3);
       }
       DocStore.update(ctx, this.docName, lines.join('\n'));
       // 写盘成功后**不整篇重载**：勾选只改一行里的 `[ ]`↔`[x]`（长度都不变），
@@ -2811,6 +2796,70 @@ export struct Reader {
       this.rawContent = lines.join('\n');
       flip();
       this.toast(done ? L10n.t('已取消勾选') : L10n.t('已完成'));
+    } catch (err) {
+      this.toast('勾选失败：' + DocStore.describeError(err as BusinessError));
+    }
+  }
+
+  /** 把 `lines[lineNo]` 这一行的 `[ ]` ↔ `[x]` 翻过来；不是任务行返回 false。 */
+  private flipTaskMarker(lines: string[], lineNo: number): boolean {
+    if (lineNo < 0 || lineNo >= lines.length) {
+      return false;
+    }
+    const line: string = lines[lineNo];
+    const at: number = line.indexOf('[ ]');
+    if (at >= 0) {
+      lines[lineNo] = line.substring(0, at) + '[x]' + line.substring(at + 3);
+      return true;
+    }
+    const atLower: number = line.indexOf('[x]');
+    const atUpper: number = line.indexOf('[X]');
+    const atX: number = atLower >= 0 && (atUpper < 0 || atLower < atUpper) ? atLower : atUpper;
+    if (atX < 0) {
+      return false;
+    }
+    lines[lineNo] = line.substring(0, atX) + '[ ]' + line.substring(atX + 3);
+    return true;
+  }
+
+  /**
+   * **折叠面板里**的任务行勾选。面板正文不是独立块（没有 blockId 可查），
+   * 所以按"原文行号"回写：先翻块内正文让界面立刻变，再按同一行号翻文件。
+   */
+  private onTaskLineToggle(blockId: string, lineNo: number): void {
+    const idx: number = this.blockIndexOf(blockId);
+    if (idx < 0) {
+      return;
+    }
+    const block: MdBlock = this.blocks[idx];
+    const bodyStart: number = block.bodyStart === undefined ? block.srcLine + 1 : block.bodyStart;
+    const k: number = lineNo - bodyStart;
+    const body: string[] = block.codeLines;
+    if (k < 0 || k >= body.length || !this.flipTaskMarker(body, k)) {
+      return;
+    }
+    block.code = body.join('\n');
+    this.bumpBlockRev(blockId);
+    if (this.docReadOnly || this.docBuiltin) {
+      // 只读 / 内置教程：勾选只留在内存做演示，重载后还原（与块外任务行为一致）
+      return;
+    }
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, this.docName);
+      if (meta === undefined) {
+        return;
+      }
+      const lines: string[] = DocStore.readText(ctx, meta, this.docEncoding).split('\n');
+      if (!this.flipTaskMarker(lines, lineNo)) {
+        this.toast(L10n.t('无法定位勾选框'));
+        return;
+      }
+      DocStore.update(ctx, this.docName, lines.join('\n'));
+      this.rawContent = lines.join('\n');
     } catch (err) {
       this.toast('勾选失败：' + DocStore.describeError(err as BusinessError));
     }
@@ -7553,6 +7602,9 @@ export struct Reader {
                     },
                     taskToggleHandler: (blockId: string) => {
                       this.onTaskToggle(blockId);
+                    },
+                    taskLineHandler: (blockId: string, lineNo: number) => {
+                      this.onTaskLineToggle(blockId, lineNo);
                     },
                     tableEditHandler: (blockId: string) => {
                       this.openTableEdit(blockId);

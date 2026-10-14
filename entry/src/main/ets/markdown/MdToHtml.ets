@@ -14,6 +14,7 @@
 
 import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCodeState, resolveFamily } from './CodeHighlight';
 import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
+import { MdParser } from './MdParser';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { util } from '@kit.ArkTS';
 
@@ -225,6 +226,31 @@ export class MdToHtml {
       out += body;
     }
     return out;
+  }
+
+  /**
+   * 折叠面板正文 → HTML：逐行解析，`- [x]` 收成**真 checkbox**（浏览器原生可点），
+   * 其余行按行内语法渲染。与阅读页同口径，导出网页不再显示字面 `- [ ]`。
+   */
+  static detailsBody(block: MdBlock): string {
+    const out: string[] = [];
+    const lines: string[] = block.codeLines;
+    for (let k = 0; k < lines.length; k++) {
+      const line: string = lines[k].trim();
+      if (line.length === 0) {
+        continue;
+      }
+      const m: RegExpMatchArray | null = line.match(/^[-*+]\s+\[( |x|X)\]\s*(.*)$/);
+      if (m !== null) {
+        out.push('<p class="task"><label><input type="checkbox"' + (m[1] === ' ' ? '' : ' checked')
+          + ' disabled /> ' + MdToHtml.inline(MdParser.parseInline(m[2])) + '</label></p>');
+      } else {
+        const bullet: boolean = /^[-*+]\s+\S/.test(line);
+        out.push('<p>' + (bullet ? '• ' : '')
+          + MdToHtml.inline(MdParser.parseInline(bullet ? line.substring(2).trim() : line)) + '</p>');
+      }
+    }
+    return out.join('');
   }
 
   /**
@@ -839,10 +865,12 @@ export class MdToHtml {
         } else if (block.kind === MdBlockKind.Divider) {
           body += '<hr />';
         } else if (block.kind === MdBlockKind.Details) {
-          // 折叠面板：浏览器原生 <details> 就能开合，导出网页里保持"能折叠"这件事
+          // 折叠面板：浏览器原生 <details> 就能开合，导出网页里保持"能折叠"这件事。
+          // ⚠️ 正文**逐行走行内解析**，不是 esc(原文)：以前面板里的 `- [x] 事项` 在导出
+          // 网页里是字面 `- [x]`，与阅读页（真勾选框）两套结果。
           body += '<details' + (block.open === true ? ' open' : '') + '>'
             + '<summary>' + MdToHtml.inline(block.inlines) + '</summary>'
-            + '<div class="dbody">' + MdToHtml.esc(block.code) + '</div>'
+            + '<div class="dbody">' + MdToHtml.detailsBody(block) + '</div>'
             + '</details>';
         } else if (block.kind === MdBlockKind.CodeGroup) {
           // 代码组：导出的静态网页没有页签脚本，退成"每段一个带标题的代码块"。
