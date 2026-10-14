@@ -38,9 +38,28 @@
       cfg.options.responsive = false;
       cfg.options.animation = false;
       cfg.options.maintainAspectRatio = false;
-      if (dark) {
-        Chart.defaults.color = '#ECEFF4';
-        Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';
+      // ⚠️ **两个主题都要显式设**：Chart.defaults 是**全局可变对象**，只在 dark 时赋值，
+      // 预渲染池先烘一张深色图再把 defaults 留在浅色文字/浅色边框上 —— 之后浅色模式
+      // 渲染的折线图、饼图就"什么都没有"（用户实测）。**必须 if/else 成对写**。
+      Chart.defaults.color = dark ? '#ECEFF4' : '#2A2F3A';
+      Chart.defaults.borderColor = dark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.14)';
+      // 数据集没给色时的兜底（Chart.js 折线默认 borderColor 是 rgba(0,0,0,0.1)，
+      // 浅色底上几乎看不见）——按类型补一组能看清的默认色
+      var PAL = ['#2F63E8', '#E8603B', '#1F9E66', '#8A5AF0', '#E08000', '#0E8FA8'];
+      if (cfg.data && cfg.data.datasets) {
+        var t = (cfg.type || '').toLowerCase();
+        for (var di = 0; di < cfg.data.datasets.length; di++) {
+          var ds = cfg.data.datasets[di] || {};
+          var c = PAL[di % PAL.length];
+          if (t === 'line' || t === 'radar') {
+            if (!ds.borderColor) { ds.borderColor = c; }
+            if (!ds.backgroundColor) { ds.backgroundColor = 'rgba(0,0,0,0)'; }
+            if (!ds.pointBackgroundColor) { ds.pointBackgroundColor = c; }
+          } else if (!ds.backgroundColor) {
+            ds.backgroundColor = c;
+          }
+          cfg.data.datasets[di] = ds;
+        }
       }
       var cv = document.createElement('canvas');
       var w = (cfg.options && cfg.options.width) ? cfg.options.width : 560;

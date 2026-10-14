@@ -5646,7 +5646,7 @@ struct Index {
       // 否则"继续阅读"卡与文档封面会被标签栏压住（实测）。
       .margin({
         top: this.padTop() + HwBar.pill + HwSpace.md
-          + (this.shelfPage === 1 ? (HwBar.pill + HwSpace.xs) : 0),
+          + (this.shelfPage === 1 ? 34 : 0),
         bottom: HwSpace.md
       })
 
@@ -7079,7 +7079,7 @@ struct Index {
             .margin({
               // 书架页有标签筛选条时再下移一条（否则横幅/封面被标签栏压住，用户实测）
               top: this.padTop() + HwBar.pill + HwSpace.md
-                + (this.shelfPage === 1 ? (HwBar.pill + HwSpace.xs) : 0)
+                + (this.shelfPage === 1 ? 34 : 0)
             })
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())

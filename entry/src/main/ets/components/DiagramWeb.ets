@@ -121,6 +121,12 @@ export struct DiagramWeb {
    * 递增即让页面 refit（mermaid/markmap/svg 按新容器重新适配）。
    */
   @Prop @Watch('doRefit') refitRequest: number = 0;
+
+  /**
+   * 卡片「刷新」请求计数（用户要求）：递增 → **整页重载**。
+   * 重载后 onPageEnd 会用最新 payload 重新注入，等于把这张图从头画一遍。
+   */
+  @Prop @Watch('doReload') reloadRequest: number = 0;
   private ctrl: webview.WebviewController = new webview.WebviewController();
   /** 页面是否已加载完成（onPageEnd 之后才允许 payload 热注入） */
   private webReady: boolean = false;
@@ -324,6 +330,21 @@ export struct DiagramWeb {
   }
 
   /** 重新自适应（旋转 / 尺寸互换后调用）。 */
+  /** 刷新：重载模板页（内容与尺寸由 onPageEnd → injectPayload 重新来一遍） */
+  private doReload(): void {
+    if (!this.webReady) {
+      return;
+    }
+    try {
+      this.webReady = false;
+      this.zoomApplied = 1;
+      this.ctrl.loadUrl($rawfile('render/' + this.renderTemplate() + '.html'));
+    } catch (e) {
+      // 重载失败不拦后续（用户再点一次即可）
+      this.webReady = true;
+    }
+  }
+
   private doRefit(): void {
     if (this.refitRequest <= 0) {
       return;

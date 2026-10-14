@@ -2991,7 +2991,7 @@ export struct MdBlockView {
    */
   @Builder
   cardHeader(label: string, mode: string, payload: string, geoKey: string, title: string,
-             showCodeToggle: boolean, showAnnotate: boolean) {
+             showCodeToggle: boolean, showAnnotate: boolean, showRefresh: boolean = false) {
     Row() {
       Text(label)
         .fontSize(HwType.caption - 1)
@@ -3000,6 +3000,24 @@ export struct MdBlockView {
         .borderRadius(HwRadius.pill)
         .backgroundColor(this.palette.quoteBg)
       Blank()
+      // **刷新按钮**（用户要求）：排在所有按钮最左边，点一下重新渲染这张图
+      //（丢弃缓存图 → 回到实时渲染并重载 Web 页，见 refreshHandler）
+      if (showRefresh) {
+        ImmersiveIconButton({
+          buttonSize: 28,
+          buttonMaterialShadow: false,
+          palette: this.palette,
+          buttonOnTap: () => {
+            this.refreshHandler(mode);
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+            .fontSize(14)
+            .fontColor([this.palette.textTertiary])
+        }
+        Column()
+          .width(HwSpace.xs)
+      }
       if (showAnnotate) {
         ImmersiveIconButton({
           buttonSize: 28,
@@ -3061,7 +3079,7 @@ export struct MdBlockView {
       if (this.chartImagePath('katex').length > 0) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
-          cardPadding: 0,
+          cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardBackground: this.palette.codeBlockBg,
           palette: this.palette
@@ -3076,7 +3094,7 @@ export struct MdBlockView {
       } else {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
-          cardPadding: 0,
+          cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardBackground: this.palette.codeBlockBg,
           palette: this.palette
@@ -3101,29 +3119,29 @@ export struct MdBlockView {
       if (this.block.lang.toLowerCase() === 'markmap' && !this.chartShowCode) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
-          cardPadding: 0,
+          cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
-            DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+              'mdchart_' + this.block.id, this.chartTitle(), true, false, true)
+            DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
         }
       } else if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
-          cardPadding: 0,
+          cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false, true)
             this.blockImage(this.block.lang.toLowerCase())
           }
           .width('100%')
@@ -3131,14 +3149,14 @@ export struct MdBlockView {
       } else {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
-          cardPadding: 0,
+          cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
             this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
+              'mdchart_' + this.block.id, this.chartTitle(), true, false, true)
             Stack({ alignContent: Alignment.TopEnd }) {
               Column() {
                 if (this.chartShowCode) {
@@ -3156,42 +3174,42 @@ export struct MdBlockView {
                   .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
                   .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
                 } else if (this.block.lang.toLowerCase() === 'markmap') {
-                  DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'mermaid') {
-                  DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 // （zenuml 分支已删：解析层转译成 mermaid，zenuml.html 与插件已从包内移除）
                 } else if (this.block.lang.toLowerCase() === 'echarts') {
-                  DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'abc') {
-                  DiagramWeb({ mode: 'abc', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'abc', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'graphviz') {
-                  DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'graphviz', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'flowchart') {
-                  DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'flowchart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'wavedrom') {
-                  DiagramWeb({ mode: 'wavedrom', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'wavedrom', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'nomnoml') {
                   // nomnoml / chart 此前**不在这条活渲染链里**，落到最后的 else → codeView，
                   // 于是"极简 UML""chart.js"永远只是一段代码（用户实测）。模板本身能出图，
                   // 但只有预渲染池命中才有 PNG，没命中就再没有第二次机会。
-                  DiagramWeb({ mode: 'nomnoml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'nomnoml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'chart') {
-                  DiagramWeb({ mode: 'chart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'chart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'vega') {
-                  DiagramWeb({ mode: 'vega', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'vega', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'plantuml') {
-                  DiagramWeb({ mode: 'plantuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'plantuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'html') {
-                  DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'salt') {
                   // ⚠️ 三个自绘图种**必须在这条活渲染链里**：漏了就会落到最后的 else →
                   // codeView，卡片上永远显示源码（用户实测"渲染卡片上方还是有一个代码块卡片"）。
                   // 这与当年 nomnoml / chart 漏在这里是同一个坑，加新图种时先看这条链。
-                  DiagramWeb({ mode: 'salt', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'salt', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'ditaa') {
-                  DiagramWeb({ mode: 'ditaa', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'ditaa', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'nwdiag') {
-                  DiagramWeb({ mode: 'nwdiag', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                  DiagramWeb({ mode: 'nwdiag', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else {
                   this.codeView()
                 }
@@ -3273,6 +3291,23 @@ export struct MdBlockView {
    * 以「源码」形态展示。**预览 ↔ 查看代码**切换（用户要求）：核对写法时不必离开阅读页。
    */
   @State chartShowCode: boolean = false;
+  /** 图表刷新计数：递增 → DiagramWeb 重新加载页面（@Watch 触发） */
+  @State chartReloadTick: number = 0;
+
+  /**
+   * 卡片「刷新」（用户要求）：把该块的**缓存图标记为失效**（回落到实时渲染），
+   * 并让 Web 实例重新加载页面重画一遍。
+   */
+  private refreshHandler(mode: string): void {
+    const key: string = this.blockKeyOf(mode);
+    if (this.brokenCharts.indexOf(key) < 0) {
+      // 复用"缓存图受损"这条现成通道：它会让本块走实时 Web（而不是读旧 PNG）
+      this.brokenCharts = this.brokenCharts.concat([key]);
+    }
+    this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+      this.chartReloadTick = this.chartReloadTick + 1;
+    });
+  }
 
   /** 代码组的活动下标 */
   private groupIndex(): number {
