@@ -694,11 +694,29 @@ probe('§9.4', 'Pandoc 属性块：标题多属性 / 围栏 div / 行内 span / 
     if (hit.kind !== I.Color) { return '有色值却没走 Color 通道（导出侧按 kind 分派，Plain 上的 color 会被丢掉）'; }
     return true;
   });
-probe('§9.4', 'Pandoc 图表编号 @fig: 仍然不解析（如实降级，别假装支持）',
-  '![示意](flow.png){#fig:flow width=60%}\n\n如图 @fig:flow 所示，受[@gruber2004]影响。\n', 'known', (res) => {
+probe('§9.4', 'Pandoc 图表编号：{#fig:x} 锚点按序编号 + @fig:x 交叉引用替换成「图 N」',
+  '![示意](flow.png){#fig:flow width=60%}\n\n如图 @fig:flow 所示，受[@gruber2004]影响。\n', 'claim', (res) => {
     const t = flatText(res);
-    return (t.indexOf('{#fig:flow') < 0 && t.indexOf('@fig:flow') >= 0)
-      ? true : 'pandoc 标记退化异常："' + t.trim().slice(0, 60) + '"';
+    if (t.indexOf('{#fig:flow') >= 0) {
+      return '花括号没被吃掉："' + t.trim().slice(0, 60) + '"';
+    }
+    if (t.indexOf('图 1：示意') < 0) {
+      return '图片没编号（期望「图 1：示意」）："' + t.trim().slice(0, 60) + '"';
+    }
+    if (t.indexOf('如图 图 1 所示') < 0) {
+      return '@fig:flow 没替换成「图 1」："' + t.trim().slice(0, 60) + '"';
+    }
+    return true;
+  });
+probe('§9.4', 'Pandoc 图表编号反向检查：没写 {#fig:} 的图片不自动编号',
+  '![普通图](a.png)\n\n正文。\n', 'claim', (res) => {
+    const t = flatText(res);
+    return t.indexOf('图 1：') < 0 ? true : '未被锚定的图片被自动编号了："' + t.trim().slice(0, 50) + '"';
+  });
+probe('§9.4', 'Pandoc @fig: 指向未定义锚点时保留原文（不瞎编编号）',
+  '如图 @fig:nope 所示。\n', 'claim', (res) => {
+    const t = flatText(res);
+    return t.indexOf('@fig:nope') >= 0 ? true : '未定义锚点被改写了："' + t.trim().slice(0, 50) + '"';
   });
 probe('§9.4', '不是属性块的花括号不误吞（`# 集合 { x }`、`[文字] { 三个词 }`）',
   '# 集合 { x }\n\n这里有 [文字] { 三个词 } 收尾。\n', 'claim', (res) => {

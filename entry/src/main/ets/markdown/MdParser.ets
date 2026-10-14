@@ -1434,6 +1434,8 @@ export class MdParser {
       }
     }
     MdParser.resolveNoteRefs(blocks, noteIndex);
+    // pandoc 图表编号 + @fig: 交叉引用（在脚注回填之后做：两者互不干扰）
+    MdParser.numberFigures(blocks);
 
     const notes: MdNote[] = [];
     if (noteLabels.length > 0) {
@@ -1564,6 +1566,11 @@ export class MdParser {
         if (prev.kind === MdInlineKind.Image || prev.kind === MdInlineKind.Link) {
           const close: number = cur.text.indexOf('}');
           if (close > 0 && MdParser.attrTailOf(cur.text.substring(1, close)).hit) {
+            // pandoc 图表锚点 `{#fig:x}`：记到图片片段上，收尾时统一编号（见 numberFigures）
+            const atFig: AttrTail = MdParser.attrTailOf(cur.text.substring(1, close));
+            if (prev.kind === MdInlineKind.Image && atFig.id.length > 0) {
+              prev.figId = atFig.id;
+            }
             const left: string = cur.text.substring(close + 1);
             if (left.length === 0) {
               list.splice(k, 1);
@@ -3706,6 +3713,91 @@ export class MdParser {
   }
 
   /** 把行内片段里的脚注引用替换成序号。 */
+  /**
+   * pandoc 图表编号：给带 `{#fig:x}` 锚点的图片按**文档顺序**编号，并把正文里的
+   * `@fig:x` 交叉引用替换成「图 N」。
+   *
+   * 编号写回图片的替代文字（`图 1：原替代文字`）——阅读页的图注与导出 HTML 的图注
+   * 都取这段文字，两端口径天然一致。锚点是显式声明的（没写 `{#fig:}` 的图片不编号），
+   * 所以不会出现"随手插张图被自动编号"的意外。
+   */
+  private static numberFigures(blocks: MdBlock[]): void {
+    const nums: Map<string, number> = new Map<string, number>();
+    let seq: number = 0;
+    // 第一遍：按文档顺序编号
+    for (let b = 0; b < blocks.length; b++) {
+      const inls: MdInline[] = blocks[b].inlines;
+      for (let k = 0; k < inls.length; k++) {
+        const it: MdInline = inls[k];
+        const raw: string | undefined = it.figId;
+        if (it.kind !== MdInlineKind.Image || raw === undefined || raw.length === 0) {
+          continue;
+        }
+        const key: string = MdParser.figKeyOf(raw);
+        if (key.length === 0 || nums.has(key)) {
+          continue;
+        }
+        seq++;
+        nums.set(key, seq);
+        it.text = '图 ' + seq + '：' + it.text;
+      }
+    }
+    if (seq === 0) {
+      return;
+    }
+    // 第二遍：正文里的 @fig:x → 图 N（只在 Plain 片段里替换）
+    for (let b = 0; b < blocks.length; b++) {
+      const inls2: MdInline[] = blocks[b].inlines;
+      for (let k = 0; k < inls2.length; k++) {
+        const it2: MdInline = inls2[k];
+        if (it2.kind !== MdInlineKind.Plain || it2.text.indexOf('@fig:') < 0) {
+          continue;
+        }
+        let out: string = it2.text;
+        let guard: number = 0;
+        while (guard < 32) {
+          guard++;
+          const at: number = out.indexOf('@fig:');
+          if (at < 0) {
+            break;
+          }
+          let end: number = at + 5;
+          while (end < out.length && /[\w.-]/.test(out.charAt(end))) {
+            end++;
+          }
+          const key2: string = out.substring(at + 5, end);
+          const n: number | undefined = nums.get(key2);
+          if (n === undefined) {
+            // 找不到锚点：留原文（宁可显示 @fig:xxx，也别瞎编编号）
+            const after: string = out.substring(end);
+            const head: string = out.substring(0, at) + '@fig:';
+            out = head + '\u0001' + key2 + after;
+            continue;
+          }
+          out = out.substring(0, at) + '图 ' + n + out.substring(end);
+        }
+        // 还原没找到锚点的占位符
+        it2.text = out.split('\u0001').join('');
+      }
+    }
+  }
+
+  /**
+   * 锚点键归一：`{#fig:x}` / `{#x}` / `@fig:x` 三种写法都归到同一个键 `x`。
+   * ⚠️ 两遍扫描的键必须同源——第一遍从 `{#fig:flow}` 取到 `fig:flow`、
+   * 第二遍从 `@fig:flow` 取到 `flow`，不归一就永远匹配不上（实测第一次就是这么漏的）。
+   */
+  private static figKeyOf(raw: string): string {
+    let k: string = raw.trim();
+    if (k.startsWith('#')) {
+      k = k.substring(1);
+    }
+    if (k.startsWith('fig:')) {
+      k = k.substring(4);
+    }
+    return k;
+  }
+
   private static resolveNoteRefs(blocks: MdBlock[], index: Map<string, number>): void {
     for (let k = 0; k < blocks.length; k++) {
       const list: MdInline[] = blocks[k].inlines;

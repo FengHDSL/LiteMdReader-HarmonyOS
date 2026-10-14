@@ -116,6 +116,8 @@ export interface MdInline {
    * 画不出来，解析器就不会写这个字段；渲染层拿它当"实色底"，与学习卡同一套通道。
    */
   bg?: string;
+  /** pandoc 图表锚点（`![图](a.png){#fig:x}` 里的 fig:x）——用于 @fig:x 交叉引用编号 */
+  figId?: string;
   /**
    * **相对字号**（1 = 正文字号）：`<small>` / `<span style="font-size:.8em">` 这类
    * 只改大小的写法。没设 = 跟随正文。渲染端乘在 bodySize 上，导出侧写成 `font-size:em`。
