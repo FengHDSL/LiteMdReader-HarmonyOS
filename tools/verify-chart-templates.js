@@ -170,5 +170,32 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
 }
 
 console.log('清单 → ' + OUT);
+// ════ 模板脚本语法体检（2026-10-14 真实事故：mermaid.html 里一条 // 行注释把整条
+// mermaid.initialize(...) 连同 }); 一起吃光 → 脚本语法错误 → **mermaid 全图种不可用**。
+// 这类事故只要把每个 <script> 丢给 vm.Script 编译一次就能当场抓住，成本近乎为零。）════
+(function syntaxSweep() {
+  const vm = require('vm');
+  const dir = path.join(ROOT, 'entry/src/main/resources/rawfile/render');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.html'));
+  let bad = 0;
+  for (const f of files) {
+    const html = fs.readFileSync(path.join(dir, f), 'utf8');
+    const blocks = html.match(/<script>[\s\S]*?<\/script>/g) || [];
+    blocks.forEach((b, idx) => {
+      const code = b.replace(/^<script>/, '').replace(/<\/script>$/, '');
+      try {
+        new vm.Script(code, { filename: f + '#script' + (idx + 1) });
+      } catch (e) {
+        bad++;
+        fails++;
+        console.log('  FAIL  ' + f + ' 第 ' + (idx + 1) + ' 段脚本语法错误：' + String(e.message).split('\n')[0]);
+      }
+    });
+  }
+  if (bad === 0) {
+    console.log('  ok    全部 ' + files.length + ' 个渲染模板的脚本段语法可编译（防"注释吃行"这类整页崩）');
+  }
+})();
+
 console.log(fails === 0 ? 'CHART TEMPLATES OK' : 'CHART TEMPLATES FAILED: ' + fails);
 process.exit(fails === 0 ? 0 : 1);
