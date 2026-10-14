@@ -5642,8 +5642,11 @@ struct Index {
         }
       }
       // bottom 保底间距：与下方文件夹行永远不贴住（网格模式横幅同款保底）
+      // ⚠️ 书架页多了标签筛选条时（用户要求），首块内容整体再下移一条，
+      // 否则"继续阅读"卡与文档封面会被标签栏压住（实测）。
       .margin({
-        top: this.padTop() + HwBar.pill + HwSpace.md,
+        top: this.padTop() + HwBar.pill + HwSpace.md
+          + (this.shelfPage === 1 ? (HwBar.pill + HwSpace.xs) : 0),
         bottom: HwSpace.md
       })
 
@@ -7074,7 +7077,9 @@ struct Index {
             // ⚠️ **不加 bottom margin**（用户反馈"卡片和书籍之间空隙太大"）：
             // 通栏卡与下一行的间距统一交给 rowsGap，和书与书之间的空隙保持一致。
             .margin({
+              // 书架页有标签筛选条时再下移一条（否则横幅/封面被标签栏压住，用户实测）
               top: this.padTop() + HwBar.pill + HwSpace.md
+                + (this.shelfPage === 1 ? (HwBar.pill + HwSpace.xs) : 0)
             })
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())

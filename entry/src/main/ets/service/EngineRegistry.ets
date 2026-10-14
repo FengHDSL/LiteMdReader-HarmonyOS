@@ -55,11 +55,13 @@ export const ENGINE_LIST: EngineInfo[] = [
     size: '3.42 MB',
   },
   {
-    id: 'zenuml', name: 'ZenUML（mermaid 插件）', version: '1.0.1', date: '2026-09-18',
+    // **已弃用的插件**：@mermaid-js/mermaid-zenuml 与随包 mermaid 11.17.2 内部约定错位，
+    // 真机 parse 必抛错（画成 Syntax error）。现改为 ZenumlBridge 纯文本转译成 mermaid
+    // 时序图；6.56MB 的 zenuml.html 与 3.14MB 插件已从包内删除，故体积记 0。
+    id: 'zenuml', name: 'ZenUML（已弃用，改纯文本转译）', version: '—', date: '2026-10-14',
     repo: 'https://github.com/mermaid-js/mermaid/tree/main/packages/mermaid-zenuml',
-    desc: L10n.t('`zenuml` 首行的时序图（@Actor / A->B: 文本 / group）。插件自带 React 与 @zenuml/core，'
-      + '单独一页模板 zenuml.html，不并进 mermaid.html；深浅两套主题下都画白底面板（插件自己的配色）'),
-    size: '6.56 MB',
+    desc: L10n.t('不再随包：真机改用纯文本转译（见 ZenumlBridge），输出 mermaid 时序图'),
+    size: '0 MB',
   },
   {
     id: 'markmap', name: 'markmap', version: '0.18.12', date: '2025-06-12',
@@ -188,7 +190,8 @@ export class EngineRegistry {
       return 'mermaid';
     }
     if (l === 'zenuml') {
-      return 'zenuml';
+      // 插件已弃用，zenuml 在解析层转译成 mermaid 时序图 → 归 mermaid 引擎管辖
+      return 'mermaid';
     }
     if (l === 'markmap') {
       return 'markmap';

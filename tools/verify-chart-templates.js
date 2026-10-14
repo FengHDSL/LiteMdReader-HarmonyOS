@@ -140,32 +140,18 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
   }
 }
 
-// zenuml.html 是**从 mermaid.html 派生**的（引擎段 + 插件 + 注册行，宿主逻辑整份沿用）。
-// 派生物最容易烂：mermaid.html 的宿主改了、zenuml.html 还停在旧的一份，
-// 于是"卡片在 mermaid 里正常、在 zenuml 里高度回传坏了"这类问题极难查。
-// 这里比对两者的宿主段（最后一个 <script>）是否只差注册行。
+// zenuml.html（6.56MB）与 mermaid-zenuml 插件（3.14MB）**已删除**：插件与随包
+// mermaid 11.17.2 内部约定错位、真机必报 Syntax error，改用 ZenumlBridge 纯文本转译。
+// 这条断言防止它们被误加回包里（体积一夜翻倍的元凶就是这一对）。
 {
-  const dir = path.join(ROOT, 'entry/src/main/resources/rawfile/render');
-  const mm = fs.readFileSync(path.join(dir, 'mermaid.html'), 'utf8');
-  const zuPath = path.join(dir, 'zenuml.html');
-  if (fs.existsSync(zuPath)) {
-    const zu = fs.readFileSync(zuPath, 'utf8');
-    const lastSeg = (s) => {
-      const re = /<script([^>]*)>([\s\S]*?)<\/script>/g;
-      let m, last = '';
-      while ((m = re.exec(s)) !== null) { last = m[2]; }
-      return last;
-    };
-    const same = lastSeg(mm) === lastSeg(zu);
-    const registered = /registerExternalDiagrams\(\[globalThis\["mermaid-zenuml"\]\]\)/.test(zu);
-    if (same && registered) {
-      console.log('  ok    zenuml.html 的宿主段与 mermaid.html 一致，且已注册 zenuml 插件');
-    } else {
-      fails++;
-      console.log('  FAIL  zenuml.html 与 mermaid.html 不同步（宿主段'
-        + (same ? '一致' : '已漂移') + '，注册行' + (registered ? '在' : '缺')
-        + '）→ 跑 node tools/gen-zenuml-template.js 重建');
-    }
+  const zuPath = path.join(ROOT, 'entry/src/main/resources/rawfile/render/zenuml.html');
+  const zuRt = path.join(ROOT, 'entry/src/main/resources/rawfile/runtimes/mermaid-zenuml.min.js');
+  if (fs.existsSync(zuPath) || fs.existsSync(zuRt)) {
+    fails++;
+    console.log('  FAIL  zenuml 插件资产又回包里了（zenuml.html / mermaid-zenuml.min.js 应已删除，'
+      + 'zenuml 走 ZenumlBridge 纯文本转译）');
+  } else {
+    console.log('  ok    zenuml 插件资产已移除（不再随包；转译链路在 ZenumlBridge）');
   }
 }
 

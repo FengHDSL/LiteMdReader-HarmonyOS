@@ -39,8 +39,9 @@ export class ChartRuntimeService {
       return ['mermaid.min.js'];
     }
     if (lang === 'zenuml') {
-      // 顺序即依赖顺序：插件要挂到已存在的 mermaid 上再注册
-      return ['mermaid.min.js', 'mermaid-zenuml.min.js'];
+      // zenuml 现在在解析层**转译成 mermaid 时序图**（见 ZenumlBridge），
+      // 只用 mermaid 本身；6.56MB 的 zenuml.html 与 3.14MB 的插件已从包里删除。
+      return ['mermaid.min.js'];
     }
     if (lang === 'plantuml') {
       return MdToHtml.plantumlForExport(src).length > 0 ? ['mermaid.min.js'] : [];

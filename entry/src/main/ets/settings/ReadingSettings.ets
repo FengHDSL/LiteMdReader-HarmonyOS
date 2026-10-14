@@ -78,7 +78,6 @@ export struct ReadingSettingsPanel {
   @StorageLink('readerParaSpace') paraSpace: number = 1.0;
   @StorageLink('readerIndent') indentOn: boolean = false;
   @StorageLink('readerShowMeta') showMeta: boolean = true;
-  @StorageLink('readerFlatCharts') flatCharts: boolean = false;
   @StorageLink('readerKeepScreenOn') keepOn: boolean = false;
   /** 窗口亮度：0 = 跟随系统，[0.05, 1] 为固定亮度。
    *  不能叫 brightness——与组件基类的 .brightness() 属性方法重名（同 outline 的坑）。 */
@@ -430,8 +429,7 @@ export struct ReadingSettingsPanel {
             this.indentOn = isOn;
           } else if (kind === 'meta') {
             this.showMeta = isOn;
-          } else if (kind === 'flat') {
-            this.flatCharts = isOn;
+
           } else if (kind === 'keepon') {
             this.keepOn = isOn;
             setKeepScreenOn(isOn);
@@ -769,10 +767,6 @@ export struct ReadingSettingsPanel {
         this.sectionTitle('显示')
 
         this.switchRow('meta', '文档信息卡', '正文顶部显示字数统计与 Front Matter', this.showMeta)
-
-        this.switchRow('flat', '图表去卡片直接展示',
-          '图表 / 公式不画卡片外壳与标题栏，内容直接排在正文里（阅读页立即生效）',
-          this.flatCharts)
         // 沉浸光感开关已移至 设置 → 外观设置（避免重复入口）
 
         this.switchRow('keepon', '屏幕常亮', '阅读时不自动熄屏，仅本应用窗口生效', this.keepOn)

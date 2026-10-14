@@ -107,15 +107,16 @@ export struct SettingsEngines {
             .padding({ left: 6, right: 6, top: 1, bottom: 1 })
             .borderRadius(6)
             .backgroundColor(this.palette().accentSoft)
-          // **离线库体积**（用户要求）：随包内联进模板的实际占用，看一眼就知道谁最吃体积
-          Text(L10n.t('离线库 ') + info.size)
-            .fontSize(HwType.caption - 1)
-            .fontColor(this.palette().textSecondary)
-            .padding({ left: 6, right: 6, top: 1, bottom: 1 })
-            .borderRadius(6)
-            .backgroundColor(this.palette().quoteBg)
         }
         .alignItems(VerticalAlign.Center)
+
+        // **离线库体积**（用户要求：放到名称下方独立一行）：随包内联进模板的实际占用
+        Text(L10n.t('离线库 ') + info.size)
+          .fontSize(HwType.caption - 1)
+          .fontColor(this.palette().textSecondary)
+          .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+          .borderRadius(6)
+          .backgroundColor(this.palette().quoteBg)
 
         Text(info.desc)
           .fontSize(HwType.caption)
@@ -127,27 +128,18 @@ export struct SettingsEngines {
           Text(L10n.t('发布于 ') + info.date)
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette().textTertiary)
-          // **GitHub 按钮（用户要求：点击跳转浏览器）**；长按仍可复制地址
-          Row({ space: 4 }) {
-            Text('GitHub')
-              .fontSize(HwType.caption - 1)
-              .fontWeight(FontWeight.Medium)
-              .fontColor(this.palette().accent)
-            Text(info.repo.replace('https://', ''))
-              .fontSize(HwType.caption - 1)
-              .fontColor(this.palette().accent)
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .layoutWeight(1)
-          }
-          .layoutWeight(1)
-          .alignItems(VerticalAlign.Center)
-          .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-          .borderRadius(HwRadius.pill)
-          .backgroundColor(this.palette().accentSoft)
-          .onClick(() => {
-            this.openRepo(info.repo);
-          })
+          // **GitHub 胶囊按钮**（用户要求：只显示 GitHub 字样，不再带长地址）；
+          // 点击跳浏览器，长按仍复制地址（地址本身照旧记在 info.repo）
+          Text('GitHub')
+            .fontSize(HwType.caption)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().accent)
+            .padding({ left: 10, right: 10, top: 3, bottom: 3 })
+            .borderRadius(HwRadius.pill)
+            .backgroundColor(this.palette().accentSoft)
+            .onClick(() => {
+              this.openRepo(info.repo);
+            })
           .gesture(LongPressGesture({ repeat: false, duration: 500 }).onAction(() => {
             this.copyRepo(info.repo);
           }))

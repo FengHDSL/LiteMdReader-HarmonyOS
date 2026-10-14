@@ -3060,11 +3060,10 @@ export struct MdBlockView {
     Column() {
       if (this.chartImagePath('katex').length > 0) {
         ImmersiveCard({
-          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
-          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
+          cardRadius: HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
+          cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
@@ -3076,11 +3075,10 @@ export struct MdBlockView {
         }
       } else {
         ImmersiveCard({
-          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
-          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
+          cardRadius: HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
+          cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
@@ -3102,57 +3100,45 @@ export struct MdBlockView {
       // markmap 自带拖拽/缩放（卡片内即可浏览整图）；无回传、无截图、无时序问题。
       if (this.block.lang.toLowerCase() === 'markmap' && !this.chartShowCode) {
         ImmersiveCard({
-          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
-          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
+          cardRadius: HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
+          cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
-            if (!this.flatCharts) {
-              this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
-                'mdchart_' + this.block.id, this.chartTitle(), true, false)
-            }
+            this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
         }
       } else if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
         ImmersiveCard({
-          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
-          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
+          cardRadius: HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
+          cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
-            if (!this.flatCharts) {
-              this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-                'mdchart_' + this.block.id, this.chartTitle(), true, false)
-            }
+            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             this.blockImage(this.block.lang.toLowerCase())
           }
           .width('100%')
         }
       } else {
         ImmersiveCard({
-          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
-          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
+          cardRadius: HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
+          cardBackground: this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
-            if (!this.flatCharts) {
-              this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-                'mdchart_' + this.block.id, this.chartTitle(), true, false)
-            }
+            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+              'mdchart_' + this.block.id, this.chartTitle(), true, false)
             Stack({ alignContent: Alignment.TopEnd }) {
               Column() {
                 if (this.chartShowCode) {
@@ -3173,10 +3159,7 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'mermaid') {
                   DiagramWeb({ mode: 'mermaid', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-                } else if (this.block.lang.toLowerCase() === 'zenuml') {
-                  // zenuml 走**单独一页模板**（zenuml.html = mermaid 引擎 + zenuml 插件），
-                  // 插件自带 React，3.14MB 不塞进 mermaid.html 让所有 mermaid 卡片一起背
-                  DiagramWeb({ mode: 'zenuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                // （zenuml 分支已删：解析层转译成 mermaid，zenuml.html 与插件已从包内移除）
                 } else if (this.block.lang.toLowerCase() === 'echarts') {
                   DiagramWeb({ mode: 'echarts', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'abc') {
@@ -3200,6 +3183,15 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'plantuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'html') {
                   DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'salt') {
+                  // ⚠️ 三个自绘图种**必须在这条活渲染链里**：漏了就会落到最后的 else →
+                  // codeView，卡片上永远显示源码（用户实测"渲染卡片上方还是有一个代码块卡片"）。
+                  // 这与当年 nomnoml / chart 漏在这里是同一个坑，加新图种时先看这条链。
+                  DiagramWeb({ mode: 'salt', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'ditaa') {
+                  DiagramWeb({ mode: 'ditaa', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'nwdiag') {
+                  DiagramWeb({ mode: 'nwdiag', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else {
                   this.codeView()
                 }
@@ -3281,9 +3273,6 @@ export struct MdBlockView {
    * 以「源码」形态展示。**预览 ↔ 查看代码**切换（用户要求）：核对写法时不必离开阅读页。
    */
   @State chartShowCode: boolean = false;
-  /** 「去卡片直接展示」开关（设置 → 阅读 → 显示）：图表/公式卡不画外壳与标题栏，
-   *  内容直接排在正文流里（用户要求：不要卡片、直接完整展示）。 */
-  @StorageProp('readerFlatCharts') flatCharts: boolean = false;
 
   /** 代码组的活动下标 */
   private groupIndex(): number {

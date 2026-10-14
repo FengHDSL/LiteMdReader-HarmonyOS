@@ -373,7 +373,8 @@ export class MdToHtml {
 
   /** 图表类代码块语言集合（rich 导出时转为对应渲染容器 + 预装渲染库）。 */
   static readonly CHART_LANGS: string[] =
-    ['markmap', 'mermaid', 'zenuml', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
+    [// zenuml 已在解析层转译成 mermaid，不再作为独立 lang 出现在块里
+    'markmap', 'mermaid', 'echarts', 'graphviz', 'abc', 'katex', 'flowchart', 'wavedrom',
       'nomnoml', 'chart', 'vega', 'plantuml'];
 
   private static isChartLang(lang: string): boolean {
