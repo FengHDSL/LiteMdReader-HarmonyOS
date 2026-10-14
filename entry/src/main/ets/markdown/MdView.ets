@@ -1162,12 +1162,20 @@ export struct MdBlockView {
     if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
       return '#FFB4441C';
     }
+    // diff：绿（新增侧）压暗一档
+    if (l === 'diff' || l === 'patch' || l === 'udiff') {
+      return '#FF1F7A46';
+    }
     if (l === 'kotlin' || l === 'kt') {
       return 'KT';
     }
-    // 仓颉（Cangjie）：华为自研语言，徽标 CJ
+    // 仓颉（Cangjie）：全称徽标（用户要求写成 CangJie）
     if (l === 'cangjie' || l === 'cj' || l === '仓颉') {
-      return 'CJ';
+      return 'CangJie';
+    }
+    // diff 差异块也要有徽标（用户要求）
+    if (l === 'diff' || l === 'patch' || l === 'udiff') {
+      return 'Diff';
     }
     if (l === 'html' || l === 'htm') {
       return 'HTML';
@@ -1685,12 +1693,11 @@ export struct MdBlockView {
       Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
         ForEach(MdViewUtil.toAtoms(this.pieces()), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            Column({ space: 0 }) {
-              Text(atom.reading)
-                .fontSize(Math.max(9, Math.round(size * 0.5)))
-                .fontColor(this.palette.textTertiary)
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
+            // **基准字与旁文严格对齐**：基准字是 Stack 里唯一的在流子节点（决定宽高，
+            // 排版位置与普通文字一致）；读音用 position 绝对定位到基准字正上方，
+            // 不占布局空间。上一版用 Column 上下排，整列变高 → 基准字被顶上去了
+            //（用户实测"字符没和其他文本对齐"）。
+            Stack() {
               Text(atom.base)
                 .fontSize(size)
                 // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
@@ -1701,8 +1708,14 @@ export struct MdBlockView {
                 .fontFamily(HwFont.resolve(this.fontKey))
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
+              Text(atom.reading)
+                .fontSize(Math.max(9, Math.round(size * 0.5)))
+                .fontColor(this.palette.textTertiary)
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+                .width('100%')
+                .position({ x: 0, y: -Math.round(size * 0.56) })
             }
-            .alignItems(HorizontalAlign.Center)
           } else {
             Text() {
               this.pieceRun(atom.pieces, size, baseColor)
@@ -1716,7 +1729,8 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      .margin({ top: Math.round(size * 0.12), bottom: Math.round(size * 0.12) })
+      // 注音的读音向上溢出约 0.56em：段首留出空间，免得压到上一行
+      .margin({ top: Math.round(size * 0.62), bottom: Math.round(size * 0.1) })
     } else if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
       // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
       // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
@@ -1814,21 +1828,24 @@ export struct MdBlockView {
       Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
         ForEach(MdViewUtil.toAtoms(pieces), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            Column({ space: 0 }) {
+            // 与 richTextSel 同款：基准字在流、读音绝对定位在上方（保证基线对齐）
+            Stack() {
+              Text(atom.base)
+                .fontSize(size)
+                .fontColor(baseColor)
+                .fontWeight(atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontFamily(HwFont.resolve(this.fontKey))
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
               Text(atom.reading)
                 .fontSize(Math.max(9, Math.round(size * 0.5)))
                 .fontColor(this.palette.textTertiary)
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
-              Text(atom.base)
-                .fontSize(size)
-                .fontColor(baseColor)
-                .fontWeight(atom.sample !== null && atom.sample.bold ? FontWeight.Bold : FontWeight.Normal)
-                .fontFamily(HwFont.resolve(this.fontKey))
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
+                .width('100%')
+                .position({ x: 0, y: -Math.round(size * 0.56) })
             }
-            .alignItems(HorizontalAlign.Center)
           } else {
             Text() {
               this.spanRun(atom.pieces, size, baseColor)
@@ -1841,7 +1858,7 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      .margin({ top: Math.round(size * 0.1), bottom: Math.round(size * 0.1) })
+      .margin({ top: Math.round(size * 0.62), bottom: Math.round(size * 0.1) })
     } else {
       Text() {
         this.spanRun(pieces, size, baseColor)

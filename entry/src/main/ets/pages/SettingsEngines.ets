@@ -107,6 +107,13 @@ export struct SettingsEngines {
             .padding({ left: 6, right: 6, top: 1, bottom: 1 })
             .borderRadius(6)
             .backgroundColor(this.palette().accentSoft)
+          // **离线库体积**（用户要求）：随包内联进模板的实际占用，看一眼就知道谁最吃体积
+          Text(L10n.t('离线库 ') + info.size)
+            .fontSize(HwType.caption - 1)
+            .fontColor(this.palette().textSecondary)
+            .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+            .borderRadius(6)
+            .backgroundColor(this.palette().quoteBg)
         }
         .alignItems(VerticalAlign.Center)
 

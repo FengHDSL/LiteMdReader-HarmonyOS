@@ -196,6 +196,12 @@
       }
     }catch(e){}
   }
+  // **宿主入口**：renderPayload 走统一协议，转发到本模板的绘制函数 toSvg(src, dark)。
+  // ⚠️ 与 salt.html 同款事故：换协议必须连入口一起补，否则真机报 "window.__render is not a function"。
+  window.__render=function(src,dark){
+    app.innerHTML=toSvg(src, dark === true);
+    report();
+  };
   window.renderPayload=function(json){
     try{
       var o=(typeof json==='string')?JSON.parse(json):json;

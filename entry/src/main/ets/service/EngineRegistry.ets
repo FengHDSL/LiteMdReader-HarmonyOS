@@ -30,6 +30,8 @@ export interface EngineInfo {
   repo: string;
   /** 作用介绍（一句话） */
   desc: string;
+  /** 离线库体积（随包内联进模板的实际占用，手量自 rawfile/render/*.html） */
+  size: string;
 }
 
 /** 引擎清单（顺序即设置页展示顺序：公式 → 图表 → 编辑器） */
@@ -37,84 +39,100 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'katex', name: 'KaTeX', version: '0.19.0', date: '2026-10-01',
     repo: 'https://github.com/KaTeX/KaTeX',
-    desc: '块级数学公式渲染（阅读 / 导出 HTML / 打印）'
+    desc: '块级数学公式渲染（阅读 / 导出 HTML / 打印）',
+    size: '0.33 MB',
   },
   {
     id: 'mathjax', name: 'MathJax', version: '3.2.2', date: '2022-06-08',
     repo: 'https://github.com/mathjax/MathJax',
-    desc: L10n.t('行内公式排版为矢量图（正文内联显示；v4 需专项离线适配，暂缓升级）')
+    desc: L10n.t('行内公式排版为矢量图（正文内联显示；v4 需专项离线适配，暂缓升级）'),
+    size: '2.17 MB'
   },
   {
     id: 'mermaid', name: 'Mermaid', version: '11.17.2', date: '2026-10-13',
     repo: 'https://github.com/mermaid-js/mermaid',
-    desc: '流程图 / 时序图 / 甘特图 / 类图 / 状态图 / 饼图（12.x 应用内渲染异常，已回退 10.x 终版）'
+    desc: '流程图 / 时序图 / 甘特图 / 类图 / 状态图 / 饼图（12.x 应用内渲染异常，已回退 10.x 终版）',
+    size: '3.42 MB',
   },
   {
     id: 'zenuml', name: 'ZenUML（mermaid 插件）', version: '1.0.1', date: '2026-09-18',
     repo: 'https://github.com/mermaid-js/mermaid/tree/main/packages/mermaid-zenuml',
     desc: L10n.t('`zenuml` 首行的时序图（@Actor / A->B: 文本 / group）。插件自带 React 与 @zenuml/core，'
-      + '单独一页模板 zenuml.html，不并进 mermaid.html；深浅两套主题下都画白底面板（插件自己的配色）')
+      + '单独一页模板 zenuml.html，不并进 mermaid.html；深浅两套主题下都画白底面板（插件自己的配色）'),
+    size: '6.56 MB',
   },
   {
     id: 'markmap', name: 'markmap', version: '0.18.12', date: '2025-06-12',
     repo: 'https://github.com/markmap/markmap',
-    desc: L10n.t('Markdown 思维导图（脑图，可缩放可折叠）')
+    desc: L10n.t('Markdown 思维导图（脑图，可缩放可折叠）'),
+    size: '1.32 MB',
   },
   {
     id: 'echarts', name: 'Apache ECharts', version: '6.1.0', date: '2026-05-19',
     repo: 'https://github.com/apache/echarts',
-    desc: '数据图表（柱状 / 折线 / 饼图等，JSON 配置）'
+    desc: '数据图表（柱状 / 折线 / 饼图等，JSON 配置）',
+    size: '1.08 MB',
   },
   {
     id: 'abc', name: 'abcjs', version: '6.7.1', date: '2026-09-21',
     repo: 'https://github.com/paulrosen/abcjs',
-    desc: L10n.t('ABC 记谱法乐谱（五线谱，可播放）')
+    desc: L10n.t('ABC 记谱法乐谱（五线谱，可播放）'),
+    size: '0.49 MB',
   },
   {
     id: 'graphviz', name: 'Viz.js (Graphviz)', version: '3.31.0', date: '2026-09-28',
     repo: 'https://github.com/mdaines/viz-js',
-    desc: L10n.t('Graphviz DOT 关系图（内嵌 Graphviz 16.1.0）')
+    desc: L10n.t('Graphviz DOT 关系图（内嵌 Graphviz 16.1.0）'),
+    size: '1.27 MB',
   },
   {
     id: 'flowchart', name: 'flowchart.js', version: '1.17.1', date: '2022-02-02',
     repo: 'https://github.com/adrai/flowchart.js',
-    desc: L10n.t('经典 flowchart 语法流程图（基于 Raphael）')
+    desc: L10n.t('经典 flowchart 语法流程图（基于 Raphael）'),
+    size: '0.13 MB',
   },
   {
     id: 'wavedrom', name: 'WaveDrom', version: '3.7.0', date: '2026-08-31',
     repo: 'https://github.com/wavedrom/wavedrom',
-    desc: '数字波形图（WaveJSON 时序 / 逻辑门 / 寄存器位段），深浅主题统一浅色波形面板'
+    desc: '数字波形图（WaveJSON 时序 / 逻辑门 / 寄存器位段），深浅主题统一浅色波形面板',
+    size: '0.10 MB',
   },
   {
     id: 'nomnoml', name: 'nomnoml', version: '1.7.0', date: '2026-10-13',
     repo: 'https://github.com/skanaar/nomnoml',
-    desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）')
+    desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）'),
+    size: '0.11 MB',
   },
   {
     id: 'plantuml', name: 'PlantUML（官方内核）', version: '1.2026.8', date: '2026-09-06',
     repo: 'https://github.com/plantuml/plantuml',
     desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；'
-      + '内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树')
+      + '内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树'),
+    size: '5.51 MB',
   },
   {
     id: 'chartjs', name: 'Chart.js', version: '4.5.1', date: '2026-10-14',
     repo: 'https://github.com/chartjs/Chart.js',
-    desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）'
+    desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）',
+    size: '0.20 MB',
   },
   {
     id: 'vega', name: 'Vega / Vega-Lite', version: '6.4.0 / 6.5.0', date: '2026-10-14',
     repo: 'https://github.com/vega/vega-lite',
-    desc: L10n.t('Vega-Lite 声明式统计图（JSON spec：柱状 / 折线 / 散点 / 面积 / 分面等），出 SVG')
+    desc: L10n.t('Vega-Lite 声明式统计图（JSON spec：柱状 / 折线 / 散点 / 面积 / 分面等），出 SVG'),
+    size: '0.75 MB',
   },
   {
     id: 'marked', name: 'marked', version: '18.1.1', date: '2026-10-14',
     repo: 'https://github.com/markedjs/marked',
-    desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析'
+    desc: '编辑器「所见即所得 / 即时渲染」的 Markdown 解析',
+    size: '0.05 MB'
   },
   {
     id: 'turndown', name: 'turndown', version: '7.2.4', date: '2026-04-03',
     repo: 'https://github.com/mixmark-io/turndown',
-    desc: L10n.t('编辑器 HTML → Markdown 序列化（保存实时同步）')
+    desc: L10n.t('编辑器 HTML → Markdown 序列化（保存实时同步）'),
+    size: '0.03 MB'
   }
 ];
 

@@ -5652,7 +5652,10 @@ struct Index {
         ListItem() {
           this.treeDocRow(meta, 0)
         }
-      }, (meta: DocMeta, idx: number) => 'tb' + idx + '_' + meta.name)
+      // ⚠️ 键必须带 themeEpoch：文件夹内的行（'fd'…）一直带着，这两处漏了 →
+      // 切深色时这两批行不重建、颜色停在浅色（深底黑字看不清，用户实测）。
+      }, (meta: DocMeta, idx: number) => 'tb' + idx + '_' + meta.name
+        + '_t' + this.themeEpoch + '_l' + this.languageTick)
 
       ForEach(this.shelfOrderedFolders(), (folder: ShelfFolder) => {
         ListItem() {
@@ -5671,7 +5674,8 @@ struct Index {
         ListItem() {
           this.treeDocRow(meta, 0)
         }
-      }, (meta: DocMeta, idx: number) => 't' + idx + '_' + meta.name + '_' + meta.mtime)
+      }, (meta: DocMeta, idx: number) => 't' + idx + '_' + meta.name + '_' + meta.mtime
+        + '_t' + this.themeEpoch + '_l' + this.languageTick)
 
       ListItem() {
         Text(L10n.t('树形视图 · 文件夹来自书架拖拽归组'))
