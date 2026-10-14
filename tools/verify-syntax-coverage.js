@@ -520,6 +520,27 @@ probe('§9.3', '显式锚点 <a id> + 站内跳转',
     return (links.indexOf('#anchor-demo') >= 0 && anchored === 1) ? true
       : '站内链接 ' + JSON.stringify(links) + '，带 id 的标题 ' + anchored + ' 个';
   });
+probe('§3.6', '插入线 ++文字++（markdown-it-ins）', '++这段文字被插入++ 与 ==高亮== 与 `+ +` 共存\n', 'claim', (res) => {
+  const u = withKind(res, I.Under);
+  if (u.length !== 1 || u[0].text !== '这段文字被插入') { return '没收成 Under：' + JSON.stringify(u.map((x) => x.text)); }
+  if (withKind(res, I.Mark).length !== 1) { return '把 ==高亮== 弄坏了'; }
+  const t = flatText(res);
+  return t.indexOf('+ +') >= 0 ? true : '行内代码里的加号被误吞：' + t;
+});
+probe('§3.10', '图片尺寸 `![a](x.png =120x60)`（imsize）', '![logo](a.png =120x60)\n\n![b](b.png "标题")\n', 'claim', (res) => {
+  const imgs = allInlines(res).filter((x) => x.kind === I.Image);
+  if (imgs.length !== 2) { return '图片数 ' + imgs.length; }
+  if (imgs[0].w !== 120 || imgs[0].h !== 60) { return 'imsize 没落地：' + JSON.stringify([imgs[0].w, imgs[0].h]); }
+  if (imgs[1].w !== undefined || imgs[1].h !== undefined) { return '普通图片被误加了尺寸'; }
+  return imgs[1].href === 'b.png' ? true : '带 title 的地址解析坏了：' + imgs[1].href;
+});
+probe('§3.15', '双花括号锚点 `## 标题 {{#id}}`（Typora / VS Code 写法）',
+  '## 甲节 {{#sec-a}}\n\n[跳过去](#sec-a)\n', 'claim', (res) => {
+    const h = blocks(res, K.Heading);
+    if (h.length !== 1 || (h[0].anchor || '') !== 'sec-a') { return 'anchor=' + (h[0] ? h[0].anchor : '无'); }
+    if (flatText(res).indexOf('{{#') >= 0) { return '双花括号还留在正文里'; }
+    return withKind(res, I.Link).some((x) => x.href === '#sec-a') ? true : '站内跳转链接丢了';
+  });
 probe('§9.4', 'Pandoc 属性块：标题多属性 / 围栏 div / 行内 span / 图片属性',
   '## 背景 {#bg .unnumbered}\n\n::: {#note1 .tip}\n正文 A\n:::\n\n'
   + '普通 [重点]{.bold color=#2F63E8} 结尾\n\n![示意](flow.png){#fig:flow width=60%}\n', 'claim', (res) => {

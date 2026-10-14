@@ -176,7 +176,16 @@ export class MdToHtml {
         body = '<a href="' + MdToHtml.esc(item.href) + '">' + body + '</a>';
       } else if (item.kind === MdInlineKind.Image) {
         const alt: string = item.text.length > 0 ? item.text : 'image';
-        body = '<img alt="' + MdToHtml.esc(alt) + '" src="' + MdToHtml.esc(item.href) + '" />';
+        // imsize（`![alt](a.png =120x60)`）：写成 max-width/max-height，
+        // 与阅读页同口径 —— 视口更窄时仍然等比缩，不会把图拉变形
+        const capW: number = item.w === undefined ? 0 : item.w;
+        const capH: number = item.h === undefined ? 0 : item.h;
+        let style: string = '';
+        if (capW > 0 || capH > 0) {
+          style = ' style="' + (capW > 0 ? 'max-width:' + capW + 'px;' : '')
+            + (capH > 0 ? 'max-height:' + capH + 'px;height:auto;' : '') + '"';
+        }
+        body = '<img alt="' + MdToHtml.esc(alt) + '" src="' + MdToHtml.esc(item.href) + '"' + style + ' />';
       } else if (item.kind === MdInlineKind.Mark) {
         body = '<mark>' + body + '</mark>';
       } else if (item.kind === MdInlineKind.FootnoteRef) {

@@ -1266,6 +1266,24 @@ export struct MdBlockView {
     return img;
   }
 
+  /** imsize 的宽上限（`=120x60` 里的 120）；没写或非法返回 0 = 不限制 */
+  private imageSpecW(): number {
+    const img: MdInline | null = this.standaloneImage();
+    if (img === null || img.w === undefined || img.w <= 0) {
+      return 0;
+    }
+    return img.w;
+  }
+
+  /** imsize 的高上限（`=120x60` 里的 60）；没写返回 0 → 沿用正文图片的 460 兜底 */
+  private imageSpecH(): number {
+    const img: MdInline | null = this.standaloneImage();
+    if (img === null || img.h === undefined || img.h <= 0) {
+      return 0;
+    }
+    return img.h;
+  }
+
   /** 图片地址 → Image 可用的源。按 href 缓存，避免每次渲染都查磁盘。 */
   /**
    * 图片地址解析 + **基础模式（纯离线）拦截**：
@@ -1315,7 +1333,10 @@ export struct MdBlockView {
             Stack({ alignContent: Alignment.TopEnd }) {
               Image(this.resolvedImageSrc(this.blockHref()))
                 .width('100%')
-                .constraintSize({ maxHeight: 460 })
+                // `=120x60` 这类 imsize 写法当**上限**用（见 MdInline.w/h 的注释）：
+                // 卡片更窄时照样等比缩进可视区，不会把图拉变形
+                .constraintSize({ maxHeight: this.imageSpecH() > 0 ? this.imageSpecH() : 460,
+                  maxWidth: this.imageSpecW() > 0 ? this.imageSpecW() : '100%' })
                 .objectFit(ImageFit.Contain)
                 .borderRadius(HwRadius.inline)
                 .draggable(false)

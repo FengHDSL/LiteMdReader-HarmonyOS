@@ -1692,7 +1692,21 @@ export class MdParser {
         const img: LinkHit = MdParser.linkAt(src, i + 1);
         if (img.hit) {
           buf = MdParser.flush(out, buf, bold, italic, strike, code);
-          out.push(inlineOf(MdInlineKind.Image, img.label, img.href, 0, bold, italic, strike, code));
+          const imgItem: MdInline = inlineOf(MdInlineKind.Image, img.label, img.href, 0,
+            bold, italic, strike, code);
+          // `markdown-it-imsize` / Typora 的 `![alt](a.png =120x60)`（也收 `=120x` / `=x60`）。
+          // linkAt 按 CommonMark 把空格后的部分当 title 丢了，所以这里回看原始括号内容。
+          const spec: RegExpMatchArray | null =
+            src.substring(i, img.end).match(/=\s*(\d*)\s*[xX]\s*(\d*)\s*(?=[)"])/);
+          if (spec !== null) {
+            if (spec[1].length > 0) {
+              imgItem.w = parseInt(spec[1], 10);
+            }
+            if (spec[2].length > 0) {
+              imgItem.h = parseInt(spec[2], 10);
+            }
+          }
+          out.push(imgItem);
           i = img.end;
           continue;
         }
@@ -1848,6 +1862,19 @@ export class MdParser {
         if (end > i + 2) {
           buf = MdParser.flush(out, buf, bold, italic, strike, code);
           out.push(inlineOf(MdInlineKind.Mark, src.substring(i + 2, end), '', 0, bold, italic, strike, code));
+          i = end + 2;
+          continue;
+        }
+      }
+
+      // 插入线 `++文字++`（markdown-it-ins / Cherry / Typora 同一套写法）：
+      // 与 `==高亮==` 同一条通道思路 —— 成对才认，落单的两个加号原样留着。
+      // 渲染走 Under（导出的网页里是真 `<ins>`）。
+      if (c === '+' && i + 1 < n && src.charAt(i + 1) === '+') {
+        const end: number = src.indexOf('++', i + 2);
+        if (end > i + 2) {
+          buf = MdParser.flush(out, buf, bold, italic, strike, code);
+          out.push(inlineOf(MdInlineKind.Under, src.substring(i + 2, end), '', 0, bold, italic, strike, code));
           i = end + 2;
           continue;
         }
@@ -3215,6 +3242,17 @@ export class MdParser {
   private static takeAnchor(text: string, level: number): HeadingHit {
     const tail: string = text.trim();
     if (tail.length > 3 && tail.endsWith('}')) {
+      // `{{#sec-a}}` 是 Typora / VS Code 那套 anchor 插件的写法，和 pandoc 的 `{#sec-a}`
+      // 同义；以前双花括号里带个 `}` 会被属性词法拒掉、整串留在标题里显示。
+      const dbl: number = tail.lastIndexOf('{{');
+      if (tail.endsWith('}}') && dbl > 0 && tail.charAt(dbl - 1) === ' '
+        && tail.indexOf('}}') > dbl + 1) {
+        const inner: string = tail.substring(dbl + 2, tail.length - 2).trim();
+        const at2: AttrTail = MdParser.attrTailOf(inner.charAt(0) === '#' ? inner : '#' + inner);
+        if (at2.hit) {
+          return { hit: true, level: level, text: tail.substring(0, dbl).trim(), id: at2.id };
+        }
+      }
       const open: number = tail.lastIndexOf('{');
       if (open > 0 && tail.charAt(open - 1) === ' ') {
         const at: AttrTail = MdParser.attrTailOf(tail.substring(open + 1, tail.length - 1));

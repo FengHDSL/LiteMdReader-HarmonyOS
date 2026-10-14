@@ -121,6 +121,13 @@ export interface MdInline {
    * 只改大小的写法。没设 = 跟随正文。渲染端乘在 bodySize 上，导出侧写成 `font-size:em`。
    */
   size?: number;
+  /**
+   * 图片尺寸（`markdown-it-imsize` 的 `![alt](a.png =120x60)`，单位 CSS px）。
+   * 只当**上限**用（constraintSize）：卡片比它窄时仍然等比缩进可视区，
+   * 不会像直接写死 width/height 那样把图拉变形。
+   */
+  w?: number;
+  h?: number;
 }
 
 /** 表格行 */
