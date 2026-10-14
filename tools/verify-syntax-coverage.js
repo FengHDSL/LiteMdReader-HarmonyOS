@@ -63,6 +63,7 @@ function build() {
 build();
 for (const n of NEED) { delete require.cache[path.join(OUT, n + '.js')]; }
 const { MdParser, } = require(path.join(OUT, 'MdParser.js'));
+const { PlantumlBridge, } = require(path.join(OUT, 'PlantumlBridge.js'));
 const { MdBlockKind, MdInlineKind, MdCalloutKind, MdTaskState, } = require(path.join(OUT, 'MdTypes.js'));
 
 // ── 取产物的几个小工具 ──
@@ -369,7 +370,7 @@ const CHARTS = [
   ['abc', '6.24', '```abc\nX:1\nK:G\nG3D|G3D|\n```\n'],
   ['markmap', '6.25', '```markmap\n# root\n## child\n```\n'],
   ['vega', '6.26 Vega-Lite（vega-lite / vl 别名）', '```vega-lite\n{"data":{"values":[{"a":1}]},"mark":"bar"}\n```\n'],
-  ['mermaid', '6.21 PlantUML 时序图（语法桥转成 mermaid）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
+  ['plantuml', '6.21 PlantUML 时序图（离线内核原生渲染，源码不桥）', '```plantuml\n@startuml\nA -> B : hi\n@enduml\n```\n'],
 ];
 for (const [lang, sec, src] of CHARTS) {
   probe('§6 ' + sec, lang + ' 进图表通道', src, 'claim', (res) => {
@@ -378,24 +379,84 @@ for (const [lang, sec, src] of CHARTS) {
       : '没进 Chart（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）';
   });
 }
-// PlantUML 桥：**翻译器本身就是验收器**（认不出一行就整体不桥），所以这里判的是
-// "桥成了哪种 mermaid 图种 / 该不桥的有没有硬转"。状态图曾经被塞进 sequenceDiagram
-// → mermaid 报 Parse error（用户实测"uml 全家桶显示不正常"），这条就是钉死它的。
-const PUML = [
-  ['@startuml\n[*] --> 草稿\n草稿 --> 已发布 : 发布\n@enduml\n', 'stateDiagram-v2',
-   '状态图桥成 stateDiagram-v2（不能塞进 sequenceDiagram）'],
-  ['@startuml\nclass Foo {\n  +bar()\n}\nclass Baz {\n  +qux()\n}\nFoo <|-- Baz\n@enduml\n', 'classDiagram',
-   '类图桥成 classDiagram（成员与继承不丢）'],
-  ['@startuml\ninterface Runnable {\n  +run()\n}\nclass Task implements Runnable\n@enduml\n', 'classDiagram',
-   '带体 interface 降级成 <<interface>> 构造型（mermaid 不吃 `interface X {`）'],
-  ['@startuml\nA -> B : hi\n== 阶段 ==\nB -> A : yo\n@enduml\n', 'sequenceDiagram',
-   '时序图 == 分隔线降级成注释（mermaid 序列图没有分隔线语法）'],
+// PlantUML 路由（2026-10-14 起）：**阅读侧**交给离线内核 @plantuml/core（lang=plantuml + 原文），
+// 内核没有渲染器的六个图种才分流；**导出侧**才用 PlantumlBridge 桥成 mermaid。
+// 所以这里两层都要钉：路由层判"落到哪条通道、源码有没有被改写"，桥层判"桥成哪种图 /
+// 桥不动的有没有硬转"（状态图曾被塞进 sequenceDiagram → mermaid 报 Parse error，用户实测）。
+const PUML_ROUTE = [
+  ['@startuml\nclass Foo {\n  +bar()\n}\nFoo <|-- Bar\n@enduml\n', 'chart:plantuml',
+   '类图交给离线内核（源码原样，不再在解析层改写成 mermaid）'],
+  ['@startuml\nstart\n:写文档;\nstop\n@enduml\n', 'chart:plantuml',
+   '活动图交给离线内核（内核实测画得出，以前只会留源码）'],
+  ['@startuml\nactor 用户\n(查看文档) as U1\n用户 --> U1\n@enduml\n', 'chart:plantuml',
+   '用例图交给离线内核'],
+  ['@startmindmap\n* A\n** B\n@endmindmap\n', 'chart:plantuml', '脑图 @startmindmap 进内核'],
+  ['@startwbs\n* A\n** B\n@endwbs\n', 'chart:plantuml', 'WBS @startwbs 进内核'],
+  ['@startgantt\n[T] lasts 2 days\n@endgantt\n', 'chart:plantuml', '甘特 @startgantt 进内核'],
+  ['@startjson\n{"a":1}\n@endjson\n', 'chart:plantuml', 'JSON 可视化 @startjson 进内核'],
+  ['@startyaml\na: 1\n@endyaml\n', 'chart:plantuml', 'YAML 可视化 @startyaml 进内核'],
+  ['@startmath\nE = mc^2\n@endmath\n', 'math',
+   '数学公式内核没有渲染器 → 转块级公式（KaTeX 链路）'],
+  ['@starttimeline\n2004 : born\n2014 : commonmark\n@endtimeline\n', 'chart:mermaid',
+   '时间线内核没有渲染器 → 桥成 mermaid timeline'],
+  ['@startfiles\n* entry\n  * src\n    * main\n      * ets\n      * resources\n@endfiles\n', 'code:filetree',
+   '文件树内核没有渲染器 → 制表符树（代码块，离线也能看）'],
+  ['@startsalt\n{+[OK]|[Cancel]}\n@endsalt\n', 'code:plantuml',
+   '盐图没有便宜等价画法 → 保留源码（不许出现内核的错误卡）'],
+  ['@startnwdiag\nnetwork L {\n  device "P"\n}\n@endnwdiag\n', 'code:plantuml',
+   'nwdiag → 保留源码'],
+  ['@startditaa\n+--+\n| X |\n+--+\n@endditaa\n', 'code:plantuml',
+   'ditaa → 保留源码'],
 ];
-for (const [body, want, title] of PUML) {
+for (const [body, want, title] of PUML_ROUTE) {
   probe('§6.21', title, '```plantuml\n' + body + '```', 'claim', (res) => {
+    const kindSeq = JSON.stringify(res.blocks.map((b) => b.kind));
+    if (want === 'math') {
+      const m = blocks(res, K.Math);
+      return (m.length === 1 && m[0].code.indexOf('E = mc^2') >= 0) ? true
+        : '没转成公式块（kind 序列 ' + kindSeq + '）';
+    }
+    if (want === 'chart:mermaid') {
+      const ch = blocks(res, K.Chart);
+      return (ch.length === 1 && ch[0].lang === 'mermaid'
+        && ch[0].code.split('\n')[0].trim() === 'timeline') ? true
+        : '桥成了 ' + (ch[0] ? ch[0].lang + '/' + ch[0].code.split('\n')[0] : '无') + '，期望 mermaid/timeline';
+    }
+    if (want === 'code:filetree') {
+      const cd = blocks(res, K.Code);
+      const tree = cd.length === 1 ? cd[0].code : '';
+      // 期望形状（缩进写法 + 单星号，用户文档 6.20 原样）：层级全在制表符里
+      const shape = ['entry', '└── src', '    └── main', '        ├── ets', '        └── resources'].join('\n');
+      return (cd.length === 1 && cd[0].lang === 'filetree' && tree === shape) ? true
+        : '没转成制表符树（kind 序列 ' + kindSeq + '）：\n' + tree;
+    }
+    if (want === 'code:plantuml') {
+      const cd = blocks(res, K.Code);
+      return (cd.length === 1 && cd[0].lang === 'plantuml') ? true
+        : '没留成源码代码块（kind 序列 ' + kindSeq + '，lang=' + (cd[0] ? cd[0].lang : '?') + '）';
+    }
     const ch = blocks(res, K.Chart);
-    if (ch.length !== 1) { return '没进图表通道（kind 序列 ' + JSON.stringify(res.blocks.map((b) => b.kind)) + '）'; }
-    const code = ch[0].code;
+    return (ch.length === 1 && ch[0].lang === want.split(':')[1]
+      && ch[0].code.indexOf(body.split('\n')[0]) >= 0) ? true
+      : '期望 Chart/' + want.split(':')[1] + ' + 原文，实际 '
+        + (ch[0] ? ch[0].lang + '：' + ch[0].code.split('\n')[0] : '没有图表块（' + kindSeq + '）');
+  });
+}
+// 导出侧的桥（PlantumlBridge 本身就是验收器：认不出一行就整体返回空串）
+const PUML_BRIDGE = [
+  ['@startuml\n[*] --> 草稿\n草稿 --> 已发布 : 发布\n@enduml\n', 'stateDiagram-v2',
+   '导出：状态图桥成 stateDiagram-v2（不能塞进 sequenceDiagram）'],
+  ['@startuml\nclass Foo {\n  +bar()\n}\nclass Baz {\n  +qux()\n}\nFoo <|-- Baz\n@enduml\n', 'classDiagram',
+   '导出：类图桥成 classDiagram（成员与继承不丢）'],
+  ['@startuml\ninterface Runnable {\n  +run()\n}\nclass Task implements Runnable\n@enduml\n', 'classDiagram',
+   '导出：带体 interface 降级成 <<interface>> 构造型（mermaid 不吃 `interface X {`）'],
+  ['@startuml\nA -> B : hi\n== 阶段 ==\nB -> A : yo\n@enduml\n', 'sequenceDiagram',
+   '导出：时序图 == 分隔线降级成注释（mermaid 序列图没有分隔线语法）'],
+];
+for (const [body, want, title] of PUML_BRIDGE) {
+  probe('§6.21', title, '', 'claim', () => {
+    const code = PlantumlBridge.toMermaid(body);
+    if (code.length === 0) { return '桥出了空（等于导出退化成代码块）'; }
     const head = code.split('\n')[0].trim();
     return head === want ? true : '桥成了 ' + head + '，期望 ' + want + '：\n' + code;
   });
@@ -406,10 +467,9 @@ const PUML_NOBRIDGE = [
   ['组件图', '@startuml\n[MdParser] --> [MdView] : 块列表\n@enduml\n'],
 ];
 for (const [name, body] of PUML_NOBRIDGE) {
-  probe('§6.21', name + '不硬转（留源码，不出坏图）', '```plantuml\n' + body + '```', 'claim', (res) => {
-    const ch = blocks(res, K.Chart);
-    const code = ch.length === 1 ? ch[0].code.split('\n')[0] : '';
-    return ch.length === 0 ? true : '被塞进 mermaid（' + code + '）——会是一张报错卡';
+  probe('§6.21', name + '导出侧不硬转（桥不动就留源码，不出坏图）', '', 'claim', () => {
+    return PlantumlBridge.toMermaid(body).length === 0 ? true
+      : '被硬桥成：\n' + PlantumlBridge.toMermaid(body);
   });
 }
 
@@ -624,11 +684,11 @@ probe('§13', '行内代码里的实体保持字面', '写 HTML 时用 `&amp;` �
     : '行内代码被解码成 "' + (code[0] ? code[0].text : '?') + '"';
 });
 
-probe('§6.22', '别名围栏也进图表通道（```dot / ```gv = graphviz，```chartjs = chart，```puml = 桥）',
+probe('§6.22', '别名围栏也进图表通道（```dot / ```gv = graphviz，```chartjs = chart，```puml = 离线内核）',
   '```dot\ndigraph G { a -> b }\n```\n\n```gv\ndigraph H { c -> d }\n```\n\n```chartjs\n{"type":"bar"}\n```\n\n```puml\n@startuml\nA -> B : hi\n@enduml\n```\n',
   'claim', (res) => {
     const ch = blocks(res, K.Chart).map((b) => b.lang);
-    const want = ['graphviz', 'graphviz', 'chart', 'mermaid'];
+    const want = ['graphviz', 'graphviz', 'chart', 'plantuml'];
     return ch.join(',') === want.join(',') ? true : '图表通道拿到 ' + JSON.stringify(ch) + '，期望 ' + JSON.stringify(want);
   });
 

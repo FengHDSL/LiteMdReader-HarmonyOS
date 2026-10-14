@@ -42,7 +42,7 @@ export class PrintService {
         const b = parsed.blocks[k];
         let files: string[] = [];
         if (b.kind === MdBlockKind.Chart) {
-          files = ChartRuntimeService.filesForLang(b.lang.trim().toLowerCase());
+          files = ChartRuntimeService.filesForLang(b.lang.trim().toLowerCase(), b.code);
         } else if (b.kind === MdBlockKind.Math) {
           files = ChartRuntimeService.filesForLang('katex');
         }

@@ -780,27 +780,50 @@ export class MdParser {
         }
         // 指定行高亮（VitePress / Shiki 的 {1,3-5}、Python-Markdown 的 hl_lines="1 3"，1 起）
         const hlLines: number[] = MdParser.fenceHlLines(info);
-        // PlantUML → mermaid 桥接（时序图子集；无法离线渲染真 PlantUML，转译后用 mermaid 出图）
-        let pumlBody: string = '';
-        let isPuml: boolean = false;
+        // PlantUML 路由（2026-10-14 起有离线内核 @plantuml/core，不再一律桥成 mermaid）：
+        //   · 内核有渲染器的图种 → lang 'plantuml' + **原文**，交给 render/plantuml.html
+        //   · 内核没有渲染器的：`@startmath` → 公式块（走 KaTeX）、`@starttimeline` → 桥成
+        //     mermaid timeline、`@startfiles` → 制表符文件树代码块；
+        //     盐图 / nwdiag / ditaa 没有便宜的等价画法 → 保留源码代码块
+        //     （内核遇到它们只会画一张「本构建不支持」的错误卡，那比代码块更没用）。
+        // 导出侧不带内核（5.7MB 不能塞进每个导出的 HTML），由 MdToHtml 走 PlantumlBridge。
+        let pumlRoute: string = '';
+        let pumlOut: string = '';
         if (MdParser.isPumlLang(lang.toLowerCase())) {
-          // 只有时序图能桥成 mermaid；类图 / 用例图 / 活动图**不硬转**，
-          // 留成普通代码块显示源码——以前 bridgeable 从没被调用，类图也被塞进
-          // sequenceDiagram，用户看到的是一整张 mermaid 解析错误卡
           const pumlSrc: string = body.join('\n');
-          if (PlantumlBridge.bridgeable(pumlSrc)) {
-            pumlBody = PlantumlBridge.toMermaid(pumlSrc);
-            isPuml = true;
+          pumlRoute = MdParser.pumlRouteOf(pumlSrc);
+          pumlOut = pumlRoute === 'math' ? PlantumlBridge.mathSource(pumlSrc)
+            : (pumlRoute === 'timeline' ? PlantumlBridge.toMermaidTimeline(pumlSrc)
+              : (pumlRoute === 'tree' ? PlantumlBridge.toTree(pumlSrc) : pumlSrc));
+          if (pumlRoute === 'math' && pumlOut.length > 0) {
+            blocks.push(MdBlockFactory.math(pumlOut, blocks.length, MdParser.orig(fenceLine)));
+            continue;
+          }
+          if (pumlRoute === 'tree' && pumlOut.length > 0) {
+            const tc: MdBlock = MdBlockFactory.code('filetree', pumlOut.split('\n'), blocks.length);
+            tc.srcLine = MdParser.orig(fenceLine);
+            blocks.push(tc);
+            continue;
+          }
+          if (pumlRoute === 'math' || pumlRoute === 'tree') {
+            // 转不出内容（源码不是预期的那种写法）→ 当普通代码块，别硬塞空块
+            pumlRoute = '';
           }
         }
-        const langLower: string = (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
-        const bodyStr: string = isPuml ? pumlBody : body.join('\n');
+        const isPuml: boolean = pumlRoute === 'timeline';
+        const langLower: string = pumlRoute === 'plantuml' ? 'plantuml'
+          : (isPuml ? 'mermaid' : MdParser.chartLangOf(lang.toLowerCase()));
+        const bodyStr: string = (pumlRoute === 'plantuml' || pumlRoute === '') ? body.join('\n') : pumlOut;
         // `html` 与图表同路：按「渲染结果」展示（HTML 代码块预览，用户要求）——
         // 由此浏览器天然支持 <font color size face> 这类**快速样式**与常见标签。
-        if (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
+        // ⚠️ `plantuml` 只有在**路由判定交给内核**时才进图表通道：内核没有渲染器的
+        // （盐图 / nwdiag / ditaa）pumlRoute 是空串，必须留代码块，否则会喂给内核
+        // 画出一张「Diagram not supported」错误卡（verify-syntax-coverage §6.21 钉住）。
+        const chartPlantuml: boolean = langLower !== 'plantuml' || pumlRoute === 'plantuml';
+        if (chartPlantuml && (langLower === 'mermaid' || langLower === 'markmap' || langLower === 'echarts'
           || langLower === 'abc' || langLower === 'graphviz' || langLower === 'flowchart'
           || langLower === 'wavedrom' || langLower === 'nomnoml' || langLower === 'chart'
-          || langLower === 'vega' || langLower === 'html') {
+          || langLower === 'vega' || langLower === 'plantuml' || langLower === 'html')) {
           blocks.push(MdBlockFactory.chart(langLower, bodyStr.split('\n'), blocks.length, MdParser.orig(fenceLine)));
         } else {
           // 代码块也要记原文行号：块级实时编辑要按行区间替换源码
@@ -3149,6 +3172,57 @@ export class MdParser {
   /** PlantUML 的几种写法（puml / iuml 是官方文件扩展名） */
   private static isPumlLang(l: string): boolean {
     return l === 'plantuml' || l === 'puml' || l === 'iuml' || l === 'startuml';
+  }
+
+  /**
+   * PlantUML 块该走哪条渲染路：'plantuml'（离线内核）| 'math'（KaTeX）| 'timeline'
+   * （桥成 mermaid）| 'tree'（制表符文件树）| ''（原样代码块）。
+   *
+   * 集合是 **2026-10-14 用 @plantuml/core 1.2026.8 逐个实测**出来的（用户文档里的
+   * 20 个图种）：内核里有渲染器的才交给它，否则页面上只会是一张
+   * 「Diagram not supported by this release of PlantUML」错误卡。
+   * 升级内核后要重测这张表（见 tools/upgrade-libs.js 的 plantuml()）。
+   */
+  private static pumlRouteOf(src: string): string {
+    const head: string = MdParser.pumlHeadOf(src);
+    if (head === 'math' || head === 'latex') {
+      return 'math';
+    }
+    if (head === 'timeline') {
+      return 'timeline';
+    }
+    if (head === 'files' || head === 'filetree') {
+      return 'tree';
+    }
+    if (head === 'salt' || head === 'nwdiag' || head === 'ditaa' || head.length === 0) {
+      return '';
+    }
+    // startuml（全部 UML 家族：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / ER / Archimate…）
+    // 与这几个独立图种在内核里实测出图；其余未知头部保守留源码
+    return head === 'uml' || head === 'mindmap' || head === 'wbs' || head === 'gantt'
+      || head === 'json' || head === 'yaml' ? 'plantuml' : '';
+  }
+
+  /** 首个非空行里的 `@startXxx` 头部名（小写、去掉 @start 前缀；没有返回空串）。 */
+  private static pumlHeadOf(src: string): string {
+    const lines: string[] = src.split('\n');
+    for (let k = 0; k < lines.length; k++) {
+      const t: string = lines[k].trim().toLowerCase();
+      if (t.length === 0) {
+        continue;
+      }
+      const at: number = t.indexOf('@start');
+      if (at < 0) {
+        return '';
+      }
+      let h: string = t.substring(at + 6);
+      const cut: number = h.search(/[^a-z]/);
+      if (cut >= 0) {
+        h = h.substring(0, cut);
+      }
+      return h;
+    }
+    return '';
   }
 
   /** 从 info 串里抠指定高亮行：`{1,3-5}`（VitePress / Shiki）、`hl_lines="1 3"`（Python-Markdown） */

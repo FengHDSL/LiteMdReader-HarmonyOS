@@ -1,7 +1,7 @@
 // 渲染引擎批量升级器（2026-10 全库升级）：
 //   · render/*.html 里内联的库 → 「整段替换」（只换库文本，保留模板其余手工逻辑）
 //   · rawfile/runtimes + tools/runtimes 的源库文件 → 同步为新版
-// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|chartjs|vega|viz|mathjax|all]
+// 用法：node tools/upgrade-libs.js [katex|mermaid|echarts|abc|flowchart|raphael|marked|turndown|chartjs|vega|viz|mathjax|plantuml|all]
 // 新库文件先放进 $LOCALAPPDATA/Temp/upgrade（文件名见各函数里的 up(...)）。
 // ⚠️ 不升级的：mathjax v4（要 API 适配）、flowchart.js 1.18（npm 不再发浏览器包）、
 //    mermaid 12（实测把 requirementDiagram 跑挂）。理由都写在对应函数上方。
@@ -176,6 +176,55 @@ function vega() {
   deploy(up('vega-lite.min.js'), path.join(TOOL_RUN, 'vega-lite.min.js'), 'tools vega-lite.min.js');
 }
 
+/**
+ * PlantUML 离线内核（@plantuml/core，MIT）：整页由 tools/gen-plantuml-template.js
+ * 从包内四个原文件事发生成，所以这里**不做段落替换**，只做「取新包 → 重建 → 对账」。
+ * 新包获取（没有 npm 也能装：直接下 tarball）：
+ *   curl -s https://registry.npmjs.org/@plantuml%2Fcore | jq -r '.["dist-tags"].latest'
+ *   curl -sL https://registry.npmjs.org/@plantuml/core/-/core-<版本>.tgz -o puml/core.tgz
+ *   tar xzf puml/core.tgz -C puml/package --strip-components=1 \
+ *     package/plantuml.js package/viz-global.js package/themes.js package/openiconic.js
+ * 把 tar 出来的这四个文件放进 **$UP/puml/**（子目录，不是 $UP 根）再跑本函数。
+ * ⚠️ 特意用子目录：$UP 根目录常留着给 ```dot 围栏用的 runtimes/viz-global.js（Viz.js 3.31.0），
+ *    与随内核这份 3.24.0 **同名不同物**，混着拷会拼出引擎/布局版本不匹配的模板。
+ * ⚠️ 升完必须重跑 §6.21 的路由探针：内核新增/删除渲染器时，
+ *    MdParser.pumlRouteOf 的那张「哪些图种交给内核」的表要跟着改。
+ */
+function plantuml() {
+  console.log('== PlantUML 离线内核（@plantuml/core）==');
+  const PKG = path.join(ROOT, '.workbuddy/puml/package');
+  const SRC = path.join(UP, 'puml');
+  const need = ['plantuml.js', 'viz-global.js', 'themes.js', 'openiconic.js'];
+  // ⚠️ **四个文件要么全换、要么全不换**：半套会拼出「引擎与布局版本不匹配」的模板
+  // ——它照样能跑，但排版对不上官方，实测很难查。
+  const present = need.filter((f) => fs.existsSync(path.join(SRC, f)));
+  if (present.length > 0 && present.length < need.length) {
+    console.log('  FAIL  ' + SRC + ' 里内核文件不齐（有 ' + present.join('/')
+      + '，缺 ' + need.filter((f) => present.indexOf(f) < 0).join('/') + '）——'
+      + '半套不许拼模板，补齐或全清后再跑');
+    process.exit(1);
+  }
+  if (present.length === need.length) {
+    fs.mkdirSync(PKG, { recursive: true });
+    for (const f of need) {
+      const srcPath = path.join(SRC, f);
+      const old = path.join(PKG, f);
+      const from = fs.existsSync(old) ? (fs.statSync(old).size / 1048576).toFixed(2) + 'MB → ' : '';
+      fs.copyFileSync(srcPath, old);
+      console.log('  in    ' + f + '  ' + from + (fs.statSync(srcPath).size / 1048576).toFixed(2) + 'MB');
+    }
+  } else {
+    console.log('  --    ' + SRC + ' 里没有内核文件，用现有 .workbuddy/puml/package 重建模板');
+  }
+  // 模板页本身别漏 emoji.js（1.88MB，只服务 <:emoji:> 精灵），漏了会静默画空框
+  if (fs.existsSync(path.join(SRC, 'emoji.js'))) {
+    console.log('  note  emoji.js 在包里，但**故意不打包**（见 gen-plantuml-template.js 上方说明）');
+  }
+  const out = require('child_process').execSync(
+    'node "' + path.join(ROOT, 'tools/gen-plantuml-template.js') + '"', { encoding: 'utf8' });
+  console.log('  ' + out.trim());
+}
+
 if (TASK === 'katex' || TASK === 'all') { katex(); }
 if (TASK === 'mermaid' || TASK === 'all') { mermaid(); }
 if (TASK === 'echarts' || TASK === 'all') { echarts(); }
@@ -187,4 +236,5 @@ if (TASK === 'marked' || TASK === 'all') { marked(); }
 if (TASK === 'turndown' || TASK === 'all') { turndown(); }
 if (TASK === 'chartjs' || TASK === 'all') { chartjs(); }
 if (TASK === 'vega' || TASK === 'all') { vega(); }
+if (TASK === 'plantuml' || TASK === 'all') { plantuml(); }
 console.log('done.');

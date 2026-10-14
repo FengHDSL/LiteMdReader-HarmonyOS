@@ -22,6 +22,7 @@
 | `chart`（别名 `chartjs` / `chart.js`） | Chart.js | 4.5.1 | 统计图，配置写 JSON（与 `echarts` 重叠，写法不同） |
 | `vega-lite`（别名 `vl` / `vega`） | Vega 6.4.0 + Vega-Lite 6.5.0（BSD-3-Clause） | 6.5.0 | 声明式统计图：JSON spec 写 `data` / `mark` / `encoding`，出**矢量 SVG**；分面、聚合、交互选择子集都认 |
 | `flowchart` | flowchart.js | 1.17.1 | 经典 `st=>start:` 写法的流程图 |
+| `plantuml`（别名 `puml` / `iuml` / `startuml`） | **@plantuml/core 官方内核（MIT，TeaVM 编译）** | 1.2026.8 | PlantUML 原生语法 **14 个图种直接出图**（细节见下面 PlantUML 一节；模板 5.5MB，含 Graphviz 布局引擎） |
 | `abc` | abcjs | 6.7.1 | ABC 记谱法五线谱 |
 | `wavedrom` | WaveDrom | 3.7.0 | **数字波形图**、逻辑门图、寄存器位段图 |
 | `html` | 系统 WebView | — | 可交互 HTML 预览（`<script>` 会执行） |
@@ -47,6 +48,7 @@
 | nomnoml | 1.7.0 | 1.7.0 | 已最新 |
 | Chart.js | **4.5.1** | 4.5.1 | 本轮升级（原 4.4.7；升级后浏览器实测仍正常出图） |
 | Vega / Vega-Lite | 6.4.0 / 6.5.0 | 6.4.0 / 6.5.0 | 已最新（本轮刚引入） |
+| @plantuml/core | 1.2026.8 | 1.2026.8 | 已最新（本轮引入；随它打包的 Viz.js 是 **3.24.0**，与 ```dot 用的 3.31.0 是两份，各配各的引擎） |
 | flowchart.js | 1.17.1 | 1.18.0 | **不升**：1.18.0 的 npm 包里只剩 `src/` 与 `index.js`，**不再发布浏览器 UMD**，接它得自搭 bundler，而这是条借 raphael 画的老引擎 |
 | MathJax | 3.2.2 | 4.1.3 | **不升**：v4 要 API 适配（`mjformula.html` 的加载与 `tex.packages` 配置按 v3 写）；它是 KaTeX 之外的兜底引擎，动它风险大于收益 |
 | marked | **18.1.1** | 18.1.1 | 本轮升级（编辑器即时渲染用；Node 里跑过一遍解析自检） |
@@ -130,12 +132,45 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    `[Person]` 的新画法，反而把 `requirementDiagram` 从"能画"变成 `Parse error on line 8`。
    所以随包版本停在 11.17.2，升级要连同 33 个样本一起重验，不是换文件那么简单。
 
-## PlantUML（```plantuml）：时序 / 状态 / 类三张图桥成 mermaid，其余显示源码
+## PlantUML（```plantuml）：官方内核离线渲染 14 个图种，另外 6 个分流
 
-PlantUML 的本体是 Java 实现，离线要么带 `plantuml.jar` 要么连官方渲染服务器 ——
-两者澄笺都不做（无账号、无必需联网是产品底线）。所以 ```` ```plantuml ```` 走的是
-**语法桥**：翻成 mermaid 的 `sequenceDiagram` / `stateDiagram-v2` / `classDiagram`，
-交给上面那套 mermaid 引擎渲染。
+2026-10-14 起，阅读页的 ```` ```plantuml ```` **不再靠语法桥转成 mermaid**，而是直接跑
+PlantUML 官方内核：npm `@plantuml/core`（MIT）—— 官方 Java 实现用 TeaVM 编译成 JS，
+**不需要 Java、不需要服务端、不需要联网**，连同 Graphviz 布局一起内联在
+`render/plantuml.html`（5.5MB 一个页面）。
+
+**下面这张表是用用户文档里 20 个 PlantUML 图种逐个实测出来的**（量 viewBox、SVG 节点数、
+实际填充色，不是"看起来能跑"）：
+
+| 首行写法 | 阅读页 | 说明 |
+| --- | :---: | --- |
+| `@startuml` 时序图 | ✅ 内核 | 参与者框 / 激活条 / note / alt-loop 全家都在，`database` 这类**画得出圆柱**（mermaid 桥做不到的一件，这里做到了） |
+| `@startuml` 用例图 / 类图 / 活动图 / 组件图 / 部署图 / 状态图 | ✅ 内核 | 官方 dot 布局，跟 plantuml.com 出的图同形 |
+| `@startuml` + `archimate` / `entity`（ER） | ✅ 内核 | Archimate 元素构造型、ER 的"一 / 多"基数记号都画得出 |
+| `@startmindmap` / `@startwbs` / `@startgantt` | ✅ 内核 | 脑图、工作分解、甘特 |
+| `@startjson` / `@startyaml` | ✅ 内核 | 数据可视化 |
+| `@starttimeline` | ⚠️ 桥 mermaid `timeline` | 内核这份构建**没有 timeline 渲染器**（抛 `Unsupported diagram type`），mermaid 有同款图，逐行转过去 |
+| `@startmath` | ⚠️ 转 KaTeX | 内核没有 JLaTeXMath（那是 Java），正文就是 LaTeX，直接进块级公式链路 |
+| `@startfiles` | ⚠️ 制表符树 | 内核没有 files 渲染器；层级本身用 `└── ├── │` 画出来（代码卡片，离线导出也在） |
+| `@startsalt`（盐图 / UI 线框） | ❌ 显示源码 | 没有渲染器，且没有便宜的等价画法 —— 保留源码，**不给报错卡** |
+| `@startnwdiag`（网络图） | ❌ 显示源码 | 同上 |
+| `@startditaa`（ASCII 转图） | ❌ 显示源码 | 内核没有 ditaa 栅格化器；ASCII 本身在代码卡片里就已经能读 |
+| `<:name:>` 表情精灵 | ❌ 画不出 | `emoji.js`（1.9MB）故意没打包；`<&star/>` 这类 openiconic 图标**有**（51KB） |
+| `!theme xxx` | ✅ 有主题 | `themes.js`（326KB）已内联，不用联网取主题 |
+
+三条硬限制，说清楚比"支持全套"诚实：
+1. **标准库 `!include <C4/C4_Context>`、Azure / AWS / Kubernetes 图标包不在包里**（官方就没
+   随 `@plantuml/core` 发，要另外下 sprite 库），用到时图里会出现 "Cannot load" 提示；
+2. 上面那六个分流图种**导出时不会变成图**（除 `@startmath` 转公式、`@starttimeline` 桥 mermaid
+   以外，导出侧是代码块）；
+3. **导出与打印不带内核**：一份内核 5.5MB，不能塞进每一个导出的 HTML。导出侧仍然走下面的
+   语法桥（时序 / 状态 / 类三张图能桥出去，其余显示源码）。所以同一份文档，
+   阅读页看到的 PlantUML 比导出文件里更多 —— 这是取舍，不是 bug。
+
+⚠️ 关闭「设置 → 引擎管理」里的 **PlantUML（官方内核）** 后，阅读页退回源码卡片，
+导出侧的桥不受影响（桥用的是 mermaid 引擎）。
+
+### 导出侧的语法桥：时序 / 状态 / 类三张图桥成 mermaid，其余显示源码
 
 **判定规则**（这条决定"桥不了的写法为什么不会给你一张坏图"）：**翻译器本身就是验收器** ——
 逐行白名单，有一行认不出来就**整体不桥**，正文退回代码块显示源码。
@@ -188,13 +223,47 @@ mermaid 报 `Expecting 'TXT', got 'NEWLINE'`，用户看到的是一张报错卡
 | `泛型 class Box~T~`、中文类名 | 原样透传（实测可解析） |
 | `note left of X : 文本`、`note left of X` … `end note` | `note for X "文本"` / `note for X """…"""`（左右位置信息丢失） |
 
-**桥不住的**：用例图、活动图、组件图、`package { }` 嵌套、彩色箭头 `-[#red]->`、
-命名框写法 `[A] --> [B]`、以及 `@startmindmap` / `@startgantt` / `@startsalt` /
-`@startjson` / `@startyaml` 这些非 `@startuml` 的图 —— **不硬转**，直接以代码块显示源码。
-要真渲染全套 PlantUML，请把源码交给 PlantUML 服务器，或改用 mermaid / Graphviz / nomnoml
-的等价图种（状态图、类图现在其实已经能桥，多数情况下不必再退）。
+**导出侧桥不住的**：用例图、活动图、组件图、部署图、脑图、WBS、甘特、JSON / YAML 可视化、
+`package { }` 嵌套、彩色箭头 `-[#red]->`、命名框写法 `[A] --> [B]` —— **不硬转**，
+导出文件里以代码块显示源码。⚠️ 这些在**阅读页都是内核原生出图**的（见本节开头那张表），
+所以"导出里没有图"只代表导出没带内核，不代表澄笺画不出来。
 
-下面这两张就是**本文档自己渲染出来的**结果（左边是 PlantUML 源码，不是 mermaid 源码）：
+下面几张就是**本文档自己渲染出来的**结果（源码是 PlantUML，不是 mermaid）：
+前两张是**内核原生**画的（组件图、脑图这类桥不动的写法，阅读页现在照画出图）；
+最后一张类图在**导出文件里**走的是语法桥，形状会简化成 mermaid 的 `classDiagram`。
+
+```plantuml
+@startuml
+title 渲染链路（内核原生，导出侧画不出）
+package "解析层" {
+  [MdParser]
+  [PlantumlBridge]
+}
+package "渲染层" {
+  [DiagramWeb]
+  [render/plantuml.html]
+}
+[MdParser] --> [PlantumlBridge] : 分流图种
+[PlantumlBridge] --> [DiagramWeb] : 源码
+[DiagramWeb] --> [render/plantuml.html] : 离线内核
+@enduml
+```
+
+```plantuml
+@startmindmap
+* 澄笺渲染
+** 文本
+*** 批注 / 学习卡
+*** 注音 ruby
+** 图表
+*** 内核 PlantUML
+*** mermaid 14 种
+*** 波形 WaveDrom
+** 公式
+*** KaTeX + mhchem
+*** MathJax 兜底
+@endmindmap
+```
 
 ```plantuml
 @startuml

@@ -16,6 +16,7 @@ import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCo
 import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
 import { MdParser } from './MdParser';
 import { EngineRegistry } from '../service/EngineRegistry';
+import { PlantumlBridge } from './PlantumlBridge';
 import { util } from '@kit.ArkTS';
 
 /** 内嵌 CSS。浅色纸面配色，与阅读器浅色主题同一气质。 */
@@ -384,6 +385,17 @@ export class MdToHtml {
     return EngineRegistry.isOff(EngineRegistry.langId(l), EngineRegistry.current());
   }
 
+  /**
+   * 导出侧的 PlantUML → mermaid 源码（时序 / 状态 / 类三类桥得动）。
+   * 空串 = 不桥（阅读页有真内核，导出侧退回代码块）；mermaid 引擎被关闭时同样不桥。
+   */
+  static plantumlForExport(src: string): string {
+    if (EngineRegistry.isOff('mermaid', EngineRegistry.current())) {
+      return '';
+    }
+    return PlantumlBridge.toMermaid(src);
+  }
+
   /** 扫描文档包含的图表块数（Chart 块 + Math 公式块；导出面板据此决定内联哪些库）。 */
   static countCharts(blocks: MdBlock[]): number {
     let n: number = 0;
@@ -484,6 +496,11 @@ export class MdToHtml {
         if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'flowchart') {
           return !MdToHtml.engineOffForLang('flowchart');
         }
+        // plantuml 块导出走 PlantumlBridge 桥成 mermaid 容器 → 需要 mermaid 的脚本与 runner
+        if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'plantuml'
+          && MdToHtml.plantumlForExport(b.code).length > 0) {
+          return true;
+        }
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
           return true;
         }
@@ -546,6 +563,11 @@ export class MdToHtml {
         }
         if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'flowchart') {
           return !MdToHtml.engineOffForLang('flowchart');
+        }
+        // plantuml 块导出走 PlantumlBridge 桥成 mermaid 容器 → 需要 mermaid 的脚本与 runner
+        if (lang === 'mermaid' && b.kind === MdBlockKind.Chart && l === 'plantuml'
+          && MdToHtml.plantumlForExport(b.code).length > 0) {
+          return true;
         }
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
           return true;
@@ -863,6 +885,18 @@ export class MdToHtml {
             body += MdToHtml.chartContainer('mermaid',
               [MdToHtml.flowchartToMermaid(block.code)]);
             chartIndex++;
+          } else if (rich && langLower === 'plantuml') {
+            // 导出**不带 PlantUML 离线内核**（@plantuml/core 一份 5.7MB，不能塞进每个
+            // 导出产物）：能桥成 mermaid 的（时序 / 状态 / 类）桥出去，其余保持源码。
+            // 阅读页走的是真内核，所以同一份文档里导出与阅读的 PlantUML 详略不同——
+            // 这一点在能力矩阵里写明，不假装一致。
+            const bridged: string = MdToHtml.plantumlForExport(block.code);
+            if (bridged.length > 0) {
+              body += MdToHtml.chartContainer('mermaid', [bridged]);
+              chartIndex++;
+            } else {
+              body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
+            }
           } else if (rich && MdToHtml.isChartLang(langLower)) {
             body += MdToHtml.chartContainer(langLower, block.codeLines);
             chartIndex++;

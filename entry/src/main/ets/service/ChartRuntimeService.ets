@@ -21,8 +21,12 @@ import { InlineRuntime, MdToHtml } from '../markdown/MdToHtml';
 const TAG: string = 'ChartRuntime';
 
 export class ChartRuntimeService {
-  /** 图表语言 → 所需 rawfile 文件名。已关闭引擎返回空（导出降级为代码块，无需库）。 */
-  static filesForLang(lang: string): string[] {
+  /**
+   * 图表语言 → 所需 rawfile 文件名。已关闭引擎返回空（导出降级为代码块，无需库）。
+   * @param src PlantUML 块的源码（只有 lang='plantuml' 时用：导出不带 5.7MB 的内核，
+   *            能桥成 mermaid 的才需要 mermaid.min.js，桥不动的退化成代码块）
+   */
+  static filesForLang(lang: string, src: string = ''): string[] {
     // 「设置 → 引擎管理」里关闭了对应引擎 → 不读它的库。判定与 MdToHtml.export
     // 的降级逻辑同源（flowchart 借 mermaid 渲染，两者任一关闭都算关）。
     if (MdToHtml.engineOffForLang(lang)) {
@@ -33,6 +37,9 @@ export class ChartRuntimeService {
     }
     if (lang === 'mermaid') {
       return ['mermaid.min.js'];
+    }
+    if (lang === 'plantuml') {
+      return MdToHtml.plantumlForExport(src).length > 0 ? ['mermaid.min.js'] : [];
     }
     if (lang === 'echarts') {
       return ['echarts.min.js'];

@@ -99,9 +99,13 @@ export class ChartCache {
    *    同批巡检结论：KaTeX / markmap / d3 / ECharts / abcjs / Viz.js / WaveDrom /
    *    nomnoml / vega / turndown 都已是最新；mermaid 停 11.17.2（12 实测回归）、
    *    flowchart.js 停 1.17.1（1.18 不再发浏览器包）、MathJax 停 3.2.2（v4 要 API 适配）。
+   *  · v21（2026-10-14 十八次升级）：**PlantUML 换成离线内核 @plantuml/core 1.2026.8**
+   *    （模板 render/plantuml.html，阅读侧不再桥成 mermaid）。同一份源码在旧键里是
+   *    "mermaid 桥出来的图"，新键才是"内核原生图"，不升盐就会**卡片读旧桥图、放大才变**
+   *    （v17 那轮 blank 图的同款坑）。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    const raw: string = 'v20|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
+    const raw: string = 'v21|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload;
     try {
       const encoder: util.TextEncoder = new util.TextEncoder();
       const md: cryptoFramework.Md = cryptoFramework.createMd('MD5');

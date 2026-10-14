@@ -2879,6 +2879,8 @@ export struct MdBlockView {
                   DiagramWeb({ mode: 'chart', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'vega') {
                   DiagramWeb({ mode: 'vega', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+                } else if (this.block.lang.toLowerCase() === 'plantuml') {
+                  DiagramWeb({ mode: 'plantuml', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'html') {
                   DiagramWeb({ mode: 'html', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else {

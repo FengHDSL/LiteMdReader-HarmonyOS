@@ -85,6 +85,12 @@ export const ENGINE_LIST: EngineInfo[] = [
     desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）')
   },
   {
+    id: 'plantuml', name: 'PlantUML（官方内核）', version: '1.2026.8', date: '2026-09-06',
+    repo: 'https://github.com/plantuml/plantuml',
+    desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；'
+      + '盐图、nwdiag、ditaa、数学公式、时间线、文件树这六个图种内核没有渲染器，改走 KaTeX / mermaid / 制表符树 / 源码')
+  },
+  {
     id: 'chartjs', name: 'Chart.js', version: '4.5.1', date: '2026-10-14',
     repo: 'https://github.com/chartjs/Chart.js',
     desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）'
@@ -179,7 +185,7 @@ export class EngineRegistry {
       return 'nomnoml';
     }
     if (l === 'plantuml') {
-      return 'mermaid';
+      return 'plantuml';
     }
     if (l === 'chart') {
       return 'chartjs';

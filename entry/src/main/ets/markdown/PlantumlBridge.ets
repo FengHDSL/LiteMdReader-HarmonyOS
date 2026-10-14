@@ -1,20 +1,14 @@
 /**
- * 澄笺 · PlantUML → Mermaid 语法桥
- * ================================
+ * 澄笺 · PlantUML 降级桥（PlantumlBridge）
+ * ========================================
  *
- * PlantUML 核心是 Java（渲染要 plantuml.jar 或官方服务器），离线内嵌不现实；
- * 但它的**时序图**语法与 mermaid sequenceDiagram 高度同构。这里把常见片段翻译成
- * mermaid，交给既有 mermaid 引擎渲染：
- *   · actor / participant / database / boundary / entity / collections / queue
- *       → participant（mermaid 不区分参与者图形，够用）
- *   · A -> B : 文本 / A --> B : 文本 / 紧凑写法 A->B: 文本
- *       → A->>B: / A-->>B:（单横线实线、双横线虚线）
- *   · note over A / note right of A / note over A, B → Note ...
- *   · activate A / deactivate A / autonumber / title / == 分隔 == / alt-else-end
- *     / loop / opt / par-and / break / critical → 同名关键字直接透传
- *   · skinparam、!theme、!$变量、hide/show/style 这些**纯外观与预处理指令直接丢弃**
- *     （透传给 mermaid 会让整张图报解析错，一颗老鼠屎坏一锅汤）
- *   · 认不出来的行降格成 mermaid 注释（`%% …`），信息留着但不参与语法
+ * 阅读页的 PlantUML **首选离线内核** `@plantuml/core`（rawfile/render/plantuml.html，
+ * 官方 PlantUML 用 TeaVM 编译成 JS，无 Java 无服务端）。本文件是它的**补位**，用在两处：
+ *   1. 内核里没有渲染器的图种（`@startmath` / `@starttimeline` / `@startfiles`），
+ *      在这里翻成应用已有的渲染路径：KaTeX 公式、mermaid timeline、制表符文件树；
+ *   2. **导出 HTML / 打印**不带内核（一份 5.7MB，不能塞进每个导出产物），
+ *      所以导出侧由 `toMermaid()` 把能桥的图种（时序 / 状态 / 类）翻译成 mermaid，
+ *      桥不动的保持代码块。
  *
  * ⚠️ **只覆盖三种图**：时序图（→ sequenceDiagram）、状态图（→ stateDiagram-v2）、
  * 类图（→ classDiagram）。用例图 / 活动图 / 组件图语法差异过大，`kindOf()` 返回空串，
@@ -505,5 +499,180 @@ export class PlantumlBridge {
     const tight: RegExpMatchArray | null =
       line.match(/^([^\s:>-]+)(-{1,2}>{1,2}[+-]?|\.>{1,2})([^\s:>-]+)\s*(?::\s*(.*))?$/);
     return tight;
+  }
+
+  // ── 内核不支持的图种补位（2026-10-14 实测：@startmath / @starttimeline / @startfiles
+  //    在 @plantuml/core 1.2026.8 里没有渲染器，只会画一张「不支持」错误卡）──
+
+  /**
+   * 取 `@startXxx … @endXxx` 之间的内容行（去掉围栏行与空行）。
+   * `dropCosmetic=false` 时连 skinparam / !theme 这类外观指令一起丢掉（翻译用），
+   * `true` 保留原文（公式、文件树的正文就是内容本身）。
+   */
+  private static blockBody(src: string, keepCosmetic: boolean): string[] {
+    const out: string[] = [];
+    const lines: string[] = src.replace(/\r\n?/g, '\n').split('\n');
+    for (let k = 0; k < lines.length; k++) {
+      const l: string = lines[k].trim();
+      const low: string = l.toLowerCase();
+      if (l.length === 0 || low.indexOf('@start') === 0 || low.indexOf('@end') === 0) {
+        continue;
+      }
+      if (!keepCosmetic && isPlantumlCosmetic(l)) {
+        continue;
+      }
+      out.push(l);
+    }
+    return out;
+  }
+
+  /** `@startmath` → LaTeX 源码（交给应用已有的 KaTeX 块级公式链路）；空则返回空串 */
+  static mathSource(src: string): string {
+    const body: string[] = PlantumlBridge.blockBody(src, true);
+    if (body.length === 0) {
+      return '';
+    }
+    // PlantUML 的 math 是「整块即一条公式」，行间拼接不会改变语义
+    return body.join(' ').trim();
+  }
+
+  /**
+   * PlantUML 时间线 → mermaid `timeline`。两者形状几乎一致（`时期 : 事件 : 事件…`），
+   * 所以只做逐行校验 + 缩进补全；有一行不像就返回空串（整体不桥，退回代码块）。
+   */
+  static toMermaidTimeline(src: string): string {
+    const body: string[] = PlantumlBridge.blockBody(src, false);
+    if (body.length === 0) {
+      return '';
+    }
+    const out: string[] = ['timeline'];
+    let sawPeriod: boolean = false;
+    for (let k = 0; k < body.length; k++) {
+      const l: string = body[k];
+      if (/^title\s+\S/i.test(l) || /^section\s+\S/i.test(l) || /^accolade/i.test(l)) {
+        out.push('    ' + l);
+        continue;
+      }
+      const colon: number = l.indexOf(':');
+      if (colon <= 0) {
+        return '';
+      }
+      const period: string = l.substring(0, colon).trim();
+      const events: string[] = [];
+      const rest: string[] = l.substring(colon + 1).split(':');
+      for (let e = 0; e < rest.length; e++) {
+        const e0: string = rest[e].trim();
+        if (e0.length > 0) {
+          events.push(e0);
+        }
+      }
+      if (period.length === 0 || events.length === 0) {
+        return '';
+      }
+      sawPeriod = true;
+      out.push('    ' + period + ' : ' + events.join(' : '));
+    }
+    return sawPeriod ? out.join('\n') : '';
+  }
+
+  /**
+   * PlantUML 文件树（`@startfiles`）→ **制表符树**（纯文本）。
+   * 内核没有 files 渲染器，而这类内容真正的信息就是层级本身，
+   * 转成 `└── / ├── / │` 后阅读与导出都是一张正常的树（代码卡片，无需 Web）。
+   *
+   * ⚠️ 层级两种写法都要收：`** 子节点`（星号个数 = 层级，PlantUML 脑图/WBS 风格）与
+   * `* 子节点` 靠前导空格缩进（用户文档里就是这种）。所以这里读**保留空白的原始行**，
+   * 不能用 blockBody（它 trim 过，缩进一丢整棵树就拍平成同级）。
+   */
+  static toTree(src: string): string {
+    const lines: string[] = src.replace(/\r\n?/g, '\n').split('\n');
+    const indents: number[] = [];
+    const starLevels: number[] = [];
+    const names: string[] = [];
+    let multiStar: boolean = false;
+    for (let k = 0; k < lines.length; k++) {
+      const l: string = lines[k].replace(/\t/g, '  ');
+      const low: string = l.trim().toLowerCase();
+      if (low.length === 0 || low.indexOf('@start') === 0 || low.indexOf('@end') === 0) {
+        continue;
+      }
+      let p: number = 0;
+      while (p < l.length && l.charAt(p) === ' ') {
+        p++;
+      }
+      let nStars: number = 0;
+      while (p + nStars < l.length && l.charAt(p + nStars) === '*') {
+        nStars++;
+      }
+      if (nStars === 0) {
+        return '';                         // 不是 `*` 列表 → 不猜，原样显示源码
+      }
+      if (nStars >= 2) {
+        multiStar = true;
+      }
+      let nm: string = l.substring(p + nStars).trim();
+      if (nm.length === 0) {
+        return '';
+      }
+      if (nm.length >= 2 && nm.charAt(0) === '"' && nm.charAt(nm.length - 1) === '"') {
+        nm = nm.substring(1, nm.length - 1);
+      }
+      indents.push(p);
+      starLevels.push(nStars - 1);
+      names.push(nm);
+    }
+    if (names.length === 0) {
+      return '';
+    }
+    // 深度：星号写法直接按个数；缩进写法用"递增缩进阶梯"（任意步宽都对，退格会回退层级）
+    const depths: number[] = [];
+    const ladder: number[] = [];
+    for (let k = 0; k < names.length; k++) {
+      if (multiStar) {
+        depths.push(starLevels[k]);
+        continue;
+      }
+      const r: number = indents[k];
+      while (ladder.length > 0 && ladder[ladder.length - 1] > r) {
+        ladder.pop();
+      }
+      if (ladder.length === 0 || ladder[ladder.length - 1] < r) {
+        ladder.push(r);
+      }
+      depths.push(ladder.length - 1);
+    }
+    if (depths[0] !== 0) {
+      return '';                           // 没有单一根节点 → 不猜
+    }
+    const lastAt: boolean[] = [];
+    const out: string[] = [];
+    for (let k = 0; k < names.length; k++) {
+      const d: number = depths[k];
+      if (d < 0) {
+        return '';
+      }
+      // 本节点是不是父级的最后一个孩子 = 往后第一个「深度 ≤ 自己」的行深度是否更小
+      let last: boolean = true;
+      for (let j = k + 1; j < depths.length; j++) {
+        if (depths[j] <= d) {
+          last = depths[j] < d;
+          break;
+        }
+      }
+      if (d === 0) {
+        out.push(names[k]);
+      } else {
+        let prefix: string = '';
+        for (let lv = 1; lv < d; lv++) {
+          prefix += (lv < lastAt.length && lastAt[lv]) ? '    ' : '│   ';
+        }
+        out.push(prefix + (last ? '└── ' : '├── ') + names[k]);
+      }
+      while (lastAt.length < d + 1) {
+        lastAt.push(true);
+      }
+      lastAt[d] = last;
+    }
+    return out.join('\n');
   }
 }

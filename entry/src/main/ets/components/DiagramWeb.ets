@@ -6,7 +6,7 @@
  * onPageEnd 后把源码 JSON 注入 window.renderPayload，页面渲染完成后通过
  * javaScriptProxy(arkHost.postHeight) 把真实高度回传，组件高度自适应。
  *
- * mode: katex | mermaid | echarts | abc | graphviz | flowchart
+ * mode: katex | mermaid | echarts | abc | graphviz | flowchart | plantuml
  *
  * **rawfile 资源分区说明**（体积敏感，勿混放）：
  *   · render/        —— 离屏渲染模板（库**已内联**进 html，整目录只被本组件加载；
@@ -142,8 +142,9 @@ export struct DiagramWeb {
    * 脑图「源码 ↔ 预览」来回切一次就落到另一份模板上，放大行为整个变样。
    */
   private renderTemplate(): string {
-    // plantuml 已在解析层桥接为 mermaid 语法，复用 mermaid 模板
-    return this.mode === 'markmap' ? 'markmap-card' : (this.mode === 'plantuml' ? 'mermaid' : this.mode);
+    // plantuml 用自己的模板 render/plantuml.html（离线内核 @plantuml/core，2026-10-14 起）；
+    // 解析层只在**导出**时才桥成 mermaid，阅读侧不再复用 mermaid 模板
+    return this.mode === 'markmap' ? 'markmap-card' : this.mode;
   }
 
   build() {

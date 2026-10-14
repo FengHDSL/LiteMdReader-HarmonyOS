@@ -1193,6 +1193,7 @@ $$
 | `chart` | `{` 开头的 Chart.js 配置 | 颜色写 **CSS 格式**（`#2F63E8`），不是应用内部的 `#AARRGGBB` |
 | `nomnoml` | `[框 \| 字段 \| 方法]` | 复杂 UML（泳道 / 时序）改用 mermaid |
 | `vega-lite` | `{` 开头的 spec，含 `data` / `mark` / `encoding` | 必须合法 JSON；`width` / `height` 不写就按卡宽出图 |
+| `plantuml` | `@startuml` / `@startmindmap` / `@startwbs` / `@startgantt` / `@startjson` / `@startyaml` | 官方内核离线渲染；`@startsalt`、`@startnwdiag`、`@startditaa` 只显示源码，`@startmath` 转公式，`@starttimeline` 转 mermaid（详见《渲染能力矩阵》） |
 
 ---
 
