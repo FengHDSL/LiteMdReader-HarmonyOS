@@ -1199,6 +1199,16 @@ export struct MdBlockView {
     if (l === 'diff' || l === 'patch' || l === 'udiff') {
       return 'Diff';
     }
+    // 澄笺自绘的三个新图种（PlantUML 家族，内核无渲染器）：此前没有徽标 → 空白小方块
+    if (l === 'salt') {
+      return 'Salt';
+    }
+    if (l === 'ditaa') {
+      return 'Ditaa';
+    }
+    if (l === 'nwdiag') {
+      return 'NW';
+    }
     if (l === 'html' || l === 'htm') {
       return 'HTML';
     }
@@ -1288,6 +1298,16 @@ export struct MdBlockView {
     // diff：绿（新增侧）压暗一档
     if (l === 'diff' || l === 'patch' || l === 'udiff') {
       return '#FF1F7A46';
+    }
+    // 三个自绘图种的徽标底色
+    if (l === 'salt') {
+      return '#FF6B5AA8';
+    }
+    if (l === 'ditaa') {
+      return '#FF2F6F8F';
+    }
+    if (l === 'nwdiag') {
+      return '#FF1F7A5A';
     }
     if (l === 'html' || l === 'htm') {
       return '#FFE34F26';
@@ -1744,7 +1764,7 @@ export struct MdBlockView {
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
                 .width('100%')
-                .position({ x: 0, y: -Math.round(size * 0.56) })
+                .position({ x: 0, y: -Math.round(size * 0.42) })
             }
             // **卡死到基准字实际宽度**：不设宽会被 Flex 拉伸到整行，读音随之整行居中
             .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
@@ -1761,8 +1781,8 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      // 注音的读音向上溢出约 0.56em：段首留出空间，免得压到上一行
-      .margin({ top: Math.round(size * 0.62), bottom: Math.round(size * 0.1) })
+      // **不再额外留边距**（用户要求）：注音行的行高/间距与普通文本一致，
+      // 读音只是"贴"在基准字上方（轻微上溢由行距自然容纳），不靠撑大段落来让位。
     } else if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
       // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
       // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
@@ -1876,7 +1896,7 @@ export struct MdBlockView {
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
                 .width('100%')
-                .position({ x: 0, y: -Math.round(size * 0.56) })
+                .position({ x: 0, y: -Math.round(size * 0.42) })
             }
             .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
           } else {
@@ -1891,7 +1911,7 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      .margin({ top: Math.round(size * 0.62), bottom: Math.round(size * 0.1) })
+      // 同 richTextSel：不额外留边距，行高与普通文本一致
     } else {
       Text() {
         this.spanRun(pieces, size, baseColor)
@@ -3040,10 +3060,11 @@ export struct MdBlockView {
     Column() {
       if (this.chartImagePath('katex').length > 0) {
         ImmersiveCard({
-          cardRadius: HwRadius.inner,
+          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
+          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
+          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
@@ -3055,10 +3076,11 @@ export struct MdBlockView {
         }
       } else {
         ImmersiveCard({
-          cardRadius: HwRadius.inner,
+          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
+          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
+          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
@@ -3080,45 +3102,57 @@ export struct MdBlockView {
       // markmap 自带拖拽/缩放（卡片内即可浏览整图）；无回传、无截图、无时序问题。
       if (this.block.lang.toLowerCase() === 'markmap' && !this.chartShowCode) {
         ImmersiveCard({
-          cardRadius: HwRadius.inner,
+          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
+          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
+          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
+            if (!this.flatCharts) {
+              this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
+                'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            }
             DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
         }
       } else if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
         ImmersiveCard({
-          cardRadius: HwRadius.inner,
+          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
+          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
+          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
+            if (!this.flatCharts) {
+              this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+                'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            }
             this.blockImage(this.block.lang.toLowerCase())
           }
           .width('100%')
         }
       } else {
         ImmersiveCard({
-          cardRadius: HwRadius.inner,
+          // 去卡片模式：圆角/底色/投影全部归零，只剩内容本身
+          cardRadius: this.flatCharts ? 0 : HwRadius.inner,
           cardPadding: 0,
           cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
+          cardBackground: this.flatCharts ? '#00000000' : this.palette.codeBlockBg,
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
-              'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            // 去卡片模式：不画标题栏（语言徽标 / 源码 / 放大入口）
+            if (!this.flatCharts) {
+              this.cardHeader(this.chartTitle(), this.block.lang.toLowerCase(), this.block.code,
+                'mdchart_' + this.block.id, this.chartTitle(), true, false)
+            }
             Stack({ alignContent: Alignment.TopEnd }) {
               Column() {
                 if (this.chartShowCode) {
@@ -3247,6 +3281,9 @@ export struct MdBlockView {
    * 以「源码」形态展示。**预览 ↔ 查看代码**切换（用户要求）：核对写法时不必离开阅读页。
    */
   @State chartShowCode: boolean = false;
+  /** 「去卡片直接展示」开关（设置 → 阅读 → 显示）：图表/公式卡不画外壳与标题栏，
+   *  内容直接排在正文流里（用户要求：不要卡片、直接完整展示）。 */
+  @StorageProp('readerFlatCharts') flatCharts: boolean = false;
 
   /** 代码组的活动下标 */
   private groupIndex(): number {

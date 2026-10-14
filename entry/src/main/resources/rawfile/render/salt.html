@@ -49,8 +49,11 @@
    *   * 文字   → 列表项      其余    → 普通标签
    */
   function cell(txt){
+    // salt 里允许夹 HTML 标签（`<b>标题` 这类）：它们不代表控件，先剥掉、只留文字
+    //（用户文档里就有 `<b>Markdown Viewer`，不剥会原样显示标签本身）
+    var plain=String(txt).replace(/<\/?[A-Za-z][^>]*>/g,'');
     // 同一格里可能并排多个控件（`[登录]  [注册]`）：拆出来逐个转，最多 6 个防死循环
-    var parts=String(txt).split(/\s{2,}/);
+    var parts=plain.split(/\s{2,}/);
     if(parts.length>1 && parts.length<=6){
       var multi='';
       for(var pi=0;pi<parts.length;pi++){
@@ -59,7 +62,7 @@
       }
       return multi;
     }
-    var s=String(txt).replace(/^\s+|\s+$/g,'');
+    var s=plain.replace(/^\s+|\s+$/g,'');
     if(s.length===0){ return '<span class="salt-cell"></span>'; }
     var m=s.match(/^\[(.*?)\]\s*(.*)$/);
     if(m){
@@ -205,7 +208,7 @@
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
-      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
+      if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);

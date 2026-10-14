@@ -7345,11 +7345,6 @@ struct Index {
               .alignItems(HorizontalAlign.Start)
             }
             this.topBar()
-            // 标签筛选条**只属于书架页**（用户要求）：切到文房 / 写作日志时随之收起。
-            // 出现/消失走 transition（工程约定：任何显隐都要有过渡，不要硬切）。
-            if (this.shelfPage === 1) {
-              this.tagBar()
-            }
           }
           .width('100%')
           .justifyContent(this.isWideShelf() ? FlexAlign.SpaceBetween : FlexAlign.Start)
@@ -7366,6 +7361,21 @@ struct Index {
           // 始终可见可点。收起逻辑现在只作用于底栏（同一份 barsVisible 状态）。
           .opacity(1)
           .translate({ y: 0 })
+
+          // ── 书架页的标签筛选条：**胶囊正下方独立一行**（用户要求）──
+          // ⚠️ 上一版把 this.tagBar() 塞进上面那个顶栏 Row 里 —— Row 是**横排**，
+          // 它会紧挨着胶囊排在右边（被挤没 / 看不见），所以"顶栏下方没有标签栏"。
+          // 这里另起一层、绝对定位到胶囊下方；只属书架页，切页随之渐隐（带动画）。
+          if (this.shelfPage === 1) {
+            Column() {
+              this.tagBar()
+            }
+            .width('100%')
+            .position({ x: 0, y: this.padTop() + HwBar.pill + HwSpace.xs })
+            .hitTestBehavior(HitTestMode.Transparent)
+            .transition(TransitionEffect.OPACITY
+              .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          }
 
           // ── 页数指示器（用户要求：悬浮底栏上方，**高度压低贴近底栏**）──
           // 三页各一枚圆点，当前页拉长成胶囊并染强调色；点圆点直接滑到对应页。

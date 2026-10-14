@@ -65,6 +65,13 @@
         curNet.attrs.push(unq(at[2]));
         continue;
       }
+      // 设备行（关键字写法）：`device "Phone"` / `server DB` / `node api1`
+      // —— 不少文档这么写（用户文档里就是 `device "Phone"`），名字可带引号。
+      var kw=t.match(/^(device|node|server|host|router|switch|firewall)\s+("?)([^"\s]+)\2\s*;?$/i);
+      if(kw && curNet){
+        curNet.devs.push({ name: kw[3], addr: '' });
+        continue;
+      }
       // 设备行：`web01 [address = "x", description = "y"];` / `web01;`
       var dv=t.match(/^([A-Za-z_][\w.\-]*)\s*(?:\[(.*?)\])?\s*;?$/);
       if(dv && curNet){
@@ -78,7 +85,7 @@
       // 认不出的行：忽略（如 group 属性）
     }
     if(nets.length===0){
-      return '<div class="err">nwdiag：没解析出 network 块（写法需形如 network dmz { address = "10.0.0.0/24" web01 [address = "10.0.0.1"]; }）</div>';
+      return '<div class="err">nwdiag：没解析出 network 块。支持两种写法：① network dmz { address = "10.0.0.0/24" web01 [address = "10.0.0.1"]; } ② network Lan { device "Phone" device "Tablet" }</div>';
     }
     // 统计设备出现在几个网络里（>1 时标"多网络"）
     var devCount={};
@@ -143,7 +150,7 @@
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
-      if(o.bg){document.documentElement.style.background=o.bg;document.body.style.background=o.bg;}
+      if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);

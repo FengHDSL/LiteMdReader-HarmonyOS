@@ -87,6 +87,7 @@ export default class EntryAbility extends UIAbility {
     // 目录 / 批注侧边栏是否使用沉浸光感（关闭后用阅读背景色）
     PersistentStorage.persistProp('drawerImmersive', true);
     PersistentStorage.persistProp('readerShowMeta', true);
+    PersistentStorage.persistProp('readerFlatCharts', false);
     // 引擎管理：被关闭的渲染引擎列表（逗号分隔 id，空串 = 全部开启）
     PersistentStorage.persistProp('disabledEngines', '');
     PersistentStorage.persistProp('readerKeepScreenOn', false);

@@ -44,6 +44,7 @@ export class SettingsMirror {
     // 阅读排版 / 显示
     'readerThemeMode', 'readerFontSize', 'readerLineHeight', 'readerMeasure',
     'readerFontFamily', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
+    'readerFlatCharts',
     'readerKeepScreenOn', 'readerBrightness', 'readerCustomBgLight', 'readerCustomBgDark',
     'readerTabBarAtBottom',
     // 网页开放（阅读页「更多」面板开关）
