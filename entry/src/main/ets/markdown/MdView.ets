@@ -367,35 +367,6 @@ export class MdViewUtil {
     return MdViewUtil.rubyFit(bt, ot, size, family).center;
   }
 
-  /**
-   * 注音单元的**基准字宽度**（vp）——用来把外层 Stack 卡到基准字的实际宽度。
-   *
-   * 为什么必须显式给宽度：Stack 若不设宽，会被 Flex 拉伸到整行可用宽，
-   * 里面 `width('100%')` 的读音就会"整行居中"——用户看到的是拼音飞到屏幕中间
-   *（实测反馈"哈强制屏幕居中"）。给 Stack 定死基准字宽，读音的 100% 才有正确参照。
-   * 量不出（字体未就绪等）时退回按字数估算，保证永远给得出一个正数。
-   */
-  static rubyBaseWidth(baseText: string, size: number, family: string): number {
-    if (baseText.length === 0 || size <= 0) {
-      return 0;
-    }
-    let w: number = 0;
-    try {
-      w = MeasureText.measureText({ textContent: baseText, fontSize: size, fontFamily: family });
-    } catch (e) {
-      w = 0;
-    }
-    if (w > 0) {
-      return Math.ceil(w);
-    }
-    // 兜底估算：CJK 按 1em、其余按 0.6em 逐字累加
-    let est: number = 0;
-    for (let k = 0; k < baseText.length; k++) {
-      const c: string = baseText.charAt(k);
-      est += (c.charCodeAt(0) > 0x2E80) ? size : size * 0.6;
-    }
-    return Math.ceil(est);
-  }
 
   static pieceKey(piece: MdPiece, index: number): string {
     return piece.kind + '_' + index + '_' + piece.text.length + '_' + piece.num
@@ -938,7 +909,8 @@ export struct MdBlockView {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   @Prop bodySize: number = HwType.bodyDefault;
   @Prop lineMul: number = HwType.lineDefault;
-  @Prop dark: boolean = false;
+  // 深浅一变 → 所有图表/公式卡自动刷新（缓存 PNG 按深浅分别烘焙，全部作废）
+  @Prop @Watch('refreshAllCharts') dark: boolean = false;
   /** 当前文档的全部批注。按 blockId 过滤后才参与本块渲染。 */
   @Prop annotations: MdAnnotation[] = [];
   /** 处于"系统选择模式"的块 id（该块恢复系统原生长按菜单）；空串 = 无 */
@@ -1743,31 +1715,23 @@ export struct MdBlockView {
       Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
         ForEach(MdViewUtil.toAtoms(this.pieces()), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            // **基准字与旁文严格对齐**：基准字是 Stack 里唯一的在流子节点（决定宽高，
-            // 排版位置与普通文字一致）；读音用 position 绝对定位到基准字正上方，
-            // 不占布局空间。上一版用 Column 上下排，整列变高 → 基准字被顶上去了
-            //（用户实测"字符没和其他文本对齐"）。
-            Stack() {
-              Text(atom.base)
-                .fontSize(size)
-                // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
-                .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
-                  ? atom.sample.highlight : baseColor)
-                .fontWeight(atom.sample !== null && atom.sample.bold
-                  ? FontWeight.Bold : FontWeight.Normal)
-                .fontFamily(HwFont.resolve(this.fontKey))
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
-              Text(atom.reading)
-                .fontSize(Math.max(9, Math.round(size * 0.5)))
-                .fontColor(this.palette.textTertiary)
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
-                .width('100%')
-                .position({ x: 0, y: -Math.round(size * 0.42) })
-            }
-            // **卡死到基准字实际宽度**：不设宽会被 Flex 拉伸到整行，读音随之整行居中
-            .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
+            // **overlay 方案**（第三次迭代）：基准字是 Flex 的直接 Text 子节点——
+            // 有真实基线，与旁文严格对齐（Stack/Column 方案都做不到：前者宽度要靠
+            // 估测、字母单词一估就偏；后者整列变高顶高行）。读音挂在 overlay 上：
+            // 不参与布局、水平居中于字、向上偏出字顶。
+            Text(atom.base)
+              .fontSize(size)
+              // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
+              .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
+                ? atom.sample.highlight : baseColor)
+              .fontWeight(atom.sample !== null && atom.sample.bold
+                ? FontWeight.Bold : FontWeight.Normal)
+              .fontFamily(HwFont.resolve(this.fontKey))
+              .maxLines(1)
+              .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
+                align: Alignment.Top,
+                offset: { y: -Math.round(Math.max(9, Math.round(size * 0.5)) * 1.12) }
+              })
           } else {
             Text() {
               this.pieceRun(atom.pieces, size, baseColor)
@@ -1824,6 +1788,17 @@ export struct MdBlockView {
    * 所以 v1 明确不支持在表格里做批注。
    */
   @Builder
+  /** 注音读音（overlay 内容）：小号、置灰、单行居中。 */
+  @Builder
+  rubyReadingText(reading: string, size: number) {
+    Text(reading)
+      .fontSize(Math.max(9, Math.round(size * 0.5)))
+      .fontColor(this.palette.textTertiary)
+      .maxLines(1)
+      .textAlign(TextAlign.Center)
+      .width('100%')
+  }
+
   /** 片段串 → 一串 Span（线性排版路径）。注音不走这里，见 richText 的堆叠分支。 */
   @Builder
   spanRun(pieces: MdPiece[], size: number, baseColor: string) {
@@ -1880,25 +1855,18 @@ export struct MdBlockView {
       Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
         ForEach(MdViewUtil.toAtoms(pieces), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            // 与 richTextSel 同款：基准字在流、读音绝对定位在上方（保证基线对齐）
-            Stack() {
-              Text(atom.base)
-                .fontSize(size)
-                .fontColor(baseColor)
-                .fontWeight(atom.sample !== null && atom.sample.bold
-                  ? FontWeight.Bold : FontWeight.Normal)
-                .fontFamily(HwFont.resolve(this.fontKey))
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
-              Text(atom.reading)
-                .fontSize(Math.max(9, Math.round(size * 0.5)))
-                .fontColor(this.palette.textTertiary)
-                .maxLines(1)
-                .textAlign(TextAlign.Center)
-                .width('100%')
-                .position({ x: 0, y: -Math.round(size * 0.42) })
-            }
-            .width(MdViewUtil.rubyBaseWidth(atom.base, size, HwFont.resolve(this.fontKey)))
+            // 与 richTextSel 同款 overlay 方案（基线对齐 + 读音浮于字上方）
+            Text(atom.base)
+              .fontSize(size)
+              .fontColor(baseColor)
+              .fontWeight(atom.sample !== null && atom.sample.bold
+                ? FontWeight.Bold : FontWeight.Normal)
+              .fontFamily(HwFont.resolve(this.fontKey))
+              .maxLines(1)
+              .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
+                align: Alignment.Top,
+                offset: { y: -Math.round(Math.max(9, Math.round(size * 0.5)) * 1.12) }
+              })
           } else {
             Text() {
               this.spanRun(atom.pieces, size, baseColor)
@@ -3070,7 +3038,9 @@ export struct MdBlockView {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
-    .padding({ left: HwSpace.md, right: HwSpace.xs, top: HwSpace.xs, bottom: 0 })
+    // 按钮行与卡片顶部、与下方画布的间隙**对称**（用户要求：按钮别贴住画布，
+    // 往上挪一点，上下留白一致）。top/bottom 各给同量的 padding。
+    .padding({ left: HwSpace.md, right: HwSpace.xs, top: 6, bottom: 6 })
   }
 
   @Builder
@@ -3085,7 +3055,7 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true)
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
             // 超宽公式：按自然尺寸 + 横向滚动展示（用户要求），不再压扁
             this.blockImage('katex')
           }
@@ -3100,8 +3070,8 @@ export struct MdBlockView {
           palette: this.palette
         }) {
           Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true)
-            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
+            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
           }
           .width('100%')
         }
@@ -3298,6 +3268,15 @@ export struct MdBlockView {
    * 卡片「刷新」（用户要求）：把该块的**缓存图标记为失效**（回落到实时渲染），
    * 并让 Web 实例重新加载页面重画一遍。
    */
+  /**
+   * 深浅切换 → **所有卡片自动刷新**（用户要求）：缓存 PNG 按深浅分别烘焙，
+   * 主题一变全部作废；实时 Web 卡也要整页重载（模板里 Chart.defaults 等全局
+   * 状态按主题重置才干净）。挂在 dark 的 @Watch 上，一次切换全量生效。
+   */
+  private refreshAllCharts(): void {
+    this.chartReloadTick = this.chartReloadTick + 1;
+  }
+
   private refreshHandler(mode: string): void {
     const key: string = this.blockKeyOf(mode);
     if (this.brokenCharts.indexOf(key) < 0) {
