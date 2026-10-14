@@ -75,7 +75,16 @@ Mermaid 官方类型很多，但**能不能画取决于应用内置的这份构�
    形状、连线、边界框都在，字糊成一团。C4 没有 `useMaxWidth` 这类"铺满容器"开关，
    缩略只能这样（放大浮层里 ± 或双指捏合到 3~5 倍就能读；`-` 到底可以再看全貌）。
    真要在小屏上读，建议把一张 C4 拆成 Context / Container / Component 三张。
-6. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
+6. **C4 的画法在 11.x 变了，而且改不回去**：11.17.2 把小人画成"圆头 + 大圆角身"、类型写成
+   `[Person]`；旧版（10.9.x）是紧凑方框加 `<<person>>`。实测 `c4.showStereotype` /
+   `c4.showIcon` / `boxMargin` / `rankSpacing` 等配置**在这个构建里一律没有效果**
+   （五种配置组合出的 SVG viewBox 与填充完全一致），所以只能接受新画法。
+   如果你手上留着一张旧引擎烘出来的紧凑 C4 卡片图，那是**缓存**，不是现在的引擎画的。
+7. **浅色主题的时序图以前是灰框黑字**：`neutral` 给参与者框 `rgb(238,238,238)`，
+   `default` 才是 `#ECECFF` 淡紫。实测四种图种（流程 / 类 / 状态 / ER）在两种主题下填充一样，
+   **只有时序图不同**——"图表家族没颜色"这一条从头到尾就是主题选择，不是引擎不支持。
+   现在浅色走 `default`，与导出的网页同口径。
+8. 图里报错时正文会显示引擎的原始错误（`syntax error in text` 这类），不会静默变成空白卡。
 
 ## PlantUML（```plantuml）：时序 / 状态 / 类三张图桥成 mermaid，其余显示源码
 
@@ -94,7 +103,7 @@ mermaid 报 `Expecting 'TXT', got 'NEWLINE'`，用户看到的是一张报错卡
 
 | PlantUML 写法 | 翻成 |
 | --- | --- |
-| `actor` / `participant` / `database` / `boundary` / `entity` / `queue` …（含 `"显示名" as ID`） | `participant ID as 显示名` |
+| `actor` / `participant` / `database` / `boundary` / `entity` / `queue` …（含 `"显示名" as ID`） | `actor` 留住（小人 + 淡紫底），其余一律 `participant ID as 显示名`，**画不出圆柱与队列**（见下面"参与者类型只认两种"） |
 | `A -> B: 文本`、`A --> B: 文本`，以及不带空格的 `A->B: 文本` | `A->>B:` / `A-->>B:`（实线 / 虚线） |
 | `A -> B++` / `A -> B--`、`activate B` / `deactivate B` | `activate` / `deactivate` |
 | `note over A`、`note over A, B`、`note left of / right of` | `Note …` |
@@ -103,6 +112,12 @@ mermaid 报 `Expecting 'TXT', got 'NEWLINE'`，用户看到的是一张报错卡
 | `== 阶段分隔 ==` | **降成注释** `%% 分隔：阶段`——mermaid 时序图没有分隔线语法，原样透传实测直接 Parse error |
 | `skinparam …`、`!theme`、`!$变量`、`hide/show/style` | **丢弃**（纯外观指令，透传会让整图报错） |
 | 认不出的行 | 降格成 mermaid 注释 `%% …`，不再连累整张图 |
+
+**参与者类型只认两种**：实测这个 mermaid 构建（11.17.2）的时序图声明只接受 `actor` 与
+`participant`，`database` / `boundary` / `control` / `entity` / `collections` / `queue`
+带不带 `as`、裸写、引号写法 —— 30 个组合逐个渲染**全部 Parse error**。所以 PlantUML 的
+`database "插件注册表" as R` 只能画成普通框（圆柱形没有），小人 `actor` 则完整保留。
+宁缺形状，也不给一张报错卡。
 
 ### 状态图 → `stateDiagram-v2`
 
@@ -360,7 +375,7 @@ digraph 渲染管线 {
 | 显式标题 ID `## 标题 {#intro}` | ✅ | 花括号不再显示在标题里；导出的网页给 `<h*>` 加真 `id`，中文 id 也可以。阅读页跳转**先认这个 id、再按标题文字匹配**，所以 `[部署](#deploy)` 在应用里也跳得到。pandoc 的**多属性写法**同样收：`{#bg .unnumbered}`、`{width=60%}` 都按属性块词法吃掉，id 落地、其余忽略 |
 | 裸标签锚点 `<a id="x"></a>` | ⚠️ 半支持 | 标签被脱掉、内容保留，但这个 id **不参与应用内跳转**（行内那条路上没有可登记的块位置）；把锚点写在标题后面那个 `{#x}` 上才两边都通 |
 | 定义列表（`术语` + `: 定义`） | ✅ | 术语一段、每条定义单独一块（可单独批注）；导出不套 `<dl>` 而是缩进段 |
-| 行内 HTML（`<kbd>` `<ruby>` `<span style="color">` `<u>` `<mark>` `<sub>` `<sup>` `<a>` `<img>` `<br>`） | ✅ | 键帽用窄空格当内边距（`Span` 没有 padding）；注音量宽后**居中压在基准字正上方**、不占推进宽度（量不出来或注音比字宽出 1.6 倍以上时退回「小号上标排右侧」），含注音的段自动加行距避免撞上一行；`<script>` / `<style>` 丢弃，样式只放行三样：十六进制字色、实心背景色（渐变与 url 画不出来，宁可没底也不渲成黑块）、font-weight ≥600 的粗体 |
+| 行内 HTML（`<kbd>` `<ruby>` `<span style="color">` `<u>` `<mark>` `<sub>` `<sup>` `<small>` `<a>` `<img>` `<br>`） | ✅ | 键帽用窄空格当内边距；注音量宽后居中压在基准字上方、不占推进宽度（量不出来就退回小号上标），含注音的段自动加行距；`<script>` / `<style>` 丢弃。样式放行五样：十六进制字色、实心背景色、**渐变取第一个色标当近似底**、`font-size` 的 em / %（`<small>` 同义，px 不接）、font-weight ≥600 粗体 |
 | 块级 HTML（`<table>` 合并单元格、`<div style>`、`<svg>`、`<figure>`、音视频） | ✅ | 整段交给内嵌 WebView 渲染（`render/html.html`），所以 colspan / rowspan 这类排版能用；自动识别的块级 HTML 会先摘掉 `<script>` `<iframe>` 与 `on*` 事件属性 |
 | 4 空格 / Tab 缩进代码块 | ✅ | 老式写法；紧跟段落的缩进行仍是段落续行，隔一行空行才收成代码 |
 | Diff 代码块 ` ```diff ` | ✅ | 按行首 `+` / `-` / `@@` 整行着色（阅读页、导出、放大视图三处一致） |
