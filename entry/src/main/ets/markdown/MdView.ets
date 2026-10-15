@@ -2618,7 +2618,7 @@ export struct MdBlockView {
         .objectFit(ImageFit.Contain)
         .width(this.blockImgW(mode))
         .height(this.blockImgH(mode))
-        .onLoad(() => {
+        .onComplete(() => {
           this.autoRefreshOnce(mode);
         })
         .onError(() => {
@@ -2641,7 +2641,7 @@ export struct MdBlockView {
         // 按原比例把正文顶到两屏外（用户实测"类图太长了"）。Contain 只缩小
         // 不裁切，完整内容仍在，看细节点开放大浮层。
         .constraintSize({ maxHeight: this.chartCapH() })
-        .onLoad(() => {
+        .onComplete(() => {
           this.autoRefreshOnce(mode);
         })
         .onError(() => {
