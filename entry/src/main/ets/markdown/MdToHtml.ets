@@ -310,7 +310,7 @@ export class MdToHtml {
     const state: CodeState = newCodeState();
     let out: string = '<pre><code>';
     for (let k = 0; k < lines.length; k++) {
-      const tokens: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state);
+      const tokens: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state, lang);
       let lineOut: string = '';
       for (let t = 0; t < tokens.length; t++) {
         const text: string = MdToHtml.esc(tokens[t].text);

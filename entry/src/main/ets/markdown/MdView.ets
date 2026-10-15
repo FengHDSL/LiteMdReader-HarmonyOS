@@ -621,7 +621,7 @@ export class MdViewUtil {
       if (k > 0) {
         out = out + '\n';
       }
-      const toks: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state);
+      const toks: CodeToken[] = CodeHighlighter.highlightLine(lines[k], family, state, lang);
       for (let i = 0; i < toks.length; i++) {
         const t: CodeToken = toks[i];
         const txt: string = MdViewUtil.escapeHtml(t.text);
@@ -1383,7 +1383,7 @@ export struct MdBlockView {
     const state: CodeState = newCodeState();
     const out: CodeToken[][] = [];
     for (let k = 0; k < this.block.codeLines.length; k++) {
-      out.push(CodeHighlighter.highlightLine(this.block.codeLines[k], family, state));
+      out.push(CodeHighlighter.highlightLine(this.block.codeLines[k], family, state, this.block.lang));
     }
     this.codeTokens = out;
     return out;
@@ -3319,7 +3319,7 @@ export struct MdBlockView {
     const out: CodeToken[][] = [];
     const ls: string[] = cur.code.replace(/\r\n?/g, '\n').split('\n');
     for (let k = 0; k < ls.length; k++) {
-      out.push(CodeHighlighter.highlightLine(ls[k], family, state));
+      out.push(CodeHighlighter.highlightLine(ls[k], family, state, cur.lang));
     }
     return out;
   }
