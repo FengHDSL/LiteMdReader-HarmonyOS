@@ -35,6 +35,8 @@ export struct ImageCropOverlay {
   @State rectH: number = 0;
   @State hasRect: boolean = false;
   @State busy: boolean = false;
+  /** 裁切底色：黑/白可切（用户要求），浅色图在白底上看得更清 */
+  @State bgDark: boolean = true;
   private touchMode: string = 'none';
   private anchorX: number = 0;
   private anchorY: number = 0;
@@ -245,10 +247,7 @@ export struct ImageCropOverlay {
       Column()
         .width('100%')
         .height('100%')
-        .backgroundColor('#F0000000')
-        .onClick(() => {
-          this.onCancel();
-        })
+        .backgroundColor(this.bgDark ? '#F0000000' : '#F0FFFFFF')
 
       if (this.boxW > 0) {
         // 图片：按 Contain 尺寸定位显示
@@ -318,8 +317,17 @@ export struct ImageCropOverlay {
           })
       }
 
-      // 底部按钮条：重选 / 恢复原图 / 取消 / 确认裁切
+      // 底部按钮条：重选 / 黑白 / 恢复原图 / 退出 / 确认裁切
       Row({ space: HwSpace.md }) {
+        Text('黑白')
+          .fontSize(14)
+          .fontColor('#FFFFFFFF')
+          .padding({ left: 14, right: 14, top: 8, bottom: 8 })
+          .borderRadius(HwRadius.pill)
+          .backgroundColor('#FF3A4150')
+          .onClick(() => {
+            this.bgDark = !this.bgDark;
+          })
         Text('重选')
           .fontSize(14)
           .fontColor('#FFFFFFFF')
@@ -345,7 +353,7 @@ export struct ImageCropOverlay {
             })
         }
         Blank()
-        Text('取消')
+        Text('退出')
           .fontSize(14)
           .fontColor('#FFFFFFFF')
           .padding({ left: 14, right: 14, top: 8, bottom: 8 })
