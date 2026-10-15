@@ -1872,6 +1872,8 @@ export struct Editor {
   @State barExpanded: boolean = false;
   /** 当前长按显示气泡说明的按钮 key（'' = 无；松手即清空，气泡随之消失） */
   @State tipKey: string = '';
+  /** 「全部编辑功能」面板内容区的实测宽度（vp）：按钮网格按它自适应列数 */
+  @State panelInnerW: number = 0;
 
   /**
    * 文本视觉宽度估算（vp）：CJK 与全角标点按 1 em，半角按 0.55 em。
@@ -1903,23 +1905,6 @@ export struct Editor {
       }
     }
     return Math.round(w);
-  }
-
-  /** 整组排版：统一宽度 + 当前可用宽能放几列 + 切好的行（放不下自动换行）。 */
-  private groupLayout(items: MdSnippet[]): GroupLayout {
-    const cellVp: number = this.groupCellVp(items);
-    const gap: number = 6;
-    // 面板左右各 12 内边距，外层容器各约 20
-    const avail: number = Math.max(140, this.rootWidth - 64);
-    let cols: number = Math.floor((avail + gap) / (cellVp + gap));
-    if (cols < 1) {
-      cols = 1;
-    }
-    if (cols > 5) {
-      cols = 5;
-    }
-    const out: GroupLayout = { cellVp: cellVp, cols: cols, rows: this.chunkRows(items, cols) };
-    return out;
   }
 
   /** 长按气泡文案：没手写 tip 就从插入片段自动推一条，保证每个按钮都有说明。 */
@@ -2214,6 +2199,13 @@ export struct Editor {
       .scrollBar(BarState.Auto)
       .align(Alignment.Top)
       .width('100%')
+      // 实测内容宽 → panelGrid 据此算列数（平板/折叠屏变宽时自动多放几列）
+      .onAreaChange((oldValue: Area, newValue: Area) => {
+        const w: number = Number(newValue.width);
+        if (w > 0 && Math.abs(w - this.panelInnerW) > 1) {
+          this.panelInnerW = w;
+        }
+      })
       // 约 4 行按钮 + 组标题：够滑动挑，又不至于盖住大半屏正文
       .constraintSize({ maxHeight: 208 })
     }
@@ -2230,6 +2222,30 @@ export struct Editor {
   }
 
   /**
+   * 「全部编辑功能」面板的网格：**四组共用一套格宽与列数**。
+   * 原来每组按"本组最长标签"算宽 → 格式组窄、图表组宽，同一面板里按钮大小不一；
+   * 现在取**全部片段里最长那颗**的需求当基准格宽，再按面板实测宽度算列数，
+   * 并把格宽**拉伸到整行铺满**（列数 × 格宽 + 间隙 = 面板宽），
+   * 所以按钮一样大、每行填满、面板变宽变窄都会自动改列数（用户要求三条一起满足）。
+   */
+  private panelGrid(): GroupLayout {
+    const gap: number = 6;
+    const avail: number = Math.max(160, this.panelInnerW > 0 ? this.panelInnerW : this.rootWidth - 64);
+    const need: number = this.groupCellVp(SNIPPETS);
+    let cols: number = Math.floor((avail + gap) / (need + gap));
+    if (cols < 2) {
+      cols = 2;
+    }
+    if (cols > 6) {
+      cols = 6;
+    }
+    const cell: number = (avail - (cols - 1) * gap) / cols;
+    const empty: MdSnippet[][] = [];
+    const out: GroupLayout = { cellVp: cell, cols: cols, rows: empty };
+    return out;
+  }
+
+  /**
    * 一组按钮：标题 + **每颗同宽（按最长标签算）、每行放得下几列放几列**。
    * 之前是"每行固定 4 颗 + layoutWeight 等分"：格子等宽但芯片按内容伸缩，
    * 于是同一列的文字一个偏左一个偏右（用户反馈"不要一个左一个右"）；
@@ -2243,12 +2259,12 @@ export struct Editor {
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
-        ForEach(this.groupLayout(items).rows, (row: MdSnippet[]) => {
+        ForEach(this.chunkRows(items, this.panelGrid().cols), (row: MdSnippet[]) => {
           Row({ space: 6 }) {
             ForEach(row, (item: MdSnippet) => {
-              // 宽度取**整组**的最长标签，不是本行的：最后一行往往只有几颗，
-              // 按行算会让最后一列比上面窄，列就又不齐了
-              this.barCell(item, this.groupCellVp(items))
+              // 格宽取**整个面板**的最长标签（panelGrid），不是本组、更不是本行的：
+              // 分组不同就不同宽会让按钮大小一眼看过去不统一
+              this.barCell(item, this.panelGrid().cellVp)
             }, (item: MdSnippet) => item.key)
           }
           .width('100%')
@@ -2274,6 +2290,7 @@ export struct Editor {
         chipLabel: L10n.t(item.label),
         chipPaddingH: 8,
         chipWidth: cellVp,
+        chipLabelLeft: true,
         chipFontSize: item.icon === undefined ? 15 : 0,
         chipOnTap: (): void => {
           this.insertSnippet(item);

@@ -145,13 +145,15 @@ export class ChartCache {
    * key 里混着 bg 与深浅位，导出侧拿不到渲染当时的准确组合 —— 有了这份索引，
    * 导出只凭 (mode, payload) 就能反查到图（用户实测：bg 对不上时导出全是代码块）。
    */
-  static rememberPayloadKey(ctx: common.UIAbilityContext, mode: string, payload: string, key: string): void {
+  static rememberPayloadKey(ctx: common.UIAbilityContext, mode: string, payload: string,
+                            dark: boolean, key: string): void {
     try {
       const dir: string = ctx.cacheDir + '/charts/payload';
       if (!fs.accessSync(dir)) {
         fs.mkdirSync(dir, true);
       }
-      const p: string = dir + '/' + ChartCache.hashOf(mode + '|' + payload) + '.txt';
+      const p: string = dir + '/' + ChartCache.hashOf(mode + '|' + (dark ? 'd' : 'l') + '|' + payload)
+        + '.txt';
       const file: fs.File = fs.openSync(p, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
       fs.writeSync(file.fd, key);
       fs.closeSync(file);
@@ -160,11 +162,12 @@ export class ChartCache {
     }
   }
 
-  /** payload 索引反查：拿到该 (mode, payload) 实际落盘的缓存 key（没有返回空串）。 */
-  static payloadKey(ctx: common.UIAbilityContext, mode: string, payload: string): string {
+  /** payload 索引反查：拿到该 (mode, payload, 深浅) 实际落盘的缓存 key（没有返回空串）。 */
+  static payloadKey(ctx: common.UIAbilityContext, mode: string, payload: string,
+    dark: boolean): string {
     try {
       const p: string = ctx.cacheDir + '/charts/payload/'
-        + ChartCache.hashOf(mode + '|' + payload) + '.txt';
+        + ChartCache.hashOf(mode + '|' + (dark ? 'd' : 'l') + '|' + payload) + '.txt';
       if (!fs.accessSync(p)) {
         return '';
       }
@@ -349,9 +352,9 @@ export class ChartCache {
                  dark: boolean, bg: string): boolean {
     const variants: string[] = [
       ChartCache.keyFor(mode, payload, dark, bg),
-      ChartCache.keyFor(mode, payload, !dark, bg),
+      ChartCache.keyFor(mode, payload, dark, ''),
     ];
-    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload);
+    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
     if (idxKey.length > 0) {
       variants.push(idxKey);
     }
@@ -371,13 +374,15 @@ export class ChartCache {
    */
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
-    // 先按 (dark, bg) 组合直查；miss 再走 payload 索引反查（bg/深浅对不上也能命中）
-    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload);
-    const variants: string[] = [];
-    const ds: boolean[] = dark ? [true, false] : [false, true];
-    for (let k = 0; k < ds.length; k++) {
-      variants.push(ChartCache.keyFor(mode, payload, ds[k], bg));
-    }
+    // **只认请求的那一个深浅版本**（bg 允许不同，深浅不允许）：跨版本兜底会把深色底
+    // 烘的图嵌进浅色导出页 —— 设备实测一篇文档 63 张内嵌图里 33 张是深色底，
+    // 在白纸上就是一块块黑（用户实测"默认浅色模式，有的背景变成黑色了"）。
+    // 没有对应版本就走导出页自己的实时渲染（runner 会按页面主题出图）。
+    const variants: string[] = [
+      ChartCache.keyFor(mode, payload, dark, bg),
+      ChartCache.keyFor(mode, payload, dark, ''),
+    ];
+    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
     if (idxKey.length > 0) {
       variants.push(idxKey);
     }

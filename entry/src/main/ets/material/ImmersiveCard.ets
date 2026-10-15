@@ -561,6 +561,8 @@ export struct ImmersiveChip {
   @Prop chipTint: string = '';
   /** **必须 @Prop**：文案随状态变化（如使用模式切换后）要能回刷 */
   @Prop chipLabel: string = '';
+  /** 定宽芯片里标签靠左（等宽网格用；默认居中，与其它用法保持一致） */
+  @Prop chipLabelLeft: boolean = false;
   /** 文案字号（0 = 用默认 13）。书架封面上的百分比胶囊需要更小，用它调。 */
   @Prop chipFontSize: number = 0;
   chipOnTap: () => void = () => {
@@ -620,8 +622,9 @@ export struct ImmersiveChip {
           .maxLines(1)
       }
       .padding({ left: this.chipPaddingH, right: this.chipPaddingH, top: this.chipPaddingV, bottom: this.chipPaddingV })
-      // 定宽时内容居中，左对齐会让每列文字起点不齐
-      .justifyContent(FlexAlign.Center)
+      // 定宽时默认内容居中；「全部编辑功能」那种等宽网格要**左对齐**（每列起点一致，
+      // 扫读更快），由 chipLabelLeft 显式打开
+      .justifyContent(this.chipLabelLeft ? FlexAlign.Start : FlexAlign.Center)
     }
     .width(this.chipWidth)
     .borderRadius(HwRadius.pill)

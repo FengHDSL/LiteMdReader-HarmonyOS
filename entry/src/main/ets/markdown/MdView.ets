@@ -1736,9 +1736,10 @@ export struct MdBlockView {
                 ? FontWeight.Bold : FontWeight.Normal)
               .fontFamily(HwFont.resolve(this.fontKey))
               .maxLines(1)
+              .padding({ top: this.rubyRise(size) })
               .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
                 align: Alignment.Top,
-                offset: { y: -Math.round(Math.max(9, Math.round(size * 0.5)) * 1.12) }
+                offset: { y: 0 }
               })
           } else {
             Text() {
@@ -1871,9 +1872,10 @@ export struct MdBlockView {
                 ? FontWeight.Bold : FontWeight.Normal)
               .fontFamily(HwFont.resolve(this.fontKey))
               .maxLines(1)
+              .padding({ top: this.rubyRise(size) })
               .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
                 align: Alignment.Top,
-                offset: { y: -Math.round(Math.max(9, Math.round(size * 0.5)) * 1.12) }
+                offset: { y: 0 }
               })
           } else {
             Text() {
@@ -2879,6 +2881,18 @@ export struct MdBlockView {
   // 比留一块空白礼貌，也比继续显示旧缓存图诚实（缓存图会让人以为引擎还在工作）。
 
   /** 本块渲染所依赖的引擎 id（公式块 → katex；图表块 → 语言映射；html → 空串）。 */
+  /**
+   * 注音上方的**预留带**高度（vp）。
+   *
+   * 读音挂在 overlay 上，必须落在基准字自己的盒子里：之前用**负 offset** 把它浮到字上方，
+   * 父容器（列表项 / Scroll / 卡片）一裁整条读音就消失（用户实测"中文注音消失了"）。
+   * 现在改成给基准字留顶部内边距、读音填进这条带——行内对齐仍由 Flex 的 Baseline 保证，
+   * 不会把邻字顶歪。
+   */
+  private rubyRise(size: number): number {
+    return Math.max(11, Math.round(size * 0.78));
+  }
+
   private blockEngineId(): string {
     if (this.block.kind === MdBlockKind.Math) {
       return 'katex';

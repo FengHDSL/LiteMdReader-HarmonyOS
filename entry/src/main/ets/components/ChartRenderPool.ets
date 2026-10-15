@@ -196,7 +196,7 @@ export struct ChartRenderPool {
         }
         ChartCache.save(c, t.key, pixel, w, h).then(() => {
           // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
-          ChartCache.rememberPayloadKey(c, t.mode, t.payload, t.key);
+          ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.dark, t.key);
           this.finishOne(t);
         }).catch(() => {
           this.failed.add(t.key);

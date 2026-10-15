@@ -31,6 +31,9 @@ const HTML_CSS: string = `
   .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml, .nml, .cjs { width: 100%; overflow-x: auto; text-align: center; }
   .gv svg, .abc svg, .wfx svg, .vgl svg, .puml svg, .nml svg { max-width: 100%; height: auto; }
   .mermaid svg { max-width: 100%; height: auto; }
+  /* 快照图是整页截图，圆角卡片外的四个角会被合成成黑色（webPageSnapshot 不带 alpha），
+     嵌进导出页就是一圈黑角 —— 图片自身裁圆角把它盖掉，与卡片观感一致 */
+  img.chartimg { border-radius: 10px; max-width: 100%; height: auto; }
   /* 打印：屏幕上"能左右滑动"的东西到了纸上就是"少一段"（用户实测超宽公式打印不全）。
      公式由页尾 runner 缩字号等比适配、SVG 由上面的 max-width 等比缩放，容器一律不裁切。 */
   @media print {
@@ -749,13 +752,15 @@ export class MdToHtml {
         + '      }\n'
         + '      var w = rt - lf;\n'
         + '      if (w <= avail + 1) { return; }\n'
+        + '      // 装不下就先**左对齐**：居中排版时溢出会分在两侧，左边那一截既看不见也滑不到\n'
+        + '      el.style.textAlign = "left";\n'
         + '      var cur = parseFloat(el.style.fontSize);\n'
         + '      if (!(cur > 0)) { cur = 100; }\n'
         + '      var next = Math.floor(cur * (avail - 10) / w);\n'
         + '      if (next >= cur) { next = cur - 4; }\n'
-        + '      if (next < 40) { next = 40; }\n'
+        + '      if (next < 30) { next = 30; }\n'
         + '      el.style.fontSize = next + "%";\n'
-        + '      if (next <= 40) { return; }\n'
+        + '      if (next <= 30) { return; }\n'
         + '    }\n'
         + '  }\n'
         + '  function renderKx(el, display) {\n'
