@@ -16,10 +16,6 @@
  */
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
-import { ImageCropOverlay } from '../components/ImageCropOverlay';
-import { MdParser } from '../markdown/MdParser';
-import { MdBlock, MdBlockKind } from '../markdown/MdTypes';
-import { ChartCache } from '../service/ChartCache';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -41,10 +37,7 @@ export struct HtmlViewer {
   @StorageProp('languageTick') languageTick: number = 0;
   @State ready: boolean = false;
   @State printing: boolean = false;
-  /** 图表/公式点击 → 裁切（打印页）：当前裁切快照路径与块序号 */
-  @State cropImagePath: string = '';
-  @State cropBi: number = -1;
-  private parsedBlocks: MdBlock[] = [];
+
   @State failed: boolean = false;
   @State loadedPath: string = '';
   /** 顶部安全区（像素）：顶栏避让系统状态栏 */
@@ -95,7 +88,6 @@ export struct HtmlViewer {
       return;
     }
     try {
-      this.parsedBlocks = MdParser.parse(this.content).blocks;
       if (this.htmlPath.length > 0) {
         // 直接打开已有 HTML 文件：读文本注入
         this.pendingHtml = fs.readTextSync(this.htmlPath, { encoding: 'utf-8' });
@@ -197,41 +189,6 @@ export struct HtmlViewer {
 
   /** ③ 系统打印组件（打印预览由系统提供）。 */
   /** 打印页点击图表/公式 → 找快照打开裁切（无快照的现场渲染图提示不支持） */
-  private onChartClick(bi: number): void {
-    if (bi < 0 || bi >= this.parsedBlocks.length || this.cropImagePath.length > 0) {
-      return;
-    }
-    const b: MdBlock = this.parsedBlocks[bi];
-    const c: common.UIAbilityContext | null =
-      getContext(this) as common.UIAbilityContext;
-    if (c === null) {
-      return;
-    }
-    let mode: string = '';
-    let payload: string = '';
-    if (b.kind === MdBlockKind.Chart) {
-      mode = b.lang.trim().toLowerCase();
-      payload = b.code;
-    } else if (b.kind === MdBlockKind.Math) {
-      mode = 'katex';
-      payload = b.code;
-    } else {
-      return;
-    }
-    const key: string = ChartCache.payloadKey(c, mode, payload, false);
-    let path: string = key.length > 0 ? ChartCache.srcPath(c, key) : '';
-    if (path.length === 0) {
-      const key2: string = ChartCache.payloadKey(c, mode, payload, true);
-      path = key2.length > 0 ? ChartCache.srcPath(c, key2) : '';
-    }
-    if (path.length === 0) {
-      this.status = '该图为现场渲染（无快照），裁切请回到阅读页操作';
-      return;
-    }
-    this.cropBi = bi;
-    this.cropImagePath = path;
-  }
-
   private async doPrint(): Promise<void> {
     if (this.printing || !this.ready) {
       return;
@@ -338,16 +295,6 @@ export struct HtmlViewer {
       // ── 主体：Web 阅读器 + 状态浮层（状态永远可见，不会白屏无信息）──
       Stack({ alignContent: Alignment.Top }) {
         Web({ src: 'about:blank', controller: this.controller })
-          .javaScriptProxy({
-            object: {
-              chartClick: (bi: number) => {
-                this.onChartClick(bi);
-              }
-            },
-            name: 'arkHost',
-            methodList: ['chartClick'],
-            controller: this.controller
-          })
           .width('100%')
           .height('100%')
           .backgroundColor('#FFFFFFFF')
@@ -372,43 +319,6 @@ export struct HtmlViewer {
             // 就绪提示里已有白屏兜底话术，这里只做软提示。
             this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
           })
-        if (this.cropImagePath.length > 0) {
-          ImageCropOverlay({
-            imagePath: this.cropImagePath,
-            onConfirm: () => {
-              // 快照已原地替换：把裁切结果回写到页面里对应图（base64 交换，免整页刷新）
-              try {
-                const file: fs.File = fs.openSync(this.cropImagePath, fs.OpenMode.READ_ONLY);
-                let dataUrl: string = '';
-                try {
-                  const stat: fs.Stat = fs.statSync(this.cropImagePath);
-                  const buf: ArrayBuffer = new ArrayBuffer(stat.size);
-                  const n: number = fs.readSync(file.fd, buf);
-                  if (n > 0) {
-                    dataUrl = 'data:image/png;base64,' + new util.Base64Helper()
-                      .encodeToStringSync(new Uint8Array(buf, 0, n));
-                  }
-                } finally {
-                  try {
-                    fs.closeSync(file);
-                  } catch (ce) {
-                  }
-                }
-                if (dataUrl.length > 0) {
-                  this.controller.runJavaScript('window.__setChartImg(' + this.cropBi
-                    + ', "' + dataUrl + '")');
-                }
-              } catch (err) {
-              }
-              this.status = '已裁切';
-              this.cropImagePath = '';
-            },
-            onCancel: () => {
-              this.cropImagePath = '';
-            }
-          })
-            .position({ x: 0, y: 0 })
-        }
 
         // 状态条：浮在 Web 顶部（就绪后淡出为不打扰的一行提示）
         Row() {

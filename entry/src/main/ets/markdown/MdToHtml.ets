@@ -479,10 +479,10 @@ export class MdToHtml {
   }
 
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */
-  private static chartContainer(lang: string, lines: string[], bi: number = -1): string {
+  private static chartContainer(lang: string, lines: string[]): string {
     const b64: string = MdToHtml.b64(lines.join('\n'));
     if (lang === 'markmap') {
-      return '<div class="markmap" data-b64="' + b64 + '"> data-bi="' + bi + '"</div>';
+      return '<div class="markmap" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'mermaid') {
       return '<div class="mermaid" data-b64="' + b64 + '"></div>';
@@ -507,21 +507,21 @@ export class MdToHtml {
       return '<div class="puml" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'nomnoml') {
-      return '<div class="nml" data-b64="' + b64 + '"> data-bi="' + bi + '"</div>';
+      return '<div class="nml" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'chart') {
       // Chart.js 要 canvas（不是 SVG）：源码放外层 div（与其它容器同一读法），
       // canvas 由 runner 塞进容器并按卡片宽定尺寸（responsive:false，避免导出页里无限 resize）
-      return '<div class="cjs" data-b64="' + b64 + '"><canvas></canvas> data-bi="' + bi + '"</div>';
+      return '<div class="cjs" data-b64="' + b64 + '"><canvas></canvas></div>';
     }
     if (lang === 'katex') {
       return '<div class="ktx" data-b64="' + b64 + '"></div>';
     }
     if (lang === 'echarts') {
-      return '<div class="ech" data-b64="' + b64 + '" data-bi="' + bi + '" style="width:100%;height:420px"></div>';
+      return '<div class="ech" data-b64="' + b64 + '"" style="width:100%;height:420px"></div>';
     }
     if (lang === 'graphviz') {
-      return '<div class="gv" data-b64="' + b64 + '" data-bi="' + bi + '" style="width:100%;min-height:200px;overflow-x:auto"></div>';
+      return '<div class="gv" data-b64="' + b64 + '"" style="width:100%;min-height:200px;overflow-x:auto"></div>';
     }
     if (lang === 'abc') {
       return '<div class="abc" data-b64="' + b64 + '"></div>';
@@ -531,7 +531,7 @@ export class MdToHtml {
     }
     if (lang === 'vega') {
       // Vega-Lite：容器给一个最小高度，SVG 出图后由自身尺寸撑开
-      return '<div class="vgl" data-b64="' + b64 + '" data-bi="' + bi + '" style="width:100%;min-height:200px;overflow-x:auto"></div>';
+      return '<div class="vgl" data-b64="' + b64 + '"" style="width:100%;min-height:200px;overflow-x:auto"></div>';
     }
     return '';
   }
@@ -970,28 +970,6 @@ export class MdToHtml {
         + '    }\n' : '')
       + '  });\n'
       + '    // 图表/公式点击 → 上报宿主打开裁切（用户要求：打印页点击卡片图进入编辑）；\n'
-      + '    // __setChartImg 供宿主在裁切确认后把对应图替换为裁切结果。\n'
-      + '    var q = String.fromCharCode(34);\n'
-      + '    window.__setChartImg = function (bi, src) {\n'
-      + '      var els = document.querySelectorAll("[data-bi]");\n'
-      + '      for (var i = 0; i < els.length; i++) {\n'
-      + '        if (els[i].getAttribute("data-bi") === String(bi) && src) {\n'
-      + '          els[i].outerHTML = "<img class=" + q + "chartimg" + q + " style=" + q + "max-width:100%;height:auto" + q + " src=" + q + src + q + " data-bi=" + q + bi + q + ">";\n'
-      + '        }\n'
-      + '      }\n'
-      + '    };\n'
-      + '    if (window.arkHost && window.arkHost.chartClick) {\n'
-      + '      document.addEventListener("click", function (ev) {\n'
-      + '        var t = ev.target;\n'
-      + '        while (t && t !== document.body) {\n'
-      + '          if (t.getAttribute && t.getAttribute("data-bi") !== null && t.tagName === "IMG") {\n'
-      + '            try { window.arkHost.chartClick(parseInt(t.getAttribute("data-bi"), 10) || 0); } catch (e) {}\n'
-      + '            return;\n'
-      + '          }\n'
-      + '          t = t.parentNode;\n'
-      + '        }\n'
-      + '      }, true);\n'
-      + '    }\n'
       + '})();\n</script>\n';
     return runnerCode;
   }
@@ -1226,7 +1204,7 @@ export class MdToHtml {
           && !EngineRegistry.isOff('katex', EngineRegistry.current())) {
           const mathPng: string = ChartCache.pngBase64(ctx, 'katex', block.code, dark, chartBg);
           if (mathPng.length > 0 && usedPngs.indexOf(mathPng) < 0) {
-            body += '<img class="chartimg" data-bi="' + k + '" src="' + mathPng
+            body += '<img class="chartimg" src="' + mathPng
               + '" style="max-width:100%;height:auto">';
             usedPngs.push(mathPng);
             chartIndex++;
