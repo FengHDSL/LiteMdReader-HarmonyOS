@@ -117,11 +117,21 @@ export struct HtmlViewer {
   }
 
   /**
-   * 加载 HTML：**base64 loadData 注入**（主路径）—— Web 组件不接受
-   * `fileUri.getUriFromPath` 生成的沙箱 URI（报 Invalid resource path or file type），
-   * 直接注入内容最可靠；失败再退回 file:// 绝对路径。
+   * 加载 HTML：**file:// 直接加载落盘文件**（主路径）。
+   * 之前主路径是 base64 loadData——大文档（内联渲染库 + 内嵌快照图，10MB+）会被
+   * 复制成一份 16MB 字符串一次性灌进 ArkWeb，手机上直接白屏（用户实测：图表越多
+   * 越必现）。落盘文件用 file:// 加载没有大小上限，白屏即消失；
+   * file:// 打开失败（异常）才退回 base64 loadData 兜底。
    */
   private loadHtml(): void {
+    try {
+      if (this.loadedPath.length > 0) {
+        this.controller.loadUrl('file://' + this.loadedPath);
+        return;
+      }
+    } catch (err) {
+      // 落盘路径加载失败 → 回退 loadData
+    }
     try {
       const bytes: Uint8Array = new util.TextEncoder().encodeInto(this.pendingHtml);
       const b64: string = new util.Base64Helper().encodeToStringSync(bytes);
