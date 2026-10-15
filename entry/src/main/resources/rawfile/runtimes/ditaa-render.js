@@ -1,5 +1,11 @@
 /** 澄笺 · ditaa 导出渲染：逻辑与 render/ditaa.html 同源（导出固定浅色底）。 */
 (function(){
+  // 样式自举：模板里的 CSS 跟过来（导出页没有模板的 <style>），
+  // 不注入的话渲染结果是裸文字（用户实测网络图/盐图导出成纯文本）。
+  var _style = document.createElement('style');
+  _style.textContent = "\n  html,body{margin:0;padding:0;background:transparent;}\n  #app{padding:10px 12px;box-sizing:border-box;overflow:hidden;}\n  #app svg{max-width:100%;height:auto;}\n  .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}\n\n  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */\n  ::-webkit-scrollbar { width: 0; height: 0; display: none; }\n  html, body { scrollbar-width: none; -ms-overflow-style: none; }\n";
+  document.head.appendChild(_style);
+
 function esc(s){
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }

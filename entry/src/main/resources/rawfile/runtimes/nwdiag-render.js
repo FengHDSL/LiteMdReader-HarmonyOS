@@ -1,5 +1,11 @@
 /** 澄笺 · nwdiag（网络图）导出渲染：逻辑与 render/nwdiag.html 同源。 */
 (function(){
+  // 样式自举：模板里的 CSS 跟过来（导出页没有模板的 <style>），
+  // 不注入的话渲染结果是裸文字（用户实测网络图/盐图导出成纯文本）。
+  var _style = document.createElement('style');
+  _style.textContent = "\n  html,body{margin:0;padding:0;background:transparent;}\n  body{color:#1B1F27;-webkit-text-size-adjust:100%;}\n  body.dark{color:#ECEFF4;}\n  #app{padding:10px 12px;box-sizing:border-box;}\n  .nw-net{border:1px solid rgba(128,128,128,.55);border-radius:10px;padding:10px 12px;\n          margin:8px 0;display:block;}\n  .nw-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;\n           padding-bottom:6px;margin-bottom:8px;border-bottom:1px dashed rgba(128,128,128,.4);}\n  .nw-name{font:600 14px/1.5 system-ui,\"HarmonyOS Sans SC\",sans-serif;}\n  .nw-addr{font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;opacity:.75;}\n  .nw-dev{display:flex;align-items:baseline;gap:8px;padding:3px 0;flex-wrap:wrap;}\n  .nw-devname{font:13px/1.6 system-ui,\"HarmonyOS Sans SC\",sans-serif;}\n  .nw-devaddr{font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;opacity:.8;}\n  .nw-shared{font-size:11px;opacity:.7;padding:0 6px;border-radius:6px;\n             border:1px solid rgba(128,128,128,.4);}\n  .nw-empty{font:12px/1.6 system-ui,sans-serif;opacity:.7;}\n  .err{color:#D93B3B;font:13px sans-serif;white-space:pre-wrap;}\n\n  /* 全局隐藏滚动条（用户要求）：溢出仍可手势滚动，只是不画那条 */\n  ::-webkit-scrollbar { width: 0; height: 0; display: none; }\n  html, body { scrollbar-width: none; -ms-overflow-style: none; }\n";
+  document.head.appendChild(_style);
+
 function esc(s){
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }

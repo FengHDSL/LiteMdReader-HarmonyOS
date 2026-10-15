@@ -56,7 +56,9 @@ export class PrintService {
       // 打印页要装进 ArkWeb 再交给系统打印，12MB 的页面在手机上直接空白。
       if (needed.indexOf('plantuml-kernel.js') >= 0) {
         notify('正在补齐图表快照…');
-        await ChartRuntimeService.waitForShots(ctx, parsed.blocks, false, '', 5000);
+        // 等待上限 5s -> 20s：示例文档十几张 PlantUML 图，5 秒烘不完，
+        // 快照不齐就会把 5.6MB 内核也背进打印页（12MB 页面手机上渲染失败）。
+        await ChartRuntimeService.waitForShots(ctx, parsed.blocks, false, '', 20000);
         const kernelAt: number = needed.indexOf('plantuml-kernel.js');
         if (kernelAt >= 0 && !ChartRuntimeService.kernelNeeded(ctx, parsed.blocks, false, '')) {
           needed.splice(kernelAt, 1);
