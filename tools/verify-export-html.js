@@ -165,13 +165,21 @@ for (const [name, ok] of checks) {
   console.log((ok ? '  ok    ' : '  FAIL  ') + name);
   if (!ok) bad++;
 }
-// runner 语法检查
-const runnerMatch = html.match(/<script>\n\(function\(\) \{\n([\s\S]*?)\}\)\(\);\n<\/script>/);
-if (runnerMatch) {
-  try { new (require('vm').Script)(runnerMatch[1]); console.log('  ok    runner JS 语法可编译'); }
+// runner 语法检查：**取最后一个 <script> 块**（runner 恒为最后一段）——
+// 旧版正则会把带多余闭合的坏 runner 截断成"可编译"，掩盖整页渲染失效（实测教训）
+const allScripts = html.match(/<script>[\s\S]*?<\/script>/g) || [];
+const lastScript = allScripts.length > 0
+  ? allScripts[allScripts.length - 1].replace(/^<script>/, '').replace(/<\/script>$/, '')
+  : '';
+if (lastScript.length > 100) {
+  try { new (require('vm').Script)(lastScript); console.log('  ok    runner（最后 script 块）JS 语法可编译'); }
   catch (e) { bad++; console.log('  FAIL  runner JS 语法错误:', String(e.message).split('\n')[0]); }
+  // 括号配平：多一个或少一个闭合都会让整段渲染失效
+  const bal = (lastScript.match(/\{/g) || []).length - (lastScript.match(/\}/g) || []).length;
+  if (bal !== 0) { bad++; console.log('  FAIL  runner 花括号不配平（差 ' + bal + '）'); }
+  else { console.log('  ok    runner 花括号配平'); }
 } else {
-  console.log('  warn  未提取到 runner（正则不匹配，人工确认）');
+  console.log('  warn  未提取到 runner（script 块过短）');
 }
 console.log(bad === 0 ? 'EXPORT OK' : 'EXPORT FAILED: ' + bad);
 process.exit(bad === 0 ? 0 : 1);

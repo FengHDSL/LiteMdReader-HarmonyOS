@@ -969,7 +969,6 @@ export class MdToHtml {
         + '      pRun();\n'
         + '    }\n' : '')
       + '  });\n'
-      + '  });\n'
       + '})();\n</script>\n';
     return runnerCode;
   }
