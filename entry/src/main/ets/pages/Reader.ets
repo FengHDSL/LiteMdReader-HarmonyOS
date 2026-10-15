@@ -5724,6 +5724,71 @@ export struct Reader {
 
   /** 打开放大浮层（正文 / 对照面板共用）：图片 payload 统一转 file:// + URL 编码，
    *  挂载包在 animateTo 里让一镜到底几何动画生效。 */
+  /**
+   * 下载当前放大内容的**浅色快照 PNG**（用户要求，尝试性功能）：
+   * 固定浅色、纯色背景——只取预渲染池烘的浅色版（payload 索引反查）。
+   * 没有浅色快照（深色模式下看的图）时提示先在浅色模式查看，实验功能后续再优化。
+   */
+  private async downloadEnlargeLight(): Promise<void> {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const mode: string = this.enlargeMode.toLowerCase();
+    const key: string = ChartCache.payloadKey(c, mode, this.enlargePayload, false);
+    let path: string = key.length > 0 ? ChartCache.srcPath(c, key) : '';
+    if (path.length === 0) {
+      this.toast('未找到浅色快照：请先切到浅色模式查看该图，再回来下载');
+      return;
+    }
+    try {
+      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      let bytes: ArrayBuffer = new ArrayBuffer(0);
+      try {
+        const stat: fs.Stat = fs.statSync(path);
+        const buf: ArrayBuffer = new ArrayBuffer(stat.size);
+        const n: number = fs.readSync(file.fd, buf);
+        bytes = buf;
+        if (n <= 0) {
+          this.toast('快照读取失败');
+          return;
+        }
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (ce) {
+        }
+      }
+      const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker(c);
+      const opts: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
+      const base: string = this.enlargeTitle.length > 0 ? this.enlargeTitle : mode;
+      opts.newFileNames = [base.replace(/[\\/:*?"<>|]/g, '_') + '.png'];
+      docPicker.save(opts).then((uris: string[]) => {
+        if (uris.length === 0) {
+          return;
+        }
+        try {
+          const f: fs.File = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+          try {
+            fs.writeSync(f.fd, bytes);
+          } finally {
+            try {
+              fs.closeSync(f);
+            } catch (ce) {
+            }
+          }
+          this.toast('已保存 PNG（浅色纯色背景）');
+        } catch (we) {
+          this.toast('保存失败');
+        }
+      }).catch(() => {
+        this.toast('保存取消');
+      });
+    } catch (err) {
+      this.toast('下载失败');
+    }
+  }
+
   private openEnlarge(mode: string, payload: string, geoKey: string, title: string): void {
     // 图片放大用**原生 Image 组件**；payload 统一转
     // `file://` + URL 编码（中文路径不编码时首次加载会失败，
@@ -8229,6 +8294,22 @@ export struct Reader {
                   .textAlign(TextAlign.Start)
               } else {
                 Blank()
+              }
+              // **下载浅色快照 PNG**（用户要求，尝试性功能）：固定浅色、纯色背景
+              if (this.enlargeMode !== 'code' && this.enlargeMode !== 'image'
+                && this.enlargeMode !== 'html') {
+                ImmersiveIconButton({
+                  buttonSize: 34,
+                  buttonMaterialShadow: false,
+                  palette: this.palette(),
+                  buttonOnTap: () => {
+                    this.downloadEnlargeLight();
+                  }
+                }) {
+                  SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+                    .fontSize(15)
+                    .fontColor([this.isDark() ? '#FFFFFFFF' : '#E6222226'])
+                }
               }
               // **查看源码 ↔ 返回预览**（用户要求：放在「减」按钮左边）。
               // 图表 / HTML / 代码三类放大内容都适用：只换渲染形态，payload 不变。
