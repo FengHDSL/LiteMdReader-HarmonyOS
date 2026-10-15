@@ -1720,56 +1720,51 @@ export struct MdBlockView {
       // 右上角。这里把注音对拆成 Column（读在上、字在下）与普通片段（Text）混排在
       // Flex 里换行——这是唯一能做出真注音的形状。无注音段落完全不走这条，选区与
       // 批注坐标不受影响。
-      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.End }) {
         ForEach(MdViewUtil.toAtoms(this.pieces()), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            // **overlay 方案**（第三次迭代）：基准字是 Flex 的直接 Text 子节点——
-            // 有真实基线，与旁文严格对齐（Stack/Column 方案都做不到：前者宽度要靠
-            // 估测、字母单词一估就偏；后者整列变高顶高行）。读音挂在 overlay 上：
-            // 不参与布局、水平居中于字、向上偏出字顶。
-            Text(atom.base)
-              .fontSize(size)
-              // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
-              .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
-                ? atom.sample.highlight : baseColor)
-              .fontWeight(atom.sample !== null && atom.sample.bold
-                ? FontWeight.Bold : FontWeight.Normal)
-              .fontFamily(HwFont.resolve(this.fontKey))
-              .maxLines(1)
-              // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
-              //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
-              // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
-              .overlay(() => {
-            Text(atom.reading)
-              .fontSize(Math.max(9, Math.round(size * 0.5)))
-              .fontColor(this.palette.textTertiary)
-              .maxLines(1)
-              .textAlign(TextAlign.Center)
-              .width('100%')
-            // ⚠️ 不用 @Builder 方法 + bind(this, 参数)：带参绑定在真机会静默不渲染
-            //（用户实测"注音不见了"，而导出 HTML 里注音还在——只有阅读页丢）。
-            // 内联箭头 Builder 是 CustomBuilder 的无歧义形态。
-          }, {
-                align: Alignment.Top,
-                offset: { y: -this.rubyRise(size) }
-              })
-          } else {
-            Text() {
-              this.pieceRun(atom.pieces, size, baseColor)
+            // **等高单元方案**（第四次迭代）：读音与基准字同住一个 Column——
+            // Column+Text 是历代方案里唯一真机渲染稳定的形状（overlay 两版都静默丢失）。
+            // 关键在「等高」：普通片段单元也垫一条与读音等高的空位，所有原子
+            // 等高、底部对齐 → 基线天然一致，读音在单元内部不会溢出被裁。
+            Column({ space: 0 }) {
+              Text(atom.reading)
+                .fontSize(Math.max(9, Math.round(size * 0.5)))
+                .fontColor(this.palette.textTertiary)
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+              Text(atom.base)
+                .fontSize(size)
+                // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
+                .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
+                  ? atom.sample.highlight : baseColor)
+                .fontWeight(atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontFamily(HwFont.resolve(this.fontKey))
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
             }
-            .fontSize(size)
-            .fontColor(baseColor)
-            .fontFamily(HwFont.resolve(this.fontKey))
-            .copyOption(CopyOptions.LocalDevice)
+            .alignItems(HorizontalAlign.Center)
+          } else {
+            // 普通片段：垫同高让位，与注音单元等高对齐
+            Column({ space: 0 }) {
+              Column()
+                .height(this.rubyRise(size))
+              Text() {
+                this.pieceRun(atom.pieces, size, baseColor)
+              }
+              .fontSize(size)
+              .fontColor(baseColor)
+              .fontFamily(HwFont.resolve(this.fontKey))
+              .copyOption(CopyOptions.LocalDevice)
+            }
+            .alignItems(HorizontalAlign.Start)
           }
         }, (atom: MdAtom, ai: number) => 'ra' + ai + '_'
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      // 段顶让位**整段给一次**（不是每个字给一次）：字与字仍然同一基线、位置不移动，
-      // 而读音浮出去的那一条带有地方放，不会被列表项 / Scroll 裁掉
-      //（用户实测"阅读页没显示注音，导出 HTML 里却有"）。
-      .padding({ top: this.rubyRise(size) })
+      // 段顶让位已内建到每个单元（读音占据单元顶部），不再整段加 padding
     } else if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
       // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
       // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
@@ -1865,48 +1860,45 @@ export struct MdBlockView {
   @Builder
   richText(pieces: MdPiece[], size: number, baseColor: string, lineMul: number, align: TextAlign) {
     if (MdViewUtil.hasRuby(pieces)) {
-      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Baseline }) {
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.End }) {
         ForEach(MdViewUtil.toAtoms(pieces), (atom: MdAtom, ai: number) => {
           if (atom.isRuby) {
-            // 与 richTextSel 同款 overlay 方案（基线对齐 + 读音浮于字上方）
-            Text(atom.base)
+            // 与 richTextSel 同款等高单元方案
+            Column({ space: 0 }) {
+              Text(atom.reading)
+                .fontSize(Math.max(9, Math.round(size * 0.5)))
+                .fontColor(this.palette.textTertiary)
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+              Text(atom.base)
+                .fontSize(size)
+                .fontColor(baseColor)
+                .fontWeight(atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontFamily(HwFont.resolve(this.fontKey))
+                .maxLines(1)
+                .textAlign(TextAlign.Center)
+            }
+            .alignItems(HorizontalAlign.Center)
+          } else {
+            // 普通片段：垫同高让位，与注音单元等高对齐
+            Column({ space: 0 }) {
+              Column()
+                .height(this.rubyRise(size))
+              Text() {
+                this.spanRun(atom.pieces, size, baseColor)
+              }
               .fontSize(size)
               .fontColor(baseColor)
-              .fontWeight(atom.sample !== null && atom.sample.bold
-                ? FontWeight.Bold : FontWeight.Normal)
               .fontFamily(HwFont.resolve(this.fontKey))
-              .maxLines(1)
-              // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
-              //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
-              // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
-              .overlay(() => {
-            Text(atom.reading)
-              .fontSize(Math.max(9, Math.round(size * 0.5)))
-              .fontColor(this.palette.textTertiary)
-              .maxLines(1)
-              .textAlign(TextAlign.Center)
-              .width('100%')
-            // ⚠️ 不用 @Builder 方法 + bind(this, 参数)：带参绑定在真机会静默不渲染
-            //（用户实测"注音不见了"，而导出 HTML 里注音还在——只有阅读页丢）。
-            // 内联箭头 Builder 是 CustomBuilder 的无歧义形态。
-          }, {
-                align: Alignment.Top,
-                offset: { y: -this.rubyRise(size) }
-              })
-          } else {
-            Text() {
-              this.spanRun(atom.pieces, size, baseColor)
+              .copyOption(CopyOptions.LocalDevice)
             }
-            .fontSize(size)
-            .fontColor(baseColor)
-            .fontFamily(HwFont.resolve(this.fontKey))
+            .alignItems(HorizontalAlign.Start)
           }
         }, (atom: MdAtom, ai: number) => 'a' + ai + '_'
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      // 同 richTextSel：段顶让位整段给一次，字与字仍同一基线、位置不移动
-      .padding({ top: this.rubyRise(size) })
     } else {
       Text() {
         this.spanRun(pieces, size, baseColor)
