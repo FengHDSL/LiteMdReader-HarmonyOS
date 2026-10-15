@@ -1028,6 +1028,9 @@ export struct MdBlockView {
   };
 
   /** 图表/公式放大查看：mode 对应 DiagramWeb 模板名，geoKey = 一镜到底的共享 id，title = 原内容标题（可空）。 */
+  /** 点击卡片图 → 打开原始快照裁切（用户要求：点击 → 原图 → 选区裁切） */
+  cropHandler: (mode: string, payload: string) => void = (mode: string, payload: string) => {
+  };
   enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => void = () => {
   };
 
@@ -2626,6 +2629,9 @@ export struct MdBlockView {
     if (mode === 'katex') {
     Scroll() {
       Image(this.chartImagePath(mode))
+        .onClick(() => {
+          this.cropHandler(mode, this.block.code);
+        })
         .objectFit(ImageFit.Contain)
         .width(this.blockImgW(mode))
         .height(this.blockImgH(mode))
@@ -2645,6 +2651,9 @@ export struct MdBlockView {
     .width('100%')
   } else {
       Image(this.chartImagePath(mode))
+        .onClick(() => {
+          this.cropHandler(mode, this.block.code);
+        })
         .objectFit(ImageFit.Contain)
         .borderRadius(HwRadius.inner)
         .width('100%')
