@@ -1129,7 +1129,10 @@ export class MdToHtml {
           // 阅读页预渲染池已把每张图（PlantUML 全家族 / mermaid / 自绘图种…）
           // 烘成 PNG，导出直接内嵌 base64 —— 离线打开、打印都是所见即所得。
           let pngFound: string = '';
-          if (ctx !== null && langLower !== 'html' && !MdToHtml.engineOffForLang(langLower)) {
+          // wavedrom / abc **不走快照图**（用户实测这两类的快照图内容是错的）：
+          // 两家的渲染库很小（0.5MB + 0.05MB），导出页内联渲染库现场画，图与源码必然一致。
+          const pngSkip: boolean = langLower === 'html' || langLower === 'wavedrom' || langLower === 'abc';
+          if (ctx !== null && !pngSkip && !MdToHtml.engineOffForLang(langLower)) {
             pngFound = ChartCache.pngBase64(ctx, langLower, block.code, dark, chartBg);
           }
           if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
