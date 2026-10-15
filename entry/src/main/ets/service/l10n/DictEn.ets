@@ -942,7 +942,7 @@ export const EN_US_ENTRIES: L10nEntry[] = [
   { k: '澄笺壁纸（程序化绘制）', v: '澄笺 wallpapers (drawn by code)' },
   { k: '澄笺如何处理你的数据与权限', v: 'How ChengJian handles your data and permissions' },
   { k: '澄笺文档', v: 'ChengJian document' },
-  { k: '澄笺示例 · 全功能演示', v: 'ChengJian demo · Full-featured showcase' },
+  { k: '澄笺介绍与功能展示', v: 'ChengJian · Introduction & Feature Showcase' },
   { k: '灰', v: 'Gray' },
   { k: '灰体文本与恢复默认', v: 'Gray text & restore defaults' },
   { k: '灰体文本显示增强', v: 'Boost gray text' },

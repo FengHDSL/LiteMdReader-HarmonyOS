@@ -221,7 +221,7 @@ export class DocStore {
    *  知识图谱 / 待办的演示文档已删除——两个功能用自建文档即可体验，无内置依赖。 */
   static readonly BUILTINS: DocBuiltin[] = [
     { name: L10n.t('Markdown 语法教程'), raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: L10n.t('澄笺示例 · 全功能演示'), raw: 'chengjian.md', coverColor: '#4E8E7E' },
+    { name: L10n.t('澄笺介绍与功能展示'), raw: 'chengjian.md', coverColor: '#4E8E7E' },
     { name: L10n.t('澄笺 · 渲染能力总览'), raw: 'capabilities.md', coverColor: '#7A5FA8' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
