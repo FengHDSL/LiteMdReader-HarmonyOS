@@ -89,6 +89,11 @@ const DOC = [
   '@enduml',
   '```',
   '',
+  '```mermaid',
+  'flowchart TD',
+  '  A[开始] --> B[结束]',
+  '```',
+  '',
   '```nwdiag',
   '@startnwdiag',
   'network Lan {',
@@ -127,15 +132,25 @@ const DOC = [
 const parsed = MdParser.parse(DOC);
 const kinds = parsed.blocks.map((b) => b.kind + ':' + (b.lang || ''));
 console.log('块序列:', kinds.join(', '));
+// 模拟真实打印链路：plantuml 块缺快照时 filesForLang 会带内核，loadRuntimes 内联它
+const inline = [
+  { name: 'plantuml-kernel.js', code: 'window.plantumlRenderToString = function(src, cb){ cb("<svg id=\"k\"></svg>"); }', isCss: false },
+];
 let html;
 try {
-  html = MdToHtml.export('t', parsed.meta, parsed.blocks, true, null, null, false, '');
+  html = MdToHtml.export('t', parsed.meta, parsed.blocks, true, inline, null, false, '');
 } catch (e) {
   console.log('FAIL  export 抛错:', String(e).slice(0, 200));
   process.exit(1);
 }
+// 诊断：plantuml 块的产物片段
+const pi = html.indexOf('actor');
+console.log('─── plantuml 块产物片段 ───');
+console.log(html.slice(Math.max(0, pi - 300), pi + 120).replace(/data-b64="[A-Za-z0-9+\/=]{40,}"/g, "data-b64=<...>"));
 const checks = [
-  ['plantuml → mermaid 容器（桥接）', /class="mermaid"/.test(html)],
+  ['plantuml → puml 容器（内核现场渲染）', /class="puml"/.test(html)],
+  ['runner 含内核分发 plantumlRenderToString', html.indexOf('plantumlRenderToString') >= 0],
+  ['mermaid 容器仍在（原生 mermaid 块）', /class="mermaid"/.test(html)],
   ['nwdiag → cj-nwdiag 容器', /class="cj-nwdiag"/.test(html)],
   ['salt → cj-salt 容器', /class="cj-salt"/.test(html)],
   ['graphviz → gv 容器', /class="gv"/.test(html)],
