@@ -209,7 +209,7 @@ export function genWallpaperFlatColor(id: string, dark: boolean,
  */
 @Component
 export struct GenWallpaper {
-  @Prop styleId: string = '';
+  @Prop @Watch('onStyleChanged') styleId: string = '';
   /** 深色模式下降一点亮度，避免夜里刺眼 */
   @Prop darkMode: boolean = false;
   /**
@@ -223,6 +223,11 @@ export struct GenWallpaper {
   /** 光斑呼吸：透明度往复（两团节奏不同 → 错相淡入淡出） */
   @State glowPulseA: number = 0;
   @State glowPulseB: number = 0;
+  /** 漂移动画的启动定时器（首帧之后才播；换壁纸 / 重建都要重来） */
+  private driftTimer: number = -1;
+  /** 自定义函数壁纸的时间轴与重绘节拍 */
+  private customPhase: number = 0;
+  private customTimer: number = -1;
   // ── 自定义函数壁纸（styleId === 'custom'）──
   private customCtx: CanvasRenderingContext2D =
     new CanvasRenderingContext2D(new RenderingContextSettings(true));
@@ -233,18 +238,45 @@ export struct GenWallpaper {
   @StorageProp('wallpaperCustomB') @Watch('onCustomChanged') customColorB: string = '#E8EDF4';
 
   aboutToAppear(): void {
-    // **光斑绕屏心公转**（用户要求：光点随着大圆旋转）：
-    // 全屏透明容器绕屏心无限旋转，光斑偏心放在容器里 → 沿大圆轨道公转。
-    // ⚠️ **轨道半径要够大（中心距屏心约 28% 屏宽）、周期要够短（36s/52s）**——
-    // 半径 10% + 90s 的组合在 blur(70) 的大光斑下完全看不出来（用户反馈"没看出有动"）。
-    // 两团转速不同（36s / 52s）、方向相反 → 永远错开。
-    // Linear 无往复：转满 360° 从头再来，无缝循环。
-    //
-    // ⚠️⚠️ **必须在首帧渲染之后才能启动动画**（用户反复反馈"依旧没有动的效果"的
-    // 真正根因）：原来把 animateTo 直接写在 aboutToAppear 里 —— 那时 build() 还没执行，
-    // 状态从初始值改到目标值发生**在首帧之前**，首帧直接以 orbitA=360 / pulse=1 渲染，
-    // 动画根本没有"从旧值到新值"的过渡，等于没播。这里延迟到挂载后再启动。
-    setTimeout(() => {
+    this.startDrift();
+    this.restartCustomTick();
+  }
+
+  aboutToDisappear(): void {
+    if (this.driftTimer >= 0) {
+      clearTimeout(this.driftTimer);
+      this.driftTimer = -1;
+    }
+    if (this.customTimer >= 0) {
+      clearInterval(this.customTimer);
+      this.customTimer = -1;
+    }
+  }
+
+  /**
+   * 光斑公转 + 呼吸的启动。三条口径都是这轮修「壁纸完全不动」时定下的，别再改回去：
+   *  · **先把状态打回起点再启动**——组件被 `if` 分支重建时 @State 已经是终值
+   *    （orbitA=360≡0°、pulse=1），"初始即终值"就没有可播的过渡（工程在别处也总结过同一条）；
+   *  · **延迟 600ms**——转场期（一镜到底首帧）会抢主线程把 animateTo 丢掉，
+   *    原来只给 50ms 且失败后永不重试，看着就是"完全固定不动"；
+   *  · 换壁纸 / 深浅切换由 onStyleChanged 再走一遍，退出时清定时器。
+   */
+  private startDrift(): void {
+    if (this.driftTimer >= 0) {
+      clearTimeout(this.driftTimer);
+      this.driftTimer = -1;
+    }
+    this.orbitA = 0;
+    this.orbitB = 0;
+    this.glowPulseA = 0;
+    this.glowPulseB = 0;
+    if (this.plain) {
+      return;
+    }
+    this.driftTimer = setTimeout(() => {
+      this.driftTimer = -1;
+      // **光斑绕屏心公转**：全屏透明容器绕屏心无限旋转，光斑偏心放在容器里 →
+      // 沿大圆轨道公转。两团转速不同（40s / 56s）、方向相反 → 永远错开。
       this.getUIContext().animateTo({
         duration: 40000, curve: Curve.Linear, iterations: -1
       }, () => {
@@ -255,8 +287,8 @@ export struct GenWallpaper {
       }, () => {
         this.orbitB = -360;
       });
-      // **光斑呼吸**：亮度 + 尺寸一起往复（9s / 12s 两团错相）。
-      // 周期太短像闪烁；幅度太小会被 blur 糊掉（见 build 里的 opacity / scale）。
+      // **呼吸**：亮度 + 尺寸一起往复（9s / 12s 两团错相）。周期太短像闪烁，
+      // 幅度太小会被 blur 糊掉。
       this.getUIContext().animateTo({
         duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
       }, () => {
@@ -267,7 +299,26 @@ export struct GenWallpaper {
       }, () => {
         this.glowPulseB = 1;
       });
-    }, 50);
+    }, 600);
+  }
+
+  /**
+   * 自定义函数壁纸的时间轴：FuncExpr 一直支持 `t` 变量，但**以前这里把 t 写死成 0**，
+   * 所以带 `t` 的表达式也永远定格在同一帧。现在按秒推进、约 3fps 重绘
+   * （整屏 step=12 网格每帧两千多格，帧率再高就是白烧 CPU，而"缓慢移动"本来就要慢）。
+   */
+  private restartCustomTick(): void {
+    if (this.customTimer >= 0) {
+      clearInterval(this.customTimer);
+      this.customTimer = -1;
+    }
+    if (this.styleId !== 'custom') {
+      return;
+    }
+    this.customTimer = setInterval(() => {
+      this.customPhase = this.customPhase + 0.35;
+      this.drawCustom();
+    }, 350);
   }
 
   build() {
@@ -390,6 +441,17 @@ export struct GenWallpaper {
     this.drawCustom();
   }
 
+  /**
+   * 换壁纸（含从别处切到 / 切走「自定义」）→ 动画与时间轴都要重新起：
+   * 光斑那四条 animateTo 绑的是这一份组件实例的状态，`if` 分支换了内容后
+   * 旧动画不会跟过来；自定义的定时器也不该在别的壁纸下空转。
+   */
+  private onStyleChanged(): void {
+    this.startDrift();
+    this.restartCustomTick();
+    this.drawCustom();
+  }
+
   /** 自定义函数壁纸：按 step 网格采样 f(x,y)，在 A（暗端）↔ B（亮端）间插值上色。 */
   private drawCustom(): void {
     if (this.customW <= 0 || this.customH <= 0) {
@@ -401,7 +463,7 @@ export struct GenWallpaper {
     const step: number = 12;
     for (let gy = 0; gy <= this.customH; gy += step) {
       for (let gx = 0; gx <= this.customW; gx += step) {
-        const v: number = prog.eval(gx / this.customW, gy / this.customH, 0);
+        const v: number = prog.eval(gx / this.customW, gy / this.customH, this.customPhase);
         this.customCtx.fillStyle = '#' + hex2(a[0] + (b[0] - a[0]) * v)
           + hex2(a[1] + (b[1] - a[1]) * v) + hex2(a[2] + (b[2] - a[2]) * v);
         this.customCtx.fillRect(gx, gy, step + 0.6, step + 0.6);

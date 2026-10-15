@@ -30,7 +30,12 @@ export interface EngineInfo {
   repo: string;
   /** 作用介绍（一句话） */
   desc: string;
-  /** 离线库体积（随包内联进模板的实际占用，手量自 rawfile/render/*.html） */
+  /**
+   * 离线库体积：**这一引擎在安装包里的实际总占用**（阅读侧内联模板 + 导出侧 runtimes 拷贝
+   * 与依赖，全部相加）。⚠️ 以前这一格只量了模板那份，导出用的第二份拷贝没算进去，
+   * 于是"引擎管理"里看着 3.42MB 的 mermaid 实际占 6.82MB——用户按这一格判断体积会被误导。
+   * 数值由 `node tools/audit-engines.js` 从 rawfile 真实字节算出，改库要同步跑它。
+   */
   size: string;
 }
 
@@ -40,7 +45,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     id: 'katex', name: 'KaTeX', version: '0.19.0', date: '2026-10-01',
     repo: 'https://github.com/KaTeX/KaTeX',
     desc: '块级数学公式渲染（阅读 / 导出 HTML / 打印）',
-    size: '0.33 MB',
+    size: '0.64 MB',
   },
   {
     id: 'mathjax', name: 'MathJax', version: '3.2.2', date: '2022-06-08',
@@ -52,7 +57,7 @@ export const ENGINE_LIST: EngineInfo[] = [
     id: 'mermaid', name: 'Mermaid', version: '11.17.2', date: '2026-10-13',
     repo: 'https://github.com/mermaid-js/mermaid',
     desc: '流程图 / 时序图 / 甘特图 / 类图 / 状态图 / 饼图（12.x 应用内渲染异常，已回退 10.x 终版）',
-    size: '3.42 MB',
+    size: '6.82 MB',
   },
   {
     // **已弃用的插件**：@mermaid-js/mermaid-zenuml 与随包 mermaid 11.17.2 内部约定错位，
@@ -67,25 +72,25 @@ export const ENGINE_LIST: EngineInfo[] = [
     id: 'markmap', name: 'markmap', version: '0.18.12', date: '2025-06-12',
     repo: 'https://github.com/markmap/markmap',
     desc: L10n.t('Markdown 思维导图（脑图，可缩放可折叠）'),
-    size: '1.32 MB',
+    size: '1.28 MB',
   },
   {
     id: 'echarts', name: 'Apache ECharts', version: '6.1.0', date: '2026-05-19',
     repo: 'https://github.com/apache/echarts',
     desc: '数据图表（柱状 / 折线 / 饼图等，JSON 配置）',
-    size: '1.08 MB',
+    size: '2.15 MB',
   },
   {
     id: 'abc', name: 'abcjs', version: '6.7.1', date: '2026-09-21',
     repo: 'https://github.com/paulrosen/abcjs',
     desc: L10n.t('ABC 记谱法乐谱（五线谱，可播放）'),
-    size: '0.49 MB',
+    size: '0.98 MB',
   },
   {
     id: 'graphviz', name: 'Viz.js (Graphviz)', version: '3.31.0', date: '2026-09-28',
     repo: 'https://github.com/mdaines/viz-js',
     desc: L10n.t('Graphviz DOT 关系图（内嵌 Graphviz 16.1.0）'),
-    size: '1.27 MB',
+    size: '2.54 MB',
   },
   {
     id: 'flowchart', name: 'flowchart.js', version: '1.17.1', date: '2022-02-02',
@@ -97,32 +102,32 @@ export const ENGINE_LIST: EngineInfo[] = [
     id: 'wavedrom', name: 'WaveDrom', version: '3.7.0', date: '2026-08-31',
     repo: 'https://github.com/wavedrom/wavedrom',
     desc: '数字波形图（WaveJSON 时序 / 逻辑门 / 寄存器位段），深浅主题统一浅色波形面板',
-    size: '0.10 MB',
+    size: '0.16 MB',
   },
   {
     id: 'nomnoml', name: 'nomnoml', version: '1.7.0', date: '2026-10-13',
     repo: 'https://github.com/skanaar/nomnoml',
     desc: L10n.t('nomnoml 极简 UML 类图（[框|字段|方法] 语法）'),
-    size: '0.11 MB',
+    size: '0.22 MB',
   },
   {
     id: 'plantuml', name: 'PlantUML（官方内核）', version: '1.2026.8', date: '2026-09-06',
     repo: 'https://github.com/plantuml/plantuml',
     desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；'
       + '内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树'),
-    size: '5.51 MB',
+    size: '11.03 MB',
   },
   {
     id: 'chartjs', name: 'Chart.js', version: '4.5.1', date: '2026-10-14',
     repo: 'https://github.com/chartjs/Chart.js',
     desc: 'Chart.js 数据可视化（JSON 配置：柱状 / 折线 / 饼图 / 雷达等）',
-    size: '0.20 MB',
+    size: '0.40 MB',
   },
   {
     id: 'vega', name: 'Vega / Vega-Lite', version: '6.4.0 / 6.5.0', date: '2026-10-14',
     repo: 'https://github.com/vega/vega-lite',
     desc: L10n.t('Vega-Lite 声明式统计图（JSON spec：柱状 / 折线 / 散点 / 面积 / 分面等），出 SVG'),
-    size: '0.75 MB',
+    size: '1.49 MB',
   },
   {
     id: 'marked', name: 'marked', version: '18.1.1', date: '2026-10-14',

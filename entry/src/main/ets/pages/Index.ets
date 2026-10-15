@@ -430,6 +430,7 @@ struct Index {
       FontStore.registerAll(ctx);
     }
     this.refresh();
+    this.startBlobDrift();
     // ── 首次使用：先选使用模式（全量 / 基础离线）──
     this.askAppMode();
     // ── 更新后首次启动：弹一次本次更新内容（数据取自更新日志最新一条）──
@@ -7939,7 +7940,7 @@ struct Index {
           colors: [[this.palette().glowCool, 0.0], [this.palette().glowCool, 0.30], ['#00000000', 1.0]]
         })
         .blur(26)
-        .translate({ x: -100, y: -80 })
+        .translate({ x: -100 + this.blobAX, y: -80 + this.blobAY })
     }
     .width('100%')
     .height('100%')
@@ -7956,12 +7957,41 @@ struct Index {
           colors: [[this.palette().glowWarm, 0.0], [this.palette().glowWarm, 0.28], ['#00000000', 1.0]]
         })
         .blur(26)
-        .translate({ x: 90, y: 100 })
+        .translate({ x: 90 + this.blobBX, y: 100 + this.blobBY })
     }
     .width('100%')
     .height('100%')
     .hitTestBehavior(HitTestMode.None)
     }
+  }
+
+  /**
+   * 书架背景光斑的漂移量（与阅读页同一套写法）。
+   * ⚠️ 原来是 `.translate({x:-100,y:-80})` **写死常量** —— 阅读页 / 编辑页都改了动态版
+   * 而书架漏了移植，所以书架的光斑一直固定不动（用户实测"光球等元素完全没刷新"）。
+   */
+  @State blobAX: number = 0;
+  @State blobAY: number = 0;
+  @State blobBX: number = 0;
+  @State blobBY: number = 0;
+
+  /** 启动背景光斑的缓慢漂移：无限往复，两团时长/方向都不同，观感是「缓慢随机游走」 */
+  private startBlobDrift(): void {
+    // 延迟 600ms：无限动画在转场期开跑会与首帧抢主线程（与 Reader 同一口径）
+    setTimeout(() => {
+      this.getUIContext().animateTo({
+        duration: 14000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      }, () => {
+        this.blobAX = 70;
+        this.blobAY = 46;
+      });
+      this.getUIContext().animateTo({
+        duration: 19000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+      }, () => {
+        this.blobBX = -58;
+        this.blobBY = -64;
+      });
+    }, 600);
   }
 
   @StorageLink('readerCustomBgLight') customBgLight: string = '';
