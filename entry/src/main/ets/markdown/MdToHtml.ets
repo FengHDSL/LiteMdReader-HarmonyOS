@@ -981,7 +981,7 @@ export class MdToHtml {
       + '      }\n'
       + '    };\n'
       + '    if (window.arkHost && window.arkHost.chartClick) {\n'
-      + '      document.querySelectorAll("[data-bi]").forEach(function(el) {\n'
+      + '      document.querySelectorAll("img.chartimg[data-bi]").forEach(function(el) {\n'
       + '        el.addEventListener("click", function () {\n'
       + '          try { window.arkHost.chartClick(parseInt(el.getAttribute("data-bi"), 10) || 0); } catch (e) {}\n'
       + '        });\n'
