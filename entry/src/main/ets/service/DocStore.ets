@@ -137,6 +137,8 @@ interface ShelfIndex {
   hiddenBuiltins?: string[];
   /** 「澄笺」文件夹的一次性播种标记（把内置教程收进文件夹，只做一次；老安装新增的内置文档会以散件出现，可手动拖入） */
   seededFolder?: boolean;
+  /** 内置文档名单变更后的**一次性**归位标记（见 healBuiltinShelf） */
+  builtinFolderHealed?: boolean;
 }
 
 /**
@@ -217,16 +219,21 @@ export interface DocTimes {
 
 export class DocStore {
   /** 内置文档清单（展示名 + rawfile），常驻书架最前。
-   *  coverColor = 预置封面色（用户要求：教程蓝、示例绿、能力总览紫；用户改封面会覆盖此值）。
-   *  知识图谱 / 待办的演示文档已删除——两个功能用自建文档即可体验，无内置依赖。 */
+   *  coverColor = 预置封面色（用户改封面会覆盖此值）。
+   *  知识图谱 / 待办的演示文档已删除——两个功能用自建文档即可体验，无内置依赖。
+   *  「渲染能力总览」也删了：它的能力矩阵已并进「澄笺介绍与功能展示」第十节，
+   *  留两份清单必然各自漂移，最后变成界面上写着、引擎里没做的假承诺。 */
   static readonly BUILTINS: DocBuiltin[] = [
     { name: L10n.t('Markdown 语法教程'), raw: 'README.md', coverColor: '#5B7FBF' },
-    { name: L10n.t('澄笺介绍与功能展示'), raw: 'chengjian.md', coverColor: '#4E8E7E' },
-    { name: L10n.t('澄笺 · 渲染能力总览'), raw: 'capabilities.md', coverColor: '#7A5FA8' }
+    { name: L10n.t('澄笺介绍与功能展示'), raw: 'chengjian.md', coverColor: '#4E8E7E' }
   ];
   /** 兼容旧引用：第一个内置文档名 */
   static readonly BUILTIN_NAME: string = 'Markdown 语法教程';
   static readonly BUILTIN_RAW: string = 'README.md';
+  /** 已下架内置文档在沙箱里的死副本文件名（不再出现在书架，但见 builtinResidue 的说明） */
+  static readonly RETIRED_BUILTINS: string[] = ['capabilities.md'];
+  /** 收纳内置文档的那个文件夹的名字（播种与归位都用它；不翻译，与品牌名同口径） */
+  static readonly BUILTIN_FOLDER: string = '澄笺';
   /** 内置文档用到的那张插图（`rawfile/builtin/` 下同名，首启释放到 docs/images/） */
   static readonly BUILTIN_IMAGE: string = 'chengjian-icon.png';
   /** 新建文档的默认正文 */
@@ -243,6 +250,8 @@ export class DocStore {
   private static hiddenBuiltins: string[] = [];
   /** 「澄笺」文件夹是否已播种（一次性） */
   private static seededFolder: boolean = false;
+  /** 内置名单变更后的归位是否已做过（一次性） */
+  private static folderHealed: boolean = false;
   private static ready: boolean = false;
 
   /** 排序项前缀：F| = 文件夹，D| = 松散文档 */
@@ -264,6 +273,7 @@ export class DocStore {
     DocStore.ord = [];
     DocStore.hiddenBuiltins = [];
     DocStore.seededFolder = false;
+    DocStore.folderHealed = false;
     DocStore.ready = false;
     DocStore.init(ctx);
   }
@@ -387,6 +397,8 @@ export class DocStore {
     DocStore.ready = true;
     // **首次启动**：把内置教程收进「澄笺」文件夹（一次性，之后可自行解散）
     DocStore.seedChengjianFolder();
+    // 内置名单变过（改名 / 下架）之后归位一次：散件收进文件夹、下架条目从索引里清掉
+    DocStore.healBuiltinShelf();
     // 内置文档用到的插图释放到沙箱（只读 rawfile 里的图片，正文才能用常规 ![]() 引用）
     DocStore.ensureBuiltinImages(ctx);
   }
@@ -425,17 +437,27 @@ export class DocStore {
    *
    * 为什么会有残留：`update()` 保存正文时无条件写 `docs/<fileName>`，内置文档也不例外；
    * 而 `readText()` 对 builtin 一律回头读应用包里的 rawfile（沙箱那份旧覆盖正文会把
-   * 更新后的内置教程压住，所以**故意不读**）。于是 `docs/README.md`、`docs/chengjian.md`、
-   * `docs/capabilities.md` 写下去就再没人读；`docs/images/chengjian-icon.png` 同理，
-   * 首启会从 rawfile 重新释放一份。
+   * 更新后的内置教程压住，所以**故意不读**）。于是 `docs/README.md`、`docs/chengjian.md`
+   * 写下去就再没人读；`docs/images/chengjian-icon.png` 同理，首启会从 rawfile 重新释放一份。
    *
    * 它们能从安装包 100% 复原，却是「备份包里一堆我根本没有的文件」的主要来源
    * （文件名还是英文的，看着像演示文件——它们本来也就是演示文件的死副本）。
    * **用户自建的同名文档不算残留**：那种在索引里 builtin=false，应用真的要读它。
+   *
+   * `RETIRED_BUILTINS` 是**已经下架的内置文档**留下的那一份（「渲染能力总览」并进
+   * 介绍篇第十节之后，rawfile 删了，但老设备沙箱里那份 `docs/capabilities.md` 还在）。
+   * 必须继续列进这里：`adoptOrphans()` 只跳过本清单认得的副本，否则那份**过期**副本会被
+   * 当成"用户用文件管理器塞进来的文档"找回书架，用户升级后反而多出一篇再也不会更新的旧清单。
    */
   static builtinResidue(ctx: common.UIAbilityContext): string[] {
     DocStore.init(ctx);
     const out: string[] = [];
+    for (let k = 0; k < DocStore.RETIRED_BUILTINS.length; k++) {
+      const gone: string = DocStore.RETIRED_BUILTINS[k];
+      if (!DocStore.isUserDocFile(gone)) {
+        out.push(DocStore.pathOf(gone));
+      }
+    }
     for (let k = 0; k < DocStore.BUILTINS.length; k++) {
       const raw: string = DocStore.BUILTINS[k].raw;
       if (!DocStore.isUserDocFile(raw)) {
@@ -472,10 +494,68 @@ export class DocStore {
     }
     const folder: ShelfFolder | null = DocStore.createFolderWith(names);
     if (folder !== null) {
-      DocStore.renameFolder(folder.name, '澄笺');
+      DocStore.renameFolder(folder.name, DocStore.BUILTIN_FOLDER);
     }
     DocStore.seededFolder = true;
     DocStore.persistFolders();
+  }
+
+  /**
+   * **内置名单变过之后把书架归位一次**（一次性，落盘 `builtinFolderHealed`）。
+   *
+   * 为什么需要：「澄笺」文件夹是按**文档名**记成员的，内置文档的名字却来自 `BUILTINS`，
+   * 两边没有约束。于是上一轮把「澄笺示例 · 全功能演示」改名成「澄笺介绍与功能展示」之后，
+   * 文件夹里挂的还是那个已经不存在的旧名字，新名字变成散件平铺在书架上（用户看到的就是
+   * "功能展示怎么跑到文件夹外面"）；这一轮又把「渲染能力总览」整个下架，同理会在
+   * 文件夹里留一个空挂名。更麻烦的是 `list()` 对 `d.builtin` 的条目**永远保留**
+   * （见那里的注释：剔了会丢封面色与阅读进度），所以下架文档的条目不会自己消失。
+   *
+   * 因此这里只做两件确定的事，不猜用户意图：
+   *  ① 索引里 `builtin=true` 但已不在 `BUILTINS` 的条目删掉（内置正文由 BUILTINS 合成，
+   *    留着没有任何作用，只会让文件夹名单挂着不存在的名字）；
+   *  ② 每篇**可见的**内置文档若不在任何文件夹里，收进「澄笺」（文件夹不在就建）。
+   * 用户之后自己解散文件夹、把内置文档挪出去，都不会再被改回来 —— 这是升级时的一次性归位。
+   */
+  private static healBuiltinShelf(): void {
+    if (DocStore.folderHealed) {
+      return;
+    }
+    DocStore.folderHealed = true;
+
+    const kept: DocMeta[] = [];
+    for (let k = 0; k < DocStore.docs.length; k++) {
+      const d: DocMeta = DocStore.docs[k];
+      if (d.builtin && !DocStore.isBuiltinName(d.name)) {
+        continue;
+      }
+      kept.push(d);
+    }
+    const dropped: boolean = kept.length !== DocStore.docs.length;
+    DocStore.docs = kept;
+
+    const names: string[] = [];
+    for (let b = 0; b < DocStore.BUILTINS.length; b++) {
+      const n: string = DocStore.BUILTINS[b].name;
+      if (!DocStore.isBuiltinHidden(n) && DocStore.folderOfDoc(n).length === 0) {
+        names.push(n);
+      }
+    }
+    if (names.length > 0) {
+      const folder: ShelfFolder | null = DocStore.findFolder(DocStore.BUILTIN_FOLDER);
+      if (folder === null) {
+        const made: ShelfFolder | null = DocStore.createFolderWith(names);
+        if (made !== null) {
+          DocStore.renameFolder(made.name, DocStore.BUILTIN_FOLDER);
+        }
+      } else {
+        for (let k = 0; k < names.length; k++) {
+          DocStore.addToFolder(DocStore.BUILTIN_FOLDER, names[k]);
+        }
+      }
+    } else if (dropped) {
+      DocStore.pruneFolders();
+    }
+    DocStore.persist();
   }
 
   // ────────────────────────── 文件夹 ──────────────────────────
@@ -2332,6 +2412,9 @@ export class DocStore {
       if (parsed.seededFolder === true) {
         DocStore.seededFolder = true;
       }
+      if (parsed.builtinFolderHealed === true) {
+        DocStore.folderHealed = true;
+      }
       return parsed.docs;
     } catch (err) {
       // 索引损坏时按空书架处理，磁盘上的 md 文件不会被删除
@@ -2358,7 +2441,8 @@ export class DocStore {
         folders: DocStore.folders,
         order: DocStore.ord,
         hiddenBuiltins: DocStore.hiddenBuiltins,
-        seededFolder: DocStore.seededFolder
+        seededFolder: DocStore.seededFolder,
+        builtinFolderHealed: DocStore.folderHealed
       };
       DocStore.writeFile(DocStore.indexPath, JSON.stringify(index));
     } catch (err) {

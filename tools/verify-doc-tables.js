@@ -3,9 +3,9 @@
  * 内置文档的**表格列数一致性**检查（提交前自查）
  * ============================================
  *
- * 三篇内置文档（README / chengjian / capabilities）里的表格全靠本应用的解析器排版：
+ * 两篇内置文档（README / chengjian）里的表格全靠本应用的解析器排版：
  * 一行里多一个或少一个 `|`，那一列就和表头对不上，手机上是整张表塌版而不是报错，
- * 所以人眼很容易漏过。这次改 capabilities.md 的支持矩阵那一格（注音说明）时，
+ * 所以人眼很容易漏过。这次改能力矩阵那一格（注音说明）时，
  * 顺手把"每行列数 = 表头列数"和"单元格别写成整墙"两条量化了。
  *
  * 只读文件，不改任何东西。围栏里的内容不算表格（代码块里的 | 是正文）。
@@ -20,7 +20,7 @@ const fs = require('fs');
 const path = require('path');
 
 const RAW = path.join(__dirname, '..', 'entry', 'src', 'main', 'resources', 'rawfile');
-const DOCS = ['README.md', 'chengjian.md', 'capabilities.md'];
+const DOCS = ['README.md', 'chengjian.md'];
 /** 单元格超过这个字数就提个醒：同表其它格子普遍在 100 字以内，整墙说明该拆到正文里去 */
 const CELL_WARN = 200;
 

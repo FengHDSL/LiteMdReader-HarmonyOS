@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const RAW = path.join(__dirname, '../entry/src/main/resources/rawfile');
-const DOCS = ['chengjian.md', 'capabilities.md'];
+const DOCS = ['chengjian.md'];
 let fails = 0;
 function check(name, ok, extra) {
   if (!ok) { fails++; console.log('  FAIL  ' + name + (extra ? '  ' + extra : '')); }

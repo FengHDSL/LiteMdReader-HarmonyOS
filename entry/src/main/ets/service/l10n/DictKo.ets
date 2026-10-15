@@ -937,7 +937,6 @@ export const KO_KR_ENTRIES: L10nEntry[] = [
   { k: '澄心执笔，笺上生光', v: '맑은 마음으로 붓을 잡고, 笺 위에 빛을 담다' },
   { k: '澄笺', v: 'ChengJian' },
   { k: '澄笺 · 最近阅读', v: 'ChengJian · 최근 독서' },
-  { k: '澄笺 · 渲染能力总览', v: 'ChengJian · 렌더링 능력 총람' },
   { k: '澄笺·ChéngJiān', v: 'ChengJian' },
   { k: '澄笺壁纸（程序化绘制）', v: '澄笺 배경화면(코드로 생성)' },
   { k: '澄笺如何处理你的数据与权限', v: 'ChengJian가 데이터와 권한을 처리하는 방식' },

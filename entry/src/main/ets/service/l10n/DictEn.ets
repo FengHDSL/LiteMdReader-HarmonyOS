@@ -937,7 +937,6 @@ export const EN_US_ENTRIES: L10nEntry[] = [
   { k: '澄心执笔，笺上生光', v: 'A clear heart takes up the pen; light rises on the page' },
   { k: '澄笺', v: 'ChengJian' },
   { k: '澄笺 · 最近阅读', v: 'ChengJian · Recent reading' },
-  { k: '澄笺 · 渲染能力总览', v: 'ChengJian · Rendering capabilities overview' },
   { k: '澄笺·ChéngJiān', v: 'ChengJian' },
   { k: '澄笺壁纸（程序化绘制）', v: '澄笺 wallpapers (drawn by code)' },
   { k: '澄笺如何处理你的数据与权限', v: 'How ChengJian handles your data and permissions' },

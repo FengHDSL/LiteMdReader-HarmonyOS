@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const RAW = path.join(__dirname, '../entry/src/main/resources/rawfile');
-const DOCS = ['README.md', 'chengjian.md', 'capabilities.md'];
+const DOCS = ['README.md', 'chengjian.md'];
 
 function stripFrontMatter(text) {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');

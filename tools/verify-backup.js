@@ -198,7 +198,7 @@ check('① 撞名类别靠双层路径（docs/docs）区分新老包，不撞名
 // 真机事故三：用户反馈「导出的压缩包里一堆我根本没有的文件，甚至是演示的文件（英语单词那些）」。
 // 来源是内置演示文档的**死副本**：update() 无条件把正文写进 docs/<fileName>（内置也不例外），
 // 而 readText() 对 builtin 一律回头读应用包里的 rawfile（沙箱那份旧正文会把更新后的教程压住，
-// 所以**故意不读**）。于是 docs/README.md、docs/chengjian.md、docs/capabilities.md 写完再没人读，
+// 所以**故意不读**）。于是 docs/README.md、docs/chengjian.md 写完再没人读，
 // 却会被"整目录扫"的打包捞进包 —— 文件名是英文、内容是演示文档，用户当然认不出来。
 const docStore = read('service/DocStore.ets');
 const residueBody = methodBody(docStore, 'static builtinResidue(');

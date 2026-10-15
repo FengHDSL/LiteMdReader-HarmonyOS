@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const RAW = path.join(__dirname, '../entry/src/main/resources/rawfile');
-const DOCS = ['chengjian.md', 'capabilities.md', 'README.md'];
+const DOCS = ['chengjian.md', 'README.md'];
 const JSON_LANGS = ['wavedrom', 'echarts', 'chart'];
 const fenceRe = /^```([A-Za-z0-9_-]*)[ \t]*$/;
 
