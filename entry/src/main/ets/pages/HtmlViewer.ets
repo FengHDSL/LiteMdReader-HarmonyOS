@@ -21,7 +21,7 @@ import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
 import { HwSpace, HwType, ReaderPalette, LIGHT_PALETTE, paletteFor, isDarkTheme } from '../theme/DesignTokens';
-import { ImmersiveChip } from '../material/ImmersiveCard';
+import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
 @Component
@@ -219,14 +219,13 @@ export struct HtmlViewer {
     Column() {
       // ── 顶栏：沉浸光感胶囊按钮，顶部避让系统状态栏 ──
       Row({ space: HwSpace.sm }) {
-        // 返回：胶囊（沉浸光感材质由 ImmersiveChip 承载）
-        ImmersiveChip({
-          chipPaddingH: HwSpace.sm + 2,
-          chipPaddingV: 7,
+        // 返回：**圆形按钮**（用户要求：顶部三钮改圆形，只留图标）
+        ImmersiveIconButton({
+          buttonSize: 30,
+          buttonRadius: 15,
+          buttonMaterialShadow: false,
           palette: this.palette(),
-          // 图标-only（用户要求：顶部三钮保留图标即可，不需要文字）
-          chipLabel: '',
-          chipOnTap: () => {
+          buttonOnTap: () => {
             if (this.stack !== null) {
               this.stack.pop();
             }
@@ -248,13 +247,12 @@ export struct HtmlViewer {
           .textOverflow({ overflow: TextOverflow.MARQUEE })
 
         // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
-        ImmersiveChip({
-          chipPaddingH: HwSpace.sm + 2,
-          chipPaddingV: 7,
-          chipActive: this.loadedPath.length > 0 && !this.printing,
+        ImmersiveIconButton({
+          buttonSize: 30,
+          buttonRadius: 15,
+          buttonMaterialShadow: false,
           palette: this.palette(),
-          chipLabel: '',
-          chipOnTap: () => {
+          buttonOnTap: () => {
             if (this.loadedPath.length === 0 || this.printing) {
               return;
             }
@@ -269,13 +267,12 @@ export struct HtmlViewer {
         }
 
         // 打印：胶囊；未就绪时置灰不可点，就绪后高亮
-        ImmersiveChip({
-          chipPaddingH: HwSpace.sm + 2,
-          chipPaddingV: 7,
-          chipActive: this.ready && !this.printing,
+        ImmersiveIconButton({
+          buttonSize: 30,
+          buttonRadius: 15,
+          buttonMaterialShadow: false,
           palette: this.palette(),
-          chipLabel: '',
-          chipOnTap: () => {
+          buttonOnTap: () => {
             this.doPrint();
           }
         }) {

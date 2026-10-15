@@ -969,27 +969,6 @@ export class MdToHtml {
         + '      pRun();\n'
         + '    }\n' : '')
       + '  });\n'
-      + (has('salt') || has('ditaa') || has('nwdiag') || has('plantuml') || has('mermaid') || has('graphviz') || has('abc') || has('wavedrom') || has('markmap') || has('nomnoml') || has('chart') || has('vega') || has('katex')
-        ? '    // 快照图长按 → **针对窗口重新加载**（用户要求）：有的图嵌入后过小/过宽，\n'
-        + '    // 长按在「按逻辑尺寸」与「撑满窗口宽」之间切换，松手即生效。\n'
-        + '    document.querySelectorAll("img.chartimg").forEach(function(img) {\n'
-        + '      var t = null;\n'
-        + '      var toggle = function () {\n'
-        + '        if (img.style.width && img.style.width !== "100%") {\n'
-        + '          img.__nw = img.style.width;\n'
-        + '          img.style.width = "100%";\n'
-        + '        } else if (img.__nw) {\n'
-        + '          img.style.width = img.__nw;\n'
-        + '        } else {\n'
-        + '          img.style.width = "100%";\n'
-        + '        }\n'
-        + '      };\n'
-        + '      img.addEventListener("touchstart", function () { t = setTimeout(toggle, 550); });\n'
-        + '      img.addEventListener("touchend", function () { clearTimeout(t); });\n'
-        + '      img.addEventListener("touchmove", function () { clearTimeout(t); });\n'
-        + '      img.addEventListener("contextmenu", function (e) { e.preventDefault(); toggle(); });\n'
-        + '    });\n'
-        : '')
       + '  });\n'
       + '})();\n</script>\n';
     return runnerCode;
