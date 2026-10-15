@@ -1084,6 +1084,10 @@ export class MdToHtml {
     inline: InlineRuntime[] | null = null, ctx: common.UIAbilityContext | null = null,
     dark: boolean = false, chartBg: string = ''): string {
     let body: string = '';
+    // **快照图去重清单**（用户实测：一张图同时出现在好多个图表里）：缓存索引/键
+    // 万一命中同一份 PNG（键碰撞或索引异常），后续图不能跟着错——同一张 dataURL
+    // 只许内嵌一次，后面的图退回各自的渲染容器（mermaid / 内核 / 自绘库）自己画。
+    const usedPngs: string[] = [];
     // 列表嵌套：用已打开的列表层缩进栈表达，遇到 indent 变化就闭合 / 打开列表
     let openLists: number[] = [];
     let listOrdered: boolean = false;
@@ -1128,9 +1132,10 @@ export class MdToHtml {
           if (ctx !== null && langLower !== 'html' && !MdToHtml.engineOffForLang(langLower)) {
             pngFound = ChartCache.pngBase64(ctx, langLower, block.code, dark, chartBg);
           }
-          if (pngFound.length > 0) {
+          if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
             body += '<img class="chartimg" src="' + pngFound
               + '" style="max-width:100%;height:auto">';
+            usedPngs.push(pngFound);
             chartIndex++;
           } else if (langLower === 'html') {
             // **HTML 块原样输出**：它本身就是渲染结果（表格 colspan/rowspan、内嵌 SVG、
@@ -1174,9 +1179,10 @@ export class MdToHtml {
         } else if (block.kind === MdBlockKind.Math && ctx !== null
           && !EngineRegistry.isOff('katex', EngineRegistry.current())) {
           const mathPng: string = ChartCache.pngBase64(ctx, 'katex', block.code, dark, chartBg);
-          if (mathPng.length > 0) {
+          if (mathPng.length > 0 && usedPngs.indexOf(mathPng) < 0) {
             body += '<img class="chartimg" src="' + mathPng
               + '" style="max-width:100%;height:auto">';
+            usedPngs.push(mathPng);
             chartIndex++;
           } else {
             body += MdToHtml.chartContainer('katex', [block.code]);
