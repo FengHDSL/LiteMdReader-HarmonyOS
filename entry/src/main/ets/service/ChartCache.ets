@@ -392,13 +392,11 @@ export class ChartCache {
       return '';
     }
     // 命中哪个 key 无法从 pngBase64 得知——用同样的变体序列找第一个有 .dim 的
+    // 强制浅色（用户要求）：与 pngBase64 同口径，只试浅色键
     const candidates: string[] = [
-      ChartCache.keyFor(mode, payload, dark, bg),
-      ChartCache.keyFor(mode, payload, dark, ''),
-      ChartCache.keyFor(mode, payload, !dark, bg),
-      ChartCache.keyFor(mode, payload, !dark, ''),
-      ChartCache.payloadKey(ctx, mode, payload, dark),
-      ChartCache.payloadKey(ctx, mode, payload, !dark)
+      ChartCache.keyFor(mode, payload, false, bg),
+      ChartCache.keyFor(mode, payload, false, ''),
+      ChartCache.payloadKey(ctx, mode, payload, false)
     ];
     for (let k = 0; k < candidates.length; k++) {
       const dim: string = ChartCache.dimOf(ctx, candidates[k]);
@@ -417,23 +415,13 @@ export class ChartCache {
     // 整页空白（用户实测"打印又不显示了，graphviz 和 abc 也没加载出来"）。
     // 两权相害：宁可出现"深色底图"这种观感瑕疵，也不能整页不出图；
     // 真正的解法是让预渲染池把浅色版也烘一份（已记待办）。
+    // **强制浅色**（用户要求）：深色底图永不进导出/打印——只试浅色键
+    //（bg 两个变体：实参 bg 与空 bg；payload 索引也是浅色档）。
     const variants: string[] = [
-      ChartCache.keyFor(mode, payload, dark, bg),
-      ChartCache.keyFor(mode, payload, dark, ''),
+      ChartCache.keyFor(mode, payload, false, bg),
+      ChartCache.keyFor(mode, payload, false, ''),
+      ChartCache.payloadKey(ctx, mode, payload, false)
     ];
-    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
-    const idxOther: string = ChartCache.payloadKey(ctx, mode, payload, !dark);
-    for (let k = 0; k < 2; k++) {
-      const d: boolean = k === 0 ? !dark : dark;
-      variants.push(ChartCache.keyFor(mode, payload, d, bg));
-      variants.push(ChartCache.keyFor(mode, payload, d, ''));
-    }
-    if (idxKey.length > 0) {
-      variants.push(idxKey);
-    }
-    if (idxOther.length > 0) {
-      variants.push(idxOther);
-    }
     for (let k = 0; k < variants.length; k++) {
       const key: string = variants[k];
       const path: string = ChartCache.srcPath(ctx, key);

@@ -50,7 +50,6 @@ import { TableEditorDialog } from '../components/TableEditorDialog';
 import { AutoScrollTile } from '../components/AutoScrollTile';
 import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
-import { ImageCropOverlay } from '../components/ImageCropOverlay';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrightnessLevel,
@@ -442,9 +441,6 @@ export struct Reader {
    * 渲染完成"都会整树重建 → 图表反复重新加载、闪来闪去（用户反馈）。
    */
   @State chartReadyTick: number = 0;
-  /** 图表/公式快照裁切：当前裁切的图片路径（空 = 关闭）与图种 */
-  @State cropImagePath: string = '';
-  @State cropMode: string = '';
   /** 浮层的 Web 是否挂载（退后台卸载、回前台重挂 —— 修"关屏再开自动退出页面"） */
   @State enlargeWebMounted: boolean = true;
   /** 回前台信号（EntryAbility 递增） */
@@ -2607,23 +2603,6 @@ export struct Reader {
    *      （「关掉查找后残留圆形图标」的元凶）。
    * 既然自研渲染器已经够用，就把 Lute 整条链路**彻底摘掉**，不留半死代码。
    */
-  /** 点击图表/公式卡片 → 打开原始快照裁切（用户要求：点击 → 原图 → 选区裁切） */
-  private openCropFor(mode: string, payload: string): void {
-    const c = this.ctx();
-    if (c === null) {
-      return;
-    }
-    const ck: string = ChartCache.keyFor(mode, payload, this.isDark(),
-      withAlpha(this.palette().codeBlockBg, 'FF'));
-    const path: string = ChartCache.path(c, ck);
-    if (path.length === 0) {
-      this.toast('该图还没有快照，等卡片渲染完成后重试');
-      return;
-    }
-    this.cropMode = mode;
-    this.cropImagePath = path;
-  }
-
   private exportHtml(): void {
     const ctx = this.ctx();
     if (ctx === null) {
@@ -7663,9 +7642,6 @@ export struct Reader {
                     tableEditHandler: (blockId: string) => {
                       this.openTableEdit(blockId);
                     },
-                    cropHandler: (mode: string, payload: string) => {
-                      this.openCropFor(mode, payload);
-                    },
                     enlargeHandler: (mode: string, payload: string, geoKey: string, title: string) => {
                       this.openEnlarge(mode, payload, geoKey, title);
                     },
@@ -8556,24 +8532,6 @@ export struct Reader {
 
 
 
-    // ── 图表/公式快照裁切浮层（用户要求：点击卡片 → 原图 → 选区裁切）──
-    // 必须是根容器的**最后一个子节点**：全屏、盖在正文之上、半模态面板之下。
-    if (this.cropImagePath.length > 0) {
-      ImageCropOverlay({
-        imagePath: this.cropImagePath,
-        onConfirm: () => {
-          // 快照已原地替换：清缓存 memo + 重建卡片（chartReadyTick 进 key）
-          ChartCache.invalidate();
-          this.chartReadyTick++;
-          this.cropImagePath = '';
-          this.toast('已裁切');
-        },
-        onCancel: () => {
-          this.cropImagePath = '';
-        }
-      })
-        .position({ x: 0, y: 0 })
-    }
     }
     .width('100%')
     .height('100%')
