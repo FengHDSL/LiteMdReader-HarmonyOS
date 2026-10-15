@@ -419,9 +419,67 @@ export class ChartCache {
       return hit;
     }
     const p: string = ChartCache.path(ctx, key);
-    const uri: string = p.length > 0 ? 'file://' + p : '';
+    let uri: string = p.length > 0 ? 'file://' + p : '';
+    // **读取侧的尺寸口径自检**：这张图与 .dim 对不上 = 池子"拍早了"的旧表面，
+    // 当"没有缓存"处理 → 正文回落实时 Web（显示的是对的图）。见 dimMatchesPixels。
+    if (uri.length > 0 && !ChartCache.dimMatchesPixels(ctx, key, p)) {
+      uri = '';
+    }
     ChartCache.uriMemo.set(key, uri);
     return uri;
+  }
+
+  /**
+   * 缓存图与 `.dim` 是不是**同一个尺寸口径**（只读 PNG 头 24 字节，不解码像素）。
+   *
+   * 像素尺寸应当 = 逻辑尺寸 × 屏幕密度，横纵同一个倍数。预渲染池曾经拍到"组件还没
+   * 按新回传高度重排"的那一帧：像素是 365×100，`.dim` 却记 365×319 —— 正文按 .dim
+   * 撑框 + Contain 显示，图就缩成卡片中间一条，而且**重开文档也不会恢复**
+   * （用户实测"卡片第一次渲染大小异常，要点一次刷新才正常"；设备取证 1592 张里 24 张中招）。
+   * 写入侧的守卫在 ChartRenderPool.staleSnapshot，这里是**读取侧的第二道**：
+   * 用户机上那批已经落盘的坏图，不升键、不清缓存也不会再被显示出来。
+   */
+  private static dimMatchesPixels(ctx: common.UIAbilityContext, key: string, pngPath: string): boolean {
+    const dim: string = ChartCache.dimOf(ctx, key);
+    if (dim.length === 0) {
+      return true;
+    }
+    const bar: number = dim.indexOf('|');
+    const dw: number = Number(dim.substring(0, bar));
+    const dh: number = Number(dim.substring(bar + 1));
+    if (bar <= 0 || !(dw > 0) || !(dh > 0)) {
+      return true;
+    }
+    try {
+      const file: fs.File = fs.openSync(pngPath, fs.OpenMode.READ_ONLY);
+      let buf: ArrayBuffer = new ArrayBuffer(24);
+      let n: number = 0;
+      try {
+        n = fs.readSync(file.fd, buf);
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+          // 关闭失败无副作用
+        }
+      }
+      if (n < 24) {
+        return true;
+      }
+      const b: Uint8Array = new Uint8Array(buf);
+      // PNG 的 IHDR 固定紧跟签名：宽高是大端 4 字节，位于第 16 / 20 字节
+      const pw: number = ((b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19]) >>> 0;
+      const ph: number = ((b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23]) >>> 0;
+      if (pw <= 0 || ph <= 0) {
+        return true;
+      }
+      const rx: number = pw / dw;
+      const ry: number = ph / dh;
+      // 容差取"半个密度倍"：重排一帧的误差远大于此，取整误差只有 1px
+      return Math.abs(rx - ry) <= Math.max(0.5, rx * 0.2);
+    } catch (err) {
+      return true;
+    }
   }
 
   /**

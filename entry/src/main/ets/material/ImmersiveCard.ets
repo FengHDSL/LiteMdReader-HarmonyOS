@@ -90,6 +90,12 @@ export struct ImmersiveCard {
   @Prop cardRadius: number = HwRadius.card;
   /** 内边距。padding 挂在内部内容容器上，卡片外层不设 padding，承载层才能铺满整张卡 */
   @Prop cardPadding: number = HwSpace.md;
+  /**
+   * **单独收小上内边距**（-1 = 与 `cardPadding` 同值，即四边一致）。
+   * 图表 / 公式卡的第一行是按钮，按钮行自己带 padding；再叠一层卡片内边距会让
+   * "按钮离卡片顶"明显大于"按钮离下方画布"（用户要求两处等距）。
+   */
+  @Prop cardPaddingTop: number = -1;
   /** 是否保留材质自带投影。成排小卡片传 false，避免投影在卡间缝隙叠成暗带 */
   @Prop cardMaterialShadow: boolean = true;
   /** 内容排列方向 */
@@ -267,6 +273,18 @@ export struct ImmersiveCard {
     }
   }
 
+  /** 内容容器实际用的内边距（cardPaddingTop 单独收小时给出四边值，否则四边同一个数）。 */
+  private padBox(): Padding | number {
+    if (this.cardPaddingTop >= 0) {
+      const p: Padding = {
+        left: this.cardPadding, right: this.cardPadding,
+        top: this.cardPaddingTop, bottom: this.cardPadding
+      };
+      return p;
+    }
+    return this.cardPadding;
+  }
+
   build() {
     Stack() {
       // ① 降级层：仅在材质不可用时可见。底色必须带透明度，否则毛玻璃被完全盖住。
@@ -311,7 +329,7 @@ export struct ImmersiveCard {
         this.cardContent()
       }
       .width('100%')
-      .padding(this.cardPadding)
+      .padding(this.padBox())
     }
     .width(this.cardWidth)
     .borderRadius(this.cardRadius)
