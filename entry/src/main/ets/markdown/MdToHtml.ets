@@ -1169,8 +1169,10 @@ export class MdToHtml {
             // **按逻辑尺寸定宽**（用户实测部分图片过小或被拉伸）：快照的物理像素
             // 尺寸≠该显示的尺寸，.dim 里存的才是 vp 口径；有尺寸按原宽显示（打印页
             // 更宽时等比缩到页面宽以内），量不到就退回 max-width 自适应。
+            // **完整画布**（用户要求）：按逻辑尺寸原宽显示，不设 max-width 钳制
+            //（宽于页面的图由页面横向滚动承载），保证整张图完整出现在导出/打印里。
             const widthStyle: string = pngW > 40
-              ? 'width:' + pngW + 'px;max-width:100%;height:auto'
+              ? 'width:' + pngW + 'px;height:auto'
               : 'max-width:100%;height:auto';
             body += '<img class="chartimg" src="' + pngFound
               + '" style="' + widthStyle + '">';

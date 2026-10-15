@@ -41,9 +41,35 @@ export struct ImageCropOverlay {
     this.loadDims();
   }
 
-  private loadDims(): void {
+  /** 读图字节（fs 自读，路径形式无关——file:// 前缀与否都能解） */
+  private readBytes(): ArrayBuffer | null {
     try {
-      const src: image.ImageSource = image.createImageSource(this.imagePath);
+      const file: fs.File = fs.openSync(this.imagePath, fs.OpenMode.READ_ONLY);
+      try {
+        const stat: fs.Stat = fs.statSync(this.imagePath);
+        const buf: ArrayBuffer = new ArrayBuffer(stat.size);
+        const n: number = fs.readSync(file.fd, buf);
+        if (n > 0) {
+          return buf;
+        }
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+        }
+      }
+    } catch (err) {
+    }
+    return null;
+  }
+
+  private loadDims(): void {
+    const buf: ArrayBuffer | null = this.readBytes();
+    if (buf === null) {
+      return;
+    }
+    try {
+      const src: image.ImageSource = image.createImageSource(buf);
       src.getImageInfo().then((info: image.ImageInfo) => {
         this.imgW = info.size.width;
         this.imgH = info.size.height;
@@ -92,8 +118,13 @@ export struct ImageCropOverlay {
       return;
     }
     this.busy = true;
+    const buf: ArrayBuffer | null = this.readBytes();
+    if (buf === null) {
+      this.busy = false;
+      return;
+    }
     try {
-      const src: image.ImageSource = image.createImageSource(this.imagePath);
+      const src: image.ImageSource = image.createImageSource(buf);
       const pm: image.PixelMap = await src.createPixelMap();
       await pm.crop(r);
       const packer: image.ImagePacker = image.createImagePacker();
@@ -128,7 +159,7 @@ export struct ImageCropOverlay {
 
       if (this.boxW > 0) {
         // 图片：按 Contain 尺寸定位显示
-        Image('file://' + this.imagePath)
+        Image(this.imagePath)
           .width(this.boxW)
           .height(this.boxH)
           .position({ x: this.offX, y: this.offY })
