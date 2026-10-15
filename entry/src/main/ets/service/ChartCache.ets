@@ -426,9 +426,15 @@ export class ChartCache {
       const buf: ArrayBuffer = new ArrayBuffer(w * h * 4);
       await pm.readPixelsToBuffer(buf);
       const u8: Uint8Array = new Uint8Array(buf);
-      const bgR: number = u8[0];
-      const bgG: number = u8[1];
-      const bgB: number = u8[2];
+      // ⚠️ 背景**不能采角落像素**：圆角卡片快照的四个角是黑色（webPageSnapshot
+      // 无 alpha），采到黑就整张白卡都被当成"内容"→ 裁边失效（用户实测"没修"）。
+      // 采**上边缘中点**（内缩 2px）——那里一定是卡片底色。
+      const bgO: number = 2 * w * 4 + Math.floor(w / 2) * 4;
+      const bgR: number = u8[bgO];
+      const bgG: number = u8[bgO + 1];
+      const bgB: number = u8[bgO + 2];
+      // 四个角区（圆角黑角所在）整体排除在内容扫描之外
+      const cs: number = 44;
       let minX: number = w;
       let minY: number = h;
       let maxX: number = -1;
@@ -437,6 +443,10 @@ export class ChartCache {
       for (let y = 0; y < h; y++) {
         const row: number = y * w * 4;
         for (let x = 0; x < w; x++) {
+          if ((x < cs && y < cs) || (x >= w - cs && y < cs)
+            || (x < cs && y >= h - cs) || (x >= w - cs && y >= h - cs)) {
+            continue;
+          }
           const o: number = row + x * 4;
           if (Math.abs(u8[o] - bgR) > tol || Math.abs(u8[o + 1] - bgG) > tol
             || Math.abs(u8[o + 2] - bgB) > tol) {
