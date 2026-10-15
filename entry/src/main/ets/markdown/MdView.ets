@@ -1736,10 +1736,12 @@ export struct MdBlockView {
                 ? FontWeight.Bold : FontWeight.Normal)
               .fontFamily(HwFont.resolve(this.fontKey))
               .maxLines(1)
-              .padding({ top: this.rubyRise(size) })
+              // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
+              //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
+              // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
               .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
                 align: Alignment.Top,
-                offset: { y: 0 }
+                offset: { y: -this.rubyRise(size) }
               })
           } else {
             Text() {
@@ -1754,8 +1756,10 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      // **不再额外留边距**（用户要求）：注音行的行高/间距与普通文本一致，
-      // 读音只是"贴"在基准字上方（轻微上溢由行距自然容纳），不靠撑大段落来让位。
+      // 段顶让位**整段给一次**（不是每个字给一次）：字与字仍然同一基线、位置不移动，
+      // 而读音浮出去的那一条带有地方放，不会被列表项 / Scroll 裁掉
+      //（用户实测"阅读页没显示注音，导出 HTML 里却有"）。
+      .padding({ top: this.rubyRise(size) })
     } else if (this.systemSelectId === this.block.id || this.alwaysSystemSelect) {
       // ── **系统选择模式**（用户要求）：不用自定义批注菜单，恢复系统原生长按菜单 ——
       // 复制 / 全选 / 翻译 / 唤起小艺等系统能力直接可用。点一下正文退出（见 Span onClick）。
@@ -1872,10 +1876,12 @@ export struct MdBlockView {
                 ? FontWeight.Bold : FontWeight.Normal)
               .fontFamily(HwFont.resolve(this.fontKey))
               .maxLines(1)
-              .padding({ top: this.rubyRise(size) })
+              // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
+              //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
+              // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
               .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
                 align: Alignment.Top,
-                offset: { y: 0 }
+                offset: { y: -this.rubyRise(size) }
               })
           } else {
             Text() {
@@ -1889,7 +1895,8 @@ export struct MdBlockView {
           + (atom.isRuby ? atom.base + '|' + atom.reading : '' + atom.pieces.length))
       }
       .width('100%')
-      // 同 richTextSel：不额外留边距，行高与普通文本一致
+      // 同 richTextSel：段顶让位整段给一次，字与字仍同一基线、位置不移动
+      .padding({ top: this.rubyRise(size) })
     } else {
       Text() {
         this.spanRun(pieces, size, baseColor)

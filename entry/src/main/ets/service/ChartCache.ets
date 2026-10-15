@@ -350,13 +350,21 @@ export class ChartCache {
    */
   static hasShot(ctx: common.UIAbilityContext, mode: string, payload: string,
                  dark: boolean, bg: string): boolean {
+    // 与 pngBase64 同一宽严口径：**两个深浅版本都算**（先请求版）。
+    // 这里比 pngBase64 严会让 kernelNeeded 误判"没快照"，导出/打印就又把 5.6MB 内核背上。
     const variants: string[] = [
       ChartCache.keyFor(mode, payload, dark, bg),
       ChartCache.keyFor(mode, payload, dark, ''),
+      ChartCache.keyFor(mode, payload, !dark, bg),
+      ChartCache.keyFor(mode, payload, !dark, ''),
     ];
     const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
+    const idxOther: string = ChartCache.payloadKey(ctx, mode, payload, !dark);
     if (idxKey.length > 0) {
       variants.push(idxKey);
+    }
+    if (idxOther.length > 0) {
+      variants.push(idxOther);
     }
     for (let k = 0; k < variants.length; k++) {
       // 走 srcPath 而不是 path：尺寸口径自检不过的坏图（见 dimMatchesPixels）不能算"有快照"，
@@ -374,17 +382,28 @@ export class ChartCache {
    */
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
-    // **只认请求的那一个深浅版本**（bg 允许不同，深浅不允许）：跨版本兜底会把深色底
-    // 烘的图嵌进浅色导出页 —— 设备实测一篇文档 63 张内嵌图里 33 张是深色底，
-    // 在白纸上就是一块块黑（用户实测"默认浅色模式，有的背景变成黑色了"）。
-    // 没有对应版本就走导出页自己的实时渲染（runner 会按页面主题出图）。
+    // **先要请求的那个深浅版本，再退到另一版**（顺序不能反）。
+    // 上一轮为了"浅色导出页别混进深色底图"改成只认同版本，结果在深色模式下读书再打印时
+    // 一张快照都拿不到 → 导出/打印只能背上全部渲染库（实测 11.4MB），ArkWeb 装不下，
+    // 整页空白（用户实测"打印又不显示了，graphviz 和 abc 也没加载出来"）。
+    // 两权相害：宁可出现"深色底图"这种观感瑕疵，也不能整页不出图；
+    // 真正的解法是让预渲染池把浅色版也烘一份（已记待办）。
     const variants: string[] = [
       ChartCache.keyFor(mode, payload, dark, bg),
       ChartCache.keyFor(mode, payload, dark, ''),
     ];
     const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
+    const idxOther: string = ChartCache.payloadKey(ctx, mode, payload, !dark);
+    for (let k = 0; k < 2; k++) {
+      const d: boolean = k === 0 ? !dark : dark;
+      variants.push(ChartCache.keyFor(mode, payload, d, bg));
+      variants.push(ChartCache.keyFor(mode, payload, d, ''));
+    }
     if (idxKey.length > 0) {
       variants.push(idxKey);
+    }
+    if (idxOther.length > 0) {
+      variants.push(idxOther);
     }
     for (let k = 0; k < variants.length; k++) {
       const key: string = variants[k];
