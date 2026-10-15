@@ -167,6 +167,35 @@ export class TableTool {
     return out;
   }
 
+  /**
+   * 表格 → 分隔文本（CSV 传 ','，TSV 传制表符）：粘进 Excel / 表格软件用。
+   * 与 `toLines` 的分工：那份是 Markdown 源码形态（带转义与对齐），这份是**字面文本**，
+   * 不写 `|`、不转义星号，只按 RFC 4180 处理分隔符与引号。
+   */
+  static toDelimited(t: MdTable, sep: string): string {
+    const out: string[] = [TableTool.delimRow(t.header, sep)];
+    for (let i = 0; i < t.rows.length; i++) {
+      out.push(TableTool.delimRow(t.rows[i], sep));
+    }
+    return out.join(String.fromCharCode(10));
+  }
+
+  /** 一行分隔文本：含分隔符 / 引号 / 换行的单元格整体加引号，内部引号翻倍；换行压成空格 */
+  private static delimRow(cells: string[], sep: string): string {
+    const out: string[] = [];
+    for (let k = 0; k < cells.length; k++) {
+      let v: string = cells[k];
+      v = v.split(String.fromCharCode(13)).join(' ');
+      v = v.split(String.fromCharCode(10)).join(' ');
+      if (v.indexOf('"') >= 0 || v.indexOf(sep) >= 0) {
+        out.push('"' + v.split('"').join('""') + '"');
+      } else {
+        out.push(v);
+      }
+    }
+    return out.join(sep);
+  }
+
   /** 改单元格（越界忽略）。 */
   static setCell(t: MdTable, row: number, col: number, text: string): MdTable {
     if (row < 0 || row >= t.rows.length || col < 0 || col >= t.header.length) {

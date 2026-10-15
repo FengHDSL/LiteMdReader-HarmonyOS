@@ -18,6 +18,7 @@
  */
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import {
   LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
@@ -114,6 +115,50 @@ export struct TableEditorDialog {
 
   private bump(): void {
     this.epoch = this.epoch + 1;
+  }
+
+  /** 复制整张表：**同步**写剪贴板（与正文复制同一口径——异步 setData 的 promise 在
+   *  部分设备上与真实写入不同步，会出现"提示已复制、粘出来没内容"）。 */
+  private copyTable(text: string, hint: string): void {
+    try {
+      const data: pasteboard.PasteData =
+        pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      pasteboard.getSystemPasteboard().setDataSync(data);
+      this.getUIContext().getPromptAction().showToast({ message: hint });
+    } catch (err) {
+      const e: BusinessError = err as BusinessError;
+      const msg: string = (e.message !== undefined && e.message !== null) ? e.message : L10n.t('未知错误');
+      this.getUIContext().getPromptAction().showToast({ message: L10n.t('复制失败：') + msg });
+    }
+  }
+
+  /**
+   * 按格式取整张表的文本。**必须在点击那一刻才算**：单元格是直接改在 @Link 对象上的，
+   * 不触发重建，构建期算好的字符串会停在旧内容。
+   */
+  private tableTextFor(kind: string): string {
+    if (kind === 'md') {
+      return TableTool.toLines(this.tbl).join(String.fromCharCode(10));
+    }
+    if (kind === 'tsv') {
+      return TableTool.toDelimited(this.tbl, String.fromCharCode(9));
+    }
+    return TableTool.toDelimited(this.tbl, ',');
+  }
+
+  /** 复制胶囊（Markdown / CSV / TSV） */
+  @Builder
+  copyChip(label: string, kind: string) {
+    Text(label)
+      .fontSize(12)
+      .fontColor(this.pal().textSecondary)
+      .textAlign(TextAlign.Center)
+      .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+      .borderRadius(10)
+      .border({ width: 1, color: this.pal().divider })
+      .onClick(() => {
+        this.copyTable(this.tableTextFor(kind), L10n.t('表格已复制，可直接粘贴'));
+      })
   }
 
   build() {
@@ -258,6 +303,14 @@ export struct TableEditorDialog {
       .scrollBar(BarState.Off)
       .constraintSize({ maxHeight: this.gridMaxNow() })
       .align(Alignment.Top)
+      .width('100%')
+
+      // ── 复制整张表（用户要求：长按表格弹菜单在真机上不生效，复制入口搬进弹窗）──
+      Row({ space: HwSpace.xs }) {
+        this.copyChip(L10n.t('复制为 Markdown'), 'md')
+        this.copyChip(L10n.t('复制为 CSV'), 'csv')
+        this.copyChip(L10n.t('复制为 TSV'), 'tsv')
+      }
       .width('100%')
 
       // ── 底部：取消 | 保存 ──

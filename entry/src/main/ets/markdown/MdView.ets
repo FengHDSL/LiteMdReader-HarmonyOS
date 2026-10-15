@@ -123,6 +123,14 @@ class MdAtom {
  */
 const detailsManualOpen: Map<string, boolean> = new Map<string, boolean>();
 
+/**
+ * 本次运行里**已经自动刷新过一次**的图表卡（键 = 内容寻址的缓存键）。
+ *
+ * 必须是模块级而不是 @State：自动刷新会让卡片从"缓存图"切到"实时 Web"，
+ * 组件随之重建、@State 归零 → 又触发一次自动刷新，无限打转。
+ */
+const autoRefreshedCharts: Set<string> = new Set<string>();
+
 export class MdViewUtil {
   /** 提示块视觉规格。颜色刻意在深浅主题下都保持可读。 */
   static calloutSpec(kind: MdCalloutKind): CalloutSpec {
@@ -2411,95 +2419,15 @@ export struct MdBlockView {
     .border({ width: 1, color: this.palette.divider })
     .margin({ top: HwSpace.xs, bottom: HwSpace.xs })
     // **长按表格弹卡片菜单**（第一项是可视化编辑，TableEditorDialog 按块 srcLine 写回原文）。
+    // **长按表格打开可视化编辑**（TableEditorDialog，页面按块 srcLine 写回原文）。
     // 原来是单击：整张表的点击被"打开编辑"吃掉，表格里的超链接一个都点不动（用户实测）。
-    // 现在长按**弹菜单**（第一项还是打开编辑，另加三种复制），单击留给单元格里的链接
-    //（见 richText 的 onClick），横向滚动仍由 Scroll 消费。
-    .bindContextMenu(this.tableCardMenu.bind(this), ResponseType.LongPress)
-  }
-
-  /** 表格卡长按菜单（对齐 Qoder 基线的"表格可复制为 CSV / Markdown"）。 */
-  @Builder
-  tableCardMenu() {
-    Menu() {
-      MenuItem({ content: L10n.t('编辑表格') })
-        .onClick(() => {
-          this.tableEditHandler(this.block.id);
-        })
-      MenuItem({ content: L10n.t('复制为 Markdown') })
-        .onClick(() => {
-          this.copyText(this.tableAsMarkdown(), L10n.t('表格已按 Markdown 复制'));
-        })
-      MenuItem({ content: L10n.t('复制为 CSV') })
-        .onClick(() => {
-          this.copyText(this.tableAsDelimited(','), L10n.t('表格已按 CSV 复制'));
-        })
-      MenuItem({ content: L10n.t('复制为 TSV（粘进表格软件）') })
-        .onClick(() => {
-          this.copyText(this.tableAsDelimited(String.fromCharCode(9)), L10n.t('表格已按 TSV 复制'));
-        })
-    }
-  }
-
-  /** 单元格纯文本：丢掉 `**粗**` / `code` / 链接这些行内皮，只留字面。 */
-  private tableCellText(row: MdTableRow, col: number): string {
-    if (col >= row.cells.length) {
-      return col < row.raw.length ? row.raw[col] : '';
-    }
-    const frags: MdInline[] = row.cells[col];
-    let s: string = '';
-    for (let k = 0; k < frags.length; k++) {
-      s = s + frags[k].text;
-    }
-    return s;
-  }
-
-  /**
-   * 表格 → Markdown 源码形态（**用 raw 而不是纯文本**：粘回编辑器才还带得上
-   * 粗体与链接）。表头下面补一条分隔行，否则粘过去不再是表格。
-   */
-  private tableAsMarkdown(): string {
-    const rows: MdTableRow[] = this.block.rows;
-    const lines: string[] = [];
-    for (let r = 0; r < rows.length; r++) {
-      const cells: string[] = [];
-      for (let c = 0; c < rows[r].raw.length; c++) {
-        cells.push(rows[r].raw[c].trim().split('|').join('\\|'));
-      }
-      lines.push('| ' + cells.join(' | ') + ' |');
-      if (r === 0 && rows[r].header) {
-        const seps: string[] = [];
-        for (let c = 0; c < rows[0].raw.length; c++) {
-          // 分隔行带上原表的列对齐（aligns：0 左 1 中 2 右），粘回去才不改排版
-          const a: number = c < this.block.aligns.length ? this.block.aligns[c] : 0;
-          seps.push(a === 1 ? ' :---: ' : (a === 2 ? ' ---: ' : ' --- '));
-        }
-        lines.push('|' + seps.join('|') + '|');
-      }
-    }
-    return lines.join('\n');
-  }
-
-  /** 单元格按 RFC 4180 转义：含分隔符或引号就整体加引号，内部引号翻倍。 */
-  private csvCell(v: string, sep: string): string {
-    const t: string = v.replace(/\r\n/g, ' ').replace(/\r/g, ' ').replace(/\n/g, ' ');
-    if (t.indexOf('"') >= 0 || t.indexOf(sep) >= 0) {
-      return '"' + t.split('"').join('""') + '"';
-    }
-    return t;
-  }
-
-  /** 表格 → 分隔文本（CSV 用逗号，TSV 用制表符）：给表格软件 / Excel 用，取字面文本 */
-  private tableAsDelimited(sep: string): string {
-    const rows: MdTableRow[] = this.block.rows;
-    const lines: string[] = [];
-    for (let r = 0; r < rows.length; r++) {
-      const cells: string[] = [];
-      for (let c = 0; c < rows[r].raw.length; c++) {
-        cells.push(this.csvCell(this.tableCellText(rows[r], c), sep));
-      }
-      lines.push(cells.join(sep));
-    }
-    return lines.join('\n');
+    // 改长按后，单击留给单元格里的链接（见 richText 的 onClick），横向滚动仍由 Scroll 消费。
+    // ⚠️ 这里**不要换成 bindContextMenu**：真机上长按不弹菜单（单元格那层 selectable 的
+    // Text 先把长按手势吃掉了），复制入口因此放在表格编辑弹窗里（见 TableEditorDialog）。
+    .gesture(LongPressGesture({ repeat: false, duration: 500 })
+      .onAction(() => {
+        this.tableEditHandler(this.block.id);
+      }))
   }
 
   @Builder
@@ -2690,6 +2618,9 @@ export struct MdBlockView {
         .objectFit(ImageFit.Contain)
         .width(this.blockImgW(mode))
         .height(this.blockImgH(mode))
+        .onLoad(() => {
+          this.autoRefreshOnce(mode);
+        })
         .onError(() => {
           this.markChartBroken(mode);
         })
@@ -2710,6 +2641,9 @@ export struct MdBlockView {
         // 按原比例把正文顶到两屏外（用户实测"类图太长了"）。Contain 只缩小
         // 不裁切，完整内容仍在，看细节点开放大浮层。
         .constraintSize({ maxHeight: this.chartCapH() })
+        .onLoad(() => {
+          this.autoRefreshOnce(mode);
+        })
         .onError(() => {
           this.markChartBroken(mode);
         })
@@ -3382,6 +3316,25 @@ export struct MdBlockView {
     this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
       this.chartReloadTick = this.chartReloadTick + 1;
     });
+  }
+
+  /**
+   * 卡片**首次出图后自动点一次右上角的刷新**（用户要求）：
+   * 缓存 PNG 是预渲染池在**另一块画布**上烘的，宽度/重排口径与正文卡片不保证一致
+   * —— 尺寸不对时点一次刷新（丢弃缓存图 → 实时 Web 重载）就是正的，那就自动点这一下。
+   *
+   * 每张图**每个应用运行期只自动点一次**：记的是内容寻址的缓存键（模块级
+   * `autoRefreshedCharts`，跨组件重建保留），否则"换缓存图 → ForEach 重建 → 又自动刷新"会打转。
+   */
+  private autoRefreshOnce(mode: string): void {
+    const key: string = this.blockKeyOf(mode);
+    if (autoRefreshedCharts.has(key)) {
+      return;
+    }
+    autoRefreshedCharts.add(key);
+    setTimeout(() => {
+      this.refreshHandler(mode);
+    }, 320);
   }
 
   /** 代码组的活动下标 */

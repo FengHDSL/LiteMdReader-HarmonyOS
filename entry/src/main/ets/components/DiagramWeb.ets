@@ -139,6 +139,8 @@ export struct DiagramWeb {
   private lastPostH: number = 0;
   /** 已下发给引擎的缩放倍率（zoom() 是相对增量，用它换算下一步的 factor） */
   private zoomApplied: number = 1;
+  /** 正文卡片是否已经"出图后自动重载"过一次（每张卡一次，见 postWidth 里的说明） */
+  private autoReloaded: boolean = false;
 
   /**
    * 实际加载的模板名。脑图走 **markmap-card**（一份模板同时管正文卡片与放大浮层
@@ -170,6 +172,17 @@ export struct DiagramWeb {
             // .dim sidecar，显示端据此对超宽公式"按自然尺寸 + 横向滚动"展示
             if (v > 0) {
               this.lastPostW = v;
+            }
+            // **正文卡片出图后自动重载一次**（用户要求"加载出来后自动点一次刷新"）：
+            // 首帧是卡片宽度还没稳定时就排好版画出来的，重载一遍才按最终宽度重排。
+            // 后台预渲染池（带 webId）与放大浮层（zoom / fillHeight 开）都不做——
+            // 池子重载会和烘图竞速，浮层是用户主动放大的、不该自己动。
+            if (v > 0 && !this.autoReloaded && this.webId.length === 0
+              && !this.zoom && !this.fillHeight) {
+              this.autoReloaded = true;
+              setTimeout(() => {
+                this.doReload();
+              }, 260);
             }
             if (!this.inlineMode) {
               return;
