@@ -407,6 +407,73 @@ export class ChartCache {
     return dataUrl;
   }
 
+  /**
+   * **PNG 内容裁边**（下载/导出用，用户实测"一张小图浮在巨大空白画布里"+ 四角黑角）：
+   * 以角落像素为背景色，扫描全部像素求**内容包围盒**，裁掉四周空白
+   *（含圆角卡片的黑角区域）+ 留 12px 呼吸边。全空白图原样返回。
+   * ⚠️ 颜色通道序（BGRA/RGBA）无关——背景采样与比较都在同一份像素上做。
+   */
+  static async trimPng(bytes: ArrayBuffer): Promise<ArrayBuffer> {
+    try {
+      const src: image.ImageSource = image.createImageSource(bytes);
+      const pm: image.PixelMap = await src.createPixelMap();
+      const info: image.ImageInfo = await pm.getImageInfo();
+      const w: number = info.size.width;
+      const h: number = info.size.height;
+      if (w < 40 || h < 40) {
+        return bytes;
+      }
+      const buf: ArrayBuffer = new ArrayBuffer(w * h * 4);
+      await pm.readPixelsToBuffer(buf);
+      const u8: Uint8Array = new Uint8Array(buf);
+      const bgR: number = u8[0];
+      const bgG: number = u8[1];
+      const bgB: number = u8[2];
+      let minX: number = w;
+      let minY: number = h;
+      let maxX: number = -1;
+      let maxY: number = -1;
+      const tol: number = 12;
+      for (let y = 0; y < h; y++) {
+        const row: number = y * w * 4;
+        for (let x = 0; x < w; x++) {
+          const o: number = row + x * 4;
+          if (Math.abs(u8[o] - bgR) > tol || Math.abs(u8[o + 1] - bgG) > tol
+            || Math.abs(u8[o + 2] - bgB) > tol) {
+            if (x < minX) { minX = x; }
+            if (x > maxX) { maxX = x; }
+            if (y < minY) { minY = y; }
+            if (y > maxY) { maxY = y; }
+          }
+        }
+      }
+      src.release();
+      pm.release();
+      if (maxX < 0) {
+        return bytes;
+      }
+      const pad: number = 12;
+      const cx: number = Math.max(0, minX - pad);
+      const cy: number = Math.max(0, minY - pad);
+      const cw: number = Math.min(w - cx, maxX - cx + 1 + pad * 2);
+      const ch: number = Math.min(h - cy, maxY - cy + 1 + pad * 2);
+      if (cw >= w && ch >= h) {
+        return bytes;
+      }
+      const src2: image.ImageSource = image.createImageSource(bytes);
+      const pm2: image.PixelMap = await src2.createPixelMap();
+      const region: image.Region = { x: cx, y: cy, size: { width: cw, height: ch } };
+      await pm2.crop(region);
+      const packer: image.ImagePacker = image.createImagePacker();
+      const out: ArrayBuffer = await packer.packToData(pm2, { format: 'image/png', quality: 100 });
+      src2.release();
+      pm2.release();
+      return out;
+    } catch (err) {
+      return bytes;
+    }
+  }
+
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
     // **先要请求的那个深浅版本，再退到另一版**（顺序不能反）。

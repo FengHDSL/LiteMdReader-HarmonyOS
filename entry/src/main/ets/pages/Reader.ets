@@ -5759,6 +5759,9 @@ export struct Reader {
         } catch (ce) {
         }
       }
+      // **内容裁边**（用户实测"小图浮在巨大空白画布"+ 四角黑角）：
+      // 按内容包围盒裁掉空白与圆角区域，只留图形本体 + 12px 呼吸边
+      bytes = await ChartCache.trimPng(bytes);
       const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker(c);
       const opts: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
       const base: string = this.enlargeTitle.length > 0 ? this.enlargeTitle : mode;
