@@ -17,6 +17,8 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { InlineRuntime, MdToHtml } from '../markdown/MdToHtml';
+import { MdBlock, MdBlockKind } from '../markdown/MdTypes';
+import { ChartCache } from './ChartCache';
 
 const TAG: string = 'ChartRuntime';
 
@@ -95,6 +97,46 @@ export class ChartRuntimeService {
       return ['wavedrom-skin-default.js', 'wavedrom.min.js'];
     }
     return [];
+  }
+
+  /**
+   * 导出 / 打印**要不要带 5.6MB 的 PlantUML 内核**。
+   *
+   * 设备实测：带内核的全图种导出 HTML 有 12.1MB，手机浏览器打开直接空白
+   * （同一份文件在桌面浏览器里 14/14 PlantUML、31/31 mermaid、23/23 公式全出图）。
+   * 阅读页预渲染池已经把每张 PlantUML 烘成 PNG，导出嵌 `<img>` 就够，
+   * 所以**只要还有块没烘出来才带内核**——一条都没烘出来时才会背这 5.6MB。
+   */
+  static kernelNeeded(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                      dark: boolean, bg: string): boolean {
+    for (let k = 0; k < blocks.length; k++) {
+      const b: MdBlock = blocks[k];
+      if (b.kind !== MdBlockKind.Chart || b.lang.trim().toLowerCase() !== 'plantuml') {
+        continue;
+      }
+      if (!ChartCache.hasShot(ctx, 'plantuml', b.code, dark, bg)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 等预渲染池把缺的快照补齐（**有上限**，超时就走带内核的路）。
+   * 打开文档就立刻导出时池子常常还在烘（设备实测：导出在 23:31，最后一张 23:32 才落盘），
+   * 就差那一两张会让整份导出多背 5.6MB，等几百毫秒到几秒是划算的。
+   */
+  static async waitForShots(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                            dark: boolean, bg: string, maxMs: number): Promise<void> {
+    const t0: number = Date.now();
+    while (ChartRuntimeService.kernelNeeded(ctx, blocks, dark, bg)) {
+      if (Date.now() - t0 >= maxMs) {
+        return;
+      }
+      await new Promise<void>((res: () => void) => {
+        setTimeout(res, 300);
+      });
+    }
   }
 
   /**

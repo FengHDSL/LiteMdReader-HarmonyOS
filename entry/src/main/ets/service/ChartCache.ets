@@ -356,7 +356,9 @@ export class ChartCache {
       variants.push(idxKey);
     }
     for (let k = 0; k < variants.length; k++) {
-      if (ChartCache.path(ctx, variants[k]).length > 0) {
+      // 走 srcPath 而不是 path：尺寸口径自检不过的坏图（见 dimMatchesPixels）不能算"有快照"，
+      // 否则导出会以为能嵌图、把内核丢掉，结果那张图在导出页里根本不存在
+      if (ChartCache.srcPath(ctx, variants[k]).length > 0) {
         return true;
       }
     }

@@ -30,6 +30,14 @@ const HTML_CSS: string = `
   .markmap { width: 100%; height: 420px; }
   .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml, .nml, .cjs { width: 100%; overflow-x: auto; text-align: center; }
   .gv svg, .abc svg, .wfx svg, .vgl svg, .puml svg, .nml svg { max-width: 100%; height: auto; }
+  .mermaid svg { max-width: 100%; height: auto; }
+  /* 打印：屏幕上"能左右滑动"的东西到了纸上就是"少一段"（用户实测超宽公式打印不全）。
+     公式由页尾 runner 缩字号等比适配、SVG 由上面的 max-width 等比缩放，容器一律不裁切。 */
+  @media print {
+    body { max-width: none; padding: 10mm 12mm; background: #fff; }
+    .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml, .nml, .cjs { overflow: visible; }
+    img.chartimg { max-width: 100%; height: auto; }
+  }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
   .kxi { display: inline-block; vertical-align: middle; max-width: 100%; }
@@ -725,15 +733,42 @@ export class MdToHtml {
         + '    } catch (e) { return s; }\n'
         + '  }\n'
         + '  // 公式渲染（块级 display / 行内）：常规失败且是宏重定义类问题时用宽容化源码重试一次\n'
+        + '  function fitKx(el) {\n'
+        + '    var k = el.querySelector(".katex");\n'
+        + '    if (!k) { return; }\n'
+        + '    var avail = el.clientWidth || (el.parentNode ? el.parentNode.clientWidth : 0);\n'
+        + '    if (!(avail > 0)) { return; }\n'
+        + '    for (var pass = 0; pass < 10; pass++) {\n'
+        + '      var rg = document.createRange();\n'
+        + '      rg.selectNodeContents(k);\n'
+        + '      var rr = rg.getClientRects();\n'
+        + '      var lf = 1e9, rt = -1e9;\n'
+        + '      for (var j = 0; j < rr.length; j++) {\n'
+        + '        if (rr[j].left < lf) { lf = rr[j].left; }\n'
+        + '        if (rr[j].right > rt) { rt = rr[j].right; }\n'
+        + '      }\n'
+        + '      var w = rt - lf;\n'
+        + '      if (w <= avail + 1) { return; }\n'
+        + '      var cur = parseFloat(el.style.fontSize);\n'
+        + '      if (!(cur > 0)) { cur = 100; }\n'
+        + '      var next = Math.floor(cur * (avail - 10) / w);\n'
+        + '      if (next >= cur) { next = cur - 4; }\n'
+        + '      if (next < 40) { next = 40; }\n'
+        + '      el.style.fontSize = next + "%";\n'
+        + '      if (next <= 40) { return; }\n'
+        + '    }\n'
+        + '  }\n'
         + '  function renderKx(el, display) {\n'
         + '    var s = b64u(el.dataset.b64);\n'
         + '    var opt = { displayMode: display, throwOnError: false };\n'
         + '    el.innerHTML = "";\n'
+        + '    el.style.fontSize = "";\n'
         + '    katex.render(s, el, opt);\n'
         + '    if (el.querySelector(".katex-error")) {\n'
         + '      var s2 = normalizeMacros(s);\n'
         + '      if (s2 !== s) { el.innerHTML = ""; katex.render(s2, el, opt); }\n'
         + '    }\n'
+        + '    if (display) { fitKx(el); }\n'
         + '  }\n' : '')
       + '  window.addEventListener("load", function() {\n'
       + (has('salt') || has('ditaa') || has('nwdiag')

@@ -52,7 +52,17 @@ export class PrintService {
           }
         }
       }
-      // 用户要求：渲染库提前缓存到应用内、导出时内嵌进 HTML
+      // **PlantUML 内核 5.6MB 只在没有快照可嵌时才带上**（与导出同一套判定）：
+      // 打印页要装进 ArkWeb 再交给系统打印，12MB 的页面在手机上直接空白。
+      if (needed.indexOf('plantuml-kernel.js') >= 0) {
+        notify('正在补齐图表快照…');
+        await ChartRuntimeService.waitForShots(ctx, parsed.blocks, false, '', 5000);
+        const kernelAt: number = needed.indexOf('plantuml-kernel.js');
+        if (kernelAt >= 0 && !ChartRuntimeService.kernelNeeded(ctx, parsed.blocks, false, '')) {
+          needed.splice(kernelAt, 1);
+        }
+      }
+      // 用户要求：渲染库提前缓存到应用内、打印时内嵌进 HTML
       notify('正在加载图表渲染库…');
       const loaded: InlineRuntime[] | null =
         await ChartRuntimeService.loadRuntimes(ctx, needed, notify);
@@ -78,8 +88,11 @@ export class PrintService {
       }
     }
     // **打印同样要内联本地图片**（用户要求：打印也要显示手写笔记 / 插图）
+    // ⚠️ 这里必须把 ctx 传下去：不传 ctx，MdToHtml 查不到预渲染池烘好的快照，
+    // 打印页就只能背上全部渲染库（实测 12MB+，手机上直接空白）。
+    // 打印是纸上输出，深浅一律按浅色取图（pngBase64 会浅色优先、再试深色）。
     let html: string = ExportService.inlineLocalImages(ctx,
-      MdToHtml.export(docName, parsed.meta, parsed.blocks, chartCount > 0, inline));
+      MdToHtml.export(docName, parsed.meta, parsed.blocks, chartCount > 0, inline, ctx, false, ''));
     // 图片相对路径 → file:// 绝对路径（打印 HTML 落在 cache，引用的是 docs/images）
     const docsRoot: string = DocStore.docsRoot();
     if (docsRoot.length > 0) {
