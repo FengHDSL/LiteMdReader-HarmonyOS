@@ -159,10 +159,10 @@ export struct HtmlViewer {
         }
         if (allDone) {
           this.ready = true;
-          this.status = '已就绪，可打印';
+          this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
         } else if (attempt >= 12) {
           this.ready = true;
-          this.status = '已就绪（部分图表可能未渲染完）';
+          this.status = '已就绪（部分图表可能未渲染完）。若白屏或无法滑动，请退出重新选择打印';
         } else {
           this.status = '图表渲染中…';
           setTimeout(() => {
@@ -172,7 +172,7 @@ export struct HtmlViewer {
       });
     } catch (err) {
       this.ready = true;
-      this.status = '已就绪，可打印';
+      this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
     }
   }
 
