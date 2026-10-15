@@ -224,7 +224,8 @@ export struct HtmlViewer {
           chipPaddingH: HwSpace.sm + 2,
           chipPaddingV: 7,
           palette: this.palette(),
-          chipLabel: L10n.t('返回'),
+          // 图标-only（用户要求：顶部三钮保留图标即可，不需要文字）
+          chipLabel: '',
           chipOnTap: () => {
             if (this.stack !== null) {
               this.stack.pop();
@@ -243,7 +244,8 @@ export struct HtmlViewer {
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
           .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          // 文档名过长 → 自动缓慢滚动（用户要求），不再截断省略
+          .textOverflow({ overflow: TextOverflow.MARQUEE })
 
         // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
         ImmersiveChip({
@@ -251,7 +253,7 @@ export struct HtmlViewer {
           chipPaddingV: 7,
           chipActive: this.loadedPath.length > 0 && !this.printing,
           palette: this.palette(),
-          chipLabel: L10n.t('刷新'),
+          chipLabel: '',
           chipOnTap: () => {
             if (this.loadedPath.length === 0 || this.printing) {
               return;
@@ -272,7 +274,7 @@ export struct HtmlViewer {
           chipPaddingV: 7,
           chipActive: this.ready && !this.printing,
           palette: this.palette(),
-          chipLabel: this.printing ? L10n.t('调起中') : L10n.t('打印'),
+          chipLabel: '',
           chipOnTap: () => {
             this.doPrint();
           }
