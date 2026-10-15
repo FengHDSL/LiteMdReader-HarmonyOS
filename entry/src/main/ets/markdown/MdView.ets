@@ -1739,7 +1739,17 @@ export struct MdBlockView {
               // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
               //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
               // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
-              .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
+              .overlay(() => {
+            Text(atom.reading)
+              .fontSize(Math.max(9, Math.round(size * 0.5)))
+              .fontColor(this.palette.textTertiary)
+              .maxLines(1)
+              .textAlign(TextAlign.Center)
+              .width('100%')
+            // ⚠️ 不用 @Builder 方法 + bind(this, 参数)：带参绑定在真机会静默不渲染
+            //（用户实测"注音不见了"，而导出 HTML 里注音还在——只有阅读页丢）。
+            // 内联箭头 Builder 是 CustomBuilder 的无歧义形态。
+          }, {
                 align: Alignment.Top,
                 offset: { y: -this.rubyRise(size) }
               })
@@ -1801,16 +1811,6 @@ export struct MdBlockView {
    * 所以 v1 明确不支持在表格里做批注。
    */
   @Builder
-  /** 注音读音（overlay 内容）：小号、置灰、单行居中。 */
-  @Builder
-  rubyReadingText(reading: string, size: number) {
-    Text(reading)
-      .fontSize(Math.max(9, Math.round(size * 0.5)))
-      .fontColor(this.palette.textTertiary)
-      .maxLines(1)
-      .textAlign(TextAlign.Center)
-      .width('100%')
-  }
 
   /** 片段串 → 一串 Span（线性排版路径）。注音不走这里，见 richText 的堆叠分支。 */
   @Builder
@@ -1879,7 +1879,17 @@ export struct MdBlockView {
               // 基准字**不加内边距**：加了会把字整体往下推、与同行邻字高低不齐
               //（用户明确要求"字符位置不要移动，高度要对齐正常字符"）。
               // 读音用负 offset 浮到字顶，段顶的让位由外层 Flex 一次性给出。
-              .overlay(this.rubyReadingText.bind(this, atom.reading, size), {
+              .overlay(() => {
+            Text(atom.reading)
+              .fontSize(Math.max(9, Math.round(size * 0.5)))
+              .fontColor(this.palette.textTertiary)
+              .maxLines(1)
+              .textAlign(TextAlign.Center)
+              .width('100%')
+            // ⚠️ 不用 @Builder 方法 + bind(this, 参数)：带参绑定在真机会静默不渲染
+            //（用户实测"注音不见了"，而导出 HTML 里注音还在——只有阅读页丢）。
+            // 内联箭头 Builder 是 CustomBuilder 的无歧义形态。
+          }, {
                 align: Alignment.Top,
                 offset: { y: -this.rubyRise(size) }
               })
