@@ -245,6 +245,27 @@ export struct HtmlViewer {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
+        // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
+        ImmersiveChip({
+          chipPaddingH: HwSpace.sm + 2,
+          chipPaddingV: 7,
+          chipActive: this.loadedPath.length > 0 && !this.printing,
+          palette: this.palette(),
+          chipLabel: L10n.t('刷新'),
+          chipOnTap: () => {
+            if (this.loadedPath.length === 0 || this.printing) {
+              return;
+            }
+            this.status = '正在重新载入…';
+            this.loadHtml();
+          }
+        }) {
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+            .fontSize(15)
+            .fontColor([this.loadedPath.length > 0 && !this.printing
+              ? this.palette().accent : this.palette().textTertiary])
+        }
+
         // 打印：胶囊；未就绪时置灰不可点，就绪后高亮
         ImmersiveChip({
           chipPaddingH: HwSpace.sm + 2,

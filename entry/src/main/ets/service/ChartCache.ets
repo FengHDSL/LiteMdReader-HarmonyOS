@@ -380,6 +380,35 @@ export class ChartCache {
    * 导出用：把阅读页预渲染池**已烘好的缓存 PNG**读成 base64 dataURL。
    * 深浅两个 key 都试（导出时的主题与渲染时不一定一致）。都没有返回空串。
    */
+  /**
+   * 导出内嵌快照图 + **逻辑尺寸**（用户实测"部分图片过小或被拉伸"）：
+   * 快照是按阅读页卡片的设备像素烘的，浏览器不知道该显示多宽 → 被拉伸/过小。
+   * 这里有 .dim 逻辑尺寸（w|h，vp）随图返回，导出侧据此显式定宽、等比缩放。
+   */
+  static pngEmbed(ctx: common.UIAbilityContext, mode: string, payload: string,
+    dark: boolean, bg: string): string {
+    const dataUrl: string = ChartCache.pngBase64(ctx, mode, payload, dark, bg);
+    if (dataUrl.length === 0) {
+      return '';
+    }
+    // 命中哪个 key 无法从 pngBase64 得知——用同样的变体序列找第一个有 .dim 的
+    const candidates: string[] = [
+      ChartCache.keyFor(mode, payload, dark, bg),
+      ChartCache.keyFor(mode, payload, dark, ''),
+      ChartCache.keyFor(mode, payload, !dark, bg),
+      ChartCache.keyFor(mode, payload, !dark, ''),
+      ChartCache.payloadKey(ctx, mode, payload, dark),
+      ChartCache.payloadKey(ctx, mode, payload, !dark)
+    ];
+    for (let k = 0; k < candidates.length; k++) {
+      const dim: string = ChartCache.dimOf(ctx, candidates[k]);
+      if (dim.length > 0) {
+        return dataUrl + String.fromCharCode(1) + dim;
+      }
+    }
+    return dataUrl;
+  }
+
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
     // **先要请求的那个深浅版本，再退到另一版**（顺序不能反）。

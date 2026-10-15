@@ -1129,15 +1129,33 @@ export class MdToHtml {
           // 阅读页预渲染池已把每张图（PlantUML 全家族 / mermaid / 自绘图种…）
           // 烘成 PNG，导出直接内嵌 base64 —— 离线打开、打印都是所见即所得。
           let pngFound: string = '';
+          let pngW: number = 0;
           // wavedrom / abc **不走快照图**（用户实测这两类的快照图内容是错的）：
           // 两家的渲染库很小（0.5MB + 0.05MB），导出页内联渲染库现场画，图与源码必然一致。
           const pngSkip: boolean = langLower === 'html' || langLower === 'wavedrom' || langLower === 'abc';
           if (ctx !== null && !pngSkip && !MdToHtml.engineOffForLang(langLower)) {
-            pngFound = ChartCache.pngBase64(ctx, langLower, block.code, dark, chartBg);
+            // pngEmbed = 快照图 + .dim 逻辑尺寸（导出页据此按原始宽显示，不拉伸不过小）
+            const embed: string = ChartCache.pngEmbed(ctx, langLower, block.code, dark, chartBg);
+            if (embed.length > 0) {
+              const sep: number = embed.indexOf(String.fromCharCode(1));
+              if (sep > 0) {
+                pngFound = embed.substring(0, sep);
+                const wh: string[] = embed.substring(sep + 1).split('|');
+                pngW = wh.length === 2 ? (parseInt(wh[0], 10) || 0) : 0;
+              } else {
+                pngFound = embed;
+              }
+            }
           }
           if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
+            // **按逻辑尺寸定宽**（用户实测部分图片过小或被拉伸）：快照的物理像素
+            // 尺寸≠该显示的尺寸，.dim 里存的才是 vp 口径；有尺寸按原宽显示（打印页
+            // 更宽时等比缩到页面宽以内），量不到就退回 max-width 自适应。
+            const widthStyle: string = pngW > 40
+              ? 'width:' + pngW + 'px;max-width:100%;height:auto'
+              : 'max-width:100%;height:auto';
             body += '<img class="chartimg" src="' + pngFound
-              + '" style="max-width:100%;height:auto">';
+              + '" style="' + widthStyle + '">';
             usedPngs.push(pngFound);
             chartIndex++;
           } else if (langLower === 'html') {
