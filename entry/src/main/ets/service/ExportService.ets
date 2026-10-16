@@ -207,6 +207,10 @@ export class ExportService {
       // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
       const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
       AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
+      // **按需补烘信号**：公式图与浅色孪生平时不在池子的队列里（常驻会把阅读页拖卡，
+      // 见 Reader.chartExportBake）。现在要导出了，才让阅读页把这两类补进队列。
+      const curBake: number | undefined = AppStorage.get<number>('chartExportBake');
+      AppStorage.setOrCreate('chartExportBake', (curBake === undefined ? 0 : curBake) + 1);
       // 等待上限 120s：深色模式下每篇要烘双份（正文款 + 导出用的浅色款），
       // 超时就会把渲染库背进文件、卡片退化成现场渲染容器（见 PrintService 同一口径）
       await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 120000, notify);

@@ -582,6 +582,26 @@ export struct Reader {
     this.poolRetryTick = this.poolRetryTick + 1;
   }
 
+  /**
+   * **导出 / 打印专用的补烘信号**（导出侧在 `waitShots` 前递增）。
+   *
+   * 公式图与浅色孪生**只有导出 / 打印要**：阅读页的公式卡是实时渲染（透底、跟字号
+   * 联动），浅色款在深色模式下也不显示。把它们常驻进队列，等于每篇文档的后台烘焙
+   * 量翻三倍（示例文档 41 张 → 128 张），而且每张都要"整页加载 → 等重排 → 快照 →
+   * 全图像素自检"，池子就一直占着 CPU —— 用户实测"非常非常卡"。
+   * 现在改成**按需排队**：只有用户真的点了导出 / 打印，才把这两类补进队列，
+   * 导出侧的等待循环正好盯着它们烘完。
+   */
+  @StorageProp('chartExportBake') @Watch('onExportBakeWanted') chartExportBake: number = 0;
+
+  /** 收到导出信号 → 重收一次任务清单（这次带上公式图与浅色孪生）。 */
+  onExportBakeWanted(): void {
+    if (this.chartExportBake <= 0 || this.blocks.length === 0) {
+      return;
+    }
+    this.chartTasks = this.collectChartTasks(this.isDark());
+  }
+
   // ══════════════════════ 阅读时长统计 ══════════════════════
   //
   // 只记**真实停留**：退后台、切走页面都先结算，后台时间不计入；
@@ -802,22 +822,6 @@ export struct Reader {
    * 直接打开（无转场）仍按 80 起。
    */
   @State visibleBlocks: number = 80;
-  /**
-   * **实时卡的加载边界**（块下标，单调只增）。
-   *
-   * 一张图表 / 公式卡就是一个 Web 实例，`visibleBlocks` 那套分批渲染管的是"块"，
-   * 管不到"块里的 Web" —— 示例文档滚过一遍后几十张实时卡全部挂着，实测就是
-   * "图表多了滑动卡顿无响应"（用户要求：只有滑到的卡片才开始加载）。
-   *
-   * ⚠️ **只能单调只增，不能做成"进出窗口的滑动窗"**：ArkUI 的 ForEach 对 key 不变
-   * 的孩子不重建，所以窗口状态只能编进 key；而 key 一变就是**整条目重建**—— Web
-   * 销毁 + 重新 loadUrl + 重新初始化引擎，比一直挂着贵得多。上一版做成了前后各
-   * 20 块的滑动窗，每次滚动都有边界卡片翻转重建，用户实测"比之前的版本还卡很多"。
-   * 现在滚过的范围永久保持已加载，往回翻零重建。
-   *
-   * 只在边界真的前进（超过 8 块）时才写状态：每帧写会让整棵正文跟着重渲染。
-   */
-  @State webReached: number = 40;
   /**
    * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
    * 用于从源码形态一键切回原来的预览形态。
@@ -1377,6 +1381,8 @@ export struct Reader {
    */
   private collectChartTasks(dark: boolean): ChartTask[] {
     const out: ChartTask[] = [];
+    // 只为导出 / 打印存在的任务（公式图 + 浅色孪生）：见 chartExportBake
+    const forExport: boolean = this.chartExportBake > 0;
     // 浅色孪生任务单独排队，**排在整条正文队列之前**（顺序见函数尾部）
     const twins: ChartTask[] = [];
     // 浅色孪生的底色：导出 / 打印**恒认浅色快照**（ChartCache.lightShotKeys），键里
@@ -1387,13 +1393,12 @@ export struct Reader {
       const b: MdBlock = this.blocks[k];
       let mode: string = '';
       if (b.kind === MdBlockKind.Math) {
-        // **块级公式进烘焙队列**（用户拍板"公式卡片和图表卡片就是要转成图片的"）：
-        // 3c279d4 那版把公式整体排除出池子、导出恒走 KaTeX 现场渲染容器，设备取证
-        // 是真机导出的示例文档里 23 张公式 + 27 张 mermaid 全是容器，"挤压拉伸"全部
-        // 出在这些容器上（浏览器按容器宽重排，公式小得读不清）。
-        // 这里烘的是**给导出 / 打印供图**；正文那张卡仍然实时渲染（MdView.mathView
-        // 恒走 DiagramWeb，没有取图分支），所以"阅读页公式透底、字号跟正文联动"不变。
-        // （行内公式另有一套 iminl3_ 键的任务，见 MdView。）
+        // **块级公式只为导出 / 打印烘**（用户拍板"公式卡片和图表卡片就是要转成图片
+        // 的那批"，但阅读页那张卡仍按"直接全透明"实时渲染）。没点导出就不排队 ——
+        // 常驻排队会把后台烘焙量翻倍，实测把阅读页拖到"非常非常卡"。
+        if (!forExport) {
+          continue;
+        }
         mode = 'katex';
       } else if (b.kind === MdBlockKind.Chart) {
         mode = b.lang.toLowerCase();
@@ -1433,10 +1438,10 @@ export struct Reader {
         payload: b.code
       } as ChartTask);
       // **深色读书时补一条浅色孪生任务**（根治 #65）：导出 / 打印恒浅色，此前
-      // 深色模式下永远查不到浅色快照 → 整篇卡片退化成"要 JS 现场画的容器"，
-      // 文件背上十几 MB 渲染库、图还挤成一团（用户实测"导出/打印里图表拉伸挤压
-      // + 一大半没转成图片"）。
-      if (dark) {
+      // 深色模式下永远查不到浅色快照 → 整篇卡片退化成"要 JS 现场画的容器"。
+      // ⚠️ 只在导出 / 打印排队时要（forExport）：常驻会让每篇文档的烘焙量直接翻倍，
+      // 阅读页就是被这个翻倍的后台负载拖卡的。
+      if (dark && forExport) {
         twins.push({
           key: ChartCache.keyFor(mode, b.code, false, lightBg),
           mode: mode,
@@ -1453,7 +1458,8 @@ export struct Reader {
     const res: ChartTask[] = [];
     for (let q = 0; q < out.length; q++) {
       res.push(out[q]);
-      if (dark) {
+      // twins 与 out 只在"排队了孪生"时一一对应；没排（浅色读书 / 没点导出）时为空
+      if (q < twins.length) {
         res.push(twins[q]);
       }
     }
@@ -1767,7 +1773,6 @@ export struct Reader {
       this.blocks = result.blocks;
       // 换文档 / 换编码都从首批重新开始（否则上一份文档的加载进度会带过来）
       this.visibleBlocks = 80;
-      this.webReached = 40;
       this.docOutline = result.outline;
       this.notes = result.notes;
       this.annotations = AnnotationStore.load(ctx, this.docName);
@@ -3903,14 +3908,6 @@ export struct Reader {
     this.progressBlock = center > this.headerCount() ? center - this.headerCount() : 0;
     this.scrolled = start > 0;
     this.progressDirty = true;
-
-    // **实时卡加载边界**（见 webReached）：List 下标换算成块下标，往前多留 20 块。
-    // 单调只增 —— 往回翻不回收，回收等于把整条目重建（Web 销毁 + 重新加载），
-    // 那比不懒加载更卡（上一版滑动窗就是这个原因把阅读页搞崩的）。
-    const winTo: number = end - this.headerCount() + 20;
-    if (winTo > this.webReached + 8) {
-      this.webReached = winTo;
-    }
 
     // 回到文档顶部时永远展开，避免「在最上面却找不到入口」
     if (start <= 0) {
@@ -7853,7 +7850,7 @@ export struct Reader {
 
             // **只渲染已加载的块**：`.slice` 返回新数组，key 不变时已渲染的块被复用，
             // 新增的一批才会创建组件（不会整列重建）。
-            ForEach(this.blocks.slice(0, this.visibleBlocks), (block: MdBlock, idx: number) => {
+            ForEach(this.blocks.slice(0, this.visibleBlocks), (block: MdBlock) => {
               ListItem() {
                 MdBlockView({
                   block: block,
@@ -7863,9 +7860,6 @@ export struct Reader {
                   // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
                   indentOn: this.indentOn,
                   dark: this.isDark(),
-                  // **只有滚到附近的图表 / 公式卡才建 Web**（远端的挂骨架）：
-                  // 一篇几十张图全部同时加载就是"滑动卡顿无响应"（用户要求）
-                  webActive: idx <= this.webReached,
                   annotations: this.annotations,
                   searchQuery: this.searchQuery,
                   systemSelectId: this.systemSelectBlock,
@@ -7919,7 +7913,7 @@ export struct Reader {
                     }
                 })
               }
-              }, (block: MdBlock, idx: number) => {
+              }, (block: MdBlock) => {
                 // **图表 / 公式条目**：key 用「内容哈希 + **该块自身缓存是否就绪**」。
                 // 就绪的条目切到缓存图、未就绪的保持占位——只有真正变化的那一个
                 // 会重建，其余 Web 实例被复用，不再反复重新加载（用户反馈：闪来闪去）。
@@ -7935,13 +7929,8 @@ export struct Reader {
                   const c: common.UIAbilityContext | null = this.ctx();
                   const ready: boolean =
                     c !== null && ChartCache.path(c, ck).length > 0;
-                  // **进出可见窗口也要换 key**：ForEach 对 key 不变的孩子根本不重建、
-                  // @Prop 也不会重新下发 —— 不把窗口状态编进 key，`webActive` 永远停在
-                  // 首次挂载时的值，懒挂载就完全失效（这条文件里已有先例：ready 同理）。
-                  const act: boolean = idx <= this.webReached;
                   return block.id + '_' + this.docName + '_' + ck
                     + (tick >= 0 ? (ready ? '_r' : '_p') : '_p')
-                    + (act ? '_w' : '_i')
                     // 引擎开关（设置 → 引擎管理）变化 → 图表/公式条目也要重建成源码卡
                     //（完整列表进 key：开关组合不同就必然不同，避免"关 A 开 B"长度撞车）
                     + '_e' + this.disabledEngineList;

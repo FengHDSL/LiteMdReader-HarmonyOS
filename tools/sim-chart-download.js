@@ -234,20 +234,17 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
       return seg.includes("if (lang === 'html') {")
         && !seg.includes("lang === 'html' || lang === 'markmap'");
     })());
-  // 阅读页性能（用户实测"图表多了滑动卡顿无响应"）：一张实时卡 = 一个 Web 实例，
-  // 必须只有滚到的卡才挂载。⚠️ 边界必须**单调只增**：key 一变就是整条目重建
-  // （Web 销毁 + 重新 loadUrl），做成滑动窗会比不懒加载更卡（第一版踩过）。
-  check('⑤ 实时卡懒挂载，且加载边界单调只增（不做进出窗回收）',
-    mdViewEts.includes('@Prop webActive: boolean = true;')
-    && mdViewEts.includes('} else if (!this.webActive) {')
-    && mdViewEts.includes('if (this.webActive) {')
-    && mdViewEts.includes('webIdleCard()')
-    && readerEts.includes('webActive: idx <= this.webReached,')
-    && readerEts.includes('const act: boolean = idx <= this.webReached;')
-    && readerEts.includes('if (winTo > this.webReached + 8) {')
-    // 单调：不允许出现"往回改边界"的写法
-    && !/this\.webReached = (win|\w+To) < /.test(readerEts)
-    && !readerEts.includes('webWinFrom'));
+  // 阅读页性能：懒挂载实验已回退（ArkUI ForEach 的 key 一变就是整条目重建，Web
+  // 销毁 + 重新 loadUrl，比一直挂着更卡；而把 Web 创建挪进滚动手势更是直接掉帧）。
+  // 真正的负载在**后台池子**：公式图与浅色孪生只有导出要，必须按需排队。
+  check('⑤ 阅读页不做懒挂载（webActive 已回退），导出专属任务按需排队',
+    !mdViewEts.includes('@Prop webActive')
+    && !readerEts.includes('webReached')
+    && readerEts.includes("const forExport: boolean = this.chartExportBake > 0;")
+    && readerEts.includes('if (dark && forExport) {')
+    && readerEts.includes("if (!forExport) {")
+    && exportEts.includes("AppStorage.setOrCreate('chartExportBake'")
+    && printEts.includes("AppStorage.setOrCreate('chartExportBake'"));
   check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
     (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
     && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));
