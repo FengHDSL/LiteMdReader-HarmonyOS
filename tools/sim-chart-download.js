@@ -261,9 +261,12 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 导出嵌图仍按逻辑尺寸定宽（embedStyle 用在图表分支）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));
-  check('⑤ 打印页顶栏是悬浮胶囊，内容可穿到顶栏下层（Web 铺满整页 + 浮层不吃触摸）',
+  check('⑤ 打印页顶栏是悬浮材质胶囊（ImmersiveBar，与书架同一套），内容穿到下层',
     /build\(\) \{\s*\n(?:\s*\/\/[^\n]*\n)+\s*Stack\(\{ alignContent: Alignment\.Top \}\) \{\s*\n\s*Web\(/.test(viewerEts)
-    && viewerEts.includes('.hitTestBehavior(HitTestMode.None)'));
+    && viewerEts.includes('.hitTestBehavior(HitTestMode.None)')
+    && (viewerEts.match(/ImmersiveBar\(\{/g) || []).length >= 2
+    && viewerEts.includes('barHeight: HwBar.pill')
+    && !viewerEts.includes("backgroundColor('#E8FFFFFF')"));
   check('⑤ 打印页状态胶囊带加载动画',
     viewerEts.includes('LoadingProgress()') && viewerEts.includes('if (!this.ready || this.printing) {'));
   check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',

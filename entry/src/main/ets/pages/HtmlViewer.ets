@@ -8,10 +8,10 @@
  *   **系统打印组件**（createWebPrintDocumentAdapter + print.print）。
  *
  * 实现要点：
- *   · 只用最基础的 ArkUI 组件（Column/Row/Text/Stack/Web），避免自定义
- *     承载层/图标组件带来的构建期风险；
+ *   · 顶栏与状态条是**悬浮材质胶囊**（ImmersiveBar，与书架 / 阅读页同一套承载层，
+ *     吃沉浸光感），Web 铺满整页 → 滚动时正文穿到胶囊下层；
  *   · 状态文字浮在 Web 之上 —— 任何阶段（准备 / 渲染 / 出错）用户都能看到，
- *     不会出现"白屏无信息"；
+ *     不会出现"白屏无信息"；就绪前胶囊里带 LoadingProgress 转圈；
  *   · 打印前注入 JS 轮询探测图表渲染完成，未完成时打印不可点。
  */
 import { common } from '@kit.AbilityKit';
@@ -20,8 +20,8 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
-import { HwSpace, HwType, ReaderPalette, LIGHT_PALETTE, paletteFor, isDarkTheme } from '../theme/DesignTokens';
-import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
+import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor, isDarkTheme } from '../theme/DesignTokens';
+import { ImmersiveBar, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
 @Component
@@ -248,13 +248,18 @@ export struct HtmlViewer {
           this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
         })
 
-      Column({ space: 6 }) {
-        // ── 顶栏胶囊：返回 / 文档名 / 刷新 / 打印 ──
-        Row({ space: HwSpace.sm }) {
-          // 返回：**圆形按钮**（用户要求：顶部三钮改圆形，只留图标）
+      Column({ space: HwSpace.xs }) {
+        // ── 顶栏：与书架 / 阅读页同一枚材质胶囊（ImmersiveBar 承载沉浸光感）──
+        ImmersiveBar({
+          palette: this.palette(),
+          barPaddingH: HwSpace.sm,
+          barPaddingV: 4,
+          barHeight: HwBar.pill
+        }) {
+          Row({ space: HwSpace.xs }) {
+          // 返回：圆形材质按钮（36 装进 52-8=44 的内高，与书架顶栏同尺寸）
           ImmersiveIconButton({
-            buttonSize: 30,
-            buttonRadius: 15,
+            buttonSize: 36,
             buttonMaterialShadow: false,
             palette: this.palette(),
             buttonOnTap: () => {
@@ -264,7 +269,7 @@ export struct HtmlViewer {
             }
           }) {
             SymbolGlyph($r('sys.symbol.chevron_left'))
-              .fontSize(15)
+              .fontSize(18)
               .fontColor([this.palette().textPrimary])
           }
 
@@ -278,10 +283,9 @@ export struct HtmlViewer {
             // 文档名过长 → 自动缓慢滚动（用户要求），不再截断省略
             .textOverflow({ overflow: TextOverflow.MARQUEE })
 
-          // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
+          // 刷新：网页卡死/无法滑动时点一下重新载入
           ImmersiveIconButton({
-            buttonSize: 30,
-            buttonRadius: 15,
+            buttonSize: 36,
             buttonMaterialShadow: false,
             palette: this.palette(),
             buttonOnTap: () => {
@@ -293,15 +297,14 @@ export struct HtmlViewer {
             }
           }) {
             SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
-              .fontSize(15)
+              .fontSize(18)
               .fontColor([this.loadedPath.length > 0 && !this.printing
                 ? this.palette().accent : this.palette().textTertiary])
           }
 
-          // 打印：胶囊；未就绪时置灰不可点，就绪后高亮
+          // 打印：未就绪时置灰不可点，就绪后高亮
           ImmersiveIconButton({
-            buttonSize: 30,
-            buttonRadius: 15,
+            buttonSize: 36,
             buttonMaterialShadow: false,
             palette: this.palette(),
             buttonOnTap: () => {
@@ -309,41 +312,41 @@ export struct HtmlViewer {
             }
           }) {
             SymbolGlyph($r('sys.symbol.printer'))
-              .fontSize(15)
+              .fontSize(18)
               .fontColor([this.ready && !this.printing
                 ? this.palette().accent : this.palette().textTertiary])
           }
-        }
-        .width('100%')
-        .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-        .borderRadius(28)
-        .backgroundColor('#E8FFFFFF')
-        .backgroundBlurStyle(BlurStyle.Thin)
-
-        // ── 状态胶囊：加载动画 + 一句话状态（就绪前一直在转，用户要求"要知道有没有在加载"）──
-        Row({ space: 6 }) {
-          if (!this.ready || this.printing) {
-            LoadingProgress()
-              .width(14)
-              .height(14)
-              .color(this.failed ? '#FFD93B3B' : '#FF2F63E8')
           }
-          Text(this.status)
-            .fontSize(12)
-            .fontColor(this.failed ? '#FFD93B3B' : '#FF5A6270')
-            .maxLines(2)
+          .width('100%')
         }
-        .padding({ left: 12, right: 12, top: 5, bottom: 5 })
-        .borderRadius(16)
-        .backgroundColor('#D9FFFFFF')
-        .backgroundBlurStyle(BlurStyle.Thin)
+
+        // ── 状态胶囊：同一套材质（自动高，状态文字换两行不会被切）──
+        ImmersiveBar({
+          palette: this.palette(),
+          barPaddingH: HwSpace.md,
+          barPaddingV: 6
+        }) {
+          Row({ space: HwSpace.xs }) {
+            if (!this.ready || this.printing) {
+              LoadingProgress()
+                .width(14)
+                .height(14)
+                .color(this.failed ? '#FFD93B3B' : this.palette().accent)
+            }
+            Text(this.status)
+              .fontSize(12)
+              .fontColor(this.failed ? '#FFD93B3B' : this.palette().textSecondary)
+              .maxLines(2)
+              .textAlign(TextAlign.Center)
+          }
+        }
       }
       .width('100%')
       .padding({
-        left: HwSpace.md,
-        right: HwSpace.md,
+        left: HwSpace.lg,
+        right: HwSpace.lg,
         top: this.topPad(),
-        bottom: 6
+        bottom: HwSpace.xs
       })
       .alignItems(HorizontalAlign.Center)
       // 胶囊本身不吃触摸：顶栏两侧与两条胶囊之间的空隙，触摸要落到下层 Web 上
