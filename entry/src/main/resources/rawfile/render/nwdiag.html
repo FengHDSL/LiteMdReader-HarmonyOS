@@ -154,7 +154,7 @@
       var o=(typeof json==='string')?JSON.parse(json):json;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
-      if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;}
+      if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;if(o.dl){/* 导出形态（下载走独立渲染表面）：直角 + 去内描边 + 去内边距 —— 14px 圆角在快照里会合成成四角发黑，那条 inset 描边会变成图上一圈灰边 */__bg.style.borderRadius='0';__bg.style.boxShadow='none';var __dlApp=document.getElementById('app');if(__dlApp){__dlApp.style.padding='0';}}}
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);

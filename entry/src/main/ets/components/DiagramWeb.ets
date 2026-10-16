@@ -8,6 +8,12 @@
  *
  * mode: katex | mermaid | zenuml | echarts | abc | graphviz | flowchart | plantuml
  *
+ * 两条快照通道（都是 `webPageSnapshot`，抓的是**整页绘制结果**、不受可视区限制）：
+ *   · 后台烘焙池（ChartRenderPool）：正文卡片的缓存图，尺寸 = 卡片宽 × 内容高；
+ *   · 下载导出（DiagramDownloadHost）：**独立的、不被任何容器裁剪的**渲染表面，
+ *     浅色白底 + 自然尺寸，尺寸稳定后抓一份完整图给用户存文件（见 dl / dlZoom /
+ *     layoutTick / onSizeReady 四个下载专用属性）。
+ *
  * **rawfile 资源分区说明**（体积敏感，勿混放）：
  *   · render/        —— 离屏渲染模板（库**已内联**进 html，整目录只被本组件加载；
  *                       原 render/lib/ 12MB 源库文件与模板零引用，已剔除瘦身）
@@ -121,6 +127,41 @@ export struct DiagramWeb {
    * 递增即让页面 refit（mermaid/markmap/svg 按新容器重新适配）。
    */
   @Prop @Watch('doRefit') refitRequest: number = 0;
+  /**
+   * **导出形态**（下载独立渲染通道用）：页面按"这张图是要存成文件的"渲染 ——
+   * 底色层去掉 14px 圆角与内描边（卡片形态的圆角在快照里会变成四角发黑、
+   * 四周一圈灰边），其余与浏览形态一致。
+   */
+  @Prop @Watch('onPayloadChanged') dl: boolean = false;
+  /**
+   * **导出超宽适配倍率**（CSS zoom，(0,1] 生效，0 = 不缩放）。
+   * 公式是"按排版尺寸画出来、宽了就横向滚动"的（katex 模板 overflow:auto），
+   * 纵向可长、横向不会自动缩 —— 比画布宽的那部分在快照里根本不存在。
+   * 这里按 `画布宽 ÷ 内容宽` 下发 CSS zoom：整幅等比缩进画面（横纵同步，
+   * 不拉伸不挤压），要的正是"没显示在画布内的也要显示出来"。
+   */
+  @Prop @Watch('onPayloadChanged') dlZoom: number = 0;
+  /**
+   * **强制重新注入当前 payload**（计数）。
+   * 下载链路的"宽度收敛"第二遍用：payload 字符串本身没变，@Watch 不会触发，
+   * 需要一个独立的触发通道让页面按新的容器宽度重排一次。
+   */
+  @Prop @Watch('onPayloadChanged') layoutTick: number = 0;
+  /**
+   * **表面高度钉死**（vp，0 = 不钉）。
+   * 脑图这类引擎**不回传自然高度**（它的画布就是容器：fit 形态下 `#app` 直接
+   * `height:100vh`，回传的也只是容器高）——下载时若由它决定表面高度，表面会停在
+   * 初始的 100vp 上，整张脑图被压成一条。宿主给个高度（放大时的画布高），
+   * 脑图的 autoFit 就按这个画布铺满，与用户在浮层里看到的一致。
+   */
+  @Prop dlForceHeight: number = 0;
+  /**
+   * **尺寸双通道回调**（宽度 + 高度都到齐后宿主才决策）。
+   * ⚠️ 模板回传顺序**不保证**（katex 先 postHeight 再 postWidth），单看某一次
+   * 回调拿到的是"新高度 + 上一次的宽度"，所以两个通道都回调、由宿主去抖。
+   */
+  onSizeReady: (w: number, h: number) => void = () => {
+  };
 
   /**
    * 卡片「刷新」请求计数（用户要求）：递增 → **整页重载**。
@@ -173,6 +214,8 @@ export struct DiagramWeb {
             if (v > 0) {
               this.lastPostW = v;
             }
+            // 下载链路的尺寸通道：宽度到了就先报到宿主，由它和高度去抖对齐
+            this.onSizeReady(this.lastPostW, this.lastPostH);
             // **正文卡片出图后自动重载一次**（用户要求"加载出来后自动点一次刷新"）：
             // 首帧是卡片宽度还没稳定时就排好版画出来的，重载一遍才按最终宽度重排。
             // 后台预渲染池（带 webId）与放大浮层（zoom / fillHeight 开）都不做——
@@ -194,9 +237,19 @@ export struct DiagramWeb {
           postHeight: (h: number) => {
             const v: number = typeof h === 'number' && !isNaN(h) ? h : 100;
             this.lastPostH = v;
+            // 下载链路的尺寸通道（见 postWidth 同名调用）
+            this.onSizeReady(this.lastPostW, this.lastPostH);
             // 撑满模式下**忽略高度回传**：回传会改变组件高度 → 页面 80vh 跟着变 →
             // markmap autoFit 再次重排（缩小 + 漂移的根源）
             if (this.fillHeight) {
+              return;
+            }
+            // 下载链路：宿主钉死表面高度（脑图这类不回传自然高度的引擎用）。
+            // 必须在下面的 floor/cap 之前拦下——钉死值是画布高，可能大于 56、
+            // 也可能小于 4096，走正常钳制反而是对的，但语义上不该被 floor 改。
+            if (this.dlForceHeight > 0) {
+              this.hVp = this.dlForceHeight;
+              this.onHeightReady(this.hVp);
               return;
             }
             // ⚠️ html 预览**保底 140vp**：若高度回传偏小/未回传，卡片会矮到与
@@ -257,7 +310,10 @@ export struct DiagramWeb {
       vw: this.inlineMode ? 0 : this.virtualWidth, inline: this.inlineMode,
       html: this.richHtml,
       // 指定高亮行（围栏元数据 js{1,3-5}），1 起的行号 CSV；模板据此给整行铺底
-      hl: this.hlLines
+      hl: this.hlLines,
+      // 导出形态（见 dl / dlZoom 声明）：直角底、无内描边、超宽按 zoom 缩进画面
+      dl: this.dl,
+      z: this.dlZoom
     });
     try {
       this.ctrl.runJavaScript('window.renderPayload(' + json + ');');

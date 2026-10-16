@@ -186,6 +186,15 @@
       var o=(typeof json==='string')?JSON.parse(json):json;
       // 卡片底色（块级快照防黑底用；行内模式忽略）。缺省空串 = 透明。
       window.__bg = (o.bg && o.bg.length > 0) ? o.bg : '';
+      /* 导出（下载独立渲染表面）的**超宽适配**：公式是按排版尺寸画出来的，
+         宽了就横向滚动 —— 屏外那截在整页快照里根本不存在（用户实测"公式太宽
+         被裁"）。宿主按「画布宽 ÷ 内容宽」下发 o.z，这里给 body 加 CSS zoom：
+         zoom 会把 body 的排版视窗按比例放大（CSS 坐标系里等于多出同样的宽度），
+         公式于是**完整排进去**、再整体等比缩回画面 —— 横纵同一个倍率，
+         不拉伸不挤压，要的正是"没显示在画布内的也要显示出来"。
+         ⚠️ 每次都要显式复位（0 / 1 → 清空）：后台池与浮层共用同一套注入通道，
+         上一次的 zoom 若留着，下一次渲染的排版宽度就跟着串了。 */
+      document.body.style.zoom = (o.z && o.z > 0 && o.z !== 1) ? String(o.z) : '';
       // 深浅 class **双向切换**：连续热注入时上一任务的 dark 状态若只加不减，
       // 会串到浅色公式上（深色文字渲染进浅色主题）
       if(o.dark){document.body.classList.add('dark');}else{document.body.classList.remove('dark');}

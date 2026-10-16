@@ -17,6 +17,7 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { image } from '@kit.ImageKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import {
   ANNOTATION_COLORS,
@@ -73,6 +74,7 @@ import { MdAnnotation, MdBlock, MdBlockKind, MdHeading, MdInline, MdInlineKind, 
 import { ChartCache } from '../service/ChartCache';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { ChartRenderPool, ChartTask } from '../components/ChartRenderPool';
+import { DiagramDownloadHost, DlJob } from '../components/DiagramDownloadHost';
 import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { MathFormulaText } from '../components/MathFormulaText';
 import { NotePanel } from '../components/NotePanel';
@@ -200,6 +202,15 @@ function synthScoreWavTask(spec: string): ArrayBuffer {
 
 /** 列表里正文块之前固定占用的条目数：文档信息卡占 1 条。 */
 const LIST_HEADER_COUNT: number = 1;
+
+/**
+ * 下载 PNG 的**尺寸上限保护**（像素）。
+ * 正常公式/图表远达不到（一块 360vp 宽的图表在 3.5 倍屏上是 1260px 宽），
+ * 只有"又宽又长的巨型图"才会触发 —— 那时按**等比**缩一档，既不拉伸也不挤压，
+ * 只是别让用户拿到一张几十兆、发不出去的图。
+ */
+const DL_PNG_MAX_AREA: number = 24000000;
+const DL_PNG_MAX_SIDE: number = 6000;
 
 /**
  * 批注草稿（用户要求：不小心退出后重新点「添加批注」，输入的内容还在）。
@@ -433,14 +444,20 @@ export struct Reader {
   @State enlargeHlCsv: string = '';
   /** 放大浮层的一镜到底共享 id（与正文里那张卡片同 id） */
   @State enlargeGeo: string = '';
-  /** 放大浮层的 Web 组件 id（导出图片快照按 id 抓） */
-  @State enlargeWebId: string = '';
   /**
    * **图表就绪信号**：后台预渲染池每完成一个图表递增。图表 / 公式条目只用它
    * （不再用全局 renderEpoch）作 key —— 否则任何一次 renderEpoch 变化或"图表逐一
    * 渲染完成"都会整树重建 → 图表反复重新加载、闪来闪去（用户反馈）。
    */
   @State chartReadyTick: number = 0;
+  /**
+   * 下载任务（非空 = 挂载 DiagramDownloadHost 这块**独立渲染表面**）。
+   * 用独立表面而不是浮层那块：见 DiagramDownloadHost 的注释（浮层表面被裁剪、
+   * 高度被画布钉死，屏外内容进不了快照）。
+   */
+  @State dlJob: DlJob | null = null;
+  /** 下载进行中（按钮置灰 + 防重复触发；到"另存为写完"为止都算） */
+  @State dlBusy: boolean = false;
   /** 浮层的 Web 是否挂载（退后台卸载、回前台重挂 —— 修"关屏再开自动退出页面"） */
   @State enlargeWebMounted: boolean = true;
   /** 回前台信号（EntryAbility 递增） */
@@ -546,7 +563,6 @@ export struct Reader {
     if (this.enlargeMode.length === 0 || this.enlargeWebMounted) {
       return;
     }
-    this.enlargeWebId = 'enlarge_' + Date.now();
     this.enlargeWebMounted = true;
   }
 
@@ -627,7 +643,6 @@ export struct Reader {
       this.enlargePayload = uri;
       this.enlargeGeo = '';
       this.enlargeTitle = ann.text.length > 0 ? ann.text : L10n.t('手写批注');
-      this.enlargeWebId = 'enlarge_' + Date.now();
       this.enlargeWebMounted = true;
       this.enlargeRefitTick = 0;
       AppStorage.setOrCreate('readerOverlayOpen', true);
@@ -1448,6 +1463,137 @@ export struct Reader {
     this.enlargeRichHtml = '';
     // 指定高亮行同理：源码视图里没有围栏元数据可依据
     this.enlargeHlCsv = '';
+  }
+
+  /**
+   * 可下载的放大内容：**公式与图表**（两者都是"渲染出来的画"，存成 PNG 才有意义）。
+   * 代码 / 图片 / 网页预览不出下载按钮：代码该复制、图片本身就在磁盘上、网页预览
+   * 是交互内容，截一张图都不合适（与撤下那版的按钮口径一致）。
+   * ⚠️ 只认**有独立渲染模板**的图种：zenuml 是 mermaid 模板内部的图种（放大时
+   * mode 仍是 mermaid），单独放进来会指向一份不存在的模板。
+   */
+  private dlSupported(): boolean {
+    const m: string = this.enlargeMode.toLowerCase();
+    return m === 'katex' || m === 'mermaid' || m === 'echarts' || m === 'abc'
+      || m === 'graphviz' || m === 'flowchart' || m === 'plantuml'
+      || m === 'wavedrom' || m === 'vega' || m === 'chart'
+      || m === 'nomnoml' || m === 'ditaa' || m === 'nwdiag'
+      || m === 'salt' || m === 'markmap';
+  }
+
+  /**
+   * 下载当前放大内容 —— **另开一块渲染表面重画一遍**再存文件，不是截屏幕上那块。
+   *
+   * v1~v4 四版都从"看得见的表面"截图（池子小快照 → 裁边 → 浮层大画布现场截图 →
+   * 整页模式），四版都不达预期；根因是浮层那块 Web 被画布容器 `.clip(true)` 裁着、
+   * 高度被画布钉死 —— 屏外内容**根本不在那块表面里**。这里改走独立表面：
+   * 浅色白底、按内容自然尺寸渲染、不被任何容器裁剪（见 DiagramDownloadHost）。
+   */
+  private startEnlargeDownload(): void {
+    if (this.dlBusy || this.enlargeMode.length === 0 || !this.dlSupported()) {
+      return;
+    }
+    // 排版宽度 = 放大时的画布宽（与用户看到的排版逐字一致；超宽公式由渲染链路
+    // 按这个宽度等比缩进画面，不靠"把容器开得很宽"去装）
+    const w: number = this.canvasW > 0 ? this.canvasW : 360;
+    // 脑图**不回传自然高度**（它没有自然尺寸，画布就是容器）：宿主钉死表面高度 =
+    // 画布高，autoFit 铺满 —— 与浮层里看到的那张脑图完全一致
+    const isMm: boolean = this.enlargeMode.toLowerCase() === 'markmap';
+    const fh: number = isMm && this.canvasH > 0 ? this.canvasH : 0;
+    const job: DlJob = {
+      mode: this.enlargeMode,
+      payload: this.enlargePayload,
+      width: w,
+      forceHeight: fh
+    };
+    this.dlBusy = true;
+    this.toast(L10n.t('正在生成图片，请稍候…'));
+    this.dlJob = job;
+  }
+
+  /** 文件名：优先用放大内容的标题（图表/公式的标题就是它的来源标题），清洗非法字符 */
+  private dlFileName(): string {
+    const base: string = this.enlargeTitle.length > 0
+      ? this.enlargeTitle
+      : (this.enlargeMode.length > 0 ? this.enlargeMode : 'image');
+    return base.replace(/[\\/:*?"<>|]/g, '_') + '.png';
+  }
+
+  /**
+   * 快照产物 → 裁边 → 尺寸上限保护 → 系统「另存为」。
+   * 渲染表面用完即卸（本方法第一件事就是清 dlJob），后面全是本地字节处理。
+   */
+  private onDlDone(pixel: image.PixelMap, w: number, h: number): void {
+    this.dlJob = null;
+    const name: string = this.dlFileName();
+    this.saveDlPng(pixel, name);
+  }
+
+  private async saveDlPng(pixel: image.PixelMap, name: string): Promise<void> {
+    const ctx: common.UIAbilityContext | null = this.ctx();
+    try {
+      const packer: image.ImagePacker = image.createImagePacker();
+      let bytes: ArrayBuffer = await packer.packToData(pixel, { format: 'image/png', quality: 100 });
+      try {
+        pixel.release();
+      } catch (re) {
+        // 释放失败无副作用（进程回收兜底）
+      }
+      // **裁到内容包围盒**（用户要求：长宽就是渲染内容的边界、大片空白不要）：
+      // 渲染页四周的内边距、引擎自带的居中留白、脑图 autoFit 的边距全在这一步去掉，
+      // 只留 12 设备像素呼吸边。
+      bytes = await ChartCache.trimPng(bytes);
+      // 尺寸上限保护：极端大的图（超长边或超大像素面积）**等比**缩一档 ——
+      // 横纵同倍率，不拉伸不挤压；正常尺寸的公式/图表完全不受影响。
+      bytes = await ChartCache.capPngSize(bytes, DL_PNG_MAX_AREA, DL_PNG_MAX_SIDE);
+      if (ctx === null) {
+        this.dlBusy = false;
+        return;
+      }
+      const docPicker = new picker.DocumentViewPicker(ctx);
+      const options = new picker.DocumentSaveOptions();
+      options.newFileNames = [name];
+      docPicker.save(options).then((uris: string[]) => {
+        if (uris.length === 0) {
+          this.dlBusy = false;
+          return;
+        }
+        let file: fs.File | null = null;
+        try {
+          file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+          fs.writeSync(file.fd, bytes);
+          this.toast(L10n.t('已保存图片（浅色背景）'));
+        } catch (err) {
+          this.toast(L10n.t('写入文件失败'));
+        } finally {
+          if (file !== null) {
+            try {
+              fs.closeSync(file);
+            } catch (closeErr) {
+              // 关闭失败无副作用
+            }
+          }
+          this.dlBusy = false;
+        }
+      }).catch((err: BusinessError) => {
+        // 用户取消另存也是这条（系统选择器 reject），不报错
+        this.dlBusy = false;
+      });
+    } catch (err) {
+      this.toast(L10n.t('图片生成失败，请重试'));
+      this.dlBusy = false;
+    }
+  }
+
+  /** 渲染/快照失败：如实说清楚，别让浮层停在"生成中" */
+  private onDlFail(reason: string): void {
+    this.dlJob = null;
+    this.dlBusy = false;
+    // narrow = 平台没能把这块表面按宽度渲染完（理论上不会发生：表面宽度 = 画布宽，
+    // 从不超过屏幕）——如实告知，不存一张缺右边的图
+    this.toast(reason === 'narrow'
+      ? L10n.t('这张图太宽，没能完整出图')
+      : L10n.t('图片生成失败，请重试'));
   }
 
   /** 切换沉浸阅读：进入即收起顶栏 / 底栏，退出即恢复。 */
@@ -5770,9 +5916,6 @@ export struct Reader {
       this.enlargeHlCsv = mode === 'code' ? this.codeHlCsv(geoKey) : '';
       this.enlargeGeo = geoKey;
       this.enlargeTitle = title;
-      // 每次打开生成唯一 Web id：导出图片快照按它定位；
-      // 唯一化也避免与正文/池子的 Web 组件 id 撞车
-      this.enlargeWebId = 'enlarge_' + Date.now();
       this.enlargeWebMounted = true;
       this.enlargeRefitTick = 0;
       AppStorage.setOrCreate('readerOverlayOpen', true);
@@ -7570,6 +7713,23 @@ export struct Reader {
         }
       })
 
+      // **下载的独立渲染表面**（用户要求：下载时不截屏幕上那块）：
+      // 放大浮层点「下载」→ 挂载这块表面（浅色白底 + 内容自然尺寸 + 不被裁剪），
+      // 尺寸稳定后整页快照 → 裁边 → 另存 PNG。用完即卸（dlJob 清空即卸载）。
+      // ⚠️ 必须挂在**根 Stack 这一层**：它比屏幕可能更高（长图）、也可能更宽，
+      //    外面任何 `.clip(true)` 或固定高容器都会把整张图裁掉（v1~v4 的坑）。
+      if (this.dlJob !== null) {
+        DiagramDownloadHost({
+          job: this.dlJob,
+          onDone: (pixel: image.PixelMap, w: number, h: number) => {
+            this.onDlDone(pixel, w, h);
+          },
+          onFail: (reason: string) => {
+            this.onDlFail(reason);
+          }
+        })
+      }
+
       // ── 正文：铺满整屏。顶栏、标签栏、工具条全部悬浮在文字上方，
       //    滚动时文字从两条悬浮栏底下穿过（磨砂/材质透出文字）。
       //    顶栏收起时顶部内边距动画收缩，正文向上扩充占满让出的空间。──
@@ -8241,6 +8401,26 @@ export struct Reader {
                   .textAlign(TextAlign.Start)
               } else {
                 Blank()
+              }
+              // **下载图片**（用户要求，只在公式 / 图表上出现）：另开一块独立渲染
+              // 表面重画一遍再另存 —— 浅色白底、长宽即内容边界、屏外内容也在图里
+              //（不截屏幕上那块：见 startEnlargeDownload 的注释）。
+              // 下载进行中变淡（按钮不吃第二次点击，防重复生成）。
+              if (this.dlSupported()) {
+                ImmersiveIconButton({
+                  buttonSize: 34,
+                  buttonMaterialShadow: false,
+                  palette: this.palette(),
+                  buttonOnTap: () => {
+                    this.startEnlargeDownload();
+                  }
+                }) {
+                  SymbolGlyph($r('sys.symbol.arrow_down_circle'))
+                    .fontSize(15)
+                    .fontColor([this.dlBusy
+                      ? (this.isDark() ? '#66FFFFFF' : '#66222226')
+                      : (this.isDark() ? '#FFFFFFFF' : '#E6222226')])
+                }
               }
               // **查看源码 ↔ 返回预览**（用户要求：放在「减」按钮左边）。
               // 图表 / HTML / 代码三类放大内容都适用：只换渲染形态，payload 不变。

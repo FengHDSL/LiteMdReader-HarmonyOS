@@ -31,7 +31,7 @@ const ts = require(TS_MOD);
 const ROOT = path.join(__dirname, '..');
 const MD = path.join(ROOT, 'entry', 'src', 'main', 'ets', 'markdown');
 const OUT = path.join(ROOT, '.workbuddy', 'parser-cjs');
-const NEED = ['MdTypes', 'Emoji', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser'];
+const NEED = ['MdTypes', 'Emoji', 'Badge', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser'];
 
 function build() {
   fs.mkdirSync(OUT, { recursive: true });

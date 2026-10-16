@@ -484,6 +484,54 @@ export class ChartCache {
     }
   }
 
+  /**
+   * **PNG 等比降档**（下载用，尺寸上限保护）。
+   *
+   * 只处理"正常尺寸之外的巨型图"：最长边超过 `maxSide`、或像素总面积超过
+   * `maxArea` 时，按**同一个倍率**（横纵同倍）缩到限度内 —— 等比缩放不拉伸不挤压，
+   * 只是别让用户拿到一张几十兆、发不出去的图。正常尺寸的公式/图表原样返回。
+   * 解码失败、尺寸本就合规、缩放结果比原图还大，都原样返回（保守）。
+   */
+  static async capPngSize(bytes: ArrayBuffer, maxArea: number, maxSide: number): Promise<ArrayBuffer> {
+    try {
+      const src: image.ImageSource = image.createImageSource(bytes);
+      const pm: image.PixelMap = await src.createPixelMap();
+      const info: image.ImageInfo = await pm.getImageInfo();
+      const w: number = info.size.width;
+      const h: number = info.size.height;
+      src.release();
+      pm.release();
+      if (w <= 0 || h <= 0) {
+        return bytes;
+      }
+      const longSide: number = Math.max(w, h);
+      const area: number = w * h;
+      if ((maxSide <= 0 || longSide <= maxSide) && (maxArea <= 0 || area <= maxArea)) {
+        return bytes;
+      }
+      const kSide: number = maxSide > 0 ? maxSide / longSide : 1;
+      const kArea: number = maxArea > 0 ? Math.sqrt(maxArea / area) : 1;
+      const k: number = Math.min(1, kSide, kArea);
+      if (!(k > 0) || k >= 1) {
+        return bytes;
+      }
+      // ⚠️ **必须两轴一起给**（desiredSize 只给一边时，SDK 不保证等比）：
+      // 按同一个 k 算出两轴目标尺寸，四舍五入后至少留 1px
+      const nw: number = Math.max(1, Math.round(w * k));
+      const nh: number = Math.max(1, Math.round(h * k));
+      const src2: image.ImageSource = image.createImageSource(bytes);
+      const pm2: image.PixelMap = await src2.createPixelMap({ desiredSize: { width: nw, height: nh } });
+      const packer: image.ImagePacker = image.createImagePacker();
+      const out: ArrayBuffer = await packer.packToData(pm2, { format: 'image/png', quality: 100 });
+      src2.release();
+      pm2.release();
+      // 缩放结果反而更大（源图本就是极致压缩的小图）时保留原图
+      return out.byteLength > 0 && out.byteLength < bytes.byteLength ? out : bytes;
+    } catch (err) {
+      return bytes;
+    }
+  }
+
   static pngBase64(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
     // **先要请求的那个深浅版本，再退到另一版**（顺序不能反）。
