@@ -150,11 +150,19 @@ export class ChartRuntimeService {
                          notify: (message: string) => void): Promise<void> {
     const t0: number = Date.now();
     let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
+    let lastN: number = -1;
     while (n > 0) {
       if (Date.now() - t0 >= maxMs) {
         return;
       }
-      notify('正在生成图片（还差 ' + n + ' 张）…');
+      // **数字真的变了才提示**（用户实测"还差 75 张"从头到尾不跳）：这里每 500ms
+      // 问一次，计数冻住时就会连着发十几条**一字不差**的 toast —— toast 是覆盖式的，
+      // 同文案看不出在刷新，看着就像卡死。计数本身不动的根因在 ChartCache.path()
+      // 把"还没烘出来"也缓存了（负结果缓存），那边已经改掉。
+      if (n !== lastN) {
+        notify('正在生成图片（还差 ' + n + ' 张）…');
+        lastN = n;
+      }
       await new Promise<void>((res: () => void) => {
         setTimeout(res, 500);
       });
@@ -169,6 +177,13 @@ export class ChartRuntimeService {
    */
   static fileStillNeeded(ctx: common.UIAbilityContext, blocks: MdBlock[],
                          dark: boolean, bg: string, file: string): boolean {
+    // **行内公式没有"快照"概念**（它不走图，只有 .kxi 容器现场渲染）——
+    // 只要文档里有行内公式，katex 的库就必须保留（用户实测"行内公式没有正常渲染"
+    // 的修复：此前 needed 收集只认块级 Math 块，零库导出时行内公式整片变源码）。
+    if (MdToHtml.hasInlineMath(blocks)
+      && ChartRuntimeService.filesForLang('katex').indexOf(file) >= 0) {
+      return true;
+    }
     for (let k = 0; k < blocks.length; k++) {
       const b: MdBlock = blocks[k];
       let lang: string = '';

@@ -250,6 +250,10 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
       const seg = at >= 0 ? readerEts.substring(at, at + 700) : '';
       return seg.includes('continue;') && !seg.includes("mode = 'katex'");
     })());
+  check('⑤ 导出等补烘的"还差 N 张"会真的往下走（负结果不入内存缓存 + 数字变了才提示）',
+    /if \(found\.length > 0\) \{\s*\n\s*ChartCache\.memo\.set\(key, found\);/.test(cacheEts)
+    && /if \(uri\.length > 0\) \{\s*\n\s*ChartCache\.uriMemo\.set\(key, uri\);/.test(cacheEts)
+    && runtimeEts.includes('if (n !== lastN) {'));
   check('⑤ 导出嵌图仍按逻辑尺寸定宽（embedStyle 用在图表分支）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));

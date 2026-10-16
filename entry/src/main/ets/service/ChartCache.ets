@@ -247,7 +247,13 @@ export class ChartCache {
     } catch (err) {
       found = '';
     }
-    ChartCache.memo.set(key, found);
+    // ⚠️ **只记"有"，不记"没有"**（2026-10-16 用户实测导出进度"还差 75 张"从头到尾
+    // 不往下走）：导出 / 打印前会轮询等池子补烘（ChartRuntimeService.waitShots，
+    // 每 500ms 问一次 missingShots）。把"还没烘出来"也缓存进内存，第二轮起问的都是
+    // 上一轮的旧答案 —— 图明明在一张张落盘，计数却冻在第一次的值上。
+    if (found.length > 0) {
+      ChartCache.memo.set(key, found);
+    }
     return found;
   }
 
@@ -711,7 +717,11 @@ export class ChartCache {
     if (uri.length > 0 && !ChartCache.dimMatchesPixels(ctx, key, p)) {
       uri = '';
     }
-    ChartCache.uriMemo.set(key, uri);
+    // 与 path() 同一口径：**空结果不进缓存**（否则导出轮询等补烘时读到的是旧答案，
+    // 见 path() 的说明）
+    if (uri.length > 0) {
+      ChartCache.uriMemo.set(key, uri);
+    }
     return uri;
   }
 
