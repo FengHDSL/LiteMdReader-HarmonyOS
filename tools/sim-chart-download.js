@@ -271,9 +271,10 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     viewerEts.includes("@StorageProp('appearanceTick') appearanceTick: number = 0;")
     && /private palette\(\): ReaderPalette \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*const tick: number = this\.appearanceTick;/.test(viewerEts)
     && viewerEts.includes(".key('htmlViewerBar_' + this.appearanceTick"));
-  check('⑤ 打印页关掉 force dark（长白页被反色重绘 = 滑动卡死）并给快照图异步解码',
+  check('⑤ 打印页关掉 force dark（长白页被反色重绘 = 滑动卡死）',
     viewerEts.includes('.darkMode(WebDarkMode.Off)') && viewerEts.includes('.forceDarkAccess(false)')
-    && mdHtmlEts.includes('<img class="chartimg" decoding="async"'));
+    // 嵌图**不加 decoding="async"**：异步解码会和打印快照抢时间，实测一批图直接不出
+    && !mdHtmlEts.includes('decoding="async"'));
   check('⑤ 打印页状态胶囊带加载动画',
     viewerEts.includes('LoadingProgress()') && viewerEts.includes('if (!this.ready || this.printing) {'));
   check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',
