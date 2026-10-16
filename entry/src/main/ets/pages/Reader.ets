@@ -1006,7 +1006,11 @@ export struct Reader {
     // 真正进出页面时才会重新加载。
     const resumedFromBg: boolean = this.appBgTick !== this.lastSeenBgTick;
     this.lastSeenBgTick = this.appBgTick;
-    if (!this.firstLoad && !resumedFromBg) {
+    // ⚠️ 放大浮层（下载公式/图表图）打开期间**不重载**：另存对话框会触发
+    // NavDestination onShown → loadDoc 重建正文 → 阅读位置跳回（用户实测
+    // "保存后返回自动上移"）。浮层开着 = 用户仍在阅读上下文里，无需重载。
+    const enlargeOpen: boolean = this.enlargeMode.length > 0;
+    if (!this.firstLoad && !resumedFromBg && !enlargeOpen) {
       this.loadDoc();
     }
     this.firstLoad = false;
@@ -1030,7 +1034,10 @@ export struct Reader {
     applySystemBarTheme(this.isDark());
     this.applyDisplaySettings();
     // 一镜到底进场：从书架封面矩形展开（无来源几何时自动跳过，退化为普通淡入）
-    this.heroEnter();
+    // 浮层打开期间跳过（重播进场动画 = 视觉位移）
+    if (!enlargeOpen) {
+      this.heroEnter();
+    }
     // 智感握姿：**先申请权限再监听**（DETECT_GESTURE 是运行时授权权限，
     // 只声明不申请会让 motion.on 抛错被吞掉 → gripSide 恒 0 → 底部栏与选择
     // 胶囊都不跟手）。设备不支持或用户拒绝时静默降级。
