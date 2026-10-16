@@ -1523,6 +1523,17 @@ export class MdParser {
             }
             break;
           }
+          // ⚠️ 围栏/标题/引用是新块级构造：**绝不能吞进 HTML 块**——
+          // 未闭合或延迟闭合的 div 会把后面的 mermaid 围栏一并吞掉，
+          // 图表全部消失（用户实测"现在反而没图了"）。遇到即中断收集。
+          const tt: string = hl.trim();
+          if (tt.startsWith('```') || tt.startsWith('~~~') || tt.startsWith('# ')
+            || tt.startsWith('> ')) {
+            break;
+          }
+          if (picked.length > 60) {
+            break;
+          }
           picked.push(hl);
           balance += MdParser.tagDelta(hl, rootTag);
           i++;
