@@ -4956,20 +4956,20 @@ export struct Reader {
       Row({ space: HwSpace.xs }) {
         this.moreTile('关闭此标签', $r('sys.symbol.xmark'), (): void => {
           this.closeTab(this.tabMenuFor);
-        }, -1)
+        })
         this.moreTile('关闭其他', $r('sys.symbol.square_on_square_fill'), (): void => {
           this.closeOtherTabs(this.tabMenuFor);
-        }, -1)
+        })
       }
       .width('100%')
 
       Row({ space: HwSpace.xs }) {
         this.moreTile('关闭全部', $r('sys.symbol.trash'), (): void => {
           this.closeAllTabs();
-        }, -1)
+        })
         this.moreTile('重新加载', $r('sys.symbol.arrow_counterclockwise'), (): void => {
           this.reloadActiveDoc();
-        }, -1)
+        })
       }
       .width('100%')
 
