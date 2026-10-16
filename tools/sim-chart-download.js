@@ -273,13 +273,13 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 快照逻辑宽度有兜底（模板不回传时用组件实测宽）',
     webEts.includes('private areaW: number = 0;')
     && webEts.includes('this.lastPostW > 0 ? this.lastPostW : this.areaW'));
-  // 每张卡"出图后自动重载一次"是整篇文档级的额外完整页面加载（loadUrl + 引擎初始化），
-  // 宽度没变的卡白重载会把阅读页拖垮（用户实测"比之前的版本还卡很多"）。
-  check('⑤ 自动重载只在卡片宽度真的变过时才做',
-    webEts.includes('private loadW: number = 0;')
-    && webEts.includes('this.loadW = this.areaW;')
-    && webEts.includes('const drifted: boolean = this.loadW <= 0')
-    && /if \(v > 0 && !this\.autoReloaded && this\.webId\.length === 0\s*\n\s*&& !this\.zoom && !this\.fillHeight && drifted\) \{/.test(webEts));
+  // 用户 2026-10-17 明确要"把自动点击刷新加回来"：曾试过按宽度漂移省掉这一下，
+  // 省不出可感知的流畅度，反而让一批卡片停在首帧排版上 —— 钉住无条件重载。
+  check('⑤ 正文卡出图后无条件自动重载一次（不要拿它做性能优化）',
+    !webEts.includes('loadW')
+    && /if \(v > 0 && !this\.autoReloaded && this\.webId\.length === 0\s*\n\s*&& !this\.zoom && !this\.fillHeight\) \{/.test(webEts)
+    // 后台池与放大浮层仍然不做（会与烘图竞速 / 抢用户主动放大）
+    && webEts.includes('this.webId.length === 0'));
   check('⑤ 导出嵌图与"有图判定"同一取键口径（lightShotKeys 共用）',
     cacheEts.includes('private static lightShotKeys(')
     && (cacheEts.match(/ChartCache\.lightShotKeys\(/g) || []).length >= 2);
@@ -331,7 +331,11 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && viewerEts.includes('.hitTestBehavior(HitTestMode.None)')
     && (viewerEts.match(/ImmersiveBar\(\{/g) || []).length >= 2
     && viewerEts.includes('barHeight: HwBar.pill')
-    && !viewerEts.includes("backgroundColor('#E8FFFFFF')"));
+    && !viewerEts.includes("backgroundColor('#E8FFFFFF')")
+    // 加载态底色：Web 组件底色必须透明，才能透出与阅读页同一道 pageTop→pageBottom
+    // 渐变（写死 pageBottom 是个平面色，用户实测"加载时背景颜色不对"）
+    && viewerEts.includes('.backgroundColor(Color.Transparent)')
+    && !viewerEts.includes('.backgroundColor(this.palette().pageBottom)'));
   check('⑤ 打印页切深浅立即刷新（palette() 显式读 appearanceTick + 顶栏换 key 重挂）',
     viewerEts.includes("@StorageProp('appearanceTick') appearanceTick: number = 0;")
     && /private palette\(\): ReaderPalette \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*const tick: number = this\.appearanceTick;/.test(viewerEts)

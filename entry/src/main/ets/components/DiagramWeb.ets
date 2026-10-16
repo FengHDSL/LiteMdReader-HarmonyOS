@@ -183,13 +183,6 @@ export struct DiagramWeb {
    * 模板不回传宽度时用它当逻辑宽度，`.dim` 才不会缺（见 doCapture）。
    */
   private areaW: number = 0;
-  /**
-   * **本次加载时组件的宽度**（vp）。用来判断"出图后要不要自动重载一次"：
-   * 自动重载的用途是修"首帧宽度还没稳定就排版"的那批卡（一镜到底转场 / 首帧布局），
-   * 宽度从头到尾没变的卡片重载一遍纯属白跑 —— 一篇公式多的文档里每张卡都多跑一次
-   * 完整页面加载（loadUrl + 引擎初始化），实测就是阅读页的卡顿来源之一。
-   */
-  private loadW: number = 0;
   /** 已下发给引擎的缩放倍率（zoom() 是相对增量，用它换算下一步的 factor） */
   private zoomApplied: number = 1;
   /** 正文卡片是否已经"出图后自动重载"过一次（每张卡一次，见 postWidth 里的说明） */
@@ -268,19 +261,15 @@ export struct DiagramWeb {
             }
             // 下载链路的尺寸通道：宽度到了就先报到宿主，由它和高度去抖对齐
             this.onSizeReady(this.lastPostW, this.lastPostH);
-            // **正文卡片出图后自动重载一次**（用户要求"加载出来后自动点一次刷新"）：
-            // 首帧是卡片宽度还没稳定时就排好版画出来的，重载一遍才按最终宽度重排。
-            // 后台预渲染池（带 webId）与放大浮层（zoom / fillHeight 开）都不做——
-            // 池子重载会和烘图竞速，浮层是用户主动放大的、不该自己动。
-            // ⚠️ **宽度没变的卡不重载**（用户提的"跳过第一次加载"）：这篇示例文档
-            // 二十几张公式卡，如果每张都补一次完整页面加载（loadUrl + 引擎初始化），
-            // 光这部分就把阅读页拖到"比之前还卡"。正常打开时卡片宽度首帧就是终值，
-            // 这一枪本来就白放；只有一镜到底转场 / 首帧布局那种"宽度后来变了"的卡
-            // 才需要重排。量不到基线（loadW=0）时保守照旧重载。
-            const drifted: boolean = this.loadW <= 0
-              || Math.abs(this.areaW - this.loadW) > 4;
+            // **正文卡片出图后自动重载一次**（用户要求"加载出来后自动点一次刷新"，
+            // 2026-10-17 明确要加回来）：首帧是卡片宽度还没稳定时就排好版画出来的，
+            // 重载一遍才按最终宽度重排。后台预渲染池（带 webId）与放大浮层（zoom /
+            // fillHeight 开）都不做——池子重载会和烘图竞速，浮层是用户主动放大的、
+            // 不该自己动。
+            // （曾试过"宽度没变就不重载"来省掉这一下，实测省不出可感知的流畅度，
+            // 反而让一批卡片停在首帧排版上 —— 别再拿它做性能优化。）
             if (v > 0 && !this.autoReloaded && this.webId.length === 0
-              && !this.zoom && !this.fillHeight && drifted) {
+              && !this.zoom && !this.fillHeight) {
               this.autoReloaded = true;
               setTimeout(() => {
                 this.doReload();
@@ -377,11 +366,6 @@ export struct DiagramWeb {
 
   /** 把当前 payload 注入页面（首注与热注入共用；注入后重应用缩放）。 */
   private injectPayload(): void {
-    // **排版宽度基线**：页面就是按此刻的组件宽排版的（virtualWidth 为 0 时），
-    // 之后宽度没再变就不必再来一次自动重载（见 loadW / autoReloaded）。
-    if (this.loadW <= 0 && this.areaW > 0) {
-      this.loadW = this.areaW;
-    }
     const json: string = JSON.stringify({
       src: this.payload, dark: this.dark, fit: this.fit, bg: this.cssColor(this.cardBg),
       vw: this.inlineMode ? 0 : this.virtualWidth, inline: this.inlineMode,
@@ -491,7 +475,6 @@ export struct DiagramWeb {
     this.webReady = false;
     this.pageLoading = true;
     this.pageLoadAt = Date.now();
-    this.loadW = this.areaW;
     try {
       this.ctrl.loadUrl('resource://rawfile/render/' + this.renderTemplate() + '.html');
     } catch (err) {
@@ -511,7 +494,6 @@ export struct DiagramWeb {
     // 同 onModeChanged：旧页面残留报告不进池子（见 pageLoading）
     this.pageLoading = true;
     this.pageLoadAt = Date.now();
-    this.loadW = this.areaW;
     try {
       this.ctrl.loadUrl($rawfile('render/' + this.renderTemplate() + '.html'));
     } catch (e) {
