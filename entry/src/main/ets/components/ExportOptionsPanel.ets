@@ -283,6 +283,27 @@ export struct ExportOptionsPanel {
   build() {
     Stack() {
       Column({ space: HwSpace.xs }) {
+        // **图表显示兜底提示**（用户要求原文照录）：导出 / 打印的图靠阅读页后台
+        // 逐张烘成图片，卡片没加载完就会退化成"要 JS 现场画的容器"，手机上有可能
+        // 画不出来 —— 先把自救方法和反馈口径写在面板里。
+        Row({ space: HwSpace.sm }) {
+          SymbolGlyph($r('sys.symbol.info_circle'))
+            .fontSize(15)
+            .fontColor([this.palette.textTertiary])
+          Text(L10n.t('若导出HTML与打印，图表显示不完全或不显示，请尝试回到阅读页面，'
+            + '完全浏览并加载完所有卡片，若仍不行，请提供文件并反馈，等待后续适配。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette.textTertiary)
+            .lineHeight(18)
+            .layoutWeight(1)
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+        .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
+        .borderRadius(HwRadius.inner)
+        .backgroundColor(this.palette.surface)
+        .margin({ bottom: HwSpace.xs })
+
         this.exportRow('导出 HTML', '自包含网页，浏览器直接打开', () => {
           this.askExportHtml();
         })
