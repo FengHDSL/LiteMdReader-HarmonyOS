@@ -284,13 +284,21 @@ export struct ChartRenderPool {
           this.finishOne(t);
           return;
         }
-        ChartCache.save(c, t.key, pixel, w, h, true).then(() => {
-          // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
-          ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);
-          this.finishOne(t);
-        }).catch(() => {
-          this.failed.add(t.key);
-          this.finishOne(t);
+        // **被切掉一半的图不入库**（见 edgeCut）：缩小一档重拍，最多两轮；
+        // 还是被切就照旧落盘（宁可小、不可缺），导出侧至少有完整的一半而不是缺内容
+        this.edgeCut(pixel).then((cut: number) => {
+          if (cut !== 0 && this.captureRetry < 2) {
+            this.shrinkAndRecapture(t);
+            return;
+          }
+          ChartCache.save(c, t.key, pixel, w, h, true).then(() => {
+            // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
+            ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);
+            this.finishOne(t);
+          }).catch(() => {
+            this.failed.add(t.key);
+            this.finishOne(t);
+          });
         });
       });
     });
@@ -389,6 +397,97 @@ export struct ChartRenderPool {
     } catch (err) {
       return false;
     }
+  }
+
+  /**
+   * 自检：这张快照的**内容被表面边界切掉了没有**（位掩码：1=左右被切，2=上下被切）。
+   *
+   * 为什么要它：19 个模板里只有 katex 会回传 `postWidth`，其余图种的"内容自然宽度"
+   * 池子根本不知道 → `DlFit.zoomFor` 拿不到宽度就永远不缩 → 比表面宽的图直接拍到
+   * 边界为止。设备实锤：导出的 wavedrom 时序图右半边被切（最后一个周期切成半截）、
+   * mermaid 甘特图左侧贴边（用户报"图片不完整、被裁切了一点"，同一张手动下载是好的）。
+   *
+   * 判据用**四周有没有内容**：模板都在内容外留 12px 底边距，完整图的四周必然是
+   * 纯底色；只要某一边出现与底色不同的像素，就是画到边界外被切了。
+   * 读取失败保守返回 0（按没切处理），不能让自检把队列卡死。
+   */
+  private async edgeCut(pixel: image.PixelMap): Promise<number> {
+    try {
+      const info: image.ImageInfo = await pixel.getImageInfo();
+      if (info.pixelFormat !== image.PixelMapFormat.RGBA_8888) {
+        return 0;
+      }
+      const w: number = info.size.width;
+      const h: number = info.size.height;
+      if (w < 8 || h < 8) {
+        return 0;
+      }
+      const buf: ArrayBuffer = new ArrayBuffer(w * h * 4);
+      const area: image.PositionArea = {
+        pixels: buf, offset: 0, stride: w * 4,
+        region: { size: { width: w, height: h }, x: 0, y: 0 }
+      };
+      await pixel.readPixels(area);
+      const px: Uint8Array = new Uint8Array(buf);
+      // 参照色 = 左上角（烘焙进去的卡片底色），与 pixelLooksBlank 同一口径
+      const r0: number = px[0];
+      const g0: number = px[1];
+      const b0: number = px[2];
+      const a0: number = px[3];
+      const hit = (i: number): boolean => Math.abs(px[i] - r0) > 12 || Math.abs(px[i + 1] - g0) > 12
+        || Math.abs(px[i + 2] - b0) > 12 || Math.abs(px[i + 3] - a0) > 12;
+      let lr: number = 0;
+      let tb: number = 0;
+      for (let y: number = 0; y < h; y++) {
+        const rowBase: number = y * w * 4;
+        if (hit(rowBase)) {
+          lr++;
+        }
+        if (hit(rowBase + (w - 1) * 4)) {
+          lr++;
+        }
+      }
+      for (let x: number = 0; x < w; x++) {
+        const col: number = x * 4;
+        if (hit(col)) {
+          tb++;
+        }
+        if (hit((h - 1) * w * 4 + col)) {
+          tb++;
+        }
+      }
+      // 抗锯齿 / 合成抖动允许边上有一两个杂点，成排出现才算被切
+      const mask: number = (lr > 6 ? 1 : 0) | (tb > 6 ? 2 : 0);
+      return mask;
+    } catch (err) {
+      return 0;
+    }
+  }
+
+  /**
+   * 被切了 → 下发更小的 CSS zoom 让整幅内容缩进表面，再拍一次。
+   * 用的是下载链路那套"两轴同倍率"机制（等比缩，不拉伸），只是这里由像素证据触发。
+   */
+  private shrinkAndRecapture(t: ChartTask): void {
+    this.captureRetry++;
+    const z: number = this.dlZoom > 0 ? this.dlZoom : 1;
+    this.dlZoom = Math.max(0.2, Math.round(z * 0.72 * 1000) / 1000);
+    this.layoutTick = this.layoutTick + 1;
+    const waitKey: string = t.key;
+    if (this.captureDebounce >= 0) {
+      clearTimeout(this.captureDebounce);
+    }
+    // 缩放要等页面按新 zoom 重排完（图表类重排比换一张还慢），700ms 后再派快照
+    this.captureDebounce = setTimeout(() => {
+      this.captureDebounce = -1;
+      const cur: ChartTask | null = this.current;
+      if (cur === null || !this.busyRendering || cur.key !== waitKey) {
+        return;
+      }
+      this.pendingKey = waitKey;
+      this.captureTick++;
+      this.armGuard();
+    }, 700);
   }
 
   private finishOne(t: ChartTask): void {

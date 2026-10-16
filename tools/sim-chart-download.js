@@ -216,10 +216,24 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     // 否则这条永远红着——真出事时反而看不见
     && (webEts.match(/if \(this\.pageLoading[ )]/g) || []).length >= 2
     && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
-  check('⑤ 键盐升到 v29（payload 索引也纳入盐 + .dim 改由像素反推）',
-    cacheEts.includes("static readonly SALT: string = 'v29';")
+  check('⑤ 键盐升到 v30（截断图作废；payload 索引也纳入盐）',
+    cacheEts.includes("static readonly SALT: string = 'v30';")
     && cacheEts.includes('ChartCache.SALT')
     && cacheEts.includes('private static idxKeyOf('));
+  check('⑤ 池子有"内容被表面切掉"的像素守卫（贴边即等比缩小重拍）',
+    poolEts.includes('private async edgeCut(pixel: image.PixelMap): Promise<number>')
+    && poolEts.includes('this.edgeCut(pixel).then((cut: number) => {')
+    && poolEts.includes('this.shrinkAndRecapture(t);')
+    // 守卫必须在落盘之前，且重拍次数有上限（不能无限竞速）
+    && poolEts.indexOf('this.edgeCut(pixel).then(') < poolEts.indexOf('ChartCache.save(c, t.key, pixel')
+    && poolEts.includes('this.captureRetry < 2'));
+  check('⑤ markmap 的库不会被裁掉（它有意不进池子 → 裁库时必须算"还缺图"）',
+    (() => {
+      const at = runtimeEts.indexOf('static fileStillNeeded(');
+      const seg = at >= 0 ? runtimeEts.substring(at, at + 1600) : '';
+      return seg.includes("if (lang === 'html') {")
+        && !seg.includes("lang === 'html' || lang === 'markmap'");
+    })());
   check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
     (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
     && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));

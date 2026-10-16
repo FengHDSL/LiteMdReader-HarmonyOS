@@ -146,6 +146,14 @@ export class ChartCache {
    *    现在池子改用同一套 DlFit（钉死表面 + 超宽内容下发等比 zoom + layoutTick 重排），
    *    v27 那批窄条图与 39 张两轴倍数对不上的 `.dim`（钉死前 areaW 取到的是瞬时宽）
    *    一起作废重烘。
+   *  · v29（2026-10-16 二十六次升级）：`.dim` 改由**裁边后的像素 ÷ 屏幕密度**反推
+   *    （原来用页面滞后的回传高度，量到的尺寸与图本体不是一套）。尺寸口径变了，
+   *    旧 sidecar 全部作废。
+   *  · v30（2026-10-16 二十七次升级）：**内容被表面切掉的图作废**。设备取证：导出
+   *    页里 wavedrom 时序图右半边没了、mermaid 甘特图左侧贴边——19 个模板只有
+   *    katex 回传 postWidth，其余图种池子拿不到"内容自然宽度"，`DlFit.zoomFor`
+   *    从不触发，比表面宽的内容就直接拍到边界为止。池子补上像素侧的贴边自检
+   *    （`ChartRenderPool.edgeCut` → 等比缩小重拍），此前落盘的截断图必须重烘。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
     return ChartCache.hashOf(ChartCache.SALT + '|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
@@ -157,7 +165,7 @@ export class ChartCache {
    * 落盘的旧图** —— 于是"升了键作废旧图"这件事对走索引的导出/打印根本不生效，
    * 用户机上那 5 张窄条图在 v28 之后照样被索引捞出来显示（用户实测"还是挤在一起"）。
    */
-  static readonly SALT: string = 'v29';
+  static readonly SALT: string = 'v30';
 
   /** payload → 索引文件名（含盐：换烘焙口径时索引与图本体一起作废） */
   private static idxKeyOf(mode: string, payload: string, dark: boolean): string {
