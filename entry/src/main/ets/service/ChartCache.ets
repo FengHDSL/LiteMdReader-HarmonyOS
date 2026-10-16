@@ -130,9 +130,15 @@ export class ChartCache {
    *    导出 / 打印的内嵌图与用户"手动下载"的 PNG 长得一样（用户实测反馈："打印的
    *    html 里，公式块、图表不是手动下载的样式"）。v25 的"卡片圆角 + 四周留白"图
    *    形状不同（尺寸、边距全变），不升键就会新旧混用。
+   *  · v27（2026-10-16 二十四次升级）：**窄条坏图**（用户实测状态图 / C4 / 韦恩图
+   *    在导出与打印里被挤成一条）。v26 对齐"下载样式"时只给了 `dl`、漏了 `fit`，
+   *    页面于是仍走**卡片模式**：按 viewBox 把整图夹进 capW×capH(340~600)，长图被
+   *    等比缩小（73×1274 那张状态图正是 capH=340 的算结果）。池子补 `fit:true` +
+   *    定宽烘焙，且 `.dim` 改用组件实测宽补齐 —— 出图尺寸口径整体变了，
+   *    v26 落盘的窄条图必须作废重烘（否则改了代码也还是旧图，用户实测"没修复"）。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v26|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf('v27|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {

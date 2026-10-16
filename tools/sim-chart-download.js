@@ -209,9 +209,30 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   // ➎.3 串图闸门（跨页面串图的治本 + 作废）
   check('⑤ 串图闸门：模板页切换窗口丢弃旧页面的尺寸报告（pageLoading）',
     webEts.includes('private pageLoading: boolean = false;')
-    && (webEts.match(/if \(this\.pageLoading\) \{/g) || []).length >= 2
+    // 闸门现在都带"6 秒保险丝"（Date.now() - pageLoadAt < 6000），断言按实际写法判，
+    // 否则这条永远红着——真出事时反而看不见
+    && (webEts.match(/if \(this\.pageLoading[ )]/g) || []).length >= 2
     && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
-  check('⑤ 键盐升到 v26（作废串图坏图 + 卡片样式的旧图）', cacheEts.includes("'v26|'"));
+  check('⑤ 键盐升到 v27（作废窄条坏图：卡片模式限高烘焙 + .dim 缺宽）', cacheEts.includes("'v27|'"));
+
+  // ➎.3b 烘焙几何口径（用户实测状态图 / C4 / 韦恩图被挤成窄条）
+  // 三条一起才算修好：走"下载样式"的排版支路（fit）、画布宽度钉死（virtualWidth）、
+  // 模板不回传宽度时用组件实测宽补上 .dim（否则池子的尺寸守卫对 19/20 个模板无效）。
+  check('⑤ 池子按下载排版烘图（fit + 定宽画布）',
+    poolEts.includes('fit: true,') && poolEts.includes('virtualWidth: this.hostWidth,'));
+  check('⑤ 池子有宿主给的正文栏宽（不再由组件瞬时宽度决定排版）',
+    poolEts.includes('@Prop hostWidth: number = 0;')
+    && readerEts.includes('hostWidth: this.rootWidth - HwSpace.lg * 2,'));
+  check('⑤ 快照逻辑宽度有兜底（模板不回传时用组件实测宽）',
+    webEts.includes('private areaW: number = 0;')
+    && webEts.includes('this.lastPostW > 0 ? this.lastPostW : this.areaW'));
+  check('⑤ 导出嵌图与"有图判定"同一取键口径（lightShotKeys 共用）',
+    cacheEts.includes('private static lightShotKeys(')
+    && (cacheEts.match(/ChartCache\.lightShotKeys\(/g) || []).length >= 2);
+  check('⑤ 导出公式块与图表块共用定宽逻辑（pngEmbed + embedStyle）',
+    mdHtmlEts.includes('private static embedStyle(embed: string)')
+    && mdHtmlEts.includes("ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg)")
+    && !mdHtmlEts.includes('ChartCache.pngBase64(ctx,'));
 
   // ➎.4 图源扩展：wavedrom/abc 回归用图；salt/ditaa/nwdiag 进池但正文保持实时卡
   check('⑤ pngSkip 只剩 html（wavedrom/abc 回归"快照优先"）',
@@ -224,6 +245,17 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 正文对三类保持实时卡（isLiveCardOnly 名单 + 用图分支引用）',
     mdViewEts.includes('function isLiveCardOnly(')
     && mdViewEts.includes('!isLiveCardOnly(this.block.lang)'));
+
+  // ➎.5 行内公式的 katex 依赖（用户实测"行内公式没有正常渲染"的修复）
+  // 行内公式在导出侧没有图片路径（只有 .kxi 容器现场渲染）——凡是"要不要带 katex
+  // 库"的判定都必须把"文档里有行内公式"算进去，否则"块级公式全有快照 → 零库导出"
+  // 会把行内公式整片饿死成 LaTeX 源码。
+  check('⑤ 行内公式的 katex 依赖四处接入（收集×2 / 裁库 / runner+CDN）',
+    mdHtmlEts.includes('static blockHasInlineMath(') && mdHtmlEts.includes('static hasInlineMath(')
+    && runtimeEts.includes('MdToHtml.hasInlineMath(blocks)')
+    && exportEts.includes('MdToHtml.blockHasInlineMath(b)')
+    && printEts.includes('MdToHtml.blockHasInlineMath(b)')
+    && (mdHtmlEts.match(/MdToHtml\.blockHasInlineMath\(b\)/g) || []).length >= 2);
 
   console.log(fails === 0 ? 'CHART DOWNLOAD OK' : 'CHART DOWNLOAD FAILED: ' + fails);
   process.exit(fails === 0 ? 0 : 1);

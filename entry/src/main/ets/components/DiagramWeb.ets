@@ -178,6 +178,11 @@ export struct DiagramWeb {
    */
   private lastPostW: number = 0;
   private lastPostH: number = 0;
+  /**
+   * 组件**实测布局宽度**（vp，onAreaChange 回报）。快照拍的就是这块表面，
+   * 模板不回传宽度时用它当逻辑宽度，`.dim` 才不会缺（见 doCapture）。
+   */
+  private areaW: number = 0;
   /** 已下发给引擎的缩放倍率（zoom() 是相对增量，用它换算下一步的 factor） */
   private zoomApplied: number = 1;
   /** 正文卡片是否已经"出图后自动重载"过一次（每张卡一次，见 postWidth 里的说明） */
@@ -192,9 +197,17 @@ export struct DiagramWeb {
    * 的键下存的是一张**另一个文档**的流程图（内容含 Pandoc，本文档没有这个词），
    * 且尺寸自洽（池子的 stale 检查按"像素/逻辑"两轴比较，完全测不出来）。
    * 闸门落下后池子只会收到**新页面自己的**回传，拍到的必然是它自己画的图。
-   * （loadUrl 失败时本标记会一直为 true → 报告全被丢弃 → 池子的 10s 等高度超时兜底。）
+   *
+   * ⚠️ **保险丝（2026-10-16 补）**：闸门在个别路径下可能**没被 onPageEnd 解除**
+   * （真机实锤：池子的 Web 加载成功 OnPageEnd 200、页面也渲染了，但后续尺寸报告
+   * 全被这个标记吞掉 → 池子每 10 秒"等高度超时"→ 反复 loadUrl、一张图都烘不出）。
+   * 所以拦截只在前 **6 秒**（`PAGE_LOAD_GUARD_MS`）内生效——超过就自动放行：
+   * 串图窗口本来就只有 loadUrl 后到首绘的 ~1 秒，6 秒是安全上限；宁愿让极端情况下
+   * 混一张旧图（有 stale 检查兜底重拍），**绝不能饿死整条烘图队列**。
    */
   private pageLoading: boolean = false;
+  /** 闸门生效起点（loadUrl 时刻；配合 PAGE_LOAD_GUARD_MS 保险丝，见 pageLoading） */
+  private pageLoadAt: number = 0;
   /**
    * 快照重试状态机（见 doCapture）：本轮已尝试拍次数 / 是否已成功回传产物 /
    * 已处理过的 captureRequest。池子的组件会被**连续任务复用**，所以必须按
@@ -224,13 +237,18 @@ export struct DiagramWeb {
     // "按内容定高"，把脑图挤成画布顶部的一条（用户实测只剩四分之一）。
     Web({ src: $rawfile('render/' + this.renderTemplate() + '.html'), controller: this.ctrl })
       .id(this.webId.length > 0 ? this.webId : 'diagram_web')
-      .width(this.inlineMode && this.wVp > 0 ? this.wVp : (this.virtualWidth > 0 ? this.virtualWidth : '100%'))
+      // ⚠️ `virtualWidth` **只钉页面的排版宽，不钉组件本身的宽度**：
+      // 内容比画布宽的图种（wavedrom 一段总线时序自然宽 560、Graphviz 大图）被
+      // 钉成 320 的组件会把多出来的那一截切掉。组件保持 '100%'（= 池子所在整页宽），
+      // 页面按 hostWidth 排版 —— 布局确定、内容超宽仍被整页快照收进来。
+      .width(this.inlineMode && this.wVp > 0 ? this.wVp : '100%')
       .height(this.fillHeight ? '100%' : this.hVp)
       .javaScriptProxy({
         object: {
           postWidth: (w: number) => {
-            // 页面切换窗口（loadUrl → onPageEnd）：旧页面的残留报告一律丢弃（防串图，见 pageLoading）
-            if (this.pageLoading) {
+            // 页面切换窗口（loadUrl → onPageEnd）：旧页面残留报告丢弃；
+            // **6 秒保险丝**——闸门万一没被 onPageEnd 解除也不能饿死队列（见 pageLoading）
+            if (this.pageLoading && Date.now() - this.pageLoadAt < 6000) {
               return;
             }
             const v: number = typeof w === 'number' && !isNaN(w) && w > 0 ? Math.ceil(w) : 0;
@@ -260,8 +278,9 @@ export struct DiagramWeb {
             }
           },
           postHeight: (h: number) => {
-            // 页面切换窗口（loadUrl → onPageEnd）：旧页面的残留报告一律丢弃（防串图，见 pageLoading）
-            if (this.pageLoading) {
+            // 页面切换窗口（loadUrl → onPageEnd）：旧页面残留报告丢弃；
+            // **6 秒保险丝**——闸门万一没被 onPageEnd 解除也不能饿死队列（见 pageLoading）
+            if (this.pageLoading && Date.now() - this.pageLoadAt < 6000) {
               return;
             }
             const v: number = typeof h === 'number' && !isNaN(h) ? h : 100;
@@ -317,6 +336,12 @@ export struct DiagramWeb {
         }
       })
       .zoomAccess(this.zoom)
+      .onAreaChange((oldValue: Area, newValue: Area) => {
+        const lw: Length = newValue.width;
+        if (typeof lw === 'number' && lw > 0) {
+          this.areaW = lw;
+        }
+      })
       .overScrollMode(OverScrollMode.NEVER)
       .backgroundColor(Color.Transparent)
   }
@@ -350,6 +375,26 @@ export struct DiagramWeb {
       this.ctrl.runJavaScript('window.renderPayload(' + json + ');');
     } catch (err) {
       // 注入失败时页面保持空白高度，不影响正文
+    }
+    // **主动补报保险**（2026-10-16 真机实锤）：个别路径下模板的自动 report 一次没来
+    // （页面加载 200、渲染也完成，但尺寸回传为 0）——池子等到 10s 超时、整条队列
+    // 一张图都烘不出（反复 loadUrl）。注入后主动催两次，让页面重跑自己的 report()。
+    // 模板的 report 是顶层 function（非 module 脚本），挂在 window 上可直接调用；
+    // 多报无害（池子 / 宿主对连续报告都有去抖）。
+    setTimeout(() => {
+      this.nudgeReport();
+    }, 600);
+    setTimeout(() => {
+      this.nudgeReport();
+    }, 1600);
+  }
+
+  /** 催页面重跑 report()（见 injectPayload 的补报说明；页面未就绪时静默失败）。 */
+  private nudgeReport(): void {
+    try {
+      this.ctrl.runJavaScript('try { if (typeof report === "function") { report(); } } catch (e) {}');
+    } catch (err) {
+      // 页面未就绪：忽略
     }
   }
 
@@ -424,6 +469,7 @@ export struct DiagramWeb {
     // 丢弃旧页面的尺寸报告（防串图，见 pageLoading）
     this.webReady = false;
     this.pageLoading = true;
+    this.pageLoadAt = Date.now();
     try {
       this.ctrl.loadUrl('resource://rawfile/render/' + this.renderTemplate() + '.html');
     } catch (err) {
@@ -442,6 +488,7 @@ export struct DiagramWeb {
     this.zoomApplied = 1;
     // 同 onModeChanged：旧页面残留报告不进池子（见 pageLoading）
     this.pageLoading = true;
+    this.pageLoadAt = Date.now();
     try {
       this.ctrl.loadUrl($rawfile('render/' + this.renderTemplate() + '.html'));
     } catch (e) {
@@ -521,7 +568,14 @@ export struct DiagramWeb {
               return;
             }
             this.capDelivered = true;
-            this.onCaptured(result.imagePixelMap, this.lastPostW, this.lastPostH);
+            // **快照归属的逻辑宽度**：模板自己回传的 postWidth 只有 katex 有，
+            // 其余 19 个模板一律不回 → `.dim` 缺失，池子的"拍早了"守卫
+            // （staleSnapshot）与读取侧的口径自检（dimMatchesPixels）双双失效，
+            // 挤成窄条的坏图就这么落盘了（用户实测状态图 / C4 / 韦恩图三类）。
+            // 没有回传时用**组件实测宽**顶上：快照拍的正是这块表面，
+            // 两者同一口径，守卫这才真正对所有图种生效。
+            const logicalW: number = this.lastPostW > 0 ? this.lastPostW : this.areaW;
+            this.onCaptured(result.imagePixelMap, logicalW, this.lastPostH);
           });
       } catch (err) {
         // 快照接口异常同样按"被拒"处理，交给下一拍
