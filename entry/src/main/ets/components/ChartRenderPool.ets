@@ -67,6 +67,15 @@ export struct ChartRenderPool {
    * 于是导出里它们退化成"现场渲染的容器"。清掉重跑一轮，大概率能补上。
    */
   @Prop @Watch('onRetryTick') retryTick: number = 0;
+  /**
+   * **滚动让路**：阅读页正在滑动时不要开新任务。
+   *
+   * 烘一张图 = 整页加载 + 等引擎重排 + 快照 + 全图像素扫描，这是全应用最重的后台
+   * 活；而它和滚动手势抢的是同一份 CPU。用户实测"开文档滑一下就卡一下"，量下来
+   * 正是缓存版本号变化后（mermaid / wavedrom 那批要重烘）后台连着跑了十几分钟。
+   * 停手 0.4 秒后自动续跑（`pump` 由宿主的 paused 变化重新驱动），队列不会丢任务。
+   */
+  @Prop @Watch('onPausedChanged') paused: boolean = false;
 
   /** 当前正在渲染的任务 */
   @State current: ChartTask | null = null;
@@ -124,8 +133,19 @@ export struct ChartRenderPool {
     this.pump();
   }
 
+  /** 宿主停止滚动 → 立刻接着跑队列（正在跑的那张不受影响）。 */
+  private onPausedChanged(): void {
+    if (!this.paused) {
+      this.pump();
+    }
+  }
+
   private pump(): void {
     if (this.busyRendering) {
+      return;
+    }
+    // 滚动中：不开新任务（见 paused）。当前这张会继续跑完并落盘。
+    if (this.paused) {
       return;
     }
     const c: common.UIAbilityContext | null = this.hostCtx();

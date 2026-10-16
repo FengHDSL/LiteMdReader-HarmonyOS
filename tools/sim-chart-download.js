@@ -237,6 +237,13 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   // 阅读页性能：懒挂载实验已回退（ArkUI ForEach 的 key 一变就是整条目重建，Web
   // 销毁 + 重新 loadUrl，比一直挂着更卡；而把 Web 创建挪进滚动手势更是直接掉帧）。
   // 真正的负载在**后台池子**：公式图与浅色孪生只有导出要，必须按需排队。
+  check('⑤ 滚动时后台池子让路（paused 由宿主驱动，停手 0.42s 续跑）',
+    poolEts.includes("@Prop @Watch('onPausedChanged') paused: boolean = false;")
+    && poolEts.includes('if (this.paused) {')
+    && poolEts.includes('private onPausedChanged(): void {')
+    && readerEts.includes('paused: this.bakePaused,')
+    && readerEts.includes('if (!this.bakePaused) {')
+    && readerEts.includes('this.scheduleBakeResume();'));
   check('⑤ 阅读页不做懒挂载（webActive 已回退），导出专属任务按需排队',
     !mdViewEts.includes('@Prop webActive')
     && !readerEts.includes('webReached')

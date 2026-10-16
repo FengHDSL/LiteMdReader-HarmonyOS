@@ -602,6 +602,17 @@ export struct Reader {
     this.chartTasks = this.collectChartTasks(this.isDark());
   }
 
+  /** 停止滚动 0.42 秒后让后台池子续跑（期间再滚就重新计时，队列不丢任务）。 */
+  private scheduleBakeResume(): void {
+    if (this.bakeResumeTimer >= 0) {
+      clearTimeout(this.bakeResumeTimer);
+    }
+    this.bakeResumeTimer = setTimeout(() => {
+      this.bakeResumeTimer = -1;
+      this.bakePaused = false;
+    }, 420);
+  }
+
   // ══════════════════════ 阅读时长统计 ══════════════════════
   //
   // 只记**真实停留**：退后台、切走页面都先结算，后台时间不计入；
@@ -822,6 +833,12 @@ export struct Reader {
    * 直接打开（无转场）仍按 80 起。
    */
   @State visibleBlocks: number = 80;
+  /**
+   * **滚动时让后台池子暂停烘焙**（见 ChartRenderPool.paused）。
+   * 每帧只在"还没暂停"时写一次状态，停手 0.42 秒后续跑。
+   */
+  @State bakePaused: boolean = false;
+  private bakeResumeTimer: number = -1;
   /**
    * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
    * 用于从源码形态一键切回原来的预览形态。
@@ -1704,6 +1721,11 @@ export struct Reader {
    *  · **切换后冷却 320ms**——刚收起时列表常有一小段反向回弹，冷却期内不受理。
    */
   private onScrollFrame(offset: number): void {
+    // **滑动中就别烘图**（见 bakePaused）：快照与滚动手势抢同一份 CPU，实测就是
+    // "滑一下就卡一下"。这里只在还没暂停时写一次状态，避免每帧触发重渲染。
+    if (!this.bakePaused) {
+      this.bakePaused = true;
+    }
     if (Date.now() < this.autoHideLockUntil) {
       return;
     }
@@ -7780,6 +7802,8 @@ export struct Reader {
         hostWidth: this.rootWidth - HwSpace.lg * 2,
         // 导出 / 打印前的失败重试信号（见 ChartRenderPool.retryTick）
         retryTick: this.poolRetryTick,
+        // **正在滑动就暂停烘焙**（见 bakePaused / ChartRenderPool.paused）
+        paused: this.bakePaused,
         onOneDone: () => {
           // 只递增**图表就绪信号**：仅图表 / 公式条目重建（换成缓存图），
           // 正文其它条目不受影响 —— 避免整树重建造成的闪烁
@@ -7999,6 +8023,7 @@ export struct Reader {
           })
           .onScrollStop(() => {
             this.flushProgress();
+            this.scheduleBakeResume();
           })
           // 自动滚屏时**点正文任意处即暂停**：比再去找按钮快得多。
           // 只暂停、不结束：浮钮留着变成「继续」，随时接着看。
