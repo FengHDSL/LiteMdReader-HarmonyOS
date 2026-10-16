@@ -1294,25 +1294,11 @@ export class MdToHtml {
           } else {
             body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
           }
-        } else if (block.kind === MdBlockKind.Math && ctx !== null
-          && !EngineRegistry.isOff('katex', EngineRegistry.current())) {
-          // **与图表同一条路**：pngEmbed 同时带回快照图与逻辑尺寸。
-          // 上一版这里用 pngBase64（只有图、没有尺寸），只能写 max-width:100% →
-          // 浏览器按物理像素显示 = 放大 density 倍（用户实测导出的公式块比正文大
-          // 两三倍，而旁边没有快照的公式走 KaTeX 现场渲染又很小 —— 同一种东西两种尺寸）。
-          const mathEmbed: string = ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg);
-          const mathPng: string = MdToHtml.embedPng(mathEmbed);
-          if (mathPng.length > 0 && usedPngs.indexOf(mathPng) < 0) {
-            body += '<img class="chartimg" src="' + mathPng
-              + '" style="' + MdToHtml.embedStyle(mathEmbed) + '">';
-            usedPngs.push(mathPng);
-            chartIndex++;
-          } else {
-            body += MdToHtml.chartContainer('katex', [block.code]);
-            chartIndex++;
-          }
         } else if (block.kind === MdBlockKind.Math && rich) {
-          // rich 模式：公式块转 katex 容器；KaTeX 关闭 → 保持源码代码块
+          // **块级公式恒走 KaTeX 容器**（用户拍板"直接全透明"）：内嵌快照 PNG 必然带
+          // 一层底色矩形，和没烘过的透底公式混在一篇里就是两种长相；网页里由 runner
+          // 现场渲染 KaTeX，文字本身透底。katex 库总共 0.64MB，比那张图值得多。
+          // KaTeX 关闭 → 保持源码代码块（与阅读页、与引擎开关语义一致）。
           if (EngineRegistry.isOff('katex', EngineRegistry.current())) {
             body += MdToHtml.codeBlock('latex', [block.code], []);
           } else {

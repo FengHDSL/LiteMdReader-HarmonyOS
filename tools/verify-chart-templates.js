@@ -132,8 +132,11 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
     console.log('  FAIL  mermaid 浅色主题不是 default：neutral 会把参与者框画成灰框黑字');
   }
   const salt = fs.readFileSync(path.join(ROOT, 'entry/src/main/ets/service/ChartCache.ets'), 'utf8');
-  // 只要求"盐 ≥ v25"（v25 起这些主题/引擎/串图修复都在内）；将来再升 v26/v27 不用动这里。
-  const saltM = salt.match(/['"]v(\d+)\|['"]/);
+  // 只要求"盐 ≥ v25"（v25 起这些主题/引擎/串图修复都在内）；将来再升不用动这里。
+  // 盐现在是一个常量（ChartCache.SALT），并且 payload 索引也吃同一个常量 —— 旧写法
+  // 直接匹配字面量 'vNN|'，常量抽出来之后会误报"没升键"。
+  const saltM = salt.match(/static readonly SALT: string = 'v(\d+)'/)
+    || salt.match(/['"]v(\d+)\|['"]/);
   const saltVer = saltM === null ? 0 : parseInt(saltM[1], 10);
   if (saltVer >= 25) {
     console.log('  ok    缓存键盐已随主题升级（v' + saltVer + ' ≥ v25：旧主题灰框图 / 串图坏图不会留在机上）');

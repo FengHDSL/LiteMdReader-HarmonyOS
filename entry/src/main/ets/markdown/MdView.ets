@@ -3225,39 +3225,23 @@ export struct MdBlockView {
   @Builder
   mathView() {
     Column() {
-      if (this.chartImagePath('katex').length > 0) {
-        ImmersiveCard({
-          cardRadius: HwRadius.inner,
-          cardPadding: HwSpace.sm,
-          // 按钮行自己带 6 的上 padding，卡片上边距归零 → 「按钮离卡片顶」=「按钮离画布」
-          cardPaddingTop: 0,
-          cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
-          palette: this.palette
-        }) {
-          Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
-            // 超宽公式：按自然尺寸 + 横向滚动展示（用户要求），不再压扁
-            this.blockImage('katex')
-          }
-          .width('100%')
+      // 块级公式**一律实时渲染**（用户拍板"直接全透明"）：以前优先用池子烘的 PNG，
+      // 于是烘过的是一块底色矩形、没烘的是透底正文，同一篇里两种长相。
+      // 卡片底就是正文底，实时 KaTeX 直接落在上面 = 真透明、字号也跟正文联动。
+      ImmersiveCard({
+        cardRadius: HwRadius.inner,
+        cardPadding: HwSpace.sm,
+        // 按钮行自己带 6 的上 padding，卡片上边距归零 → 「按钮离卡片顶」=「按钮离画布」
+        cardPaddingTop: 0,
+        cardMaterialShadow: false,
+        cardBackground: this.palette.codeBlockBg,
+        palette: this.palette
+      }) {
+        Column() {
+          this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
+          DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
         }
-      } else {
-        ImmersiveCard({
-          cardRadius: HwRadius.inner,
-          cardPadding: HwSpace.sm,
-          // 按钮行自己带 6 的上 padding，卡片上边距归零 → 「按钮离卡片顶」=「按钮离画布」
-          cardPaddingTop: 0,
-          cardMaterialShadow: false,
-          cardBackground: this.palette.codeBlockBg,
-          palette: this.palette
-        }) {
-          Column() {
-            this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
-            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
-          }
-          .width('100%')
-        }
+        .width('100%')
       }
     }
     .width('100%')

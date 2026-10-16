@@ -148,7 +148,20 @@ export class ChartCache {
    *    一起作废重烘。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v28|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf(ChartCache.SALT + '|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+  }
+
+  /**
+   * 缓存键盐。**payload 反查索引也必须带上它**（`idxKeyOf`）：索引文件名的哈希原本
+   * 只含 `mode|深浅|payload`，升盐只换了图本体的键，索引里那条还指着**上一个盐版本
+   * 落盘的旧图** —— 于是"升了键作废旧图"这件事对走索引的导出/打印根本不生效，
+   * 用户机上那 5 张窄条图在 v28 之后照样被索引捞出来显示（用户实测"还是挤在一起"）。
+   */
+  static readonly SALT: string = 'v29';
+
+  /** payload → 索引文件名（含盐：换烘焙口径时索引与图本体一起作废） */
+  private static idxKeyOf(mode: string, payload: string, dark: boolean): string {
+    return ChartCache.hashOf(ChartCache.SALT + '#i|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {
@@ -181,8 +194,7 @@ export class ChartCache {
       if (!fs.accessSync(dir)) {
         fs.mkdirSync(dir, true);
       }
-      const p: string = dir + '/' + ChartCache.hashOf(mode + '|' + (dark ? 'd' : 'l') + '|' + payload)
-        + '.txt';
+      const p: string = dir + '/' + ChartCache.idxKeyOf(mode, payload, dark) + '.txt';
       const file: fs.File = fs.openSync(p, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
       fs.writeSync(file.fd, key);
       fs.closeSync(file);
@@ -196,7 +208,7 @@ export class ChartCache {
     dark: boolean): string {
     try {
       const p: string = ctx.cacheDir + '/charts/payload/'
-        + ChartCache.hashOf(mode + '|' + (dark ? 'd' : 'l') + '|' + payload) + '.txt';
+        + ChartCache.idxKeyOf(mode, payload, dark) + '.txt';
       if (!fs.accessSync(p)) {
         return '';
       }
@@ -779,30 +791,43 @@ export class ChartCache {
       }
       const packer: image.ImagePacker = image.createImagePacker();
       let bytes: ArrayBuffer = await packer.packToData(pixel, { format: 'image/png', quality: 100 });
-      let wOut: number = w;
-      let hOut: number = h;
       if (trim) {
         try {
-          const before: image.ImageInfo = await pixel.getImageInfo();
           const cut: ArrayBuffer = await ChartCache.trimPng(bytes);
           if (cut.byteLength > 0 && cut.byteLength !== bytes.byteLength) {
-            // 裁后尺寸：重新解一次拿宽高（一次性成本，可接受）
-            const src2: image.ImageSource = image.createImageSource(cut);
-            const pm2: image.PixelMap = await src2.createPixelMap();
-            const info2: image.ImageInfo = await pm2.getImageInfo();
-            if (before.size.width > 0 && before.size.height > 0) {
-              wOut = Math.round(w * (info2.size.width / before.size.width));
-              hOut = Math.round(h * (info2.size.height / before.size.height));
-            }
-            src2.release();
-            pm2.release();
             bytes = cut;
           }
         } catch (cutErr) {
           // 裁边失败按原图存（宁可多一圈白边，不能丢图）
-          wOut = w;
-          hOut = h;
         }
+      }
+      /**
+       * **逻辑尺寸一律由"落盘像素 ÷ 屏幕密度"反推**，不再用页面回传的 w/h 折算。
+       *
+       * 设备取证（533 张）：44 张的 `.dim` 两轴倍数不一致，最狠的一张像素 1278×1092
+       * （= 365×312vp）而 `.dim` 记 365|75 —— 因为它是拿"页面某一刻回传的高度"
+       * 折算出来的，那一拍的高度报告滞后于真实重排。正文按 `.dim` 给 Image 定框，
+       * 312vp 的图被塞进 75vp 的框里 = 用户看到的"挤在一起"。
+       * 像素是**唯一不会说谎的那一份**：图就是这么高，除以密度就是它该显示的 vp 尺寸，
+       * 与回传时机再无关系，两轴倍数天然自洽（读取侧的 dimMatchesPixels 也再不会误判）。
+       */
+      let wOut: number = 0;
+      let hOut: number = 0;
+      try {
+        const dens: number = display.getDefaultDisplaySync().densityPixels;
+        const src3: image.ImageSource = image.createImageSource(bytes);
+        const pm3: image.PixelMap = await src3.createPixelMap();
+        const info3: image.ImageInfo = await pm3.getImageInfo();
+        if (dens > 0 && info3.size.width > 0 && info3.size.height > 0) {
+          wOut = Math.round(info3.size.width / dens);
+          hOut = Math.round(info3.size.height / dens);
+        }
+        src3.release();
+        pm3.release();
+      } catch (dimErr) {
+        // 密度取不到才退回回传值（有总比没有好）
+        wOut = w;
+        hOut = h;
       }
       const p: string = dir + '/' + key + '.png';
       const file: fs.File = fs.openSync(p, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);

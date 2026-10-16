@@ -1365,7 +1365,12 @@ export struct Reader {
       const b: MdBlock = this.blocks[k];
       let mode: string = '';
       if (b.kind === MdBlockKind.Math) {
-        mode = 'katex';
+        // **块级公式不进烘焙队列**（用户拍板"直接全透明"）：截图必然带一层底色矩形，
+        // 于是同一篇里"烘过的公式"是一块白底、"没烘的"是透底正文，两种长相混在一起。
+        // 公式没有需要截图的交互成本，正文与导出都直接用 KaTeX 实时渲染就是真透明，
+        // 尺寸也天然跟着字号走 —— 顺带绕开公式图的所有尺寸口径问题。
+        // （行内公式仍然要烘：它是 ImageSpan 混排在文字里，必须有位图。）
+        continue;
       } else if (b.kind === MdBlockKind.Chart) {
         mode = b.lang.toLowerCase();
       }

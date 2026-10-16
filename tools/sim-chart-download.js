@@ -213,7 +213,17 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     // 否则这条永远红着——真出事时反而看不见
     && (webEts.match(/if \(this\.pageLoading[ )]/g) || []).length >= 2
     && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
-  check('⑤ 键盐升到 v28（作废 v27 没治住的窄条图与两轴不自洽的 .dim）', cacheEts.includes("'v28|'"));
+  check('⑤ 键盐升到 v29（payload 索引也纳入盐 + .dim 改由像素反推）',
+    cacheEts.includes("static readonly SALT: string = 'v29';")
+    && cacheEts.includes('ChartCache.SALT')
+    && cacheEts.includes('private static idxKeyOf('));
+  check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
+    (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
+    && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));
+  check('⑤ .dim 由落盘像素 ÷ 密度反推（不再用滞后的回传高度折算）',
+    /wOut = Math\.round\(info3\.size\.width \/ dens\)/.test(cacheEts)
+    && /hOut = Math\.round\(info3\.size\.height \/ dens\)/.test(cacheEts)
+    && !cacheEts.includes('wOut = Math.round(w * (info2.size.width'));
 
   // ➎.3b 烘焙几何口径（用户实测状态图 / C4 / 韦恩图被挤成窄条，而"单独下载"是好的）
   // 根因是池子的表面宽度用 '100%'：转场 / 首帧里父容器量到极小值，mermaid 就按那个
@@ -231,10 +241,18 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 导出嵌图与"有图判定"同一取键口径（lightShotKeys 共用）',
     cacheEts.includes('private static lightShotKeys(')
     && (cacheEts.match(/ChartCache\.lightShotKeys\(/g) || []).length >= 2);
-  check('⑤ 导出公式块与图表块共用定宽逻辑（pngEmbed + embedStyle）',
+  check('⑤ 块级公式全透底：不烘图、导出也不用快照（正文与网页都现场渲染 KaTeX）',
+    !/ChartCache\.pngEmbed\(ctx, 'katex'/.test(mdHtmlEts)
+    && mdHtmlEts.includes("} else if (block.kind === MdBlockKind.Math && rich) {")
+    && !/if \(this\.chartImagePath\('katex'\)\.length > 0\)/.test(mdViewEts)
+    && (() => {
+      const at = readerEts.indexOf('if (b.kind === MdBlockKind.Math) {');
+      const seg = at >= 0 ? readerEts.substring(at, at + 700) : '';
+      return seg.includes('continue;') && !seg.includes("mode = 'katex'");
+    })());
+  check('⑤ 导出嵌图仍按逻辑尺寸定宽（embedStyle 用在图表分支）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
-    && mdHtmlEts.includes("ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg)")
-    && !mdHtmlEts.includes('ChartCache.pngBase64(ctx,'));
+    && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));
   check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',
     /Image\(this\.chartImagePath\(mode\)\)\s*\n\s*\.objectFit\(ImageFit\.Contain\)\s*\n\s*\.borderRadius/.test(
       mdViewEts.substring(mdViewEts.indexOf('blockImage(mode: string)'),
