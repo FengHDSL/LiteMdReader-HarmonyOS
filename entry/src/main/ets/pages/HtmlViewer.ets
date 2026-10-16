@@ -159,6 +159,35 @@ export struct HtmlViewer {
     }
   }
 
+  /** 悬浮胶囊底边到屏幕顶的距离（vp），由 onAreaChange 实测回填 */
+  private barInset: number = 0;
+
+  /**
+   * **把正文初始位置推到悬浮胶囊下方**（用户要求：别一进来就被胶囊压住；往上滑
+   * 仍然可以走到胶囊底层）。
+   *
+   * 只改**活页面**的样式，不碰沙箱里那份 HTML —— 另存出去的那份保持原样；
+   * `@media print` 里再归零，纸上不会多出这条空白。留白加在 body 上（不是 Web
+   * 组件的 padding）：组件加 padding 会让文档永远到不了胶囊底下，正是要避免的。
+   */
+  private applyTopInset(): void {
+    if (this.loadedPath.length === 0 || this.barInset <= 0) {
+      return;
+    }
+    const v: number = Math.round(this.barInset + 8);
+    const js: string = '(function(){var s=document.getElementById("hwTopInset");'
+      + 'if(!s){s=document.createElement("style");s.id="hwTopInset";document.head.appendChild(s);}'
+      + 's.textContent="body{padding-top:' + v + 'px !important}'
+      + '@media print{body{padding-top:0 !important}}";})()';
+    try {
+      this.controller.runJavaScript(js, (err: BusinessError, result: string) => {
+        // 注入失败无副作用：正文只是被胶囊压住一点，滚动就能看到
+      });
+    } catch (err) {
+      // 控制器未 attach / 页面已切走：下一次 onAreaChange 或 onPageEnd 会再试
+    }
+  }
+
   /** 探测页面内图表是否全部渲染完成（未渲染完打印会缺组件）。 */
   private probeRendered(attempt: number): void {
     if (this.ready || this.failed) {
@@ -253,6 +282,7 @@ export struct HtmlViewer {
         .onPageEnd(() => {
           if (this.started && !this.failed) {
             this.probeRendered(0);
+            this.applyTopInset();
           }
         })
         .onControllerAttached(() => {
@@ -377,6 +407,14 @@ export struct HtmlViewer {
       // 胶囊本身不吃触摸：顶栏两侧与两条胶囊之间的空隙，触摸要落到下层 Web 上
       //（HitTestMode.None = 自身不响应，但**不阻止子节点**命中 —— 按钮照常可点）
       .hitTestBehavior(HitTestMode.None)
+      // 实测胶囊底边 → 正文初始位置留白（见 applyTopInset）
+      .onAreaChange((_o: Area, n: Area) => {
+        const bottom: number = Number(n.globalPosition.y) + Number(n.height);
+        if (bottom > 0 && !isNaN(bottom) && Math.abs(bottom - this.barInset) > 2) {
+          this.barInset = bottom;
+          this.applyTopInset();
+        }
+      })
     }
     .width('100%')
     .height('100%')
