@@ -305,7 +305,8 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 导出等补烘：负结果不入内存缓存，进度文案是"共 N 张"且过程消息不收面板',
     /if \(found\.length > 0\) \{\s*\n\s*ChartCache\.memo\.set\(key, found\);/.test(cacheEts)
     && /if \(uri\.length > 0\) \{\s*\n\s*ChartCache\.uriMemo\.set\(key, uri\);/.test(cacheEts)
-    && runtimeEts.includes("'共 ' + n + ' 张图片，请耐心等待'")
+    && runtimeEts.includes("' 张图片，请耐心等待'")
+    && runtimeEts.includes("ChartRuntimeService.shotsWanted(blocks)")
     && panelEts.includes('private progress(message: string): void')
     && panelEts.includes('this.withBusyAsync(() => ExportService.exportHtmlSmart('));
   check('⑤ 导出嵌图按逻辑尺寸定宽，且细长度图有 45% 页宽下限（clamp 等比，不改 height）',

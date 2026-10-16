@@ -177,6 +177,13 @@
       if(window.arkHost&&window.arkHost.postHeight){window.arkHost.postHeight(h);}
       if(window.arkHost&&window.arkHost.postWidth){
         var w=Math.max(app.scrollWidth, app.offsetWidth);
+        /* ⚠️ scrollWidth **量不到向左的溢出**：居中的超宽公式，左半截在浏览器看来
+           不是"可滚动内容"，于是报回来的宽度偏小 → 宿主算出的等比缩放偏大 → 烘出的
+           图左边缺一截（真机实锤：1141×116 那张公式左侧像素贴边）。
+           再取一次公式元素自身的布局宽：.katex 是 inline-block，它的 rect 就是真实
+           内容宽，与溢出方向无关。三者取大才是"这张公式到底多宽"。 */
+        var kx=document.querySelector('#app .katex');
+        if(kx){var kr=kx.getBoundingClientRect();if(kr&&kr.width>0){w=Math.max(w,Math.ceil(kr.width));}}
         window.arkHost.postWidth(w);
       }
     }catch(e){}

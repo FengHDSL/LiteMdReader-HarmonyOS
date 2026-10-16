@@ -157,7 +157,31 @@ export class ChartCache {
    *    升盐只该用于"口径变了，旧图必然是错的"，不能用来修个别坏图。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf(ChartCache.SALT + '|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf(ChartCache.SALT + '|' + bg + '|' + mode + ChartCache.revOf(mode)
+      + '|' + (dark ? 'd' : 'l') + '|' + payload);
+  }
+
+  /**
+   * **按图种的局部版本号** —— 只作废"出图口径变了"的那一个图种。
+   *
+   * 整块 `SALT` 一升就是几千张全部重烘：用户机上表现为下一次导出/打印全退回
+   * "现场渲染的容器" + 背十几 MB 渲染库（2026-10-16 为修 31 张里 2 张截断图升 v30，
+   * 结果换来"一堆图表又不加载了"）。所以**个别图种的口径变更升这一位**，
+   * 其余图种的缓存原样留着。
+   */
+  private static revOf(mode: string): string {
+    if (mode === 'katex') {
+      // r2（2026-10-17）：模板报宽改用公式元素自身的布局宽 —— `scrollWidth` 量不到
+      // 向左的溢出，超宽公式报回来的宽度偏小 → 缩放倍率偏大 → 烘出的图左边缺一截。
+      return ':r2';
+    }
+    if (mode === 'mermaid' || mode === 'wavedrom') {
+      // r2（2026-10-17）：真机 73 张导出图里 5 张内容贴边被切（甘特 / 时序图），
+      // 都是"池子拿不到内容自然宽度 → 从不缩放 → 拍到边界为止"这一类。
+      // 现在落盘前有贴边自检（ChartRenderPool.edgeCut）会缩小重拍，旧的那批作废。
+      return ':r2';
+    }
+    return '';
   }
 
   /**
@@ -170,7 +194,8 @@ export class ChartCache {
 
   /** payload → 索引文件名（含盐：换烘焙口径时索引与图本体一起作废） */
   private static idxKeyOf(mode: string, payload: string, dark: boolean): string {
-    return ChartCache.hashOf(ChartCache.SALT + '#i|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf(ChartCache.SALT + '#i|' + mode + ChartCache.revOf(mode)
+      + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {

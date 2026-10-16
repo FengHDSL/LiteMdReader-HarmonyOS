@@ -119,25 +119,47 @@ export class ChartRuntimeService {
     let n: number = 0;
     for (let k = 0; k < blocks.length; k++) {
       const b: MdBlock = blocks[k];
-      let lang: string = '';
-      if (b.kind === MdBlockKind.Chart) {
-        lang = b.lang.trim().toLowerCase();
-        if (lang === 'html' || lang === 'markmap') {
-          continue;
-        }
-      } else if (b.kind === MdBlockKind.Math) {
-        lang = 'katex';
-      } else {
+      if (!ChartRuntimeService.wantsShot(b)) {
         continue;
       }
-      if (MdToHtml.engineOffForLang(lang)) {
-        continue;
-      }
+      const lang: string = b.kind === MdBlockKind.Math ? 'katex' : b.lang.trim().toLowerCase();
       if (!ChartCache.hasShot(ctx, lang, b.code, dark, bg)) {
         n++;
       }
     }
     return n;
+  }
+
+  /**
+   * 这篇文档**应该转成图片的卡片总数**（与"还缺几张"是两回事）。
+   *
+   * 进度提示要用这个数：以前报的是"开跑那一刻还缺的张数"，文档里 64 张卡片、
+   * 池子已经烘好一半时提示写"共 31 张"，用户对着满屏卡片看就是"张数错误"。
+   */
+  static shotsWanted(blocks: MdBlock[]): number {
+    let n: number = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      if (ChartRuntimeService.wantsShot(blocks[k])) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** 这个块该不该有快照（导出 / 打印会把它转成图片）—— missingShots 与 shotsWanted 共用 */
+  private static wantsShot(b: MdBlock): boolean {
+    if (b.kind === MdBlockKind.Chart) {
+      const lang: string = b.lang.trim().toLowerCase();
+      // html = 可交互网页（截图不适用）；markmap = 正文拍板实时卡、不进池子
+      if (lang === 'html' || lang === 'markmap') {
+        return false;
+      }
+      return !MdToHtml.engineOffForLang(lang);
+    }
+    if (b.kind === MdBlockKind.Math) {
+      return !MdToHtml.engineOffForLang('katex');
+    }
+    return false;
   }
 
   /**
@@ -151,10 +173,9 @@ export class ChartRuntimeService {
     const t0: number = Date.now();
     let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
     if (n > 0) {
-      // 文案改成**总数**、只报一次（用户要求："还差 N 张"读着像在倒退；而旧实现每
-      // 500ms 重发一条 toast，覆盖式的 toast 看不出刷新，看着就像卡死）。
-      // "有没有在加载"改由界面上的加载动画表达，不再靠刷数字。
-      notify('共 ' + n + ' 张图片，请耐心等待');
+      // 报**该转成图片的卡片总数**，不是"此刻还缺几张"：用户对着满屏卡片看，
+      // 缺几个报几个就是"张数错误"（实测反馈）。"有没有在加载"由界面上的加载动画表达。
+      notify('共 ' + ChartRuntimeService.shotsWanted(blocks) + ' 张图片，请耐心等待');
     }
     while (n > 0) {
       if (Date.now() - t0 >= maxMs) {
