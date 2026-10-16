@@ -529,7 +529,18 @@ export class MdToHtml {
     }
     const wh: string[] = embed.substring(sep + 1).split('|');
     const w: number = wh.length === 2 ? (parseInt(wh[0], 10) || 0) : 0;
-    return w > 40 ? 'width:' + w + 'px;height:auto' : 'max-width:100%;height:auto';
+    /**
+     * `width:clamp(45%, Wpx, 100%)` —— 三个边界都必要：
+     *  · **下限 45%**：细长图（状态图 79vp 宽 / 879vp 高这类"竖着长"的图）按逻辑宽
+     *    原样显示，在浏览器里就是页面中间一根细条，用户实测"还是有图片被挤压
+     *    （状态图）"。快照是按 3.5× 密度烘的，放大到 3.5 倍以内都还是原像素分辨率、
+     *    不发虚（45% 页宽 ≈ 逻辑宽的 1.4 倍以上时才可能糊，那种图本来就够宽）。
+     *  · **本值 Wpx**：正常尺寸的图保持阅读页那一档大小，不会被无脑放大。
+     *  · **上限 100%**：比页面还宽的图不越栏。
+     * 之前那版试过"固定放大 1.75× + 居中"，用户实测"改拉伸了"——那是**同时写死
+     * width 和 height** 才拉伸的；这里 `height:auto`，两轴永远等比。
+     */
+    return w > 40 ? 'width:clamp(45%,' + w + 'px,100%);height:auto' : 'max-width:100%;height:auto';
   }
 
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */

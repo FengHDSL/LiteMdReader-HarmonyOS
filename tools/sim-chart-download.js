@@ -287,9 +287,16 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && runtimeEts.includes("'共 ' + n + ' 张图片，请耐心等待'")
     && panelEts.includes('private progress(message: string): void')
     && panelEts.includes('this.withBusyAsync(() => ExportService.exportHtmlSmart('));
-  check('⑤ 导出嵌图仍按逻辑尺寸定宽（embedStyle 用在图表分支）',
+  check('⑤ 导出嵌图按逻辑尺寸定宽，且细长度图有 45% 页宽下限（clamp 等比，不改 height）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
-    && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));
+    && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)')
+    && mdHtmlEts.includes("'width:clamp(45%,' + w + 'px,100%);height:auto'")
+    // 等比是底线：embedStyle 里绝不能再写死 height（那正是用户报"改拉伸了"的成因）
+    && (() => {
+      const at = mdHtmlEts.indexOf('private static embedStyle(');
+      const seg = at >= 0 ? mdHtmlEts.substring(at, at + 900) : '\0';
+      return !/height:' \+ /.test(seg);
+    })());
   check('⑤ 打印页顶栏是悬浮材质胶囊（ImmersiveBar，与书架同一套），内容穿到下层',
     /build\(\) \{\s*\n(?:\s*\/\/[^\n]*\n)+\s*Stack\(\{ alignContent: Alignment\.Top \}\) \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*Web\(/.test(viewerEts)
     && viewerEts.includes('.hitTestBehavior(HitTestMode.None)')
