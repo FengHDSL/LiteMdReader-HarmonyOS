@@ -262,11 +262,18 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));
   check('⑤ 打印页顶栏是悬浮材质胶囊（ImmersiveBar，与书架同一套），内容穿到下层',
-    /build\(\) \{\s*\n(?:\s*\/\/[^\n]*\n)+\s*Stack\(\{ alignContent: Alignment\.Top \}\) \{\s*\n\s*Web\(/.test(viewerEts)
+    /build\(\) \{\s*\n(?:\s*\/\/[^\n]*\n)+\s*Stack\(\{ alignContent: Alignment\.Top \}\) \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*Web\(/.test(viewerEts)
     && viewerEts.includes('.hitTestBehavior(HitTestMode.None)')
     && (viewerEts.match(/ImmersiveBar\(\{/g) || []).length >= 2
     && viewerEts.includes('barHeight: HwBar.pill')
     && !viewerEts.includes("backgroundColor('#E8FFFFFF')"));
+  check('⑤ 打印页切深浅立即刷新（palette() 显式读 appearanceTick + 顶栏换 key 重挂）',
+    viewerEts.includes("@StorageProp('appearanceTick') appearanceTick: number = 0;")
+    && /private palette\(\): ReaderPalette \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*const tick: number = this\.appearanceTick;/.test(viewerEts)
+    && viewerEts.includes(".key('htmlViewerBar_' + this.appearanceTick"));
+  check('⑤ 打印页关掉 force dark（长白页被反色重绘 = 滑动卡死）并给快照图异步解码',
+    viewerEts.includes('.darkMode(WebDarkMode.Off)') && viewerEts.includes('.forceDarkAccess(false)')
+    && mdHtmlEts.includes('<img class="chartimg" decoding="async"'));
   check('⑤ 打印页状态胶囊带加载动画',
     viewerEts.includes('LoadingProgress()') && viewerEts.includes('if (!this.ready || this.printing) {'));
   check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',

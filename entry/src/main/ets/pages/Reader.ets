@@ -5716,8 +5716,18 @@ export struct Reader {
         if (w <= 0 || isNaN(w)) {
           return;
         }
-        const cols: number = Math.max(2, Math.min(10, Math.floor(w / 110)));
         const gap: number = 6;
+        /**
+         * 列数按**磁贴最小宽**反推，而不是 `宽 ÷ 固定除数`。
+         *
+         * 37fbe28 那版写的是 `Math.floor(w / 110)`：面板内容宽实测 ~330，`330/110=3`
+         * 差一点才到 3 列 —— 手机上一旦量到 329 就掉回 **2 列**，磁贴变成两大块
+         *（用户实测"更多面板布局变了"，10-14 之前是固定每行 4 颗）。
+         * 改成"装得下几颗 76 宽的磁贴就几列"，边界不再敏感，手机稳定 4 列、
+         * 平板自动 5~6 列。
+         */
+        const minTile: number = 76;
+        const cols: number = Math.max(2, Math.min(10, Math.floor((w + gap) / (minTile + gap))));
         // ⚠️ 每颗磁贴带**右缝 6**（含行尾）：不把它算进分母，行末那颗就会放不下
         // 被挤到下一行 → 「左边有按钮、右边空空」（用户实测）。缝计入后每行正好占满。
         const tw: number = Math.floor((w - gap * cols) / cols);

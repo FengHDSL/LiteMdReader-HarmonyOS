@@ -44,6 +44,12 @@ export struct HtmlViewer {
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('systemDark') systemDark: boolean = false;
   @StorageProp('readerThemeMode') themeMode: number = 0;
+  /**
+   * 外观刷新计数。**必须显式读它**：paletteFor 是纯函数、内部读 AppStorage 不登记依赖，
+   * 不读这个 tick 的话切深浅会被 ArkUI 跳过重算 —— 顶栏胶囊的文字色就停在旧主题上
+   *（用户实测"切深色浅色，顶栏悬浮胶囊没有立即切换"；阅读页同一坑见 Reader.palette()）。
+   */
+  @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** 待打印 HTML 内容（loadData 直接注入，规避沙箱 file URI 不被 Web 接受的问题） */
   private pendingHtml: string = '';
   private started: boolean = false;
@@ -54,7 +60,12 @@ export struct HtmlViewer {
   }
 
   private palette(): ReaderPalette {
-    return paletteFor(this.themeMode, this.systemDark);
+    // 三个来源都要显式读一遍落成局部常量：不登记依赖的话主题切换会被 ArkUI 跳过重算
+    //（与 Reader.palette() 同一条教训）
+    const tick: number = this.appearanceTick;
+    const mode: number = this.themeMode;
+    const dark: boolean = this.systemDark;
+    return paletteFor(mode, dark);
   }
 
   /** 顶栏顶部内边距：系统状态栏高度 + 一点呼吸（与全应用口径一致） */
@@ -170,7 +181,7 @@ export struct HtmlViewer {
         }
         if (allDone) {
           this.ready = true;
-          this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
+          this.status = '已就绪。若白屏或无法滑动，请退出重新选择打印';
         } else if (attempt >= 12) {
           this.ready = true;
           this.status = '已就绪（部分图表可能未渲染完）。若白屏或无法滑动，请退出重新选择打印';
@@ -183,7 +194,7 @@ export struct HtmlViewer {
       });
     } catch (err) {
       this.ready = true;
-      this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
+      this.status = '已就绪。若白屏或无法滑动，请退出重新选择打印';
     }
   }
 
@@ -222,13 +233,23 @@ export struct HtmlViewer {
     // 滚动时正文可以一直穿到顶栏下层。上一版是 Column 上下分栏，顶栏那条
     // 28vp 是**占位**的 —— 内容被压在下面，看着就像被顶栏"切掉了一截"。
     Stack({ alignContent: Alignment.Top }) {
+      // **加载态用阅读页的纸面背景**（用户要求"不要纯白纯黑"）：Web 在内容画出来之前
+      // 露的就是这块底色，写死 #FFFFFF 会在浅色下刺白、深色下先白后黑像闪屏。
       Web({ src: 'about:blank', controller: this.controller })
         .width('100%')
         .height('100%')
-        .backgroundColor('#FFFFFFFF')
+        .backgroundColor(this.palette().pageBottom)
         .javaScriptAccess(true)
         .fileAccess(true)
         .domStorageAccess(true)
+        /**
+         * **关掉深色强制反色**（陈年"滑不动/卡死"的头号嫌疑）：导出页是白底长文档，
+         * 系统开深色时 ArkWeb 可能对整页做 force dark 重绘 —— 几十张高清 base64 图的
+         * 长页面被重新着色一遍，滚动就直接冻住，只有重新加载才好（用户实测）。
+         * 页面自带浅色样式，本来也不需要内核反色。
+         */
+        .darkMode(WebDarkMode.Off)
+        .forceDarkAccess(false)
         .onPageEnd(() => {
           if (this.started && !this.failed) {
             this.probeRendered(0);
@@ -245,7 +266,7 @@ export struct HtmlViewer {
           // ⚠️ 不再整页判失败（用户实测：提示加载出错但页面实际正常渲染——
           // file:// 大页面会触发子资源类的加载错误回调，favicon 之类 404 也算）。
           // 就绪提示里已有白屏兜底话术，这里只做软提示。
-          this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
+          this.status = '已就绪。若白屏或无法滑动，请退出重新选择打印';
         })
 
       Column({ space: HwSpace.xs }) {
@@ -349,12 +370,20 @@ export struct HtmlViewer {
         bottom: HwSpace.xs
       })
       .alignItems(HorizontalAlign.Center)
+      // 换 key 强制整层重挂：材质承载层自己也会按深浅换 key，但**文字色/降级磨砂**
+      // 走的是 @Prop palette，主题切换时不重建就停在旧配色上（与阅读页
+      // 'readerTopLayer_' 同一条做法）
+      .key('htmlViewerBar_' + this.appearanceTick + '_l' + this.languageTick)
       // 胶囊本身不吃触摸：顶栏两侧与两条胶囊之间的空隙，触摸要落到下层 Web 上
       //（HitTestMode.None = 自身不响应，但**不阻止子节点**命中 —— 按钮照常可点）
       .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(this.palette().pageBottom)
+    // 阅读页同款纸面渐变（加载 / 白屏期间露出来的就是它，不再是纯白纯黑）
+    .linearGradient({
+      angle: 180,
+      colors: [[this.palette().pageTop, 0], [this.palette().pageBottom, 1]]
+    })
   }
 }

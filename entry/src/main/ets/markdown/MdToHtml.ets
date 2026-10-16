@@ -1251,7 +1251,7 @@ export class MdToHtml {
           }
           const pngFound: string = MdToHtml.embedPng(pngEmbed);
           if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
-            body += '<img class="chartimg" src="' + pngFound
+            body += '<img class="chartimg" decoding="async" src="' + pngFound
               + '" style="' + MdToHtml.embedStyle(pngEmbed) + '">';
             usedPngs.push(pngFound);
             chartIndex++;
