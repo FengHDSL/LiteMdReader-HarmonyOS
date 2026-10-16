@@ -6,12 +6,14 @@
 
 **新农大助手 · HarmonyOS 原生应用**
 
-一款为新疆农业大学学生打造的鸿蒙原生校园工具，集成登录、课表、成绩、考试、学业情况、校历信息、通知公告、空闲教室查询、农大新闻等常用功能于一体。注：非学校官方应用！非学校官方应用！
+一款为新疆农业大学学生打造的鸿蒙原生校园工具，集成登录、课表、成绩、考试、学业情况、校历信息、通知公告、空闲教室查询、农大新闻等常用功能于一体。注：本应用为非官方第三方工具，与学校官方无关。
 
-[![Version](https://img.shields.io/badge/version-1.4.1-blue)](https://github.com/FengHDSL/XJAU-Helper/releases/tag/v1.4.1)
-[![HarmonyOS](https://img.shields.io/badge/HarmonyOS%20NEXT%20(API%2026)-orange)](https://developer.huawei.com/consumer/cn/harmonyos/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Release](https://img.shields.io/badge/download-HAP-success)](https://github.com/FengHDSL/XJAU-Helper/raw/release-assets/XJAU-Helper_v1.4.1.hap)
+<p align="center">
+  <a href="https://github.com/FengHDSL/XJAU-Helper/releases/tag/v1.4.1"><img src="https://img.shields.io/badge/version-1.4.1-blue" alt="Version" /></a>
+  <a href="https://developer.huawei.com/consumer/cn/harmonyos/"><img src="https://img.shields.io/badge/HarmonyOS%20NEXT%20(API%2026)-orange" alt="HarmonyOS" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
+  <a href="https://github.com/FengHDSL/XJAU-Helper/raw/release-assets/XJAU-Helper_v1.4.1.hap"><img src="https://img.shields.io/badge/download-HAP-success" alt="Release" /></a>
+</p>
 
 </div>
 
