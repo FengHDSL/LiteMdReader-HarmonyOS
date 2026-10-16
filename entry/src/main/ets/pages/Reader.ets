@@ -17,7 +17,6 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
-import { image } from '@kit.ImageKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import {
   ANNOTATION_COLORS,
@@ -442,12 +441,6 @@ export struct Reader {
    * 渲染完成"都会整树重建 → 图表反复重新加载、闪来闪去（用户反馈）。
    */
   @State chartReadyTick: number = 0;
-  /** 下载浅色 PNG（尝试性）：强制放大画布浅色重渲染 → 整页快照 → 裁边 → 另存 */
-  @State enlargeForceLight: boolean = false;
-  @State enlargeCaptureTick: number = 0;
-  @State enlargeDownloading: boolean = false;
-  /** 下载期间切「整页模式」：fillHeight 关闭 → 页面高=完整内容高，屏外内容也进快照 */
-  @State enlargeDownloadMode: boolean = false;
   /** 浮层的 Web 是否挂载（退后台卸载、回前台重挂 —— 修"关屏再开自动退出页面"） */
   @State enlargeWebMounted: boolean = true;
   /** 回前台信号（EntryAbility 递增） */
@@ -5743,68 +5736,6 @@ export struct Reader {
    * 固定浅色、纯色背景——只取预渲染池烘的浅色版（payload 索引反查）。
    * 没有浅色快照（深色模式下看的图）时提示先在浅色模式查看，实验功能后续再优化。
    */
-  /**
-   * 下载当前放大内容的 PNG（用户要求，尝试性 v3）：
-   * **用放大浮层的 1600px 大画布现场出图**——强制浅色重渲染 → 整页快照 →
-   * 内容裁边（去纯色底）→ 另存。不再用预渲染池的小快照（实测图小得没法看）。
-   */
-  private downloadEnlargeLight(): void {
-    if (this.enlargeDownloading || this.enlargeMode.length === 0) {
-      return;
-    }
-    this.enlargeDownloading = true;
-    this.toast('正在生成浅色图片，请稍候…');
-    // 强制浅色重渲染（DiagramWeb 的 dark/cardBg @Prop 重注入）
-    this.enlargeForceLight = true;
-    // **切整页模式**：fillHeight 关 → 页面高 = 完整内容高（屏外内容也进快照）
-    this.enlargeDownloadMode = true;
-    // 等重渲染 + mermaid 绘制 + 高度回传稳定后再截图（大图 1.5s 不够）
-    setTimeout(() => {
-      this.enlargeCaptureTick++;
-    }, 2500);
-  }
-
-  /** 快照产物：裁边 → 另存 → 恢复原主题渲染 */
-  private async onEnlargeCaptured(pixel: image.PixelMap): Promise<void> {
-    try {
-      const packer: image.ImagePacker = image.createImagePacker();
-      let bytes: ArrayBuffer = await packer.packToData(pixel, { format: 'image/png', quality: 100 });
-      // 内容裁边（截图底色 = 我们强制的浅色纯色底，单背景裁边稳）
-      bytes = await ChartCache.trimPng(bytes);
-      const docPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
-      const opts: picker.DocumentSaveOptions = new picker.DocumentSaveOptions();
-      const base: string = this.enlargeTitle.length > 0 ? this.enlargeTitle : this.enlargeMode;
-      opts.newFileNames = [base.replace(/[\\/:*?"<>|]/g, '_') + '.png'];
-      docPicker.save(opts).then((uris: string[]) => {
-        if (uris.length === 0) {
-          return;
-        }
-        try {
-          const f: fs.File = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
-          try {
-            fs.writeSync(f.fd, bytes);
-          } finally {
-            try {
-              fs.closeSync(f);
-            } catch (ce) {
-            }
-          }
-          this.toast('已保存 PNG（浅色纯色背景）');
-        } catch (we) {
-          this.toast('保存失败');
-        }
-      }).catch(() => {
-        this.toast('保存取消');
-      });
-    } catch (err) {
-      this.toast('下载失败');
-    } finally {
-      this.enlargeForceLight = false;
-      this.enlargeDownloadMode = false;
-      this.enlargeDownloading = false;
-    }
-  }
-
   private openEnlarge(mode: string, payload: string, geoKey: string, title: string): void {
     // 图片放大用**原生 Image 组件**；payload 统一转
     // `file://` + URL 编码（中文路径不编码时首次加载会失败，
@@ -8311,22 +8242,6 @@ export struct Reader {
               } else {
                 Blank()
               }
-              // **下载浅色快照 PNG**（用户要求，尝试性功能）：固定浅色、纯色背景
-              if (this.enlargeMode !== 'code' && this.enlargeMode !== 'image'
-                && this.enlargeMode !== 'html') {
-                ImmersiveIconButton({
-                  buttonSize: 34,
-                  buttonMaterialShadow: false,
-                  palette: this.palette(),
-                  buttonOnTap: () => {
-                    this.downloadEnlargeLight();
-                  }
-                }) {
-                  SymbolGlyph($r('sys.symbol.arrow_down_circle'))
-                    .fontSize(15)
-                    .fontColor([this.isDark() ? '#FFFFFFFF' : '#E6222226'])
-                }
-              }
               // **查看源码 ↔ 返回预览**（用户要求：放在「减」按钮左边）。
               // 图表 / HTML / 代码三类放大内容都适用：只换渲染形态，payload 不变。
               if (this.enlargeHasCode()) {
@@ -8489,29 +8404,17 @@ export struct Reader {
                     richHtml: this.enlargeRichHtml,
                     // 指定高亮行（围栏元数据 js{1,3-5}），放大后仍然要亮
                     hlLines: this.enlargeHlCsv,
-                    // 下载时**强制浅色重渲染**（用户要求：下载固定浅色、纯色背景）
-                    dark: this.enlargeForceLight ? false : this.isDark(),
+                    dark: this.isDark(),
                     // ⚠️ **页面底色必须不透明**：透明 Web 表面在「一镜到底」退场的
                     // geometryTransition 快照里被系统合成成垃圾色（真机：卡片发红）
-                    cardBg: this.enlargeForceLight
-                      ? withAlpha(LIGHT_PALETTE.codeBlockBg, 'FF')
-                      : withAlpha(this.palette().codeBlockBg, 'FF'),
-                    // 下载快照通道：组件 id + 截图请求 + 产物回调
-                    webId: 'enlarge_web',
-                    captureRequest: this.enlargeCaptureTick,
-                    onCaptured: (pixel: image.PixelMap, w: number, h: number) => {
-                      this.onEnlargeCaptured(pixel);
-                    },
+                    cardBg: withAlpha(this.palette().codeBlockBg, 'FF'),
                     // ⚠️ 双指捏合**必须留给引擎**（zoomAccess=true）：DiagramWeb 是
                     // Web 组件，它在原生层就吞掉触摸序列，外层套 ArkUI 手势收不到
                     // 双指（实测：套了 priorityGesture 反而彻底不能捏合）。而且
                     // ctrl.zoom() 与捏合是同一个页面比例，± 与双指天然叠加。
                     zoom: true,
                     fit: true,
-                    // 下载时临时关 fillHeight：页面高 = 完整内容高（超出屏幕的部分
-                    // 也在页面里），整页快照才不会把屏外内容裁掉（用户实测公式
-                    // 太宽太长被裁）。截完恢复。
-                    fillHeight: this.enlargeDownloadMode ? false : true,
+                    fillHeight: true,
                     webZoom: this.webZoom,
                     // **refit 通道**（此前一直没接上）：工具栏「刷新」/旋转后递增，
                     // DiagramWeb 的 @Watch('doRefit') 会让页面按当前容器与缩放重新自适应
