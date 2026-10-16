@@ -218,121 +218,137 @@ export struct HtmlViewer {
   }
 
   build() {
-    Column() {
-      // ── 顶栏：沉浸光感胶囊按钮，顶部避让系统状态栏 ──
-      Row({ space: HwSpace.sm }) {
-        // 返回：**圆形按钮**（用户要求：顶部三钮改圆形，只留图标）
-        ImmersiveIconButton({
-          buttonSize: 30,
-          buttonRadius: 15,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            if (this.stack !== null) {
-              this.stack.pop();
-            }
+    // **悬浮胶囊顶栏**（用户要求）：Web 铺满整页，顶栏与状态条浮在它上面，
+    // 滚动时正文可以一直穿到顶栏下层。上一版是 Column 上下分栏，顶栏那条
+    // 28vp 是**占位**的 —— 内容被压在下面，看着就像被顶栏"切掉了一截"。
+    Stack({ alignContent: Alignment.Top }) {
+      Web({ src: 'about:blank', controller: this.controller })
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#FFFFFFFF')
+        .javaScriptAccess(true)
+        .fileAccess(true)
+        .domStorageAccess(true)
+        .onPageEnd(() => {
+          if (this.started && !this.failed) {
+            this.probeRendered(0);
           }
-        }) {
-          SymbolGlyph($r('sys.symbol.chevron_left'))
-            .fontSize(15)
-            .fontColor([this.palette().textPrimary])
-        }
-
-        Text(this.docName.length > 0 ? this.docName : L10n.t('网页预览'))
-          .fontSize(HwType.label)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.palette().textPrimary)
-          .layoutWeight(1)
-          .textAlign(TextAlign.Center)
-          .maxLines(1)
-          // 文档名过长 → 自动缓慢滚动（用户要求），不再截断省略
-          .textOverflow({ overflow: TextOverflow.MARQUEE })
-
-        // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
-        ImmersiveIconButton({
-          buttonSize: 30,
-          buttonRadius: 15,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            if (this.loadedPath.length === 0 || this.printing) {
-              return;
-            }
-            this.status = '正在重新载入…';
+        })
+        .onControllerAttached(() => {
+          if (this.loadedPath.length > 0) {
             this.loadHtml();
+          } else {
+            this.pendingLoad = true;
           }
-        }) {
-          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
-            .fontSize(15)
-            .fontColor([this.loadedPath.length > 0 && !this.printing
-              ? this.palette().accent : this.palette().textTertiary])
-        }
+        })
+        .onErrorReceive(() => {
+          // ⚠️ 不再整页判失败（用户实测：提示加载出错但页面实际正常渲染——
+          // file:// 大页面会触发子资源类的加载错误回调，favicon 之类 404 也算）。
+          // 就绪提示里已有白屏兜底话术，这里只做软提示。
+          this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
+        })
 
-        // 打印：胶囊；未就绪时置灰不可点，就绪后高亮
-        ImmersiveIconButton({
-          buttonSize: 30,
-          buttonRadius: 15,
-          buttonMaterialShadow: false,
-          palette: this.palette(),
-          buttonOnTap: () => {
-            this.doPrint();
+      Column({ space: 6 }) {
+        // ── 顶栏胶囊：返回 / 文档名 / 刷新 / 打印 ──
+        Row({ space: HwSpace.sm }) {
+          // 返回：**圆形按钮**（用户要求：顶部三钮改圆形，只留图标）
+          ImmersiveIconButton({
+            buttonSize: 30,
+            buttonRadius: 15,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              if (this.stack !== null) {
+                this.stack.pop();
+              }
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.chevron_left'))
+              .fontSize(15)
+              .fontColor([this.palette().textPrimary])
           }
-        }) {
-          SymbolGlyph($r('sys.symbol.printer'))
-            .fontSize(15)
-            .fontColor([this.ready && !this.printing
-              ? this.palette().accent : this.palette().textTertiary])
+
+          Text(this.docName.length > 0 ? this.docName : L10n.t('网页预览'))
+            .fontSize(HwType.label)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textPrimary)
+            .layoutWeight(1)
+            .textAlign(TextAlign.Center)
+            .maxLines(1)
+            // 文档名过长 → 自动缓慢滚动（用户要求），不再截断省略
+            .textOverflow({ overflow: TextOverflow.MARQUEE })
+
+          // 刷新：胶囊（用户要求，打印左边）——网页卡死/无法滑动时点一下重新载入
+          ImmersiveIconButton({
+            buttonSize: 30,
+            buttonRadius: 15,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              if (this.loadedPath.length === 0 || this.printing) {
+                return;
+              }
+              this.status = '正在重新载入…';
+              this.loadHtml();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+              .fontSize(15)
+              .fontColor([this.loadedPath.length > 0 && !this.printing
+                ? this.palette().accent : this.palette().textTertiary])
+          }
+
+          // 打印：胶囊；未就绪时置灰不可点，就绪后高亮
+          ImmersiveIconButton({
+            buttonSize: 30,
+            buttonRadius: 15,
+            buttonMaterialShadow: false,
+            palette: this.palette(),
+            buttonOnTap: () => {
+              this.doPrint();
+            }
+          }) {
+            SymbolGlyph($r('sys.symbol.printer'))
+              .fontSize(15)
+              .fontColor([this.ready && !this.printing
+                ? this.palette().accent : this.palette().textTertiary])
+          }
         }
+        .width('100%')
+        .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+        .borderRadius(28)
+        .backgroundColor('#E8FFFFFF')
+        .backgroundBlurStyle(BlurStyle.Thin)
+
+        // ── 状态胶囊：加载动画 + 一句话状态（就绪前一直在转，用户要求"要知道有没有在加载"）──
+        Row({ space: 6 }) {
+          if (!this.ready || this.printing) {
+            LoadingProgress()
+              .width(14)
+              .height(14)
+              .color(this.failed ? '#FFD93B3B' : '#FF2F63E8')
+          }
+          Text(this.status)
+            .fontSize(12)
+            .fontColor(this.failed ? '#FFD93B3B' : '#FF5A6270')
+            .maxLines(2)
+        }
+        .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+        .borderRadius(16)
+        .backgroundColor('#D9FFFFFF')
+        .backgroundBlurStyle(BlurStyle.Thin)
       }
       .width('100%')
       .padding({
         left: HwSpace.md,
         right: HwSpace.md,
         top: this.topPad(),
-        bottom: HwSpace.xs
+        bottom: 6
       })
-
-      // ── 主体：Web 阅读器 + 状态浮层（状态永远可见，不会白屏无信息）──
-      Stack({ alignContent: Alignment.Top }) {
-        Web({ src: 'about:blank', controller: this.controller })
-          .width('100%')
-          .height('100%')
-          .backgroundColor('#FFFFFFFF')
-          .javaScriptAccess(true)
-          .fileAccess(true)
-          .domStorageAccess(true)
-          .onPageEnd(() => {
-            if (this.started && !this.failed) {
-              this.probeRendered(0);
-            }
-          })
-          .onControllerAttached(() => {
-            if (this.loadedPath.length > 0) {
-              this.loadHtml();
-            } else {
-              this.pendingLoad = true;
-            }
-          })
-          .onErrorReceive(() => {
-            // ⚠️ 不再整页判失败（用户实测：提示加载出错但页面实际正常渲染——
-            // file:// 大页面会触发子资源类的加载错误回调，favicon 之类 404 也算）。
-            // 就绪提示里已有白屏兜底话术，这里只做软提示。
-            this.status = '已就绪，可打印。若白屏或无法滑动，请退出重新选择打印';
-          })
-
-        // 状态条：浮在 Web 顶部（就绪后淡出为不打扰的一行提示）
-        Row() {
-          Text(this.status)
-            .fontSize(12)
-            .fontColor(this.failed ? '#FFD93B3B' : '#FF5A6270')
-            .maxLines(2)
-            .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-        }
-        .width('100%')
-        .backgroundColor('#F2FFFFFF')
-      }
-      .layoutWeight(1)
-      .width('100%')
+      .alignItems(HorizontalAlign.Center)
+      // 胶囊本身不吃触摸：顶栏两侧与两条胶囊之间的空隙，触摸要落到下层 Web 上
+      //（HitTestMode.None = 自身不响应，但**不阻止子节点**命中 —— 按钮照常可点）
+      .hitTestBehavior(HitTestMode.None)
     }
     .width('100%')
     .height('100%')

@@ -150,18 +150,15 @@ export class ChartRuntimeService {
                          notify: (message: string) => void): Promise<void> {
     const t0: number = Date.now();
     let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
-    let lastN: number = -1;
+    if (n > 0) {
+      // 文案改成**总数**、只报一次（用户要求："还差 N 张"读着像在倒退；而旧实现每
+      // 500ms 重发一条 toast，覆盖式的 toast 看不出刷新，看着就像卡死）。
+      // "有没有在加载"改由界面上的加载动画表达，不再靠刷数字。
+      notify('共 ' + n + ' 张图片，请耐心等待');
+    }
     while (n > 0) {
       if (Date.now() - t0 >= maxMs) {
         return;
-      }
-      // **数字真的变了才提示**（用户实测"还差 75 张"从头到尾不跳）：这里每 500ms
-      // 问一次，计数冻住时就会连着发十几条**一字不差**的 toast —— toast 是覆盖式的，
-      // 同文案看不出在刷新，看着就像卡死。计数本身不动的根因在 ChartCache.path()
-      // 把"还没烘出来"也缓存了（负结果缓存），那边已经改掉。
-      if (n !== lastN) {
-        notify('正在生成图片（还差 ' + n + ' 张）…');
-        lastN = n;
       }
       await new Promise<void>((res: () => void) => {
         setTimeout(res, 500);

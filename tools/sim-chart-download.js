@@ -178,6 +178,8 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   const exportEts = readEts('service/ExportService.ets');
   const printEts = readEts('service/PrintService.ets');
   const poolEts = readEts('components/ChartRenderPool.ets');
+  const panelEts = readEts('components/ExportOptionsPanel.ets');
+  const viewerEts = readEts('pages/HtmlViewer.ets');
   const mdHtmlEts = fs.readFileSync(path.join(ETS, 'markdown', 'MdToHtml.ets'), 'utf8').replace(/\r\n/g, '\n');
   const mdViewEts = fs.readFileSync(path.join(ETS, 'markdown', 'MdView.ets'), 'utf8').replace(/\r\n/g, '\n');
 
@@ -250,13 +252,20 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
       const seg = at >= 0 ? readerEts.substring(at, at + 700) : '';
       return seg.includes('continue;') && !seg.includes("mode = 'katex'");
     })());
-  check('⑤ 导出等补烘的"还差 N 张"会真的往下走（负结果不入内存缓存 + 数字变了才提示）',
+  check('⑤ 导出等补烘：负结果不入内存缓存，进度文案是"共 N 张"且过程消息不收面板',
     /if \(found\.length > 0\) \{\s*\n\s*ChartCache\.memo\.set\(key, found\);/.test(cacheEts)
     && /if \(uri\.length > 0\) \{\s*\n\s*ChartCache\.uriMemo\.set\(key, uri\);/.test(cacheEts)
-    && runtimeEts.includes('if (n !== lastN) {'));
+    && runtimeEts.includes("'共 ' + n + ' 张图片，请耐心等待'")
+    && panelEts.includes('private progress(message: string): void')
+    && panelEts.includes('this.withBusyAsync(() => ExportService.exportHtmlSmart('));
   check('⑤ 导出嵌图仍按逻辑尺寸定宽（embedStyle 用在图表分支）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)'));
+  check('⑤ 打印页顶栏是悬浮胶囊，内容可穿到顶栏下层（Web 铺满整页 + 浮层不吃触摸）',
+    /build\(\) \{\s*\n(?:\s*\/\/[^\n]*\n)+\s*Stack\(\{ alignContent: Alignment\.Top \}\) \{\s*\n\s*Web\(/.test(viewerEts)
+    && viewerEts.includes('.hitTestBehavior(HitTestMode.None)'));
+  check('⑤ 打印页状态胶囊带加载动画',
+    viewerEts.includes('LoadingProgress()') && viewerEts.includes('if (!this.ready || this.printing) {'));
   check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',
     /Image\(this\.chartImagePath\(mode\)\)\s*\n\s*\.objectFit\(ImageFit\.Contain\)\s*\n\s*\.borderRadius/.test(
       mdViewEts.substring(mdViewEts.indexOf('blockImage(mode: string)'),

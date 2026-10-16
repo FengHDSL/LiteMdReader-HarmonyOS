@@ -32,6 +32,8 @@ export struct ExportOptionsPanel {
   stack: NavPathStack | null = null;
 
   @State busy: boolean = false;
+  /** 加载层上显示的那句话（过程消息会实时更新它，见 progress()） */
+  @State busyText: string = '';
 
   private ctx(): common.UIAbilityContext | null {
     const c = this.getUIContext().getHostContext();
@@ -52,6 +54,38 @@ export struct ExportOptionsPanel {
       this.busy = false;
       this.onClosed();
     }
+  }
+
+  /**
+   * **过程提示**（只弹提示 + 更新加载层文字，**不收面板**）。
+   *
+   * 导出 HTML 现在会先等后台把图表烘成图片（可能几十秒），期间要让用户看得见
+   * "还在动"。以前这些过程消息也走 notify()，第一条就把 busy 清掉、面板收起 ——
+   * 加载动画跟着消失，剩下几十秒完全没反馈（用户实测"不知道有没有在加载"）。
+   */
+  private progress(message: string): void {
+    this.busyText = message;
+    try {
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
+    } catch (err) {
+      // 提示失败无副作用
+    }
+  }
+
+  /** 异步动作统一入口：转圈开始 → 过程消息进加载层 → 结束（含异常）才收。 */
+  private withBusyAsync(action: () => Promise<void>): void {
+    if (this.busy) {
+      return;
+    }
+    this.busy = true;
+    this.busyText = L10n.t('正在处理，请稍候…');
+    action().then(() => {
+      this.busy = false;
+      this.onClosed();
+    }).catch(() => {
+      this.busy = false;
+      this.onClosed();
+    });
   }
 
   private withBusy(action: () => void): void {
@@ -121,9 +155,10 @@ export struct ExportOptionsPanel {
       this.notify('读取正文失败');
       return;
     }
-    ExportService.exportHtmlSmart(ctx, this.docName, content, (m: string) => {
-      this.notify(m);
-    });
+    this.withBusyAsync(() => ExportService.exportHtmlSmart(ctx, this.docName, content,
+      (m: string) => {
+        this.progress(m);
+      }));
   }
 
   /** 打印：进入打印准备页（HTML 构建在页内完成，完成后调起系统打印预览）。 */
@@ -268,16 +303,19 @@ export struct ExportOptionsPanel {
       .alignItems(HorizontalAlign.Start)
 
       // **加载动画**：另存为对话框冷启动要几秒，busy 期间盖在菜单上，
-      // 避免"点了没反应"的错觉（用户反馈）
+      // 避免"点了没反应"的错觉（用户反馈）。文字跟着过程消息走 ——
+      // 导出 HTML 会先等图表烘完（可能几十秒），这行就是"还在动"的证据。
       if (this.busy) {
         Column({ space: HwSpace.sm }) {
           LoadingProgress()
             .width(40)
             .height(40)
             .color(this.palette.accent)
-          Text(L10n.t('正在处理，请稍候…'))
+          Text(this.busyText.length > 0 ? this.busyText : L10n.t('正在处理，请稍候…'))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
+            .textAlign(TextAlign.Center)
+            .maxLines(3)
         }
         .padding({ left: HwSpace.xl, right: HwSpace.xl, top: HwSpace.lg, bottom: HwSpace.lg })
         .borderRadius(HwRadius.card)
