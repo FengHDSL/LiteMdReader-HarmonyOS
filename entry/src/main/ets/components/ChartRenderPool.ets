@@ -17,6 +17,7 @@
 import { common } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import { DiagramWeb } from './DiagramWeb';
+import { DlFit } from './DiagramDownloadHost';
 import { ChartCache } from '../service/ChartCache';
 
 /** 一张待渲染的图表：mode = katex / mermaid / markmap / echarts / … */
@@ -60,6 +61,20 @@ export struct ChartRenderPool {
   @State current: ChartTask | null = null;
   /** 截图请求计数：当前任务高度就绪后递增，驱动 DiagramWeb 快照 */
   @State captureTick: number = 0;
+  /**
+   * 烘焙表面宽（钉死值，见 DiagramDownloadHost 同名机制）：**不能靠 '100%'**。
+   * 设备取证：状态图的内容只占了 365vp 里的 21vp —— 池子在转场 / 首帧那几百毫秒里
+   * 被父容器量到一个极小宽度，mermaid 就按那个宽度重排，烘出一张窄条。
+   * 下载链路一直是对的，正是因为它把表面钉死了。
+   */
+  @State surfaceW: number = 0;
+  /** 内容比表面宽时下发给页面的 CSS zoom（两轴同倍率 = 等比缩，不拉伸不切边） */
+  @State dlZoom: number = 1;
+  /** 递增触发页面按新 zoom 重排（payload 字符串没变，走不了 @Watch） */
+  @State layoutTick: number = 0;
+  /** 页面回传的内容尺寸（算 dlZoom 用） */
+  private lastW: number = 0;
+  private lastH: number = 0;
   private busyRendering: boolean = false;
   private failed: Set<string> = new Set();
   private ctx: common.UIAbilityContext | null = null;
@@ -111,6 +126,11 @@ export struct ChartRenderPool {
       this.current = t;
       this.busyRendering = true;
       this.captureRetry = 0;
+      // 每张都按当前宿主宽重算表面宽（旋转 / 分屏后跟着变），并清掉上一张的收敛记账
+      this.surfaceW = DlFit.surfaceWidthOf(this.hostWidth);
+      this.dlZoom = 1;
+      this.lastW = 0;
+      this.lastH = 0;
       // 启动"等高度"兜底：超时仍未回传 → 跳过该任务，队列继续
       if (this.waitTimer >= 0) {
         clearTimeout(this.waitTimer);
@@ -127,6 +147,31 @@ export struct ChartRenderPool {
     }
     // 全部就绪
     this.current = null;
+  }
+
+  /**
+   * 页面回传内容尺寸 → 算该下发的 zoom。
+   *
+   * 内容比表面宽（wavedrom 一段时序自然宽 560、Graphviz 大图）时，钉死的表面会把
+   * 多出来那截切掉；下载链路的做法是**两轴同一个倍率缩进表面**（DlFit.zoomFor）——
+   * 等比缩放，只缩不拉。倍率变了就 layoutTick++ 让页面按新 zoom 重排，随后的高度
+   * 回传再派发快照（与 DiagramDownloadHost 同一套收敛口径）。
+   */
+  private onSizeReady(w: number, h: number): void {
+    if (w > 0) {
+      this.lastW = w;
+    }
+    if (h > 0) {
+      this.lastH = h;
+    }
+    if (this.surfaceW <= 0 || this.lastW <= 0 || this.lastH <= 0) {
+      return;
+    }
+    const z: number = DlFit.zoomFor(this.surfaceW, this.lastW, this.lastH);
+    if (Math.abs(z - this.dlZoom) > 0.005) {
+      this.dlZoom = z;
+      this.layoutTick = this.layoutTick + 1;
+    }
   }
 
   /**
@@ -366,8 +411,13 @@ export struct ChartRenderPool {
           dark: this.dark,
           cardBg: this.cardBg,
           inlineMode: this.current.inline === true,
-          // 定宽烘焙（见 hostWidth 声明）：0 = 沿用组件宽度（老行为）
-          virtualWidth: this.hostWidth,
+          // 定宽烘焙（见 hostWidth / surfaceW 声明）：表面与页面排版都用这个钉死值
+          virtualWidth: this.surfaceW,
+          dlZoom: this.dlZoom,
+          layoutTick: this.layoutTick,
+          onSizeReady: (w: number, h: number) => {
+            this.onSizeReady(w, h);
+          },
           // **与「手动下载」同一排版路径**（fit=true）：上一版只对齐了 `dl`（直角、
           // 无内边距、不限高），却没给 fit —— 于是页面走的还是**卡片模式**那条支路：
           // 按 viewBox 把整图夹进 capW×capH（340~600），长图被等比缩小 → 烘出一张

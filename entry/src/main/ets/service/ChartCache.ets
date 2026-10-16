@@ -136,9 +136,19 @@ export class ChartCache {
    *    等比缩小（73×1274 那张状态图正是 capH=340 的算结果）。池子补 `fit:true` +
    *    定宽烘焙，且 `.dim` 改用组件实测宽补齐 —— 出图尺寸口径整体变了，
    *    v26 落盘的窄条图必须作废重烘（否则改了代码也还是旧图，用户实测"没修复"）。
+   *  · v28（2026-10-16 二十五次升级）：**v27 没治住窄条**（用户实测状态图 / C4 /
+   *    韦恩图 / 树形视图照旧挤压，而"单独下载图片"是正常的）。拉整机缓存取证 507 张：
+   *    5 张窄条的 `.dim` 与像素**两轴倍数自洽**（rx≈ry≈3.5，状态图 21|363 对 73×1274）
+   *    —— 说明不是"拍早了"、也不是 v27 猜的卡片限高（那条公式算不出 21vp 这么窄的
+   *    结果），而是页面**真的按 21vp 宽重排**了：池子的表面宽度写的是 `'100%'`，
+   *    父容器在转场 / 首帧那几百毫秒里量到一个极小值，mermaid 就照它排版。
+   *    下载链路一直是对的，正是因为它 `.width(surfaceW)` 把表面钉死了。
+   *    现在池子改用同一套 DlFit（钉死表面 + 超宽内容下发等比 zoom + layoutTick 重排），
+   *    v27 那批窄条图与 39 张两轴倍数对不上的 `.dim`（钉死前 areaW 取到的是瞬时宽）
+   *    一起作废重烘。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v27|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf('v28|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {

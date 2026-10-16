@@ -2763,6 +2763,10 @@ export struct MdBlockView {
     Scroll() {
       Image(this.chartImagePath(mode))
         .objectFit(ImageFit.Contain)
+        // 圆角加在**图片本身**上（与下面图表分支同一口径）：Scroll 那层只裁视口，
+        // 公式图比视口窄时（绝大多数）碰不到 Scroll 的圆角边，四角就还是直角
+        //（用户实测"公式卡片画布直角太丑，要和图表卡片一样"）。
+        .borderRadius(HwRadius.inner)
         .width(this.blockImgW(mode))
         .height(this.blockImgH(mode))
         .onComplete(() => {

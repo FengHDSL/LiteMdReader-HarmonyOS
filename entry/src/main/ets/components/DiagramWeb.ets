@@ -237,11 +237,13 @@ export struct DiagramWeb {
     // "按内容定高"，把脑图挤成画布顶部的一条（用户实测只剩四分之一）。
     Web({ src: $rawfile('render/' + this.renderTemplate() + '.html'), controller: this.ctrl })
       .id(this.webId.length > 0 ? this.webId : 'diagram_web')
-      // ⚠️ `virtualWidth` **只钉页面的排版宽，不钉组件本身的宽度**：
-      // 内容比画布宽的图种（wavedrom 一段总线时序自然宽 560、Graphviz 大图）被
-      // 钉成 320 的组件会把多出来的那一截切掉。组件保持 '100%'（= 池子所在整页宽），
-      // 页面按 hostWidth 排版 —— 布局确定、内容超宽仍被整页快照收进来。
-      .width(this.inlineMode && this.wVp > 0 ? this.wVp : '100%')
+      // 表面宽度：**必须钉死成确定值**，不能用 '100%'。后台池在转场 / 首帧那几百毫秒
+      // 里被父容器量到一个极小的宽度（设备取证：状态图的内容只占了 365 里的 21vp），
+      // mermaid 就按 21vp 重排 → 烘出一张窄条。下载链路一直是对的，正是因为它
+      // `.width(surfaceW)` 钉死（见 DiagramDownloadHost.build）。
+      // 内容比表面宽的图种（wavedrom 自然宽 560）由 dlZoom 等比缩进表面，
+      // 两轴同一个倍率 → 只缩不拉，不会被切也不会变形。
+      .width(this.inlineMode && this.wVp > 0 ? this.wVp : (this.virtualWidth > 0 ? this.virtualWidth : '100%'))
       .height(this.fillHeight ? '100%' : this.hVp)
       .javaScriptProxy({
         object: {

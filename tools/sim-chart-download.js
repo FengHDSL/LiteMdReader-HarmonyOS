@@ -213,16 +213,18 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     // 否则这条永远红着——真出事时反而看不见
     && (webEts.match(/if \(this\.pageLoading[ )]/g) || []).length >= 2
     && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
-  check('⑤ 键盐升到 v27（作废窄条坏图：卡片模式限高烘焙 + .dim 缺宽）', cacheEts.includes("'v27|'"));
+  check('⑤ 键盐升到 v28（作废 v27 没治住的窄条图与两轴不自洽的 .dim）', cacheEts.includes("'v28|'"));
 
-  // ➎.3b 烘焙几何口径（用户实测状态图 / C4 / 韦恩图被挤成窄条）
-  // 三条一起才算修好：走"下载样式"的排版支路（fit）、画布宽度钉死（virtualWidth）、
-  // 模板不回传宽度时用组件实测宽补上 .dim（否则池子的尺寸守卫对 19/20 个模板无效）。
-  check('⑤ 池子按下载排版烘图（fit + 定宽画布）',
-    poolEts.includes('fit: true,') && poolEts.includes('virtualWidth: this.hostWidth,'));
-  check('⑤ 池子有宿主给的正文栏宽（不再由组件瞬时宽度决定排版）',
-    poolEts.includes('@Prop hostWidth: number = 0;')
-    && readerEts.includes('hostWidth: this.rootWidth - HwSpace.lg * 2,'));
+  // ➎.3b 烘焙几何口径（用户实测状态图 / C4 / 韦恩图被挤成窄条，而"单独下载"是好的）
+  // 根因是池子的表面宽度用 '100%'：转场 / 首帧里父容器量到极小值，mermaid 就按那个
+  // 宽度重排。下载链路一直是对的，因为它把表面钉死了 —— 所以池子必须复用同一套 DlFit。
+  check('⑤ 池子按下载链路同一套钉死表面宽（DlFit.surfaceWidthOf，不用 100%）',
+    poolEts.includes('DlFit.surfaceWidthOf(this.hostWidth)')
+    && poolEts.includes('virtualWidth: this.surfaceW,'));
+  check('⑤ 超宽内容等比缩进表面（dlZoom + layoutTick 重排，两轴同倍率不拉伸）',
+    poolEts.includes('DlFit.zoomFor(this.surfaceW, this.lastW, this.lastH)')
+    && poolEts.includes('dlZoom: this.dlZoom,') && poolEts.includes('layoutTick: this.layoutTick,'));
+  check('⑤ 池子按下载排版烘图（fit:true）', poolEts.includes('fit: true,'));
   check('⑤ 快照逻辑宽度有兜底（模板不回传时用组件实测宽）',
     webEts.includes('private areaW: number = 0;')
     && webEts.includes('this.lastPostW > 0 ? this.lastPostW : this.areaW'));
@@ -233,6 +235,10 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes("ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg)")
     && !mdHtmlEts.includes('ChartCache.pngBase64(ctx,'));
+  check('⑤ 公式卡片画布与图表卡片同样圆角（圆角加在图片本身，不只加在 Scroll 视口）',
+    /Image\(this\.chartImagePath\(mode\)\)\s*\n\s*\.objectFit\(ImageFit\.Contain\)\s*\n\s*\.borderRadius/.test(
+      mdViewEts.substring(mdViewEts.indexOf('blockImage(mode: string)'),
+        mdViewEts.indexOf('blockImage(mode: string)') + 1200)));
 
   // ➎.4 图源扩展：wavedrom/abc 回归用图；salt/ditaa/nwdiag 进池但正文保持实时卡
   check('⑤ pngSkip 只剩 html（wavedrom/abc 回归"快照优先"）',
