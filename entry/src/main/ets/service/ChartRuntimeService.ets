@@ -186,9 +186,13 @@ export class ChartRuntimeService {
       let lang: string = '';
       if (b.kind === MdBlockKind.Chart) {
         lang = b.lang.trim().toLowerCase();
-        if (lang === 'html' || lang === 'markmap') {
+        if (lang === 'html') {
           continue;
         }
+        // **markmap 在这里不能跳过**（与上面 missingShots 的口径**故意不同**）：它有意
+        // 不进烘焙池（正文要实时可拖拽），所以永远"缺快照"。上一版照抄 missingShots
+        // 把它 continue 掉 → "其余图都齐"时 d3 / markmap-lib / markmap-view 被裁库
+        // 筛掉，导出页里那个 .markmap 容器没有任何库可画 = 思维导图不显示（用户实测）。
       } else if (b.kind === MdBlockKind.Math) {
         lang = 'katex';
       } else {
