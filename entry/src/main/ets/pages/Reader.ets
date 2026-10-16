@@ -1361,16 +1361,24 @@ export struct Reader {
    */
   private collectChartTasks(dark: boolean): ChartTask[] {
     const out: ChartTask[] = [];
+    // 浅色孪生任务单独排队，**排在整条正文队列之前**（顺序见函数尾部）
+    const twins: ChartTask[] = [];
+    // 浅色孪生的底色：导出 / 打印**恒认浅色快照**（ChartCache.lightShotKeys），键里
+    // 的 bg 必须和烘的时候用的是同一个值，否则键对不上图
+    const lightBg: string = withAlpha(paletteFor(this.themeMode, false).codeBlockBg, 'FF');
+    const curBg: string = withAlpha(this.palette().codeBlockBg, 'FF');
     for (let k = 0; k < this.blocks.length; k++) {
       const b: MdBlock = this.blocks[k];
       let mode: string = '';
       if (b.kind === MdBlockKind.Math) {
-        // **块级公式不进烘焙队列**（用户拍板"直接全透明"）：截图必然带一层底色矩形，
-        // 于是同一篇里"烘过的公式"是一块白底、"没烘的"是透底正文，两种长相混在一起。
-        // 公式没有需要截图的交互成本，正文与导出都直接用 KaTeX 实时渲染就是真透明，
-        // 尺寸也天然跟着字号走 —— 顺带绕开公式图的所有尺寸口径问题。
-        // （行内公式仍然要烘：它是 ImageSpan 混排在文字里，必须有位图。）
-        continue;
+        // **块级公式进烘焙队列**（用户拍板"公式卡片和图表卡片就是要转成图片的"）：
+        // 3c279d4 那版把公式整体排除出池子、导出恒走 KaTeX 现场渲染容器，设备取证
+        // 是真机导出的示例文档里 23 张公式 + 27 张 mermaid 全是容器，"挤压拉伸"全部
+        // 出在这些容器上（浏览器按容器宽重排，公式小得读不清）。
+        // 这里烘的是**给导出 / 打印供图**；正文那张卡仍然实时渲染（MdView.mathView
+        // 恒走 DiagramWeb，没有取图分支），所以"阅读页公式透底、字号跟正文联动"不变。
+        // （行内公式另有一套 iminl3_ 键的任务，见 MdView。）
+        mode = 'katex';
       } else if (b.kind === MdBlockKind.Chart) {
         mode = b.lang.toLowerCase();
       }
@@ -1404,12 +1412,35 @@ export struct Reader {
       // 键含卡片底色（v4）：五档主题的深浅孪生款 codeBlockBg 不同，
       // 不区分会复用别主题烘焙的图（"深色下背景发红/发绿"——用户实测）
       out.push({
-        key: ChartCache.keyFor(mode, b.code, dark, withAlpha(this.palette().codeBlockBg, 'FF')),
+        key: ChartCache.keyFor(mode, b.code, dark, curBg),
         mode: mode,
         payload: b.code
       } as ChartTask);
+      // **深色读书时补一条浅色孪生任务**（根治 #65）：导出 / 打印恒浅色，此前
+      // 深色模式下永远查不到浅色快照 → 整篇卡片退化成"要 JS 现场画的容器"，
+      // 文件背上十几 MB 渲染库、图还挤成一团（用户实测"导出/打印里图表拉伸挤压
+      // + 一大半没转成图片"）。
+      if (dark) {
+        twins.push({
+          key: ChartCache.keyFor(mode, b.code, false, lightBg),
+          mode: mode,
+          payload: b.code,
+          dark: false,
+          bg: lightBg
+        } as ChartTask);
+      }
     }
-    return out;
+    // 浅色款排在正文款**之前**：导出 / 打印只认浅色快照，先把它补齐，用户开完文档
+    // 就能拿到"全图片"的导出。阅读页那侧不受影响 —— 深色款没烘出来之前卡片本来就是
+    // 实时 Web 渲染（一直如此），只是晚一点才换成图。
+    const res: ChartTask[] = [];
+    for (let q = 0; q < twins.length; q++) {
+      res.push(twins[q]);
+    }
+    for (let q = 0; q < out.length; q++) {
+      res.push(out[q]);
+    }
+    return res;
   }
 
   // ══════════════════════ 顶栏 / 底栏的收起与展开 ══════════════════════

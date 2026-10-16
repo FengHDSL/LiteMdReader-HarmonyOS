@@ -45,6 +45,9 @@ export class PrintService {
           files = ChartRuntimeService.filesForLang(b.lang.trim().toLowerCase(), b.code);
         } else if (b.kind === MdBlockKind.Math) {
           files = ChartRuntimeService.filesForLang('katex');
+        } else if (MdToHtml.blockHasInlineMath(b)) {
+          // 行内公式（导出侧无图片路径，只有 .kxi 容器现场渲染）→ katex 库必须带
+          files = ChartRuntimeService.filesForLang('katex');
         }
         for (let f = 0; f < files.length; f++) {
           if (needed.indexOf(files[f]) < 0) {
@@ -61,9 +64,11 @@ export class PrintService {
         // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
         const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
         AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
-        // 等待上限 45s（原来 20s 且只管 PlantUML）：示例文档十几张图，5 秒烘不完；
-        // 快照不齐就会把渲染库背进打印页（12MB 页面手机上渲染失败）。
-        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 45000, notify);
+        // 等待上限 120s（45s → 120s）：现在深色模式下每篇要烘**双份**（正文款 +
+        // 导出用的浅色款，见 Reader.collectChartTasks 的 twins），示例文档 64 张卡片
+        // = 128 次烘焙，45s 只够三十几张，超时就退成"背渲染库的现场渲染容器"——
+        // 正是用户报的"一大半没转成图片 + 容器被挤成一团"。第二次导出全命中缓存，不等待。
+        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 120000, notify);
         for (let i = needed.length - 1; i >= 0; i--) {
           if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, false, '', needed[i])) {
             needed.splice(i, 1);

@@ -184,6 +184,9 @@ export class ExportService {
         files = ChartRuntimeService.filesForLang(b.lang.trim().toLowerCase(), b.code);
       } else if (b.kind === MdBlockKind.Math) {
         files = ChartRuntimeService.filesForLang('katex');
+      } else if (MdToHtml.blockHasInlineMath(b)) {
+        // 行内公式（导出侧无图片路径，只有 .kxi 容器现场渲染）→ katex 库必须带
+        files = ChartRuntimeService.filesForLang('katex');
       }
       for (let f = 0; f < files.length; f++) {
         if (needed.indexOf(files[f]) < 0) {
@@ -204,7 +207,9 @@ export class ExportService {
       // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
       const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
       AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
-      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 45000, notify);
+      // 等待上限 120s：深色模式下每篇要烘双份（正文款 + 导出用的浅色款），
+      // 超时就会把渲染库背进文件、卡片退化成现场渲染容器（见 PrintService 同一口径）
+      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 120000, notify);
       for (let i = needed.length - 1; i >= 0; i--) {
         if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, dark, chartBg, needed[i])) {
           needed.splice(i, 1);
