@@ -182,6 +182,14 @@ export struct DiagramWeb {
   private zoomApplied: number = 1;
   /** 正文卡片是否已经"出图后自动重载"过一次（每张卡一次，见 postWidth 里的说明） */
   private autoReloaded: boolean = false;
+  /**
+   * 快照重试状态机（见 doCapture）：本轮已尝试拍次数 / 是否已成功回传产物 /
+   * 已处理过的 captureRequest。池子的组件会被**连续任务复用**，所以必须按
+   * 请求号归档 —— 新请求（captureRequest 变化）到来时重置前两项。
+   */
+  private capAttempt: number = 0;
+  private capDelivered: boolean = false;
+  private capReqSeen: number = -1;
 
   /**
    * 实际加载的模板名。脑图走 **markmap-card**（一份模板同时管正文卡片与放大浮层
@@ -431,7 +439,17 @@ export struct DiagramWeb {
 
   /**
    * **整页快照**（webPageSnapshot 抓 Web 的完整绘制结果，不受可视区限制）。
-   * captureRequest 递增时触发；失败静默——池子的 4s 超时会兜底跳过这张。
+   * captureRequest 递增时触发。
+   *
+   * ⚠️ **被平台拒绝必须重试**（2026-10-16 真机实测定位）：Web 刚挂载、首帧还没
+   * 合成时调 webPageSnapshot，平台直接回绝（底层日志 `Web is not painted ready
+   * for snapshot`）——回调**不带产物**就结束了。此前单拍一次等兜底超时，整单
+   * 必然以"生成失败"收场（用户实测）。现在被拒就隔一拍再拍，最多 5 拍
+   * （累计约 3.5~5.3s，落在池子 4s / 下载宿主 6s 的兜底窗口内）；回调既不
+   * 成功也不报错（被吞掉）时由看门狗推进下一拍。
+   * 备注：内容高度回传只是"渲染到了一个稳定点"，不等于"首帧已合成"——
+   * mermaid 真机首绘可晚到 1s 以上，多拍就是给这种慢首绘兜底。
+   *
    * （块级公式曾试验"品红底 + 键控抠透明"——真机上透明 PNG 在 Image 组件里
    * 渲染不可靠（卡片全黑），已回退为**烘焙卡片底色**的不透明图。）
    */
@@ -439,31 +457,55 @@ export struct DiagramWeb {
     if (this.captureRequest <= 0 || this.webId.length === 0) {
       return;
     }
-    // **延迟再拍**：基础 120ms（行内模式的 Web 表面可能还在「回传宽度 → 组件变宽
-    // → 页面重排」的调整中）；**markmap 700ms**——脑图的 fit 在渲染后 350ms 才执行，
-    // 拍早了抓到的是 fit 之前的原始布局（未缩放被裁切 = "只有窄窄一条"，用户实测）。
-    // 延迟窗口内任务若已切换（webId 变化），放弃本次（池子的 4s 超时仍兜底）。
+    // 新一轮请求：重置重试状态（组件被连续任务复用时，按请求号归档）
+    if (this.captureRequest !== this.capReqSeen) {
+      this.capReqSeen = this.captureRequest;
+      this.capAttempt = 0;
+      this.capDelivered = false;
+    }
+    if (this.capDelivered || this.capAttempt >= 5) {
+      return;
+    }
+    this.capAttempt++;
     const capturedId: string = this.webId;
-    // ⚠️ 默认 250ms（原来 120）：组件高度是收到回传后**下一帧**才重排完的，
-    // 120ms 抓到的还是旧内容留在旧表面上的那一帧（设备实测：一篇文档 29 张
-    // mermaid 里 21 张烘成了初始 100vp 的窄条，判据与兜底见 ChartRenderPool.staleSnapshot）
-    const settle: number = this.mode === 'markmap' ? 700 : 250;
+    // **延迟再拍**：基础 250ms（组件高度是收到回传后**下一帧**才重排完的，
+    // 120ms 抓到的还是旧内容留在旧表面上的那一帧，设备实测 29 张 mermaid 里
+    // 21 张烘成了初始 100vp 的窄条，判据见 ChartRenderPool.staleSnapshot）；
+    // **markmap 700ms**——脑图的 fit 在渲染后 350ms 才执行，拍早了抓到的是
+    // fit 之前的原始布局（未缩放被裁切）。重试每一拍再递增 250ms。
+    const wait: number = (this.mode === 'markmap' ? 700 : 250) + (this.capAttempt - 1) * 250;
+    const myAttempt: number = this.capAttempt;
     setTimeout(() => {
-      if (this.webId !== capturedId) {
+      if (this.webId !== capturedId || this.capDelivered) {
         return;
       }
       try {
         this.ctrl.webPageSnapshot({ id: capturedId },
           (err: BusinessError, result: webview.SnapshotResult) => {
-            if (err !== undefined || result === undefined
-              || result.status !== true || result.imagePixelMap === undefined) {
+            if (this.capDelivered || this.capAttempt !== myAttempt) {
               return;
             }
+            if (err !== undefined || result === undefined
+              || result.status !== true || result.imagePixelMap === undefined) {
+              // 被拒（最常见：Web is not painted ready）→ 隔一拍再试
+              this.doCapture();
+              return;
+            }
+            this.capDelivered = true;
             this.onCaptured(result.imagePixelMap, this.lastPostW, this.lastPostH);
           });
       } catch (err) {
-        // 快照接口异常：静默，池子超时兜底
+        // 快照接口异常同样按"被拒"处理，交给下一拍
+        this.doCapture();
       }
-    }, settle);
+    }, wait);
+    // **看门狗**：回调既不成功也不报错（被平台吞掉）时推进下一拍。
+    // 检查 attempt 归属：正常路径已推进过就不再重复派发。
+    setTimeout(() => {
+      if (this.webId !== capturedId || this.capDelivered || this.capAttempt !== myAttempt) {
+        return;
+      }
+      this.doCapture();
+    }, wait + 400);
   }
 }

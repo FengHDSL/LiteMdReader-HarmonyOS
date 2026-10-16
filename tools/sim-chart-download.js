@@ -90,6 +90,26 @@ const katexHtml = fs.readFileSync(path.join(RENDER, 'katex.html'), 'utf8');
 check('② katex 认超宽适配倍率（o.z → body CSS zoom）且**每次显式复位**',
   /document\.body\.style\.zoom = \(o\.z && o\.z > 0 && o\.z !== 1\)/.test(katexHtml));
 
+// **mermaid 的 fit 限高必须与导出形态分开**（2026-10-16 真机定位的根因）：
+// 下载表面高度由"内容回传"分级撑起，Web 挂载时视口只有初始 100vp —— 若按
+// 100vh 限高，svg 被压成一条、app 高度从此不再变化 → ResizeObserver 不再回传
+// → 宿主拿着"没画完的假稳定尺寸"提前派发快照 → 被平台以「Web is not painted
+// ready for snapshot」拒绝，整单失败（用户看到的"图片生成失败"）。
+const mermaidHtml = fs.readFileSync(path.join(RENDER, 'mermaid.html'), 'utf8');
+check('② mermaid 标记导出形态（window.__dl，且在 __render 之前赋值）',
+  mermaidHtml.indexOf('window.__dl=!!o.dl') > 0
+  && mermaidHtml.indexOf('window.__dl=!!o.dl') < mermaidHtml.indexOf('window.__render(o.src'));
+check('② mermaid 导出时不按 100vh 限高（限高会压扁 + 卡住高度回传）',
+  /sv\.style\.maxHeight = window\.__dl \? 'none' : 'calc\(100vh - 24px\)'/.test(mermaidHtml));
+
+// **快照被平台拒绝要重试**："Web is not painted ready" 时回调不带产物；
+// 此前单拍一次就等兜底超时，整单必然失败。重试链上限 5 拍（~3.5s），
+// 回调被吞时由看门狗推进；按 captureRequest 归档（池子复用组件不能串轮次）。
+check('② DiagramWeb 快照被拒会隔拍重试（capAttempt / capDelivered / capReqSeen + 看门狗）',
+  webEts.includes('capAttempt') && webEts.includes('capDelivered')
+  && webEts.includes('capReqSeen') && webEts.includes('看门狗')
+  && webEts.includes('Web is not painted ready'));
+
 // ── ③ 图种白名单与渲染模板一一对应 ──
 // 白名单少一个 → 按钮该出现时不出现；多一个（模板不存在）→ 点了没反应
 const dlBody = readerEts.substring(readerEts.indexOf('private dlSupported()'),

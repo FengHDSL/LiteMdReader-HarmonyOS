@@ -3672,7 +3672,16 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
       var sv=app.querySelector('svg');
       if(sv){
         if(window.__fit){
-          sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';sv.style.maxHeight='calc(100vh - 24px)';
+          sv.style.width='auto';sv.style.height='auto';sv.style.maxWidth='100%';
+          /* ⚠️ **下载独立表面不能按 100vh 限高**（window.__dl，真机实测教训）：
+             表面高度由"内容回传"分级撑起 —— Web 刚挂载时视口只有初始的 100vp，
+             100vh 就等于 100px，svg 被压成一条；app 高度从此不再变化 →
+             ResizeObserver 不再回传 → 宿主拿到"没画完的假稳定尺寸"提前派发快照，
+             被平台以「Web is not painted ready」拒绝，整单失败。
+             none = 按自然尺寸渲染、内容多高回传多高（宿主再把表面撑到真实高度）。
+             浏览形态（正文卡片 / 放大浮层）保持原限高：浮层的画布是真实屏幕，
+             100vh 语义正确（限制图不超过一屏高）。 */
+          sv.style.maxHeight = window.__dl ? 'none' : 'calc(100vh - 24px)';
           sv.style.display='block';
         } else {
           // 卡片模式：**自己按 viewBox 算等比缩放比**，不用 CSS 的 max-height 去夹 svg。
@@ -3738,6 +3747,9 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
       if(o.dark){document.body.classList.add('dark');}
       if(o.vw&&o.vw>0){document.body.style.width=o.vw+'px';document.body.style.margin='0';}
       if(o.bg){/* 画布底改成「圆角内衬层」（用户要求）：上一版把不透明底铺在整页（方角）上，会把卡片圆角切掉、看着像两层卡片。这里铺在一个固定底层、带圆角与细边的层上，四周露出卡片圆角，细边同时充当厚度。 */document.documentElement.style.background='transparent';document.body.style.background='transparent';var __bg=document.getElementById('__bglayer');if(!__bg){__bg=document.createElement('div');__bg.id='__bglayer';__bg.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(128,128,128,0.18);pointer-events:none;';document.body.appendChild(__bg);}__bg.style.background=o.bg;if(o.dl){/* 导出形态（下载走独立渲染表面）：直角 + 去内描边 + 去内边距 —— 14px 圆角在快照里会合成成四角发黑，那条 inset 描边会变成图上一圈灰边 */__bg.style.borderRadius='0';__bg.style.boxShadow='none';var __dlApp=document.getElementById('app');if(__dlApp){__dlApp.style.padding='0';}}}
+      // **下载独立表面标记**（o.dl）：fit 模式的"限高"策略要与浏览形态分开 ——
+      // 见 __render 里 fit 分支 maxHeight 的说明
+      window.__dl=!!o.dl;
       window.__fit=!!o.fit;
       window.__render(o.src, o.dark, !!o.fit);
       setTimeout(report,60); setTimeout(report,300);
@@ -3780,7 +3792,7 @@ globalThis["mermaid"] = globalThis.__esbuild_esm_mermaid_nm["mermaid"].default;
     try{
       var sv=document.querySelector('#app svg');
       if(sv){
-        if(window.__fit){ sv.style.width='auto'; sv.style.height='auto'; sv.style.maxWidth='100%'; sv.style.maxHeight='calc(100vh - 24px)'; } else { sv.style.maxWidth='100%'; }
+        if(window.__fit){ sv.style.width='auto'; sv.style.height='auto'; sv.style.maxWidth='100%'; sv.style.maxHeight = window.__dl ? 'none' : 'calc(100vh - 24px)'; } else { sv.style.maxWidth='100%'; }
         sv.style.height='auto';
       }
     }catch(e){}
