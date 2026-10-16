@@ -13,6 +13,7 @@
 
 import { common } from '@kit.AbilityKit';
 import { cryptoFramework } from '@kit.CryptoArchitectureKit';
+import { display } from '@kit.ArkUI';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
@@ -353,35 +354,37 @@ export class ChartCache {
    * `path()` 的裸路径，两者不可互相替换。
    */
   /**
-   * 这张图**是否已有缓存快照**（只判文件在不在，不读字节）。
+   * 导出侧认的**浅色快照键**，按优先级排（`pngEmbed` 与 `hasShot` 必须共用这一份，
+   * 两边口径不一样就会"判定说有图、嵌图时找不到图"——内核被丢掉、图又没嵌上，
+   * 导出页里那块直接空/退成源码，正是用户报的"graphviz 和 abc 也没加载出来"）。
+   */
+  private static lightShotKeys(ctx: common.UIAbilityContext, mode: string,
+    payload: string, bg: string): string[] {
+    return [
+      ChartCache.keyFor(mode, payload, false, bg),
+      ChartCache.keyFor(mode, payload, false, ''),
+      ChartCache.payloadKey(ctx, mode, payload, false)
+    ];
+  }
+
+  /**
+   * 这张图**是否已有可嵌进导出的快照**（只判文件在不在，不读字节）。
    *
-   * 键的取法与 `pngBase64` 同一口径（深浅两个 bg 直查 + payload 索引反查）。
    * 导出 / 打印侧用它做"缺图判定"（ChartRuntimeService.missingShots）：阅读页已经
    * 把每张图烘好了，导出嵌 PNG 就够 —— 设备实测一篇全图种文档的导出 HTML **17.8MB**
    * （62 张图 4.3MB + 渲染库 11.6MB），缺图判定让"图齐就一个库都不带"。
+   *
+   * ⚠️ `dark` 参数**故意不参与取键**：导出与打印恒定浅色（用户要求"深色底图永不进
+   * 导出"），所以只有浅色版才算数。深色模式下读书时这里会判"缺图"、导出把渲染库
+   * 背上（页面重），那是正确一侧的代价；根治是预渲染池把浅色版也烘一份（#65）。
    */
   static hasShot(ctx: common.UIAbilityContext, mode: string, payload: string,
                  dark: boolean, bg: string): boolean {
-    // 与 pngBase64 同一宽严口径：**两个深浅版本都算**（先请求版）。
-    // 这里比 pngBase64 严会让"缺图判定"误判"没快照"，导出/打印就又把渲染库背上。
-    const variants: string[] = [
-      ChartCache.keyFor(mode, payload, dark, bg),
-      ChartCache.keyFor(mode, payload, dark, ''),
-      ChartCache.keyFor(mode, payload, !dark, bg),
-      ChartCache.keyFor(mode, payload, !dark, ''),
-    ];
-    const idxKey: string = ChartCache.payloadKey(ctx, mode, payload, dark);
-    const idxOther: string = ChartCache.payloadKey(ctx, mode, payload, !dark);
-    if (idxKey.length > 0) {
-      variants.push(idxKey);
-    }
-    if (idxOther.length > 0) {
-      variants.push(idxOther);
-    }
+    const variants: string[] = ChartCache.lightShotKeys(ctx, mode, payload, bg);
     for (let k = 0; k < variants.length; k++) {
       // 走 srcPath 而不是 path：尺寸口径自检不过的坏图（见 dimMatchesPixels）不能算"有快照"，
       // 否则导出会以为能嵌图、把内核丢掉，结果那张图在导出页里根本不存在
-      if (ChartCache.srcPath(ctx, variants[k]).length > 0) {
+      if (variants[k].length > 0 && ChartCache.srcPath(ctx, variants[k]).length > 0) {
         return true;
       }
     }
@@ -396,27 +399,102 @@ export class ChartCache {
    * 导出内嵌快照图 + **逻辑尺寸**（用户实测"部分图片过小或被拉伸"）：
    * 快照是按阅读页卡片的设备像素烘的，浏览器不知道该显示多宽 → 被拉伸/过小。
    * 这里有 .dim 逻辑尺寸（w|h，vp）随图返回，导出侧据此显式定宽、等比缩放。
+   *
+   * ⚠️ **.dim 不是总有**：只有 katex 模板回传 postWidth，mermaid / plantuml / graphviz…
+   * 一律不回（见各模板的 report），那些键的 sidecar 就是空的。上一版此时返回裸图，
+   * 导出侧只能写 `max-width:100%` → 浏览器按**物理像素**显示 = 放大 density 倍
+   * （用户实测导出的公式块比正文大两三倍、图与图之间大小完全不一致）。
+   * 现在量不到 .dim 就按「PNG 像素 ÷ 屏幕密度」反推逻辑尺寸：像素本来就是
+   * 逻辑尺寸 × 密度，这一条恒等式比"等某个模板回传"可靠。
    */
   static pngEmbed(ctx: common.UIAbilityContext, mode: string, payload: string,
     dark: boolean, bg: string): string {
-    const dataUrl: string = ChartCache.pngBase64(ctx, mode, payload, dark, bg);
-    if (dataUrl.length === 0) {
+    // 强制浅色（用户要求）：深色底图永不进导出/打印——只试浅色键
+    //（bg 两个变体：实参 bg 与空 bg；payload 索引也是浅色档）
+    const candidates: string[] = ChartCache.lightShotKeys(ctx, mode, payload, bg);
+    for (let k = 0; k < candidates.length; k++) {
+      const key: string = candidates[k];
+      if (key.length === 0) {
+        continue;
+      }
+      const file: string = ChartCache.path(ctx, key);
+      if (file.length === 0) {
+        continue;
+      }
+      const dataUrl: string = ChartCache.dataUrlOf(file);
+      if (dataUrl.length === 0) {
+        continue;
+      }
+      let dim: string = ChartCache.dimOf(ctx, key);
+      if (dim.length === 0) {
+        dim = ChartCache.logicalDimOfPixels(file);
+      }
+      return dim.length > 0 ? dataUrl + String.fromCharCode(1) + dim : dataUrl;
+    }
+    return '';
+  }
+
+  /** PNG 文件 → data URL（读不出返回空串）。 */
+  private static dataUrlOf(file: string): string {
+    try {
+      const fh: fs.File = fs.openSync(file, fs.OpenMode.READ_ONLY);
+      let url: string = '';
+      try {
+        const stat: fs.Stat = fs.statSync(file);
+        const buf: ArrayBuffer = new ArrayBuffer(stat.size);
+        const n: number = fs.readSync(fh.fd, buf);
+        if (n > 0) {
+          url = 'data:image/png;base64,' + new util.Base64Helper()
+            .encodeToStringSync(new Uint8Array(buf, 0, n));
+        }
+      } finally {
+        try {
+          fs.closeSync(fh);
+        } catch (closeErr) {
+          // 关闭失败无副作用
+        }
+      }
+      return url;
+    } catch (err) {
       return '';
     }
-    // 命中哪个 key 无法从 pngBase64 得知——用同样的变体序列找第一个有 .dim 的
-    // 强制浅色（用户要求）：与 pngBase64 同口径，只试浅色键
-    const candidates: string[] = [
-      ChartCache.keyFor(mode, payload, false, bg),
-      ChartCache.keyFor(mode, payload, false, ''),
-      ChartCache.payloadKey(ctx, mode, payload, false)
-    ];
-    for (let k = 0; k < candidates.length; k++) {
-      const dim: string = ChartCache.dimOf(ctx, candidates[k]);
-      if (dim.length > 0) {
-        return dataUrl + String.fromCharCode(1) + dim;
+  }
+
+  /**
+   * 由 PNG 头反推**逻辑尺寸**（'w|h'，vp）：IHDR 宽高是物理像素，除以屏幕密度。
+   * 读不出（拿不到密度 / 头不完整）返回空串，导出侧退回自适应。
+   */
+  private static logicalDimOfPixels(file: string): string {
+    try {
+      const dens: number = display.getDefaultDisplaySync().densityPixels;
+      if (!(dens > 0)) {
+        return '';
       }
+      const fh: fs.File = fs.openSync(file, fs.OpenMode.READ_ONLY);
+      let buf: ArrayBuffer = new ArrayBuffer(24);
+      let n: number = 0;
+      try {
+        n = fs.readSync(fh.fd, buf);
+      } finally {
+        try {
+          fs.closeSync(fh);
+        } catch (closeErr) {
+          // 关闭失败无副作用
+        }
+      }
+      if (n < 24) {
+        return '';
+      }
+      const b: Uint8Array = new Uint8Array(buf);
+      const pw: number = ((b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19]) >>> 0;
+      const ph: number = ((b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23]) >>> 0;
+      if (pw <= 0 || ph <= 0) {
+        return '';
+      }
+      return Math.round(pw / dens) + '|' + Math.round(ph / dens);
+    } catch (err) {
+      return '';
     }
-    return dataUrl;
   }
 
   /**

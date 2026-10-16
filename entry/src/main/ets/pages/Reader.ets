@@ -7713,6 +7713,9 @@ export struct Reader {
         // 快照防黑底：webPageSnapshot 不含 alpha，透明会合成成黑——渲染时铺卡片底色。
         // ⚠️ 必须取**不透明版**（palette 原始值带 55% 透明度，Web 里会再合成出偏色底）
         cardBg: withAlpha(this.palette().codeBlockBg, 'FF'),
+        // 烘焙宽度 = 正文栏宽（去掉左右内边距）。必须给：不给就由"组件当时多宽"
+        // 决定排版，转场那几百毫秒里烘出来的图会挤成窄条（见 ChartRenderPool.hostWidth）
+        hostWidth: this.rootWidth - HwSpace.lg * 2,
         // 导出 / 打印前的失败重试信号（见 ChartRenderPool.retryTick）
         retryTick: this.poolRetryTick,
         onOneDone: () => {

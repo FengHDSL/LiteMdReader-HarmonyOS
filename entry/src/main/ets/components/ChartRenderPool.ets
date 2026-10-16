@@ -36,6 +36,15 @@ export struct ChartRenderPool {
   @Prop dark: boolean = false;
   /** 卡片底色（快照防黑底：webPageSnapshot 不含 alpha，透明会被合成成黑） */
   @Prop cardBg: string = '';
+  /**
+   * **烘焙宽度**（vp，正文字号那一栏的实际宽）。必须显式给 DiagramWeb 当
+   * `virtualWidth`：不给的话页面按"组件当时多宽"排版，而池子挂在页面根层，
+   * 转场 / 首帧那几百毫秒里组件宽度还不是最终值 —— 图就在一个窄条里重排，
+   * 节点竖成一列、文字溢出框外（用户实测导出与打印里"部分图表异常挤压拉伸"，
+   * 设备上一张状态图烘成 73×1274 像素）。给了定宽，页面自己把 body 钉到该宽度，
+   * 与组件的瞬时宽度彻底无关，烘出来的每张图宽度都一致。
+   */
+  @Prop hostWidth: number = 0;
   /** 每完成（或失败跳过）一张回调一次：宿主刷新正文让占位换成缓存图 */
   onOneDone: () => void = () => {
   };
@@ -357,6 +366,14 @@ export struct ChartRenderPool {
           dark: this.dark,
           cardBg: this.cardBg,
           inlineMode: this.current.inline === true,
+          // 定宽烘焙（见 hostWidth 声明）：0 = 沿用组件宽度（老行为）
+          virtualWidth: this.hostWidth,
+          // **与「手动下载」同一排版路径**（fit=true）：上一版只对齐了 `dl`（直角、
+          // 无内边距、不限高），却没给 fit —— 于是页面走的还是**卡片模式**那条支路：
+          // 按 viewBox 把整图夹进 capW×capH（340~600），长图被等比缩小 → 烘出一张
+          // 又窄又短的条（用户实测导出/打印"部分图表异常挤压拉伸"，设备上一张
+          // 状态图 73×1274、树形视图 61vp 宽，正是卡片模式 capH=340 的算结果）。
+          fit: true,
           // **导出形态**（2026-10-16 用户实测反馈："打印 / 导出的 html 里，公式块、
           // 图表不是手动下载的样式"）：直角 + 去内边距，与「手动下载」生成的图同形态 ——
           // 导出 / 打印的内嵌图与用户手里存的 PNG 必须长得一样。存盘前还会做一次
