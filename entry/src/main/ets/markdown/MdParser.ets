@@ -24,6 +24,10 @@
  * 只放行十六进制色值，`<script>`/`<style>` 整段丢弃——渲染层没有 CSS/JS 执行环境，
  * 放行等于把任意样式注入正文。
  *
+ * 离线铭牌（见 `Badge.ets`）：GitHub README 头部的 shields 徽章（`[![alt](徽标)](链接)`
+ * 整行、或 HTML 块里的 `<img src="…img.shields.io/…">`）在解析期就**换成结构化数据 /
+ * 本地绘制标记**，不依赖网络图片——网络拉不到、基础离线模式下也照常显示。
+ *
  * 刻意不支持（v1 范围）：
  *   **块级原生 HTML**（`<table>` 合并单元格、`<div>`、内嵌 `<svg>` 等，按文本显示）、
  *   多文件文档。
@@ -32,6 +36,7 @@
 import { PlantumlBridge } from './PlantumlBridge';
 import { ZenumlBridge } from './ZenumlBridge';
 import {
+  MdBadge,
   MdBlock,
   MdBlockKind,
   MdCalloutKind,
@@ -48,6 +53,7 @@ import {
 } from './MdTypes';
 import { isEmojiCodeChar, lookupEmoji } from './Emoji';
 import { MathLite } from './MathLite';
+import { Badge, MdImageInline } from './Badge';
 
 /** 匹配结果：尖括号自动链接 */
 interface AutolinkHit {
@@ -1576,14 +1582,39 @@ export class MdParser {
         para.push(nx.trim());
         i++;
       }
+      // ── 铭牌行（GitHub README 头部那种 shields 徽标）──────────────
+      // 用户实测：`[![Version](https://img.shields.io/badge/version-1.4.1-blue)](https://…)`
+      // 这种行进了澄笺会**原样印出 Markdown**——行内那条路把 `[![…](…)](…)`
+      // 当"链接"，链接文字正是那串原始语法。GitHub 上它是一枚小铭牌，
+      // 而 shields 图片要联网（国内常拉不到、基础离线模式必然失败），
+      // 所以这里识别出**整行只有徽标**的行，交给 Badge 在本地画（完全离线）。
+      // 识别放在下面两段文本级改写**之前**：徽标地址不能被缩写括号注之类改动。
+      // 只要有一个不是徽标、或混进普通文字，整行就回落到原有段落路径（行为不变）。
+      const badgeRows: MdBadge[][] = [];
+      let hasBadgeLine: boolean = false;
+      for (let bk: number = 0; bk < para.length; bk++) {
+        const row: MdBadge[] | null = Badge.parseLine(para[bk]);
+        if (row === null) {
+          badgeRows.push([]);
+        } else {
+          badgeRows.push(row);
+          hasBadgeLine = true;
+        }
+      }
       // 文献引用（pandoc [@key] → [key] 上标标记；文献列表由文档尾部自理）
       for (let ak = 0; ak < para.length; ak++) {
+        if (badgeRows[ak].length > 0) {
+          continue;
+        }
         if (para[ak].indexOf('[@') >= 0) {
           para[ak] = para[ak].replace(/\[@([^\]]+)\]/g, '[$1]');
         }
       }
       // 缩写括号注替换（命中缩写表的原样词 → 词(全称)，仅首现替换）
       for (let ak = 0; ak < para.length; ak++) {
+        if (badgeRows[ak].length > 0) {
+          continue;
+        }
         for (const akey of abbrMap.keys()) {
           if (para[ak] === akey || para[ak].indexOf(akey) >= 0) {
             const full: string | undefined = abbrMap.get(akey);
@@ -1599,7 +1630,39 @@ export class MdParser {
       // 没法单独批注，而且术语里带 `*` 或反引号时这层字符串拼接还会解析错。
       const allDefs: boolean = para.length >= 2
         && para.slice(1).every((dl: string) => dl.startsWith(':'));
-      if (allDefs) {
+      if (hasBadgeLine) {
+        // 相邻同性质的行分组：**连续的徽标行并成一个铭牌块**（多枚徽章排成一行），
+        // 其余连续行仍按原口径合成普通段落。分块后 srcLine 逐段对齐
+        // （块区间推断、编辑器分块编辑都依赖它）。
+        let bs: number = 0;
+        while (bs < para.length) {
+          const isBadge: boolean = badgeRows[bs].length > 0;
+          let be: number = bs;
+          const items: MdBadge[] = [];
+          while (be < para.length && (badgeRows[be].length > 0) === isBadge) {
+            if (isBadge) {
+              for (let q: number = 0; q < badgeRows[be].length; q++) {
+                items.push(badgeRows[be][q]);
+              }
+            }
+            be++;
+          }
+          if (isBadge) {
+            const bb: MdBlock = MdBlockFactory.paragraph(MdParser.badgePlain(items),
+              MdParser.badgeInlines(items), blocks.length);
+            bb.badges = items;
+            bb.srcLine = MdParser.orig(paraStart + bs);
+            blocks.push(bb);
+          } else {
+            const runText: string = para.slice(bs, be).join(' ');
+            const rb: MdBlock = MdBlockFactory.paragraph(runText,
+              MdParser.parseInline(runText), blocks.length);
+            rb.srcLine = MdParser.orig(paraStart + bs);
+            blocks.push(rb);
+          }
+          bs = be;
+        }
+      } else if (allDefs) {
         const term: string = para[0].trim();
         const termInlines: MdInline[] = MdParser.parseInline(term);
         for (let q = 0; q < termInlines.length; q++) {
@@ -1984,6 +2047,20 @@ export class MdParser {
         }
         const link: LinkHit = MdParser.linkAt(src, i);
         if (link.hit) {
+          // `[![alt](图片地址)](链接地址)`：**行内图片包链接**。
+          // 以前直接当链接处理 → 链接文字就是那串原始 Markdown，正文里赤裸露出来
+          // （用户实测："徽标显示成原始文本"）。整行只有徽标的情况已在段落分支
+          // 被识别成铭牌块（本地绘制、不联网）；这里是"句子中间夹一张带链接的图片"，
+          // 按图片口径渲染成替代文字，不再吐语法。
+          // 识别走 Badge 的扫描器（地址里允许成对括号，正则会在 `(API` 处截断）。
+          const wrapped: MdImageInline | null = Badge.parseImageOnly(link.label);
+          if (wrapped !== null) {
+            buf = MdParser.flush(out, buf, bold, italic, strike, code);
+            out.push(inlineOf(MdInlineKind.Image, wrapped.alt, wrapped.src, 0,
+              bold, italic, strike, code));
+            i = link.end;
+            continue;
+          }
           buf = MdParser.flush(out, buf, bold, italic, strike, code);
           out.push(inlineOf(MdInlineKind.Link, link.label, link.href, 0, bold, italic, strike, code));
           i = link.end;
@@ -2192,6 +2269,41 @@ export class MdParser {
   }
 
   /**
+   * 铭牌块 → 纯文本（复制 / 朗读 / 字数统计 / 搜索都读它）。
+   * 优先用替代文字（`![Version](…)` 里的 Version），没有就用 `label: message`。
+   */
+  private static badgePlain(items: MdBadge[]): string {
+    const parts: string[] = [];
+    for (let k: number = 0; k < items.length; k++) {
+      const b: MdBadge = items[k];
+      if (b.alt.length > 0) {
+        parts.push(b.alt);
+      } else if (b.label.length > 0 && b.message.length > 0) {
+        parts.push(b.label + ': ' + b.message);
+      } else {
+        parts.push(b.label.length > 0 ? b.label : b.message);
+      }
+    }
+    return parts.join(' ');
+  }
+
+  /** 铭牌块的行内片段：下游按段落读 `inlines` 时仍能看到可读文字（不吐原始语法）。 */
+  private static badgeInlines(items: MdBadge[]): MdInline[] {
+    const out: MdInline[] = [];
+    for (let k: number = 0; k < items.length; k++) {
+      const b: MdBadge = items[k];
+      let text: string = b.alt;
+      if (text.length === 0) {
+        text = b.label.length > 0 && b.message.length > 0 ? b.label + ' ' + b.message
+          : (b.label.length > 0 ? b.label : b.message);
+      }
+      out.push(inlineOf(MdInlineKind.Plain, k === 0 ? text : ' ' + text, '', 0,
+        false, false, false, false));
+    }
+    return out;
+  }
+
+  /**
    * 这一行是不是**块级 HTML** 的开头（`<table …>` / `<div …>` / `<svg …>`…）。
    * 返回根标签名；不是块级开头返回空串。
    */
@@ -2252,6 +2364,9 @@ export class MdParser {
    * （徽标图片、标题、加粗），WebView 只认 HTML。逐行做保守转换：
    * 已是 HTML 的行（`<` 开头）原样保留；整行构造（标题/徽标/图片/链接/加粗）
    * 才转换，不做行内混合解析，避免误伤。
+   *
+   * 徽标转换成 `<img>` 只是**中间形态**：紧随其后的 `Badge.rewriteHtml` 会把
+   * 徽标图片整体换成离线绘制标记（不联网），普通图片仍是 `<img>`。
    */
   static mdInHtml(html: string): string {
     const lines: string[] = html.split('\n');
@@ -2307,7 +2422,12 @@ export class MdParser {
     out = MdParser.dropTagPair(out, 'embed');
     out = MdParser.dropTagPair(out, 'object');
     // GitHub README 支持（用户实测铭牌显示成原始文本）：块内 Markdown → HTML
-    return MdParser.mdInHtml(MdParser.scrubHtmlTags(out));
+    out = MdParser.mdInHtml(MdParser.scrubHtmlTags(out));
+    // **离线铭牌**：把块里的 `<img src="https://img.shields.io/…">` 就地换成
+    // 本地绘制的徽标 HTML。这一步放在解析期（而不是渲染期）是刻意的：
+    // 阅读页的 html 预览卡、导出的整页 HTML、EPUB 打包全都读 `block.code`，
+    // 在这里换掉 = 三处同时生效、且都不再需要联网。
+    return Badge.rewriteHtml(out);
   }
 
   /**

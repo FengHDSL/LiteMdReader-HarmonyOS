@@ -67,6 +67,7 @@ import {
 } from './CodeHighlight';
 import {
   MdAnnotation,
+  MdBadge,
   MdBlock,
   MdBlockKind,
   MdCalloutKind,
@@ -1602,6 +1603,126 @@ export struct MdBlockView {
     .backgroundColor(this.palette.quoteBg)
   }
 
+  // ────────────────────── 离线铭牌（GitHub README 徽章）──────────────────────
+
+  /** 本块的铭牌列表（没有返回空数组——ArkTS 下少一处 undefined 判断就少一处崩点）。 */
+  private blockBadges(): MdBadge[] {
+    const list: MdBadge[] | undefined = this.block.badges;
+    if (list === undefined || list.length === 0) {
+      return [];
+    }
+    return list;
+  }
+
+  /** 铭牌文字：`for-the-badge` 形态在 shields 里是全大写。 */
+  private badgeText(raw: string, style: string): string {
+    return style === 'for-the-badge' ? raw.toUpperCase() : raw;
+  }
+
+  /** 铭牌高度（vp）：shields 的 flat 系列是 20，for-the-badge 是 28。 */
+  private badgeHeight(style: string): number {
+    return style === 'for-the-badge' ? 28 : 20;
+  }
+
+  /** 铭牌圆角：flat 3 / flat-square·for-the-badge 0 / plastic 4 / social 10（胶囊）。 */
+  private badgeRadius(style: string): number {
+    if (style === 'flat-square' || style === 'for-the-badge') {
+      return 0;
+    }
+    if (style === 'social') {
+      return 10;
+    }
+    return style === 'plastic' ? 4 : 3;
+  }
+
+  /** 铭牌字号：for-the-badge 用 10，其余 11（shields 实测口径）。 */
+  private badgeFontSize(style: string): number {
+    return style === 'for-the-badge' ? 10 : 11;
+  }
+
+  /** 单段左右内边距。 */
+  private badgePad(style: string): number {
+    return style === 'for-the-badge' ? 10 : (style === 'social' ? 8 : 6);
+  }
+
+  /**
+   * 点铭牌 = 点外链：与正文链接同一套分发（站内锚点 / 文档间 / 外链 / 复制）。
+   * 徽章本身是装饰，点它唯一说得通的行为就是打开它包着的那条链接。
+   */
+  private badgeTapped(badge: MdBadge): void {
+    const href: string = badge.href;
+    if (href.length === 0) {
+      return;
+    }
+    if (href.startsWith('#')) {
+      this.anchorHandler(href);
+    } else if (MdViewUtil.looksLikeDocLink(href)) {
+      this.docLinkHandler(href);
+    } else if (href.startsWith('http://') || href.startsWith('https://')) {
+      this.webLinkHandler(href);
+    } else {
+      this.copyText(href, '链接已复制');
+    }
+  }
+
+  /**
+   * 铭牌行：把 shields 徽章**画在本地**（不联网、也不吃"基础离线模式不加载网络图片"那道闸）。
+   *
+   * 为什么不用 ImmersiveChip：徽章底色是 shields 的品牌色（与主题无关），
+   * 且要两段式拼接（灰 label + 彩色 message），主题芯片表达不了这个形态。
+   * 尺寸/圆角/字号按 shields 实测口径（见 Badge.ets 顶部说明）。
+   */
+  @Builder
+  badgeRow() {
+    Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
+      ForEach(this.blockBadges(), (badge: MdBadge, bi: number) => {
+        Row() {
+          if (badge.label.length > 0) {
+            Text(this.badgeText(badge.label, badge.style))
+              .fontSize(this.badgeFontSize(badge.style))
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFFFF')
+              .maxLines(1)
+              .height(this.badgeHeight(badge.style))
+              .lineHeight(this.badgeHeight(badge.style))
+              .padding({ left: this.badgePad(badge.style), right: this.badgePad(badge.style) })
+              .backgroundColor(badge.labelColor)
+              .textAlign(TextAlign.Center)
+          }
+          if (badge.message.length > 0) {
+            Text(this.badgeText(badge.message, badge.style))
+              .fontSize(this.badgeFontSize(badge.style))
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#FFFFFFFF')
+              .maxLines(1)
+              .height(this.badgeHeight(badge.style))
+              .lineHeight(this.badgeHeight(badge.style))
+              .padding({ left: this.badgePad(badge.style), right: this.badgePad(badge.style) })
+              .backgroundColor(badge.color)
+              .textAlign(TextAlign.Center)
+          }
+          if (badge.label.length === 0 && badge.message.length === 0) {
+            // 极端情况（`badge/-red` 这种空文字徽章）：留一条色块，不要变成零宽节点
+            Text(' ')
+              .fontSize(this.badgeFontSize(badge.style))
+              .height(this.badgeHeight(badge.style))
+              .padding({ left: this.badgePad(badge.style), right: this.badgePad(badge.style) })
+              .backgroundColor(badge.color)
+          }
+        }
+        .height(this.badgeHeight(badge.style))
+        .borderRadius(this.badgeRadius(badge.style))
+        // clip 让两段底色跟着圆角收边（shields 的圆角是整个徽章共用的）
+        .clip(true)
+        .margin({ right: HwSpace.sm, top: 2, bottom: 2 })
+        .onClick(() => {
+          this.badgeTapped(badge);
+        })
+      }, (badge: MdBadge, bi: number) => this.block.id + '_bd' + bi + '_' + badge.label + badge.message)
+    }
+    .width('100%')
+  }
+
   // ────────────────────── 行内富文本 ──────────────────────
 
   /**
@@ -1801,13 +1922,14 @@ export struct MdBlockView {
   }
 
   /**
-   * 表格单元格用的行内渲染：不带选择与批注。
-   * 单元格本身处在一个横向滚动的 Scroll 里，长按选择会和横向拖动打架，
-   * 所以 v1 明确不支持在表格里做批注。
+   * 片段串 → 一串 Span（线性排版路径）。
+   * 注音不走这里，见 richText 的堆叠分支；表格单元格也走本路径
+   * （不带选择与批注：单元格在横向 Scroll 里，长按选择会和横向拖动打架）。
+   *
+   * 注：这里原先还挂着一个"表格单元格专用渲染"的 @Builder，方法早已删除，
+   * 只剩注释与一个空悬的 `@Builder` 叠在 spanRun 头上（编译器报
+   * "Duplicate '@Builder' decorators"）。本轮清理掉，别再让它复现。
    */
-  @Builder
-
-  /** 片段串 → 一串 Span（线性排版路径）。注音不走这里，见 richText 的堆叠分支。 */
   @Builder
   spanRun(pieces: MdPiece[], size: number, baseColor: string) {
     ForEach(pieces, (piece: MdPiece) => {
@@ -3672,6 +3794,10 @@ export struct MdBlockView {
         this.detailsView()
       } else if (this.block.kind === MdBlockKind.CodeGroup) {
         this.codeGroupView()
+      } else if (this.block.kind === MdBlockKind.Paragraph && this.blockBadges().length > 0) {
+        // **离线铭牌**（GitHub README 头部的 shields 徽章）：必须在 standaloneImage
+        // 之前判定——徽章块本质是"只有徽标的段落"，但渲染形态是芯片行、不是图片卡。
+        this.badgeRow()
       } else if (this.block.kind === MdBlockKind.Paragraph && this.standaloneImage() !== null) {
         this.imageView()
       } else if (this.block.footnoteNo > 0) {

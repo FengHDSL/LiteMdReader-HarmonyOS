@@ -46,5 +46,9 @@ signing/
 /fix_nav.ps1
 /tools/check_signing_block.js
 /tools/strip_signing.js
+# 校验脚本的临时产物（每次运行可重新生成：sim 的转写文件、探测缓存）
+/tools/.*-sim/
+/tools/.*-cache/
+/tools/.*-cjs/
 
 XJAU-README-修复版.md

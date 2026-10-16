@@ -14,8 +14,9 @@
 
 import { ChartCache } from '../service/ChartCache';
 import { CodeFamily, CodeHighlighter, CodeState, CodeToken, CodeTokenKind, newCodeState, resolveFamily } from './CodeHighlight';
-import { MdBlock, MdBlockKind, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
+import { MdBlock, MdBlockKind, MdBadge, MdInline, MdInlineKind, MdMetaItem, MdTableRow, MdTaskState, MdCalloutKind, GroupCode } from './MdTypes';
 import { MdParser } from './MdParser';
+import { Badge } from './Badge';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { PlantumlBridge } from './PlantumlBridge';
 import { util } from '@kit.ArkTS';
@@ -168,6 +169,28 @@ export class MdToHtml {
     return out;
   }
 
+  /**
+   * 铭牌组 → HTML（导出用；`<a>` 包住本地绘制的徽标标记）。
+   *
+   * 与阅读页同一份数据（`MdBlock.badges`，解析期已把 shields 地址解析完），
+   * 所以导出网页 / 打印里看到的铭牌与正文里一致，且**不联网**。
+   */
+  static badgeRow(items: MdBadge[]): string {
+    let out: string = '';
+    for (let k: number = 0; k < items.length; k++) {
+      const b: MdBadge = items[k];
+      let one: string = Badge.toHtml(b);
+      if (b.href.length > 0) {
+        one = '<a href="' + MdToHtml.esc(b.href) + '" style="text-decoration:none">' + one + '</a>';
+      }
+      if (k > 0) {
+        out += '&nbsp;';
+      }
+      out += one;
+    }
+    return out;
+  }
+
   /** 行内片段 → HTML。样式标志位已由解析器继承到每个片段。 */
   static inline(items: MdInline[]): string {
     let out: string = '';
@@ -189,6 +212,14 @@ export class MdToHtml {
       if (item.kind === MdInlineKind.Link) {
         body = '<a href="' + MdToHtml.esc(item.href) + '">' + body + '</a>';
       } else if (item.kind === MdInlineKind.Image) {
+        // **离线铭牌**：shields 徽章地址在导出里也不能退化成远程 `<img>`
+        // （打印/离线打开都是空框）。解析期已能识别的地址在这里直接出本地绘制标记。
+        const badgeSpec: MdBadge | null = Badge.parse(item.href);
+        if (badgeSpec !== null) {
+          badgeSpec.alt = item.text;
+          body = Badge.toHtml(badgeSpec);
+          continue;
+        }
         const alt: string = item.text.length > 0 ? item.text : 'image';
         // imsize（`![alt](a.png =120x60)`）：写成 max-width/max-height，
         // 与阅读页同口径 —— 视口更窄时仍然等比缩，不会把图拉变形
@@ -1119,7 +1150,14 @@ export class MdToHtml {
           body += '<h' + block.level + (anc.length > 0 ? ' id="' + MdToHtml.esc(anc) + '"' : '')
             + '>' + MdToHtml.inline(block.inlines) + '</h' + block.level + '>';
         } else if (block.kind === MdBlockKind.Paragraph) {
-          body += '<p>' + MdToHtml.inline(block.inlines) + '</p>';
+          // **铭牌段**（解析期识别出的 shields 徽章组）走本地绘制标记，
+          // 否则导出网页里的徽章会因远程图片拉不到而变成空框。
+          const badges: MdBadge[] | undefined = block.badges;
+          if (badges !== undefined && badges.length > 0) {
+            body += '<p>' + MdToHtml.badgeRow(badges) + '</p>';
+          } else {
+            body += '<p>' + MdToHtml.inline(block.inlines) + '</p>';
+          }
         } else if (block.kind === MdBlockKind.Chart) {
           // 图表块：rich 且语言受支持 → 渲染容器（渲染库内联）；
           // flowchart 语法 → 转换为 mermaid 渲染；graphviz 等无方案 → 保持代码块。

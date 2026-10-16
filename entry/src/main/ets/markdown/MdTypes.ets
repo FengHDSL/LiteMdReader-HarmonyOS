@@ -197,6 +197,16 @@ export interface MdBlock {
   headingSeq: number;
   /** 该块首行在原文中的行号（0 起）。任务列表勾选靠它改写原文对应行 */
   srcLine: number;
+  /**
+   * **铭牌行组**（GitHub README 头部那种 shields 徽标）。
+   *
+   * 为什么不新增一种 `MdBlockKind`：铭牌组本质上就是"一段只有徽标的段落"，
+   * 复用 Paragraph 可以让**所有下游（纯文本/统计/编辑器分块编辑/搜索）零改动**——
+   * 编辑器点进这一块时读的仍是原文行区间（4 行徽标 Markdown），
+   * 不会像新块类型那样需要逐处补分支、也不会丢源文本。
+   * 渲染侧（MdView）见到非空就画芯片行，其余消费者继续按 `inlines` 走。
+   */
+  badges?: MdBadge[];
 }
 
 /**
@@ -244,6 +254,38 @@ export interface MdNote {
   inlines: MdInline[];
   /** 注释块在 blocks 中的下标，用于跳转 */
   blockIndex: number;
+}
+
+/**
+ * 一枚**离线铭牌**（GitHub README 头部那种 shields.io 静态徽章）。
+ *
+ * 为什么要在解析期就把它结构化，而不是照旧丢个远程图片地址：
+ * 徽章是**由 URL 决定内容的静态图形**（`label-message-color` 全在地址里），
+ * 而 shields.io 在国内网络下经常拉不到、基础（纯离线）模式下更是必然失败——
+ * 用户实测就是"GitHub 上正常、澄笺里铭牌不显示"。把 URL 解析成这张结构，
+ * 就能在本地画出来：不联网、不依赖图片、深浅色都对得上。
+ *
+ * 字段口径与 shields 一致（实测校准，见 tools/probe-shields.js）：
+ *  · 只有 `message` 时渲染**单段**徽章（整条都是 color 底色，没有灰色左段）；
+ *  · `label` 非空时渲染两段：左 label / 右 message。
+ */
+export interface MdBadge {
+  /** 左段文字（label）；空串 = 单段徽章 */
+  label: string;
+  /** 右段文字（message）；空串 = 只有 label 的单段徽章 */
+  message: string;
+  /** 右段底色（#RRGGBB，已归一化；取不到时用 shields 默认色） */
+  color: string;
+  /** 左段底色（#RRGGBB；shields 默认 #555555，可用 ?labelColor= 覆盖） */
+  labelColor: string;
+  /** 形态：flat / flat-square / plastic / for-the-badge / social */
+  style: string;
+  /** 外链地址（`[![alt](徽标)](这里)` 的这里）；没有是空串 */
+  href: string;
+  /** 原替代文字（alt）——无障碍与纯文本口径（复制/朗读/统计）用 */
+  alt: string;
+  /** 原始图片地址（保留用于调试与"已支持/未支持"判定） */
+  src: string;
 }
 
 /**

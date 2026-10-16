@@ -152,6 +152,12 @@
   只改标记、不动行数，所以块 id 与批注坐标都不会漂移。
 - 代码高亮由 `CodeHighlight.ets` 自己做（C 系 / Python / Shell / SQL / 数据 / CSS 几套关键字 +
   注释 / 字符串 / 数字状态机），不依赖外部高亮库。
+- **GitHub README 的铭牌（shields 徽章）离线渲染**：`[![Version](https://img.shields.io/badge/…)](…)`
+  这类**整行徽标**由 `markdown/Badge.ets` 解析成结构化数据（label / message / 颜色 / 形态 /
+  外链），在阅读页用**本地绘制**的芯片呈现、在 HTML 块与导出里换成纯内联样式的标记——
+  网络拉不到、基础离线模式下都显示，且导出与打印一致。shields 的路径参数语义
+  （`__` / `--` / `_` 转义、命名色实测值、`?style=` `/static/v1` 等）都按官方口径实现，
+  非静态徽章（需要调 API 的 `img.shields.io/github/…`）仍走原网络图片路径。
 - 导出 HTML 由 `MdToHtml.ets` 生成自包含页面；公式与图表在导出时**优先复用预渲染缓存图**。
 
 ### 图表与公式：完全离线的渲染子系统

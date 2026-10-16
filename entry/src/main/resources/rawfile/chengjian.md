@@ -331,10 +331,31 @@ def fib(n):
 
 ### 3.15 正文里的 HTML
 
-> [!IMPORTANT]
-> **行内 HTML 标签不渲染**，会按纯文本显示（例如 `<b>粗</b>` 会原样看到尖括号）。
-> 但把语言写成 `html` 的**围栏代码块**例外：它会渲染成可交互的预览卡片，`<script>` 照常执行
-> —— 见第九节那个能用手指点着放的烟花。
+行内 HTML 的常用标签（`<kbd>` 键帽、`<ruby>` 注音、`<u>`/`<ins>` 下划线、`<mark>`、
+`<small>`、`<b>`/`<i>`/`<s>`、`<a>`、`<img>`、`<br>`、`<span style="color:…">`…）都能渲染，
+完整清单与放行的样式见最后一节的能力总览；不认识的成对标签会**脱掉标签、留下内容**，
+`<script>` / `<style>` 整段丢弃。
+
+块级 HTML（`<div>` / `<table>` / `<svg>` / `<figure>` / `<details>`…）整段收成一张
+**网页预览卡**（`render/html.html`），所以 colspan / rowspan、内嵌 SVG、进度条这类
+ArkUI 文本排不出来的东西能原样显示；自动识别出来的块会先摘掉 `<script>` `<iframe>`
+与 `on*` 事件属性。
+
+把语言写成 `html` 的**围栏代码块**不走上面那条闸，它按"我知道我在跑这段 HTML"处理：
+渲染成可交互的预览卡片，`<script>` 照常执行 —— 见第九节那个能用手指点着放的烟花。
+
+> [!TIP]
+> **GitHub README 的铭牌（shields 徽章）专门做了离线渲染**：
+> `[![Version](https://img.shields.io/badge/version-1.4.1-blue)](…)` 这类**整行徽标**被识别成
+> 「铭牌」，用本地绘制代替远程图片 —— 网络拉不到、基础离线模式下都照常显示，
+> 点一下打开它包着的链接；HTML 块里的 `<img src="https://img.shields.io/…">` 同样就地替换。
+>
+> 认得的写法：`/badge/<标签>-<值>-<颜色>` 两段与三段式、`?label=` `?color=` `?labelColor=`
+> `?style=` 覆盖、`/static/v1?label=&message=&color=` 入口，形态有 `flat` / `flat-square` /
+> `plastic` / `for-the-badge` / `social`；颜色既收十六进制与 `rgb()`，也收 shields 自己的
+> 命名色（用实测值，不是 CSS 那套）。`?logo=` 的小图标不画。
+> 夹在句子中间的徽标、以及要调 API 的动态徽章（`/github/v/release/…`）仍走网络图片，
+> 拉不到时和普通图片一样显示不出来。
 
 ### 3.16 澄笺不支持的写法
 
@@ -2592,6 +2613,7 @@ Graphviz 实测支持 `digraph` / `subgraph cluster_*` 聚类 / 边标签 / CJK 
 | 定义列表（`术语` + `: 定义`） | ✅ | 术语一段、每条定义单独一块（可单独批注）；导出不套 `<dl>` 而是缩进段 |
 | 行内 HTML（`<kbd>` `<ruby>` `<span style="color">` `<u>` `<mark>` `<sub>` `<sup>` `<small>` `<a>` `<img>` `<br>`） | ✅ | 键帽用窄空格当内边距；注音量宽后居中压在基准字上方、不占推进宽度（量不出来就退回小号上标），含注音的段自动加行距；`<script>` / `<style>` 丢弃。样式放行五样：十六进制字色、实心背景色、**渐变取第一个色标当近似底**、`font-size` 的 em / %（`<small>` 同义，px 不接）、font-weight ≥600 粗体 |
 | 块级 HTML（`<table>` 合并单元格、`<div style>`、`<svg>`、`<figure>`、音视频） | ✅ | 整段交给内嵌 WebView 渲染（`render/html.html`），所以 colspan / rowspan 这类排版能用；自动识别的块级 HTML 会先摘掉 `<script>` `<iframe>` 与 `on*` 事件属性 |
+| **离线铭牌**（GitHub README 的 shields 徽章） | ✅ | 整行徽标在**本地绘制**：灰底标签 + 彩底值，不联网、基础离线模式也显示，导出与打印一致，点开它包着的链接。形态与参数见 3.15 节 |
 | 4 空格 / Tab 缩进代码块 | ✅ | 老式写法；紧跟段落的缩进行仍是段落续行，隔一行空行才收成代码 |
 | Diff 代码块 ` ```diff ` | ✅ | 按行首 `+` / `-` / `@@` 整行着色（阅读页、导出、放大视图三处一致） |
 | 指定行高亮 ` ```js{1,3-5} ` | ✅ | VitePress / Shiki 写法，也认 `hl_lines="1 3"`；阅读页琥珀行底，导出网页同色 |
