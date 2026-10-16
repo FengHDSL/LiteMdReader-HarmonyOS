@@ -446,6 +446,8 @@ export struct Reader {
   @State enlargeForceLight: boolean = false;
   @State enlargeCaptureTick: number = 0;
   @State enlargeDownloading: boolean = false;
+  /** 下载期间切「整页模式」：fillHeight 关闭 → 页面高=完整内容高，屏外内容也进快照 */
+  @State enlargeDownloadMode: boolean = false;
   /** 浮层的 Web 是否挂载（退后台卸载、回前台重挂 —— 修"关屏再开自动退出页面"） */
   @State enlargeWebMounted: boolean = true;
   /** 回前台信号（EntryAbility 递增） */
@@ -5747,6 +5749,8 @@ export struct Reader {
     this.toast('正在生成浅色图片，请稍候…');
     // 强制浅色重渲染（DiagramWeb 的 dark/cardBg @Prop 重注入）
     this.enlargeForceLight = true;
+    // **切整页模式**：fillHeight 关 → 页面高 = 完整内容高（屏外内容也进快照）
+    this.enlargeDownloadMode = true;
     // 等重渲染 + mermaid 绘制 + 高度回传稳定后再截图（大图 1.5s 不够）
     setTimeout(() => {
       this.enlargeCaptureTick++;
@@ -5789,6 +5793,7 @@ export struct Reader {
       this.toast('下载失败');
     } finally {
       this.enlargeForceLight = false;
+      this.enlargeDownloadMode = false;
       this.enlargeDownloading = false;
     }
   }
@@ -8496,7 +8501,10 @@ export struct Reader {
                     // ctrl.zoom() 与捏合是同一个页面比例，± 与双指天然叠加。
                     zoom: true,
                     fit: true,
-                    fillHeight: true,
+                    // 下载时临时关 fillHeight：页面高 = 完整内容高（超出屏幕的部分
+                    // 也在页面里），整页快照才不会把屏外内容裁掉（用户实测公式
+                    // 太宽太长被裁）。截完恢复。
+                    fillHeight: this.enlargeDownloadMode ? false : true,
                     webZoom: this.webZoom,
                     // **refit 通道**（此前一直没接上）：工具栏「刷新」/旋转后递增，
                     // DiagramWeb 的 @Watch('doRefit') 会让页面按当前容器与缩放重新自适应
