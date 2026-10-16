@@ -803,6 +803,18 @@ export struct Reader {
    */
   @State visibleBlocks: number = 80;
   /**
+   * **实时卡的可见窗口**（块下标区间，前后各留 20 块余量）。
+   *
+   * 一张图表 / 公式卡就是一个 Web 实例，`visibleBlocks` 那套分批渲染管的是"块"，
+   * 管不到"块里的 Web" —— 示例文档滚过一遍后几十张实时卡全部挂着，实测就是
+   * "图表多了滑动卡顿无响应"（用户要求：只有滑到的卡片才开始加载）。
+   * 窗口外只挂骨架；滚进来才建 Web；期间后台池子把图烘成 PNG，烘好后这张卡切成
+   * 缓存图（Image），连 Web 都不再需要，重开文档直接命中磁盘缓存。
+   * ⚠️ 只在窗口挪动超过一档时才写这两个状态：每帧都写会让整棵正文跟着重渲染。
+   */
+  @State webWinFrom: number = 0;
+  @State webWinTo: number = 40;
+  /**
    * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
    * 用于从源码形态一键切回原来的预览形态。
    */
@@ -3885,6 +3897,16 @@ export struct Reader {
     this.progressBlock = center > this.headerCount() ? center - this.headerCount() : 0;
     this.scrolled = start > 0;
     this.progressDirty = true;
+
+    // **实时卡窗口**（见 webWinFrom）：List 下标换算成块下标，前后各留 20 块余量。
+    // 挪动超过 8 块才写状态 —— 边界上的卡片进出窗口本来就要重建 Web，太频繁
+    // 会变成"每帧重建"，比不节流更卡。
+    const winFrom: number = start - this.headerCount() - 20;
+    const winTo: number = end - this.headerCount() + 20;
+    if (Math.abs(winFrom - this.webWinFrom) > 8 || Math.abs(winTo - this.webWinTo) > 8) {
+      this.webWinFrom = winFrom < 0 ? 0 : winFrom;
+      this.webWinTo = winTo;
+    }
 
     // 回到文档顶部时永远展开，避免「在最上面却找不到入口」
     if (start <= 0) {
@@ -7827,7 +7849,7 @@ export struct Reader {
 
             // **只渲染已加载的块**：`.slice` 返回新数组，key 不变时已渲染的块被复用，
             // 新增的一批才会创建组件（不会整列重建）。
-            ForEach(this.blocks.slice(0, this.visibleBlocks), (block: MdBlock) => {
+            ForEach(this.blocks.slice(0, this.visibleBlocks), (block: MdBlock, idx: number) => {
               ListItem() {
                 MdBlockView({
                   block: block,
@@ -7837,6 +7859,9 @@ export struct Reader {
                   // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
                   indentOn: this.indentOn,
                   dark: this.isDark(),
+                  // **只有滚到附近的图表 / 公式卡才建 Web**（远端的挂骨架）：
+                  // 一篇几十张图全部同时加载就是"滑动卡顿无响应"（用户要求）
+                  webActive: idx >= this.webWinFrom && idx <= this.webWinTo,
                   annotations: this.annotations,
                   searchQuery: this.searchQuery,
                   systemSelectId: this.systemSelectBlock,
@@ -7890,7 +7915,7 @@ export struct Reader {
                     }
                 })
               }
-              }, (block: MdBlock) => {
+              }, (block: MdBlock, idx: number) => {
                 // **图表 / 公式条目**：key 用「内容哈希 + **该块自身缓存是否就绪**」。
                 // 就绪的条目切到缓存图、未就绪的保持占位——只有真正变化的那一个
                 // 会重建，其余 Web 实例被复用，不再反复重新加载（用户反馈：闪来闪去）。
@@ -7906,8 +7931,13 @@ export struct Reader {
                   const c: common.UIAbilityContext | null = this.ctx();
                   const ready: boolean =
                     c !== null && ChartCache.path(c, ck).length > 0;
+                  // **进出可见窗口也要换 key**：ForEach 对 key 不变的孩子根本不重建、
+                  // @Prop 也不会重新下发 —— 不把窗口状态编进 key，`webActive` 永远停在
+                  // 首次挂载时的值，懒挂载就完全失效（这条文件里已有先例：ready 同理）。
+                  const act: boolean = idx >= this.webWinFrom && idx <= this.webWinTo;
                   return block.id + '_' + this.docName + '_' + ck
                     + (tick >= 0 ? (ready ? '_r' : '_p') : '_p')
+                    + (act ? '_w' : '_i')
                     // 引擎开关（设置 → 引擎管理）变化 → 图表/公式条目也要重建成源码卡
                     //（完整列表进 key：开关组合不同就必然不同，避免"关 A 开 B"长度撞车）
                     + '_e' + this.disabledEngineList;

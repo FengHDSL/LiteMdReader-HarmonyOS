@@ -934,6 +934,16 @@ export struct MdBlockView {
   @Prop lineMul: number = HwType.lineDefault;
   // 深浅一变 → 所有图表/公式卡自动刷新（缓存 PNG 按深浅分别烘焙，全部作废）
   @Prop @Watch('refreshAllCharts') dark: boolean = false;
+  /**
+   * **本块是否在可见窗口内**（宿主按滚动区间下发，见 Reader 的 webWinFrom/To）。
+   *
+   * 图表 / 公式卡是实时 Web 实例，一篇几十张图的文档如果全部挂载，滑动就直接
+   * 冻住（用户实测"图表过多会滑动卡顿无响应"）。窗口外只挂骨架，滚进窗口才真正
+   * 加载；后台预渲染池烘好后这张卡切到缓存 PNG（Image），此后**不再需要 Web**，
+   * 重开文档也直接命中缓存（ChartCache 是磁盘缓存）。
+   * 默认 true：非阅读页宿主（对照阅读、抽屉、导出预览等）行为不变。
+   */
+  @Prop webActive: boolean = true;
   /** 当前文档的全部批注。按 blockId 过滤后才参与本块渲染。 */
   @Prop annotations: MdAnnotation[] = [];
   /** 处于"系统选择模式"的块 id（该块恢复系统原生长按菜单）；空串 = 无 */
@@ -2757,6 +2767,29 @@ export struct MdBlockView {
    *     一律缩到完整可见，绝不按自然尺寸放大裁切（用户实测类图"被放的很大、
    *     显示不完整"）。
    */
+  /**
+   * **可见窗口外的图表 / 公式卡骨架**（见 @Prop webActive）。
+   *
+   * 一张实时卡 = 一个 Web 实例，几十张同时挂着就是"图表多了滑不动"。骨架不挂
+   * Web，滚进窗口才真正加载；期间后台预渲染池把图烘成 PNG，烘好后这张卡直接切
+   * 缓存图（Image），连 Web 都不再需要，重开文档也直接命中磁盘缓存。
+   */
+  @Builder
+  webIdleCard() {
+    Column({ space: HwSpace.xs }) {
+      SymbolGlyph($r('sys.symbol.picture'))
+        .fontSize(20)
+        .fontColor([this.palette.textTertiary])
+      Text(L10n.t('滚动到这里后渲染'))
+        .fontSize(HwType.caption)
+        .fontColor(this.palette.textTertiary)
+    }
+    .width('100%')
+    .height(150)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
   @Builder
   blockImage(mode: string) {
     if (mode === 'katex') {
@@ -3239,7 +3272,12 @@ export struct MdBlockView {
       }) {
         Column() {
           this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
-          DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+          // 可见窗口外不挂 Web（见 webActive / webIdleCard）
+          if (this.webActive) {
+            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+          } else {
+            this.webIdleCard()
+          }
         }
         .width('100%')
       }
@@ -3253,7 +3291,8 @@ export struct MdBlockView {
     Column() {
       // **脑图专用实时卡片**（用户拍板）：固定纵横比画布 + 自然尺寸渲染 +
       // markmap 自带拖拽/缩放（卡片内即可浏览整图）；无回传、无截图、无时序问题。
-      if (this.block.lang.toLowerCase() === 'markmap' && !this.chartShowCode) {
+      // `webActive`：可见窗口外先挂骨架，滚进来才开 Web（一张脑图就是一个 Web 实例）。
+      if (this.block.lang.toLowerCase() === 'markmap' && !this.chartShowCode && this.webActive) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
           cardPadding: HwSpace.sm,
@@ -3317,6 +3356,9 @@ export struct MdBlockView {
                   .width('100%')
                   .height(codeBlockHeight(this.block.codeLines.length, this.bodySize))
                   .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.sm, bottom: HwSpace.sm })
+                } else if (!this.webActive) {
+                  // 可见窗口外不挂 Web 实例（见 @Prop webActive / webIdleCard）
+                  this.webIdleCard()
                 } else if (this.block.lang.toLowerCase() === 'markmap') {
                   DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
                 } else if (this.block.lang.toLowerCase() === 'mermaid') {

@@ -234,6 +234,16 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
       return seg.includes("if (lang === 'html') {")
         && !seg.includes("lang === 'html' || lang === 'markmap'");
     })());
+  // 阅读页性能（用户实测"图表多了滑动卡顿无响应"）：一张实时卡 = 一个 Web 实例，
+  // 必须只有滚到附近的卡才挂载；窗口状态要编进 ForEach 的 key，否则 @Prop 不下发。
+  check('⑤ 实时卡按可见窗口懒挂载（webActive + 窗口状态进 ForEach key）',
+    mdViewEts.includes('@Prop webActive: boolean = true;')
+    && mdViewEts.includes('} else if (!this.webActive) {')
+    && mdViewEts.includes('if (this.webActive) {')
+    && mdViewEts.includes('webIdleCard()')
+    && readerEts.includes('webActive: idx >= this.webWinFrom && idx <= this.webWinTo,')
+    && readerEts.includes("const act: boolean = idx >= this.webWinFrom && idx <= this.webWinTo;")
+    && readerEts.includes("+ (act ? '_w' : '_i')"));
   check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
     (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
     && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));
