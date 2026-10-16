@@ -1504,7 +1504,24 @@ export class MdParser {
         while (i < lines.length) {
           const hl: string = lines[i];
           if (hl.trim().length === 0) {
-            break;                        // 空行结束一块 HTML（CommonMark 第六类）
+            // GitHub README 的 div 块**内部允许空行**（居中标题/徽标分段）——
+            // 按 CommonMark 在空行断块会把块拆碎、徽标落进普通段落显示成
+            // 原始文本（用户实测 GitHub README 导入后铭牌全丢）。改为向后看：
+            // 根标签未闭合就吞掉空行继续收（连续空行 ≤ 8 防失控）。
+            let blanks: number = 0;
+            let j: number = i;
+            while (j < lines.length && lines[j].trim().length === 0 && blanks < 8) {
+              blanks++;
+              j++;
+            }
+            if (j < lines.length && blanks < 8) {
+              for (let b2: number = 0; b2 < blanks; b2++) {
+                picked.push('');
+              }
+              i = j;
+              continue;
+            }
+            break;
           }
           picked.push(hl);
           balance += MdParser.tagDelta(hl, rootTag);
@@ -2218,13 +2235,68 @@ export class MdParser {
    * 用户拿 ```html 围栏主动预览时**不**过这道闸——那是"我知道我在跑这段 HTML"；
    * 这条路径是给"别人发来的文档里正好有段 HTML"兜底，风险口径不一样。
    */
+  /**
+   * **HTML 块内的 Markdown 转 HTML**（GitHub README 支持，用户实测铭牌显示成
+   * 原始文本）：GitHub 风格的 `<div align="center">` 块里常混写 Markdown
+   * （徽标图片、标题、加粗），WebView 只认 HTML。逐行做保守转换：
+   * 已是 HTML 的行（`<` 开头）原样保留；整行构造（标题/徽标/图片/链接/加粗）
+   * 才转换，不做行内混合解析，避免误伤。
+   */
+  static mdInHtml(html: string): string {
+    const lines: string[] = html.split('\n');
+    const out: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const t: string = lines[i].trim();
+      if (t.startsWith('<') || t.length === 0) {
+        out.push(lines[i]);
+        continue;
+      }
+      const h: RegExpMatchArray | null = t.match(/^(#{1,6})\s+(.+)$/);
+      if (h !== null) {
+        const lv: number = h[1].length;
+        out.push('<h' + lv + ' style="margin:8px 0">' + MdParser.mdInlineToHtml(h[2]) + '</h' + lv + '>');
+        continue;
+      }
+      const li: RegExpMatchArray | null = t.match(/^\[!\[([^\]]*)\]\(([^)\s]+)\)\]\(([^)\s]+)\)$/);
+      if (li !== null) {
+        out.push('<a href="' + li[3] + '"><img src="' + li[2] + '" alt="' + li[1] + '"></a>');
+        continue;
+      }
+      const im: RegExpMatchArray | null = t.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+      if (im !== null) {
+        out.push('<img src="' + im[2] + '" alt="' + im[1] + '">');
+        continue;
+      }
+      const lk: RegExpMatchArray | null = t.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
+      if (lk !== null) {
+        out.push('<a href="' + lk[2] + '">' + lk[1] + '</a>');
+        continue;
+      }
+      const bo: RegExpMatchArray | null = t.match(/^\*\*(.+[^*])\*\*$/);
+      if (bo !== null) {
+        out.push('<b>' + bo[1] + '</b>');
+        continue;
+      }
+      out.push(lines[i]);
+    }
+    return out.join('\n');
+  }
+
+  /** 行内少量转换：加粗与行内代码（供 mdInHtml 的标题行用）。 */
+  static mdInlineToHtml(t: string): string {
+    let out: string = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return out;
+  }
+
   private static sanitizeHtmlBlock(text: string): string {
     let out: string = MdParser.dropTagPair(text, 'script');
     out = MdParser.dropTagPair(out, 'iframe');
     out = MdParser.dropTagPair(out, 'frame');
     out = MdParser.dropTagPair(out, 'embed');
     out = MdParser.dropTagPair(out, 'object');
-    return MdParser.scrubHtmlTags(out);
+    // GitHub README 支持（用户实测铭牌显示成原始文本）：块内 Markdown → HTML
+    return MdParser.mdInHtml(MdParser.scrubHtmlTags(out));
   }
 
   /**
