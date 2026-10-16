@@ -462,6 +462,14 @@ export struct Reader {
   @State enlargeWebMounted: boolean = true;
   /** 回前台信号（EntryAbility 递增） */
   @StorageProp('appForegroundTick') @Watch('onAppForegroundTick') appFgTick: number = 0;
+  /**
+   * **图表失败重试信号**（导出 / 打印前由 ExportService/PrintService 递增）：
+   * 转发给后台池清空失败集重跑一轮——"导出全图片化"时不希望个别时序抖动失败的
+   * 图拖累成"现场渲染的容器"。
+   */
+  @StorageProp('chartRetryTick') @Watch('onChartRetry') chartRetryTick: number = 0;
+  /** 转发给 ChartRenderPool 的重试计数（池子 @Watch 到就清失败集重跑） */
+  @State poolRetryTick: number = 0;
   /** 旋转后重新自适应请求计数（传给 DiagramWeb） */
   @State enlargeRefitTick: number = 0;
   /** 本段阅读的起始时间戳（ms）；0 = 未在计时（离场 / 退后台后清零） */
@@ -564,6 +572,14 @@ export struct Reader {
       return;
     }
     this.enlargeWebMounted = true;
+  }
+
+  /** 图表失败重试：导出 / 打印前发给后台池（清失败集重跑一轮，见 ChartRenderPool.retryTick）。 */
+  onChartRetry(): void {
+    if (this.chartRetryTick <= 0) {
+      return;
+    }
+    this.poolRetryTick = this.poolRetryTick + 1;
   }
 
   // ══════════════════════ 阅读时长统计 ══════════════════════
@@ -1366,12 +1382,13 @@ export struct Reader {
       if (mode === 'markmap') {
         continue;
       }
-      // **salt / ditaa / nwdiag 走实时卡片**（用户实测"阅读界面显示了 2 层卡片、覆盖掉了"）：
-      // 这三张是澄笺自绘的 HTML 模板，进后台池会先出一张 PNG、正文再叠实时 Web 占位，
-      // 两层尺寸口径稍有差就是"图压在图上"。与脑图同理，实时渲染最稳、还省一次截图。
-      if (mode === 'salt' || mode === 'ditaa' || mode === 'nwdiag') {
-        continue;
-      }
+      // **salt / ditaa / nwdiag：进池烘图、但正文仍走实时卡片**（2026-10-16 调整）：
+      // 这三张是澄笺自绘的 HTML 模板。正文曾因"实时卡与烘焙图两层叠加"（用户实测
+      // "阅读界面显示了 2 层卡片、覆盖掉了"）而整体排除出池子——那是对**正文显示**
+      // 的防护；但导出 / 打印同样靠"池子的快照图"（没图就退化成现场渲染的容器），
+      // 这三类一直烘不出来 → 导出里永远是"要 JS 现场画的容器"，和"图表一律用
+      // 生成的图片"的目标相悖。现在**只为导出 / 打印供图**而烘（正文的"用图分支"
+      // 在 MdView.isPoolOnlyLang 里对这三类保持排除，显示行为一点不变）。
       // **HTML 预览必须留在实时 Web 上**（用户实测"卡片上无法操作，只能放大后才行"）：
       // html 块的产物是**可交互网页**（按钮、canvas 触摸），一旦进后台池烘焙成 PNG，
       // 正文就会走 chartImagePath 的静态图分支——看着一样，点起来是死的。
@@ -7696,6 +7713,8 @@ export struct Reader {
         // 快照防黑底：webPageSnapshot 不含 alpha，透明会合成成黑——渲染时铺卡片底色。
         // ⚠️ 必须取**不透明版**（palette 原始值带 55% 透明度，Web 里会再合成出偏色底）
         cardBg: withAlpha(this.palette().codeBlockBg, 'FF'),
+        // 导出 / 打印前的失败重试信号（见 ChartRenderPool.retryTick）
+        retryTick: this.poolRetryTick,
         onOneDone: () => {
           // 只递增**图表就绪信号**：仅图表 / 公式条目重建（换成缓存图），
           // 正文其它条目不受影响 —— 避免整树重建造成的闪烁

@@ -117,9 +117,21 @@ export class ChartCache {
    *    一张时序图的键下存的是上一块公式的像素）。正文按 .dim 撑框 + Contain 显示 =
    *    图缩成卡片中间一条，且**重开文档也不会恢复**（用户报"正常阅读页面渲染也是错误"）。
    *    池子现在会拒收这类快照并重拍，这批已落盘的坏图必须靠升键作废。
+   *  · v25（2026-10-16 二十二次升级）：**"跨页面串图"坏图**（尺寸自洽、内容却是别的图）。
+   *    v24 治的是"拍矮了"（像素/逻辑两轴比较能测出来），但**旧页面在 loadUrl 窗口里
+   *    报的身高**会让池子在尺寸完全自洽的情况下拍下旧内容 —— 这类图 v24 的检查测不到，
+   *    例：用户机上 wavedrom 的键下存的是一张**另一个文档**的流程图（内容含 Pandoc，
+   *    本文档没有这个词），尺寸还是 wavedrom 该有的 365×94。修法 = DiagramWeb 在
+   *    "模板页切换窗口"（loadUrl → onPageEnd）丢弃全部尺寸报告（旧页面残报进不来，
+   *    池子只会收到新页面的真实回传）；这批已落盘的串图靠升键作废重生成。
+   *  · v26（2026-10-16 二十三次升级）：**图的形态统一为"下载样式"**。池子烘图改传
+   *    `dl: true`（直角 + 去内边距）并在落盘前裁到内容边界（`save(…, trim=true)`）——
+   *    导出 / 打印的内嵌图与用户"手动下载"的 PNG 长得一样（用户实测反馈："打印的
+   *    html 里，公式块、图表不是手动下载的样式"）。v25 的"卡片圆角 + 四周留白"图
+   *    形状不同（尺寸、边距全变），不升键就会新旧混用。
    */
   static keyFor(mode: string, payload: string, dark: boolean, bg: string = ''): string {
-    return ChartCache.hashOf('v24|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
+    return ChartCache.hashOf('v26|' + bg + '|' + mode + '|' + (dark ? 'd' : 'l') + '|' + payload);
   }
 
   private static hashOf(raw: string): string {
@@ -344,14 +356,14 @@ export class ChartCache {
    * 这张图**是否已有缓存快照**（只判文件在不在，不读字节）。
    *
    * 键的取法与 `pngBase64` 同一口径（深浅两个 bg 直查 + payload 索引反查）。
-   * 导出侧用它决定要不要再背 5.6MB 的 PlantUML 内核：阅读页已经把每张图烘好了，
-   * 导出嵌 PNG 就够 —— 设备实测一篇全图种文档的导出 HTML **12.1MB**（内核 5.6 +
-   * mermaid 3.4 + viz 1.2 + …），手机浏览器打开它就是"不渲染"。
+   * 导出 / 打印侧用它做"缺图判定"（ChartRuntimeService.missingShots）：阅读页已经
+   * 把每张图烘好了，导出嵌 PNG 就够 —— 设备实测一篇全图种文档的导出 HTML **17.8MB**
+   * （62 张图 4.3MB + 渲染库 11.6MB），缺图判定让"图齐就一个库都不带"。
    */
   static hasShot(ctx: common.UIAbilityContext, mode: string, payload: string,
                  dark: boolean, bg: string): boolean {
     // 与 pngBase64 同一宽严口径：**两个深浅版本都算**（先请求版）。
-    // 这里比 pngBase64 严会让 kernelNeeded 误判"没快照"，导出/打印就又把 5.6MB 内核背上。
+    // 这里比 pngBase64 严会让"缺图判定"误判"没快照"，导出/打印就又把渲染库背上。
     const variants: string[] = [
       ChartCache.keyFor(mode, payload, dark, bg),
       ChartCache.keyFor(mode, payload, dark, ''),
@@ -657,16 +669,47 @@ export class ChartCache {
    * 回传值）。传入时写 `<key>.dim` sidecar——显示端据此**按自然尺寸 + 横向滚动**
    * 展示超宽公式（"卡片内左右滑动、不限制大小"），不再被 objectFit.Contain
    * 压扁成"全部重叠到一起"（用户实测）。
+   *
+   * trim（可选，2026-10-16）：**落盘前裁到内容边界**——与「手动下载」出的图同款
+   * （trimPng：裁掉四周空白 + 留 12px 呼吸边）。池子烘的图供正文 / 导出 / 打印
+   * 共用，用户实测反馈"打印的 html 里，公式块、图表不是手动下载的样式"——
+   * 现在从烘焙源头统一成"下载样式"（配合池子 DiagramWeb 的 dl:true 直角形态）。
+   * 裁后 .dim 按"像素比例"折算（逻辑尺寸跟着内容边界缩）。
    */
   static async save(ctx: common.UIAbilityContext, key: string, pixel: image.PixelMap,
-                    w: number = 0, h: number = 0): Promise<string> {
+                    w: number = 0, h: number = 0, trim: boolean = false): Promise<string> {
     try {
       const dir: string = ctx.cacheDir + '/charts';
       if (!fs.accessSync(dir)) {
         fs.mkdirSync(dir, true);
       }
       const packer: image.ImagePacker = image.createImagePacker();
-      const bytes: ArrayBuffer = await packer.packToData(pixel, { format: 'image/png', quality: 100 });
+      let bytes: ArrayBuffer = await packer.packToData(pixel, { format: 'image/png', quality: 100 });
+      let wOut: number = w;
+      let hOut: number = h;
+      if (trim) {
+        try {
+          const before: image.ImageInfo = await pixel.getImageInfo();
+          const cut: ArrayBuffer = await ChartCache.trimPng(bytes);
+          if (cut.byteLength > 0 && cut.byteLength !== bytes.byteLength) {
+            // 裁后尺寸：重新解一次拿宽高（一次性成本，可接受）
+            const src2: image.ImageSource = image.createImageSource(cut);
+            const pm2: image.PixelMap = await src2.createPixelMap();
+            const info2: image.ImageInfo = await pm2.getImageInfo();
+            if (before.size.width > 0 && before.size.height > 0) {
+              wOut = Math.round(w * (info2.size.width / before.size.width));
+              hOut = Math.round(h * (info2.size.height / before.size.height));
+            }
+            src2.release();
+            pm2.release();
+            bytes = cut;
+          }
+        } catch (cutErr) {
+          // 裁边失败按原图存（宁可多一圈白边，不能丢图）
+          wOut = w;
+          hOut = h;
+        }
+      }
       const p: string = dir + '/' + key + '.png';
       const file: fs.File = fs.openSync(p, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
       try {
@@ -683,10 +726,10 @@ export class ChartCache {
       // 这里必须换新——否则图生成了、组件仍拿到空源（持续空白）
       ChartCache.uriMemo.set(key, 'file://' + p);
       // 逻辑尺寸 sidecar（与 savePngBase64 同款；重启后显示端仍能取到）
-      if (w > 0 && h > 0) {
-        ChartCache.setDim(key, w, h);
+      if (wOut > 0 && hOut > 0) {
+        ChartCache.setDim(key, wOut, hOut);
         try {
-          const dim: string = Math.round(w) + '|' + Math.round(h);
+          const dim: string = Math.round(wOut) + '|' + Math.round(hOut);
           const dp: string = dir + '/' + key + '.dim';
           const df: fs.File = fs.openSync(dp, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
           try {

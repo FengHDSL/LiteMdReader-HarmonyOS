@@ -125,6 +125,20 @@ class MdAtom {
 const detailsManualOpen: Map<string, boolean> = new Map<string, boolean>();
 
 /**
+ * **正文"只演实时卡、不换烘焙图"的图种**（salt / ditaa / nwdiag，2026-10-16）。
+ *
+ * 这三类由澄笺自绘模板实时渲染。它们现在**也会进池子烘图**——但那是给导出 / 打印
+ * 用的（"图表一律用生成的图片"）；正文展示保持实时卡形态：历史上"实时卡 + 烘焙图"
+ * 两层叠加过（用户实测"阅读界面显示了 2 层卡片、覆盖掉了"），此名单就是那道防线的
+ * 开关。**改这个名单前先想清楚两层卡片的风险。**
+ * （markmap 不在名单里：它在 chartView 第一个分支就分流成实时卡，天然走不到用图分支。）
+ */
+function isLiveCardOnly(lang: string): boolean {
+  const l: string = lang.trim().toLowerCase();
+  return l === 'salt' || l === 'ditaa' || l === 'nwdiag';
+}
+
+/**
  * 本次运行里**已经自动刷新过一次**的图表卡（键 = 内容寻址的缓存键）。
  *
  * 必须是模块级而不是 @State：自动刷新会让卡片从"缓存图"切到"实时 Web"，
@@ -3268,7 +3282,8 @@ export struct MdBlockView {
           }
           .width('100%')
         }
-      } else if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode) {
+      } else if (this.chartImagePath(this.block.lang.toLowerCase()).length > 0 && !this.chartShowCode
+        && !isLiveCardOnly(this.block.lang)) {
         ImmersiveCard({
           cardRadius: HwRadius.inner,
           cardPadding: HwSpace.sm,

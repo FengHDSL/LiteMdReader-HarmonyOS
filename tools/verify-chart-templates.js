@@ -132,8 +132,11 @@ fs.writeFileSync(OUT, JSON.stringify(manifest, null, 1));
     console.log('  FAIL  mermaid 浅色主题不是 default：neutral 会把参与者框画成灰框黑字');
   }
   const salt = fs.readFileSync(path.join(ROOT, 'entry/src/main/ets/service/ChartCache.ets'), 'utf8');
-  if (/['"]v24\|['"]/.test(salt)) {
-    console.log('  ok    缓存键盐已随主题升级（旧主题烘出的灰框 PNG 不会留在机上）');
+  // 只要求"盐 ≥ v25"（v25 起这些主题/引擎/串图修复都在内）；将来再升 v26/v27 不用动这里。
+  const saltM = salt.match(/['"]v(\d+)\|['"]/);
+  const saltVer = saltM === null ? 0 : parseInt(saltM[1], 10);
+  if (saltVer >= 25) {
+    console.log('  ok    缓存键盐已随主题升级（v' + saltVer + ' ≥ v25：旧主题灰框图 / 串图坏图不会留在机上）');
   } else {
     fails++;
     console.log('  FAIL  改了 mermaid 主题 / PlantUML 内核 / ZenUML 引擎但没升 ChartCache 键盐 → 卡片读旧图、放大才更新');

@@ -171,6 +171,60 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('④ 倍率口径与宿主一致：<0.995 才下发（否则每次渲染都白跑一遍收敛）',
     hostEts.includes('if (z < 1)') && hostEts.includes('const z: number = DlFit.zoomFor('));
 
+  // ── ⑤ 导出 / 打印"全图片化"（2026-10-16）：图表一律用生成的图片 ──
+  // 目标：导出 HTML 里公式 / 图表全部内嵌池子烘的 PNG，图齐时**一个渲染库都不带**
+  //（用户实测量级：17.8MB = 62 张图 4.3MB + 渲染库 11.6MB）。
+  const runtimeEts = readEts('service/ChartRuntimeService.ets');
+  const exportEts = readEts('service/ExportService.ets');
+  const printEts = readEts('service/PrintService.ets');
+  const poolEts = readEts('components/ChartRenderPool.ets');
+  const mdHtmlEts = fs.readFileSync(path.join(ETS, 'markdown', 'MdToHtml.ets'), 'utf8').replace(/\r\n/g, '\n');
+  const mdViewEts = fs.readFileSync(path.join(ETS, 'markdown', 'MdView.ets'), 'utf8').replace(/\r\n/g, '\n');
+
+  check('⑤ 缺图判定泛化到全部图种（missingShots / waitShots / fileStillNeeded）',
+    runtimeEts.includes('static missingShots(') && runtimeEts.includes('static async waitShots(')
+    && runtimeEts.includes('static fileStillNeeded('));
+  check('⑤ 旧的"只查 PlantUML"版本已移除（kernelNeeded 函数不在）',
+    !runtimeEts.includes('static kernelNeeded(') && !runtimeEts.includes('static async waitForShots('));
+  check('⑤ 导出：先发失败重试信号、再等（上限 45s）、超时按缺口裁库',
+    exportEts.includes("AppStorage.setOrCreate('chartRetryTick'")
+    && exportEts.includes('waitShots(ctx, parsed.blocks, dark, chartBg, 45000')
+    && exportEts.includes('fileStillNeeded(ctx, parsed.blocks, dark, chartBg'));
+  check('⑤ 打印：同一套等待 + 裁剪（45s，浅色口径）',
+    printEts.includes("AppStorage.setOrCreate('chartRetryTick'")
+    && printEts.includes("waitShots(ctx, parsed.blocks, false, '', 45000")
+    && printEts.includes("fileStillNeeded(ctx, parsed.blocks, false, '"));
+  check('⑤ 内联语义修正：inline=[] 也必须走内联分支（零库全图化不能掉进 CDN 回退）',
+    mdHtmlEts.includes('if (inline !== null) {')
+    && !/if \(inline !== null && inline\.length > 0\)/.test(mdHtmlEts));
+
+  // ➎.2 池子失败重试链：导出 → AppStorage → Reader → 池子（清失败集重跑一轮）
+  check('⑤ 池子有失败重试入口（retryTick → failed.clear + pump）',
+    poolEts.includes("@Watch('onRetryTick')") && poolEts.includes('this.failed.clear()'));
+  check('⑤ Reader 桥接（@StorageProp chartRetryTick → poolRetryTick → 池子 retryTick）',
+    readerEts.includes("@StorageProp('chartRetryTick')")
+    && readerEts.includes('this.poolRetryTick = this.poolRetryTick + 1')
+    && readerEts.includes('retryTick: this.poolRetryTick'));
+
+  // ➎.3 串图闸门（跨页面串图的治本 + 作废）
+  check('⑤ 串图闸门：模板页切换窗口丢弃旧页面的尺寸报告（pageLoading）',
+    webEts.includes('private pageLoading: boolean = false;')
+    && (webEts.match(/if \(this\.pageLoading\) \{/g) || []).length >= 2
+    && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
+  check('⑤ 键盐升到 v26（作废串图坏图 + 卡片样式的旧图）', cacheEts.includes("'v26|'"));
+
+  // ➎.4 图源扩展：wavedrom/abc 回归用图；salt/ditaa/nwdiag 进池但正文保持实时卡
+  check('⑤ pngSkip 只剩 html（wavedrom/abc 回归"快照优先"）',
+    /const pngSkip: boolean = langLower === 'html';/.test(mdHtmlEts));
+  const csAt = readerEts.indexOf('private collectChartTasks(');
+  const ceAt = readerEts.indexOf('顶栏 / 底栏的收起与展开', csAt);
+  const collectBody = (csAt >= 0 && ceAt > csAt) ? readerEts.substring(csAt, ceAt) : '';
+  check('⑤ 池子任务不再跳过 salt/ditaa/nwdiag（导出 / 打印要有图）',
+    collectBody.length > 0 && !/mode === 'salt'/.test(collectBody));
+  check('⑤ 正文对三类保持实时卡（isLiveCardOnly 名单 + 用图分支引用）',
+    mdViewEts.includes('function isLiveCardOnly(')
+    && mdViewEts.includes('!isLiveCardOnly(this.block.lang)'));
+
   console.log(fails === 0 ? 'CHART DOWNLOAD OK' : 'CHART DOWNLOAD FAILED: ' + fails);
   process.exit(fails === 0 ? 0 : 1);
 })().catch((e) => {

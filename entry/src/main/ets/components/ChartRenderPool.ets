@@ -39,6 +39,13 @@ export struct ChartRenderPool {
   /** 每完成（或失败跳过）一张回调一次：宿主刷新正文让占位换成缓存图 */
   onOneDone: () => void = () => {
   };
+  /**
+   * **失败重试信号**（导出 / 打印前由页面递增；见 onRetryTick）。
+   * 失败多是时序抖动（等高度超时 / 快照无响应 / 旧表面重拍超限），重开文档就会
+   * 重试——但导出时文档已经开着（进程内失败集还在），不主动清一遍就会"永远缺那几张"，
+   * 于是导出里它们退化成"现场渲染的容器"。清掉重跑一轮，大概率能补上。
+   */
+  @Prop @Watch('onRetryTick') retryTick: number = 0;
 
   /** 当前正在渲染的任务 */
   @State current: ChartTask | null = null;
@@ -65,6 +72,16 @@ export struct ChartRenderPool {
   private captureRetry: number = 0;
 
   aboutToAppear(): void {
+    this.pump();
+  }
+
+  /** 失败重试信号：清空失败集并重新推进队列（导出 / 打印前调用一次，见 retryTick）。 */
+  private onRetryTick(): void {
+    if (this.retryTick <= 0) {
+      return;
+    }
+    this.failed.clear();
+    this.captureRetry = 0;
     this.pump();
   }
 
@@ -194,7 +211,7 @@ export struct ChartRenderPool {
           this.finishOne(t);
           return;
         }
-        ChartCache.save(c, t.key, pixel, w, h).then(() => {
+        ChartCache.save(c, t.key, pixel, w, h, true).then(() => {
           // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
           ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.dark, t.key);
           this.finishOne(t);
@@ -340,6 +357,12 @@ export struct ChartRenderPool {
           dark: this.dark,
           cardBg: this.cardBg,
           inlineMode: this.current.inline === true,
+          // **导出形态**（2026-10-16 用户实测反馈："打印 / 导出的 html 里，公式块、
+          // 图表不是手动下载的样式"）：直角 + 去内边距，与「手动下载」生成的图同形态 ——
+          // 导出 / 打印的内嵌图与用户手里存的 PNG 必须长得一样。存盘前还会做一次
+          // 裁边（见 onCaptured → ChartCache.save 的 trim 参数）：去掉四周空白，
+          // 长宽就是内容边界。
+          dl: true,
           webId: 'bgchart_' + this.current.key,
           captureRequest: this.captureTick,
           onHeightReady: () => {

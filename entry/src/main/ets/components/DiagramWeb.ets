@@ -183,6 +183,19 @@ export struct DiagramWeb {
   /** 正文卡片是否已经"出图后自动重载"过一次（每张卡一次，见 postWidth 里的说明） */
   private autoReloaded: boolean = false;
   /**
+   * **正在切换模板页**（loadUrl 之后、onPageEnd 之前）：此窗口内的尺寸报告一律丢弃。
+   *
+   * ⚠️ 这是"跨页面串图"的闸门（2026-10-16 真机取证实锤）：池子复用同一个组件跑
+   * 连续任务，切 mode（或刷新 / 切文档）时旧页面还挂在组件上渲染着 —— 组件尺寸一变，
+   * **旧页面的 ResizeObserver 会以"新任务看起来合理的高度"回传**，池子信以为真、
+   * 去抖后拍快照，就把**旧页面的内容**存进了**新任务的键**。实例：用户机上 wavedrom
+   * 的键下存的是一张**另一个文档**的流程图（内容含 Pandoc，本文档没有这个词），
+   * 且尺寸自洽（池子的 stale 检查按"像素/逻辑"两轴比较，完全测不出来）。
+   * 闸门落下后池子只会收到**新页面自己的**回传，拍到的必然是它自己画的图。
+   * （loadUrl 失败时本标记会一直为 true → 报告全被丢弃 → 池子的 10s 等高度超时兜底。）
+   */
+  private pageLoading: boolean = false;
+  /**
    * 快照重试状态机（见 doCapture）：本轮已尝试拍次数 / 是否已成功回传产物 /
    * 已处理过的 captureRequest。池子的组件会被**连续任务复用**，所以必须按
    * 请求号归档 —— 新请求（captureRequest 变化）到来时重置前两项。
@@ -216,6 +229,10 @@ export struct DiagramWeb {
       .javaScriptProxy({
         object: {
           postWidth: (w: number) => {
+            // 页面切换窗口（loadUrl → onPageEnd）：旧页面的残留报告一律丢弃（防串图，见 pageLoading）
+            if (this.pageLoading) {
+              return;
+            }
             const v: number = typeof w === 'number' && !isNaN(w) && w > 0 ? Math.ceil(w) : 0;
             // **内容逻辑尺寸**（css px = vp）：任何模式都记录——快照链路把它写进
             // .dim sidecar，显示端据此对超宽公式"按自然尺寸 + 横向滚动"展示
@@ -243,6 +260,10 @@ export struct DiagramWeb {
             }
           },
           postHeight: (h: number) => {
+            // 页面切换窗口（loadUrl → onPageEnd）：旧页面的残留报告一律丢弃（防串图，见 pageLoading）
+            if (this.pageLoading) {
+              return;
+            }
             const v: number = typeof h === 'number' && !isNaN(h) ? h : 100;
             this.lastPostH = v;
             // 下载链路的尺寸通道（见 postWidth 同名调用）
@@ -279,6 +300,8 @@ export struct DiagramWeb {
         controller: this.ctrl
       })
       .onPageEnd(() => {
+        // 新页面就绪：打开闸门（此后收到的报告才是新页面自己的，见 pageLoading）
+        this.pageLoading = false;
         this.webReady = true;
         // 重新加载会把引擎页面比例打回 1：同步内部记账，再按当前 webZoom 补回去，
         // 否则「刷新 / 旋转」之后 ± 的档位与实际显示就对不上了
@@ -397,12 +420,15 @@ export struct DiagramWeb {
    * 画面还是图表"。这里手动 loadUrl 到新模板，并等页面重新注入 payload。
    */
   private onModeChanged(): void {
+    // 重载期间两道闸：不接受 payload 热注入（等新页面 onPageEnd 后统一首注）+
+    // 丢弃旧页面的尺寸报告（防串图，见 pageLoading）
+    this.webReady = false;
+    this.pageLoading = true;
     try {
-      // 重载期间不接受 payload 热注入（等新页面 onPageEnd 后统一首注）
-      this.webReady = false;
       this.ctrl.loadUrl('resource://rawfile/render/' + this.renderTemplate() + '.html');
     } catch (err) {
-      // 页面未就绪：忽略
+      // 页面未就绪、压根没切换出去：把闸门恢复，别把正常报告全丢了
+      this.pageLoading = false;
     }
   }
 
@@ -412,13 +438,16 @@ export struct DiagramWeb {
     if (!this.webReady) {
       return;
     }
+    this.webReady = false;
+    this.zoomApplied = 1;
+    // 同 onModeChanged：旧页面残留报告不进池子（见 pageLoading）
+    this.pageLoading = true;
     try {
-      this.webReady = false;
-      this.zoomApplied = 1;
       this.ctrl.loadUrl($rawfile('render/' + this.renderTemplate() + '.html'));
     } catch (e) {
       // 重载失败不拦后续（用户再点一次即可）
       this.webReady = true;
+      this.pageLoading = false;
     }
   }
 

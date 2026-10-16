@@ -67,7 +67,7 @@ function transpile(name, file) {
   });
   fs.writeFileSync(path.join(OUT, name.replace('.ets', '.js')), r.outputText);
 }
-const NEED_MD = ['MdTypes', 'Emoji', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser', 'CodeHighlight', 'MdToHtml'];
+const NEED_MD = ['MdTypes', 'Emoji', 'Badge', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser', 'CodeHighlight', 'MdToHtml'];
 for (const n of NEED_MD) {
   transpile(n, path.join(MD, n + '.ets'));
 }

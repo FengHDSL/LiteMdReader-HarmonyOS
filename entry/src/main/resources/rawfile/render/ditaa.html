@@ -110,6 +110,13 @@
     var lines=String(src||'').replace(/\r\n?/g,'\n').split('\n');
     while(lines.length>0 && lines[lines.length-1].replace(/\s+/g,'').length===0){ lines.pop(); }
     while(lines.length>0 && lines[0].replace(/\s+/g,'').length===0){ lines.shift(); }
+    // **剥掉 PlantUML 区块标记行**（@startditaa / @endditaa，连带 @startuml 包裹写法）：
+    // 它们只是"块的定界符"，不是图的一部分 —— 不剥会以"框外文字"身份画进图里
+    // （实测 @startditaa 成了图上方的文本行；nwdiag / salt 的渲染器天然容错，ditaa 没有）
+    lines = lines.filter(function (ln) {
+      var t = ln.trim().toLowerCase();
+      return t !== '@startditaa' && t !== '@endditaa' && t !== '@startuml' && t !== '@enduml';
+    });
     if(lines.length===0){ return '<div class="err">ditaa 内容为空</div>'; }
     var info=findBoxes(lines);
     var grid=info.grid, rows=info.rows;

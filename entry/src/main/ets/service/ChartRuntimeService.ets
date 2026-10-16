@@ -100,43 +100,101 @@ export class ChartRuntimeService {
   }
 
   /**
-   * 导出 / 打印**要不要带 5.6MB 的 PlantUML 内核**。
+   * **还差几张图没快照**（导出 / 打印"全图片化"的核心计数，2026-10-16 泛化自
+   * 原来只管 PlantUML 的 kernelNeeded）。
    *
-   * 设备实测：带内核的全图种导出 HTML 有 12.1MB，手机浏览器打开直接空白
-   * （同一份文件在桌面浏览器里 14/14 PlantUML、31/31 mermaid、23/23 公式全出图）。
-   * 阅读页预渲染池已经把每张 PlantUML 烘成 PNG，导出嵌 `<img>` 就够，
-   * 所以**只要还有块没烘出来才带内核**——一条都没烘出来时才会背这 5.6MB。
+   * 导出 / 打印里每张图都优先内嵌池子烘的快照（`<img>` base64）——所有图都齐时，
+   * 一个个渲染库（mermaid 3.6MB / PlantUML 内核 5.7MB / viz 1.2MB…）全都不必带，
+   * 文件能掉一个数量级、打开也快（以前全带时手机浏览器直接空白）。
+   *
+   * 检查范围 = 导出里**会查快照的块**：
+   *   · Chart 块（排除 html——导出原样输出可交互网页；排除 markmap——正文拍板
+   *     实时卡、不进池子，导出保留轻量库渲染；引擎被关的排除——导出降级代码块）；
+   *   · Math 公式块（katex，引擎被关的排除）。
+   * 返回 0 = 所有图都有快照，导出可以**一个渲染库都不带**；大于 0 = 调用方先等
+   * （waitShots），仍缺才按缺口带库。
    */
-  static kernelNeeded(ctx: common.UIAbilityContext, blocks: MdBlock[],
-                      dark: boolean, bg: string): boolean {
+  static missingShots(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                      dark: boolean, bg: string): number {
+    let n: number = 0;
     for (let k = 0; k < blocks.length; k++) {
       const b: MdBlock = blocks[k];
-      if (b.kind !== MdBlockKind.Chart || b.lang.trim().toLowerCase() !== 'plantuml') {
+      let lang: string = '';
+      if (b.kind === MdBlockKind.Chart) {
+        lang = b.lang.trim().toLowerCase();
+        if (lang === 'html' || lang === 'markmap') {
+          continue;
+        }
+      } else if (b.kind === MdBlockKind.Math) {
+        lang = 'katex';
+      } else {
         continue;
       }
-      if (!ChartCache.hasShot(ctx, 'plantuml', b.code, dark, bg)) {
+      if (MdToHtml.engineOffForLang(lang)) {
+        continue;
+      }
+      if (!ChartCache.hasShot(ctx, lang, b.code, dark, bg)) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * **等缺的图烘出来**（有上限；超时返回，调用方按剩余缺口决定带库）。
+   * 每轮把"还差几张"报给调用方（进度提示）。池子在后台持续补烘 —— 文档开着
+   * 越久缺口越小；打开就导出的大文档可能等不满，超时后按缺口带库兜底。
+   */
+  static async waitShots(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                         dark: boolean, bg: string, maxMs: number,
+                         notify: (message: string) => void): Promise<void> {
+    const t0: number = Date.now();
+    let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
+    while (n > 0) {
+      if (Date.now() - t0 >= maxMs) {
+        return;
+      }
+      notify('正在生成图片（还差 ' + n + ' 张）…');
+      await new Promise<void>((res: () => void) => {
+        setTimeout(res, 500);
+      });
+      n = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
+    }
+  }
+
+  /**
+   * **逐个库过筛**：这个库还要不要带？（"还缺图的块"里还有需要它的吗）
+   * 全图齐时调用方直接 needed=[]，无需逐个问；有缺时用它把"不缺的库"摘掉 ——
+   * 比如全篇只剩 1 张 mermaid 没烘出来，就只留 mermaid.min.js。
+   */
+  static fileStillNeeded(ctx: common.UIAbilityContext, blocks: MdBlock[],
+                         dark: boolean, bg: string, file: string): boolean {
+    for (let k = 0; k < blocks.length; k++) {
+      const b: MdBlock = blocks[k];
+      let lang: string = '';
+      if (b.kind === MdBlockKind.Chart) {
+        lang = b.lang.trim().toLowerCase();
+        if (lang === 'html' || lang === 'markmap') {
+          continue;
+        }
+      } else if (b.kind === MdBlockKind.Math) {
+        lang = 'katex';
+      } else {
+        continue;
+      }
+      if (MdToHtml.engineOffForLang(lang)) {
+        continue;
+      }
+      const files: string[] =
+        ChartRuntimeService.filesForLang(lang, b.kind === MdBlockKind.Chart ? b.code : '');
+      if (files.indexOf(file) < 0) {
+        continue;
+      }
+      if (!ChartCache.hasShot(ctx, lang, b.code, dark, bg)) {
         return true;
       }
     }
     return false;
-  }
-
-  /**
-   * 等预渲染池把缺的快照补齐（**有上限**，超时就走带内核的路）。
-   * 打开文档就立刻导出时池子常常还在烘（设备实测：导出在 23:31，最后一张 23:32 才落盘），
-   * 就差那一两张会让整份导出多背 5.6MB，等几百毫秒到几秒是划算的。
-   */
-  static async waitForShots(ctx: common.UIAbilityContext, blocks: MdBlock[],
-                            dark: boolean, bg: string, maxMs: number): Promise<void> {
-    const t0: number = Date.now();
-    while (ChartRuntimeService.kernelNeeded(ctx, blocks, dark, bg)) {
-      if (Date.now() - t0 >= maxMs) {
-        return;
-      }
-      await new Promise<void>((res: () => void) => {
-        setTimeout(res, 300);
-      });
-    }
   }
 
   /**

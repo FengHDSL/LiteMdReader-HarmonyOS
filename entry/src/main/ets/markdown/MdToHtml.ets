@@ -581,7 +581,10 @@ export class MdToHtml {
       return empty;
     }
     // ── 内联模式 ──
-    if (inline !== null && inline.length > 0) {
+    // ⚠️ 条件是 **inline !== null**（含空数组）：空数组 = "所有图都已有快照、一个渲染库
+    // 都不需要"——这是导出全图化的目标形态，绝不能掉进下面的 CDN 回退（那会给导出页
+    // 挂上联网脚本，离线打开就残）。null 才是"库读不出来"的回退信号。
+    if (inline !== null) {
       let head: string = '';
       for (let k = 0; k < inline.length; k++) {
         const code: string =
@@ -1169,9 +1172,13 @@ export class MdToHtml {
           // 烘成 PNG，导出直接内嵌 base64 —— 离线打开、打印都是所见即所得。
           let pngFound: string = '';
           let pngW: number = 0;
-          // wavedrom / abc **不走快照图**（用户实测这两类的快照图内容是错的）：
-          // 两家的渲染库很小（0.5MB + 0.05MB），导出页内联渲染库现场画，图与源码必然一致。
-          const pngSkip: boolean = langLower === 'html' || langLower === 'wavedrom' || langLower === 'abc';
+          // **wavedrom / abc 回归"快照优先"**（2026-10-16）：这两类曾因"快照图内容错误"
+          // 被排除走渲染库。根因已取证实锤为**"跨页面串图"**——切模板页的窗口里旧页面的
+          // 尺寸残报骗过池子、把别的图存进了它的键（用户机上 wavedrom 的键下存的是
+          // 另一篇文档的流程图，内容含 Pandoc）。现由 DiagramWeb 的页面切换窗口
+          // （pageLoading）治本 + v25 升键作废旧图，这两类回到与其它图种同一口径。
+          // html 块保持排除：它的产物是**可交互网页**，截图不适用（要能点能跑）。
+          const pngSkip: boolean = langLower === 'html';
           if (ctx !== null && !pngSkip && !MdToHtml.engineOffForLang(langLower)) {
             // pngEmbed = 快照图 + .dim 逻辑尺寸（导出页据此按原始宽显示，不拉伸不过小）
             const embed: string = ChartCache.pngEmbed(ctx, langLower, block.code, dark, chartBg);

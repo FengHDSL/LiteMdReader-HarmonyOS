@@ -52,16 +52,22 @@ export class PrintService {
           }
         }
       }
-      // **PlantUML 内核 5.6MB 只在没有快照可嵌时才带上**（与导出同一套判定）：
+      // **全图种"等齐 + 裁剪"**（与导出同一套判定，2026-10-16 泛化自"只管 PlantUML"）：
       // 打印页要装进 ArkWeb 再交给系统打印，12MB 的页面在手机上直接空白。
-      if (needed.indexOf('plantuml-kernel.js') >= 0) {
-        notify('正在补齐图表快照…');
-        // 等待上限 5s -> 20s：示例文档十几张 PlantUML 图，5 秒烘不完，
-        // 快照不齐就会把 5.6MB 内核也背进打印页（12MB 页面手机上渲染失败）。
-        await ChartRuntimeService.waitForShots(ctx, parsed.blocks, false, '', 20000);
-        const kernelAt: number = needed.indexOf('plantuml-kernel.js');
-        if (kernelAt >= 0 && !ChartRuntimeService.kernelNeeded(ctx, parsed.blocks, false, '')) {
-          needed.splice(kernelAt, 1);
+      // 等齐 → 一个渲染库都不带（公式/图表全部是生成的图片）；超时 → 按缺口逐个库
+      // 过筛，只有"还有缺图的图种"的库才留。
+      const missing0: number = ChartRuntimeService.missingShots(ctx, parsed.blocks, false, '');
+      if (missing0 > 0) {
+        // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
+        const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
+        AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
+        // 等待上限 45s（原来 20s 且只管 PlantUML）：示例文档十几张图，5 秒烘不完；
+        // 快照不齐就会把渲染库背进打印页（12MB 页面手机上渲染失败）。
+        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 45000, notify);
+        for (let i = needed.length - 1; i >= 0; i--) {
+          if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, false, '', needed[i])) {
+            needed.splice(i, 1);
+          }
         }
       }
       // 用户要求：渲染库提前缓存到应用内、打印时内嵌进 HTML

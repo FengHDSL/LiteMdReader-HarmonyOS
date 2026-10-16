@@ -191,19 +191,24 @@ export class ExportService {
         }
       }
     }
-    // **PlantUML 内核 5.6MB 只在没有快照可嵌时才带上**：设备实测一篇全图种文档的
-    // 导出 HTML 有 12.1MB（内核 5.6 + mermaid 3.4 + viz 1.2 + …），手机浏览器打开
-    // 直接空白（同一份文件在桌面浏览器里 14/14 PlantUML 全出图）。阅读页预渲染池
-    // 已经把每张 PlantUML 烘成 PNG，导出走 <img> 就够，文件能掉一个数量级。
-    // 池子常常还在烘最后一两张（实测：导出 23:31、最后一张 23:32 才落盘），
-    // 所以先给它最多 5 秒补齐，再决定要不要背这 5.6MB。
-    if (needed.indexOf('plantuml-kernel.js') >= 0) {
-      notify('正在补齐图表快照…');
-      await ChartRuntimeService.waitForShots(ctx, parsed.blocks, dark, chartBg, 5000);
-      const kernelAt: number = needed.indexOf('plantuml-kernel.js');
-      if (kernelAt >= 0
-        && !ChartRuntimeService.kernelNeeded(ctx, parsed.blocks, dark, chartBg)) {
-        needed.splice(kernelAt, 1);
+    // **全图种"等齐 + 裁剪"**（2026-10-16 从"只管 PlantUML 内核"泛化）：
+    // 目标形态 = 导出 HTML 里的公式与图表**全部是生成的图片**（`<img>` base64），
+    // 一个个渲染库都不用带 —— 文件小一个数量级、打开即见（以前全带 12MB+ 时
+    // 手机浏览器直接空白）。池子会持续把缺的图烘出来，所以：
+    //   ① 先发一次"失败重试信号"（时序抖动类失败清掉重跑一轮，多半能补上）；
+    //   ② 有缺就等（带进度提示，上限 45s）；等齐 → 库全不带；
+    //   ③ 超时仍缺 → 按缺口逐个库过筛：只有"还有缺图的图种"的库才留（全篇只剩
+    //      1 张 mermaid 没烘出来，就只背 mermaid.min.js）。
+    const missing0: number = ChartRuntimeService.missingShots(ctx, parsed.blocks, dark, chartBg);
+    if (missing0 > 0) {
+      // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
+      const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
+      AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
+      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 45000, notify);
+      for (let i = needed.length - 1; i >= 0; i--) {
+        if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, dark, chartBg, needed[i])) {
+          needed.splice(i, 1);
+        }
       }
     }
     notify('正在导入图表组件…');
