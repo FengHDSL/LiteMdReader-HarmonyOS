@@ -516,13 +516,11 @@ export class MdToHtml {
   }
 
   /**
-   * **按逻辑尺寸定宽，但窄图要放大**（用户实测"图表又被挤压了"）。
-   *
-   * 快照是设备像素烘的：逻辑 116vp 的一张需求图，PNG 里有 406 个真实像素。
-   * 上一版只按逻辑宽写 `width:116px` —— 在 820px 版心的导出页里就成了贴在
-   * 左边的一条,看着和被压扁没区别(图本身没变形,是**显示得太窄**)。
-   * 现在允许放大到逻辑宽的 1.75 倍(仍有 ~2x 超采样,不会糊),并给 200vp 的地板;
-   * 本来就宽的图(逻辑宽 ≥ 200)一律不动,保持原样不放大。
+   * **按逻辑尺寸定宽**（用户实测部分图片过小或被拉伸）：快照的物理像素
+   * 尺寸≠该显示的尺寸，`.dim`（或 ChartCache 按像素 ÷ 密度反推的值）才是 vp 口径。
+   * **完整画布**（用户要求）：按逻辑尺寸原宽显示，不设 max-width 钳制
+   *（宽于页面的图由页面横向滚动承载），保证整张图完整出现在导出/打印里。
+   * 量不到尺寸才退回自适应。
    */
   private static embedStyle(embed: string): string {
     const sep: number = embed.indexOf(String.fromCharCode(1));
@@ -531,11 +529,7 @@ export class MdToHtml {
     }
     const wh: string[] = embed.substring(sep + 1).split('|');
     const w: number = wh.length === 2 ? (parseInt(wh[0], 10) || 0) : 0;
-    if (w <= 40) {
-      return 'max-width:100%;height:auto';
-    }
-    const shown: number = Math.max(200, Math.min(w, 520, Math.floor(w * 1.75)));
-    return 'width:' + shown + 'px;height:auto;margin:0 auto;display:block';
+    return w > 40 ? 'width:' + w + 'px;height:auto' : 'max-width:100%;height:auto';
   }
 
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */
