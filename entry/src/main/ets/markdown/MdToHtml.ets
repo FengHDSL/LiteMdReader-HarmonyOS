@@ -509,6 +509,29 @@ export class MdToHtml {
     return new util.Base64Helper().encodeToStringSync(bytes);
   }
 
+  /** ChartCache.pngEmbed 的返回拆成两半：`\x01` 之前是 data URL，之后是逻辑尺寸 'w|h'。 */
+  private static embedPng(embed: string): string {
+    const sep: number = embed.indexOf(String.fromCharCode(1));
+    return sep > 0 ? embed.substring(0, sep) : embed;
+  }
+
+  /**
+   * **按逻辑尺寸定宽**（用户实测部分图片过小或被拉伸）：快照的物理像素
+   * 尺寸≠该显示的尺寸，`.dim`（或 ChartCache 按像素 ÷ 密度反推的值）才是 vp 口径。
+   * **完整画布**（用户要求）：按逻辑尺寸原宽显示，不设 max-width 钳制
+   *（宽于页面的图由页面横向滚动承载），保证整张图完整出现在导出/打印里。
+   * 量不到尺寸才退回自适应。
+   */
+  private static embedStyle(embed: string): string {
+    const sep: number = embed.indexOf(String.fromCharCode(1));
+    if (sep <= 0) {
+      return 'max-width:100%;height:auto';
+    }
+    const wh: string[] = embed.substring(sep + 1).split('|');
+    const w: number = wh.length === 2 ? (parseInt(wh[0], 10) || 0) : 0;
+    return w > 40 ? 'width:' + w + 'px;height:auto' : 'max-width:100%;height:auto';
+  }
+
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */
   private static chartContainer(lang: string, lines: string[]): string {
     const b64: string = MdToHtml.b64(lines.join('\n'));
@@ -621,6 +644,10 @@ export class MdToHtml {
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
           return true;
         }
+        // 行内公式在导出侧没有图片路径（只有 .kxi 容器现场渲染）——有它同样要 katex
+        if (lang === 'katex' && MdToHtml.blockHasInlineMath(b)) {
+          return true;
+        }
       }
       return false;
     };
@@ -679,6 +706,39 @@ export class MdToHtml {
   }
 
   /** 页尾 runner：解码各容器的 Base64 内容并调对应渲染库绘制（内联 / CDN 共用）。 */
+  /**
+   * **这个块里有没有行内公式**（`$…$` / `\(…\)` → `MdInlineKind.MathInline`）。
+   *
+   * 用途（2026-10-16 用户实测修复）：行内公式在导出侧**没有图片路径**——只有
+   * `<span class="kxi">` 容器 + KaTeX 现场渲染（见 inline() 的 MathInline 分支）。
+   * 所以"文档里存在行内公式" = **katex 渲染库必须带**。此前 needed 收集与
+   * chartRunner 的 has('katex') 都只查 `MdBlockKind.Math`（块级）——"块级公式
+   * 全有快照 → 零库导出"时，行内公式整片显示成 LaTeX 源码（用户报"行内公式
+   * 没有正常渲染"）。这条判定补上那个缺口。
+   */
+  static blockHasInlineMath(b: MdBlock): boolean {
+    const items: MdInline[] = b.inlines;
+    if (items === undefined || items.length === 0) {
+      return false;
+    }
+    for (let k = 0; k < items.length; k++) {
+      if (items[k].kind === MdInlineKind.MathInline) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 整篇文档有没有行内公式（供"要不要带 katex 库"的统一判定，见 blockHasInlineMath）。 */
+  static hasInlineMath(blocks: MdBlock[]): boolean {
+    for (let k = 0; k < blocks.length; k++) {
+      if (MdToHtml.blockHasInlineMath(blocks[k])) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static chartRunner(blocks: MdBlock[]): string {
     const has = (lang: string): boolean => {
       // 与 chartAssets 同一套门控：已关闭引擎既没有容器也没有渲染库，runner 不出它的代码
@@ -700,6 +760,10 @@ export class MdToHtml {
           return true;
         }
         if (lang === 'katex' && b.kind === MdBlockKind.Math) {
+          return true;
+        }
+        // 行内公式在导出侧没有图片路径（只有 .kxi 容器现场渲染）——有它同样要 katex
+        if (lang === 'katex' && MdToHtml.blockHasInlineMath(b)) {
           return true;
         }
       }
@@ -792,9 +856,12 @@ export class MdToHtml {
         + '      if (!(cur > 0)) { cur = 100; }\n'
         + '      var next = Math.floor(cur * (avail - 10) / w);\n'
         + '      if (next >= cur) { next = cur - 4; }\n'
-        + '      if (next < 30) { next = 30; }\n'
+        + '      // **下限 55%**：再小矩阵 / cases 就糊成一排点（用户实测"公式块过小"，\n'
+        + '      // 5 个 pmatrix 并排那一格被压到 30% 时字高只有 7px）。\n'
+        + '      // 装不下就靠容器横向滚动看全，而不是把字压到不可读。\n'
+        + '      if (next < 55) { next = 55; }\n'
         + '      el.style.fontSize = next + "%";\n'
-        + '      if (next <= 30) { return; }\n'
+        + '      if (next <= 55) { el.style.overflowX = "auto"; return; }\n'
         + '    }\n'
         + '  }\n'
         + '  function renderKx(el, display) {\n'
@@ -1170,8 +1237,7 @@ export class MdToHtml {
           // **缓存图优先**（用户要求：导出 / 打印直接展示完整图）：
           // 阅读页预渲染池已把每张图（PlantUML 全家族 / mermaid / 自绘图种…）
           // 烘成 PNG，导出直接内嵌 base64 —— 离线打开、打印都是所见即所得。
-          let pngFound: string = '';
-          let pngW: number = 0;
+          let pngEmbed: string = '';
           // **wavedrom / abc 回归"快照优先"**（2026-10-16）：这两类曾因"快照图内容错误"
           // 被排除走渲染库。根因已取证实锤为**"跨页面串图"**——切模板页的窗口里旧页面的
           // 尺寸残报骗过池子、把别的图存进了它的键（用户机上 wavedrom 的键下存的是
@@ -1181,29 +1247,12 @@ export class MdToHtml {
           const pngSkip: boolean = langLower === 'html';
           if (ctx !== null && !pngSkip && !MdToHtml.engineOffForLang(langLower)) {
             // pngEmbed = 快照图 + .dim 逻辑尺寸（导出页据此按原始宽显示，不拉伸不过小）
-            const embed: string = ChartCache.pngEmbed(ctx, langLower, block.code, dark, chartBg);
-            if (embed.length > 0) {
-              const sep: number = embed.indexOf(String.fromCharCode(1));
-              if (sep > 0) {
-                pngFound = embed.substring(0, sep);
-                const wh: string[] = embed.substring(sep + 1).split('|');
-                pngW = wh.length === 2 ? (parseInt(wh[0], 10) || 0) : 0;
-              } else {
-                pngFound = embed;
-              }
-            }
+            pngEmbed = ChartCache.pngEmbed(ctx, langLower, block.code, dark, chartBg);
           }
+          const pngFound: string = MdToHtml.embedPng(pngEmbed);
           if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
-            // **按逻辑尺寸定宽**（用户实测部分图片过小或被拉伸）：快照的物理像素
-            // 尺寸≠该显示的尺寸，.dim 里存的才是 vp 口径；有尺寸按原宽显示（打印页
-            // 更宽时等比缩到页面宽以内），量不到就退回 max-width 自适应。
-            // **完整画布**（用户要求）：按逻辑尺寸原宽显示，不设 max-width 钳制
-            //（宽于页面的图由页面横向滚动承载），保证整张图完整出现在导出/打印里。
-            const widthStyle: string = pngW > 40
-              ? 'width:' + pngW + 'px;height:auto'
-              : 'max-width:100%;height:auto';
             body += '<img class="chartimg" src="' + pngFound
-              + '" style="' + widthStyle + '">';
+              + '" style="' + MdToHtml.embedStyle(pngEmbed) + '">';
             usedPngs.push(pngFound);
             chartIndex++;
           } else if (langLower === 'html') {
@@ -1247,10 +1296,15 @@ export class MdToHtml {
           }
         } else if (block.kind === MdBlockKind.Math && ctx !== null
           && !EngineRegistry.isOff('katex', EngineRegistry.current())) {
-          const mathPng: string = ChartCache.pngBase64(ctx, 'katex', block.code, dark, chartBg);
+          // **与图表同一条路**：pngEmbed 同时带回快照图与逻辑尺寸。
+          // 上一版这里用 pngBase64（只有图、没有尺寸），只能写 max-width:100% →
+          // 浏览器按物理像素显示 = 放大 density 倍（用户实测导出的公式块比正文大
+          // 两三倍，而旁边没有快照的公式走 KaTeX 现场渲染又很小 —— 同一种东西两种尺寸）。
+          const mathEmbed: string = ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg);
+          const mathPng: string = MdToHtml.embedPng(mathEmbed);
           if (mathPng.length > 0 && usedPngs.indexOf(mathPng) < 0) {
             body += '<img class="chartimg" src="' + mathPng
-              + '" style="max-width:100%;height:auto">';
+              + '" style="' + MdToHtml.embedStyle(mathEmbed) + '">';
             usedPngs.push(mathPng);
             chartIndex++;
           } else {
