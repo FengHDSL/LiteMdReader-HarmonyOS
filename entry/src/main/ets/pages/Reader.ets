@@ -5747,10 +5747,10 @@ export struct Reader {
     this.toast('正在生成浅色图片，请稍候…');
     // 强制浅色重渲染（DiagramWeb 的 dark/cardBg @Prop 重注入）
     this.enlargeForceLight = true;
-    // 等重渲染 + 高度回传稳定后再截图
+    // 等重渲染 + mermaid 绘制 + 高度回传稳定后再截图（大图 1.5s 不够）
     setTimeout(() => {
       this.enlargeCaptureTick++;
-    }, 1500);
+    }, 2500);
   }
 
   /** 快照产物：裁边 → 另存 → 恢复原主题渲染 */

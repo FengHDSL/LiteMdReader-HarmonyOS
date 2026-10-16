@@ -423,13 +423,13 @@ export class ChartCache {
       if (w < 40 || h < 40) {
         return bytes;
       }
+      // 标准读取：readPixelsToBuffer 的缓冲区尺寸 = w*h*4（SDK 约定，紧凑无行距）
       const buf: ArrayBuffer = new ArrayBuffer(w * h * 4);
       await pm.readPixelsToBuffer(buf);
       const u8: Uint8Array = new Uint8Array(buf);
-      // ⚠️ 背景**不能采角落像素**：圆角卡片快照的四个角是黑色（webPageSnapshot
-      // 无 alpha），采到黑就整张白卡都被当成"内容"→ 裁边失效（用户实测"没修"）。
-      // 采**上边缘中点**（内缩 2px）——那里一定是卡片底色。
-      const bgO: number = 2 * w * 4 + Math.floor(w / 2) * 4;
+      const stride: number = w * 4;
+      // 背景采**上边缘中点**（内缩 2px）——圆角快照的角是黑色，不能采角
+      const bgO: number = 2 * stride + Math.floor(w / 2) * 4;
       const bgR: number = u8[bgO];
       const bgG: number = u8[bgO + 1];
       const bgB: number = u8[bgO + 2];
@@ -441,7 +441,7 @@ export class ChartCache {
       let maxY: number = -1;
       const tol: number = 12;
       for (let y = 0; y < h; y++) {
-        const row: number = y * w * 4;
+        const row: number = y * stride;
         for (let x = 0; x < w; x++) {
           if ((x < cs && y < cs) || (x >= w - cs && y < cs)
             || (x < cs && y >= h - cs) || (x >= w - cs && y >= h - cs)) {
