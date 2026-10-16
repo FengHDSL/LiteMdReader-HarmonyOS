@@ -803,17 +803,21 @@ export struct Reader {
    */
   @State visibleBlocks: number = 80;
   /**
-   * **实时卡的可见窗口**（块下标区间，前后各留 20 块余量）。
+   * **实时卡的加载边界**（块下标，单调只增）。
    *
    * 一张图表 / 公式卡就是一个 Web 实例，`visibleBlocks` 那套分批渲染管的是"块"，
    * 管不到"块里的 Web" —— 示例文档滚过一遍后几十张实时卡全部挂着，实测就是
    * "图表多了滑动卡顿无响应"（用户要求：只有滑到的卡片才开始加载）。
-   * 窗口外只挂骨架；滚进来才建 Web；期间后台池子把图烘成 PNG，烘好后这张卡切成
-   * 缓存图（Image），连 Web 都不再需要，重开文档直接命中磁盘缓存。
-   * ⚠️ 只在窗口挪动超过一档时才写这两个状态：每帧都写会让整棵正文跟着重渲染。
+   *
+   * ⚠️ **只能单调只增，不能做成"进出窗口的滑动窗"**：ArkUI 的 ForEach 对 key 不变
+   * 的孩子不重建，所以窗口状态只能编进 key；而 key 一变就是**整条目重建**—— Web
+   * 销毁 + 重新 loadUrl + 重新初始化引擎，比一直挂着贵得多。上一版做成了前后各
+   * 20 块的滑动窗，每次滚动都有边界卡片翻转重建，用户实测"比之前的版本还卡很多"。
+   * 现在滚过的范围永久保持已加载，往回翻零重建。
+   *
+   * 只在边界真的前进（超过 8 块）时才写状态：每帧写会让整棵正文跟着重渲染。
    */
-  @State webWinFrom: number = 0;
-  @State webWinTo: number = 40;
+  @State webReached: number = 40;
   /**
    * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
    * 用于从源码形态一键切回原来的预览形态。
@@ -1442,15 +1446,16 @@ export struct Reader {
         } as ChartTask);
       }
     }
-    // 浅色款排在正文款**之前**：导出 / 打印只认浅色快照，先把它补齐，用户开完文档
-    // 就能拿到"全图片"的导出。阅读页那侧不受影响 —— 深色款没烘出来之前卡片本来就是
-    // 实时 Web 渲染（一直如此），只是晚一点才换成图。
+    // **正文款在前、浅色孪生紧随其后**（逐张交错，不是两段队列）：
+    // 上一版把浅色款整批排在最前，阅读页自己的图被推迟到几十张之后才烘出来 ——
+    // 卡片一直停在实时 Web 上，同时挂着的 Web 实例翻一倍，实测"比之前还卡"。
+    // 交错之后：烘到第 N 张，第 N 张的正文图与导出图就都齐了。
     const res: ChartTask[] = [];
-    for (let q = 0; q < twins.length; q++) {
-      res.push(twins[q]);
-    }
     for (let q = 0; q < out.length; q++) {
       res.push(out[q]);
+      if (dark) {
+        res.push(twins[q]);
+      }
     }
     return res;
   }
@@ -1762,6 +1767,7 @@ export struct Reader {
       this.blocks = result.blocks;
       // 换文档 / 换编码都从首批重新开始（否则上一份文档的加载进度会带过来）
       this.visibleBlocks = 80;
+      this.webReached = 40;
       this.docOutline = result.outline;
       this.notes = result.notes;
       this.annotations = AnnotationStore.load(ctx, this.docName);
@@ -3898,14 +3904,12 @@ export struct Reader {
     this.scrolled = start > 0;
     this.progressDirty = true;
 
-    // **实时卡窗口**（见 webWinFrom）：List 下标换算成块下标，前后各留 20 块余量。
-    // 挪动超过 8 块才写状态 —— 边界上的卡片进出窗口本来就要重建 Web，太频繁
-    // 会变成"每帧重建"，比不节流更卡。
-    const winFrom: number = start - this.headerCount() - 20;
+    // **实时卡加载边界**（见 webReached）：List 下标换算成块下标，往前多留 20 块。
+    // 单调只增 —— 往回翻不回收，回收等于把整条目重建（Web 销毁 + 重新加载），
+    // 那比不懒加载更卡（上一版滑动窗就是这个原因把阅读页搞崩的）。
     const winTo: number = end - this.headerCount() + 20;
-    if (Math.abs(winFrom - this.webWinFrom) > 8 || Math.abs(winTo - this.webWinTo) > 8) {
-      this.webWinFrom = winFrom < 0 ? 0 : winFrom;
-      this.webWinTo = winTo;
+    if (winTo > this.webReached + 8) {
+      this.webReached = winTo;
     }
 
     // 回到文档顶部时永远展开，避免「在最上面却找不到入口」
@@ -7861,7 +7865,7 @@ export struct Reader {
                   dark: this.isDark(),
                   // **只有滚到附近的图表 / 公式卡才建 Web**（远端的挂骨架）：
                   // 一篇几十张图全部同时加载就是"滑动卡顿无响应"（用户要求）
-                  webActive: idx >= this.webWinFrom && idx <= this.webWinTo,
+                  webActive: idx <= this.webReached,
                   annotations: this.annotations,
                   searchQuery: this.searchQuery,
                   systemSelectId: this.systemSelectBlock,
@@ -7934,7 +7938,7 @@ export struct Reader {
                   // **进出可见窗口也要换 key**：ForEach 对 key 不变的孩子根本不重建、
                   // @Prop 也不会重新下发 —— 不把窗口状态编进 key，`webActive` 永远停在
                   // 首次挂载时的值，懒挂载就完全失效（这条文件里已有先例：ready 同理）。
-                  const act: boolean = idx >= this.webWinFrom && idx <= this.webWinTo;
+                  const act: boolean = idx <= this.webReached;
                   return block.id + '_' + this.docName + '_' + ck
                     + (tick >= 0 ? (ready ? '_r' : '_p') : '_p')
                     + (act ? '_w' : '_i')

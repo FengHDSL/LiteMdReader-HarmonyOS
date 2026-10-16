@@ -216,8 +216,8 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     // 否则这条永远红着——真出事时反而看不见
     && (webEts.match(/if \(this\.pageLoading[ )]/g) || []).length >= 2
     && webEts.includes('this.pageLoading = false;\n        this.webReady = true;'));
-  check('⑤ 键盐升到 v30（截断图作废；payload 索引也纳入盐）',
-    cacheEts.includes("static readonly SALT: string = 'v30';")
+  check('⑤ 键盐停在 v29（升盐=整批缓存作废，只能用于"口径变了旧图必错"）',
+    cacheEts.includes("static readonly SALT: string = 'v29';")
     && cacheEts.includes('ChartCache.SALT')
     && cacheEts.includes('private static idxKeyOf('));
   check('⑤ 池子有"内容被表面切掉"的像素守卫（贴边即等比缩小重拍）',
@@ -235,15 +235,19 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
         && !seg.includes("lang === 'html' || lang === 'markmap'");
     })());
   // 阅读页性能（用户实测"图表多了滑动卡顿无响应"）：一张实时卡 = 一个 Web 实例，
-  // 必须只有滚到附近的卡才挂载；窗口状态要编进 ForEach 的 key，否则 @Prop 不下发。
-  check('⑤ 实时卡按可见窗口懒挂载（webActive + 窗口状态进 ForEach key）',
+  // 必须只有滚到的卡才挂载。⚠️ 边界必须**单调只增**：key 一变就是整条目重建
+  // （Web 销毁 + 重新 loadUrl），做成滑动窗会比不懒加载更卡（第一版踩过）。
+  check('⑤ 实时卡懒挂载，且加载边界单调只增（不做进出窗回收）',
     mdViewEts.includes('@Prop webActive: boolean = true;')
     && mdViewEts.includes('} else if (!this.webActive) {')
     && mdViewEts.includes('if (this.webActive) {')
     && mdViewEts.includes('webIdleCard()')
-    && readerEts.includes('webActive: idx >= this.webWinFrom && idx <= this.webWinTo,')
-    && readerEts.includes("const act: boolean = idx >= this.webWinFrom && idx <= this.webWinTo;")
-    && readerEts.includes("+ (act ? '_w' : '_i')"));
+    && readerEts.includes('webActive: idx <= this.webReached,')
+    && readerEts.includes('const act: boolean = idx <= this.webReached;')
+    && readerEts.includes('if (winTo > this.webReached + 8) {')
+    // 单调：不允许出现"往回改边界"的写法
+    && !/this\.webReached = (win|\w+To) < /.test(readerEts)
+    && !readerEts.includes('webWinFrom'));
   check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
     (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
     && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));
@@ -265,6 +269,13 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 快照逻辑宽度有兜底（模板不回传时用组件实测宽）',
     webEts.includes('private areaW: number = 0;')
     && webEts.includes('this.lastPostW > 0 ? this.lastPostW : this.areaW'));
+  // 每张卡"出图后自动重载一次"是整篇文档级的额外完整页面加载（loadUrl + 引擎初始化），
+  // 宽度没变的卡白重载会把阅读页拖垮（用户实测"比之前的版本还卡很多"）。
+  check('⑤ 自动重载只在卡片宽度真的变过时才做',
+    webEts.includes('private loadW: number = 0;')
+    && webEts.includes('this.loadW = this.areaW;')
+    && webEts.includes('const drifted: boolean = this.loadW <= 0')
+    && /if \(v > 0 && !this\.autoReloaded && this\.webId\.length === 0\s*\n\s*&& !this\.zoom && !this\.fillHeight && drifted\) \{/.test(webEts));
   check('⑤ 导出嵌图与"有图判定"同一取键口径（lightShotKeys 共用）',
     cacheEts.includes('private static lightShotKeys(')
     && (cacheEts.match(/ChartCache\.lightShotKeys\(/g) || []).length >= 2);
@@ -286,9 +297,12 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && poolEts.includes('dark: this.curDark,')
     // 浅色款必须登记进 payload 索引，否则导出侧的 lightShotKeys 反查不到
     && poolEts.includes('ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);'));
-  check('⑤ 浅色款排在正文款之前 + 等补烘上限 120s（双份队列 45s 等不满）',
-    readerEts.indexOf('for (let q = 0; q < twins.length; q++)')
-    < readerEts.indexOf('for (let q = 0; q < out.length; q++)')
+  check('⑤ 浅色款与正文款逐张交错（不能整批排前面，否则阅读页的图被推迟 = 更卡）',
+    (() => {
+      const at = readerEts.indexOf('for (let q = 0; q < out.length; q++)');
+      const seg = at >= 0 ? readerEts.substring(at, at + 260) : '';
+      return seg.includes('res.push(out[q]);') && seg.includes('res.push(twins[q]);');
+    })()
     && exportEts.includes('parsed.blocks, dark, chartBg, 120000, notify)')
     && printEts.includes('parsed.blocks, false, \'\', 120000, notify)'));
   check('⑤ 导出等补烘：负结果不入内存缓存，进度文案是"共 N 张"且过程消息不收面板',
