@@ -7107,7 +7107,12 @@ export struct Reader {
       .borderRadius(HwRadius.inner)
       .backgroundColor(this.themeMode === mode ? this.palette().accentSoft : this.palette().quoteBg)
       .onClick(() => {
-        this.themeMode = mode;
+        // 先给提示，把主题切换推到下一帧之后：换主题要全应用重渲染 + 深浅孪生重烘，
+        // 占在点击这一帧里就是上架自检报的冻屏（与外观页开关同一口径）
+        this.toast('切换中，请耐心等待');
+        setTimeout((): void => {
+          this.themeMode = mode;
+        }, 80);
       })
   }
 

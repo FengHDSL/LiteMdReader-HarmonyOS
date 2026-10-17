@@ -118,6 +118,15 @@ export struct ImmersiveCard {
   @StorageProp('cardFallback') fallbackMode: string = 'mica';
   @State pressing: boolean = false;
   /**
+   * 外部强制收流光的信号：父组件在"点下去就要干重活"的控件上先自增它。
+   *
+   * ⚠️ 为什么需要：流光靠 `pressing` 画、抬手才收。深色模式这类开关一点就占住
+   * 主线程好几秒（全应用重渲染 + 图表深浅孪生重烘），抬手后的那一帧重绘排在后面，
+   * 屏幕上就留下"按着不放的一团光 + 停在原地的拨杆"——上架自检把这段判成冻屏
+   * （THREAD_BLOCK_6S）。
+   */
+  @Prop @Watch('onGlowClearTick') glowClearTick: number = 0;
+  /**
    * 流光坐标换算用的**普通字段组**（不参与渲染，不用 @State——照搬 xjau MaterialCard）。
    *   · cardWinX/Y：卡片左上角在窗口中的位置。按下那一瞬由 `windowX - x` 反推
    *     （这时组件内坐标一定准），之后靠 onAreaChange 的**位移增量**维护——
@@ -189,6 +198,13 @@ export struct ImmersiveCard {
       return barFrostColor(this.palette.surface);
     }
     return withAlpha(this.palette.surface, 'FF');
+  }
+
+  /** 外部要求收掉流光（见 glowClearTick 的说明）：立刻熄灭，不等抬手那一帧。 */
+  onGlowClearTick(): void {
+    if (this.pressing) {
+      this.pressing = false;
+    }
   }
 
   /** 流光颜色：主题色流光开 = accent；关 = 白光（照搬 xjau 语义）。build 内不能声明变量。 */

@@ -467,10 +467,15 @@ export struct ReadingSettingsPanel {
       .borderRadius(HwRadius.inner)
       .backgroundColor(this.themeMode === mode ? this.palette().accentSoft : this.palette().quoteBg)
       .onClick(() => {
-        this.themeMode = mode;
-        // 主题是持久化键：切完立刻落一次镜像，别等面板消失
-        SettingsMirror.save(this.hostCtx());
-        this.toast('主题：' + themeModeLabel(mode));
+        // 先提示再干活：主题一变是全应用重渲染 + 图表深浅孪生重烘，占在同一帧里
+        // 就是上架自检报的冻屏（与外观页深色开关同一口径）
+        this.toast('切换中，请耐心等待');
+        setTimeout((): void => {
+          this.themeMode = mode;
+          // 主题是持久化键：切完立刻落一次镜像，别等面板消失
+          SettingsMirror.save(this.hostCtx());
+          this.toast('主题：' + themeModeLabel(mode));
+        }, 80);
       })
   }
 

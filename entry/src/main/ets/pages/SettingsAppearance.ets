@@ -69,6 +69,14 @@ export struct SettingsAppearance {
   life: NavLifecycle = new NavLifecycle();
 
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
+  /**
+   * **拨杆自己的即时状态**：点下去先按这个画，真正的主题切换排到下一帧之后。
+   * 主题一变会牵动全应用重渲染 + 图表深浅孪生重烘，主线程一占就是几秒；拨杆若
+   * 跟着 `themeMode` 走，用户看到的就是"按了没反应"（上架自检判成冻屏）。
+   */
+  @State themeKnobOn: boolean = false;
+  /** 收掉本卡片流光的信号（自增即触发 ImmersiveCard 熄灭按压光斑） */
+  @State glowTick: number = 0;
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
@@ -319,6 +327,8 @@ export struct SettingsAppearance {
    * 不跟着切的话，深色模式下状态栏 / 手势条仍是深色图标（"图标全是黑的看不清"）。
    */
   onThemeChanged(): void {
+    // 拨杆跟随真正生效的主题（「跟随系统」芯片、阅读页主题五档改的都是同一个键）
+    this.themeKnobOn = this.themeMode === ReaderThemeMode.Dark;
     applyAppColorMode(this.themeMode);
     applySystemBarTheme(this.themeMode === ReaderThemeMode.Dark
       || (this.themeMode === ReaderThemeMode.System && this.systemDark));
@@ -370,6 +380,8 @@ export struct SettingsAppearance {
   }
 
   aboutToAppear(): void {
+    // 拨杆与生效主题对齐（从别处改过主题再进这页时不能对不上）
+    this.themeKnobOn = this.themeMode === ReaderThemeMode.Dark;
     // 草稿带入当前生效值（已用自定义函数壁纸时打开设置即可见）
     this.customFuncDraft = this.customFunc;
     this.customADraft = this.customA;
@@ -537,7 +549,10 @@ export struct SettingsAppearance {
       // 与「阅读调整 → 主题」的五档是同一个键（readerThemeMode），
       // 这里给一个最常用的快捷开关：深色 on/off + 跟随系统。
       // **标题放进卡片内**（用户要求：卡片外的「主题模式」等文本移入各自卡片）
-      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+      ImmersiveCard({
+        cardRadius: HwRadius.card, cardPadding: HwSpace.lg,
+        palette: this.palette(), glowClearTick: this.glowTick
+      }) {
         Column({ space: HwSpace.md }) {
           Text(this.s('主题模式'))
             .fontSize(HwType.label + 1)
@@ -556,10 +571,20 @@ export struct SettingsAppearance {
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
-            Toggle({ type: ToggleType.Switch, isOn: this.themeMode === ReaderThemeMode.Dark })
+            Toggle({ type: ToggleType.Switch, isOn: this.themeKnobOn })
               .onChange((isOn: boolean) => {
-                this.themeMode = isOn ? ReaderThemeMode.Dark : ReaderThemeMode.Light;
-                this.toast(isOn ? this.s('已切换到深色模式') : this.s('已切换到浅色模式'));
+                // 三步顺序不能换：**先给反馈，再干活**。
+                //  ① 拨杆立刻滑过去（走本地 themeKnobOn，不等 themeMode 生效）；
+                //  ② 流光当场收掉，不留"按着不放的一团光"；
+                //  ③ 提示"切换中，请耐心等待"，然后**把真正的主题切换推到下一帧之后**
+                //     —— 主题一变是全应用重渲染 + 图表深浅孪生重烘，主线程一占几秒，
+                //     占在同一帧里就是审核报告里的冻屏（THREAD_BLOCK_6S）。
+                this.themeKnobOn = isOn;
+                this.glowTick++;
+                this.toast(this.s('切换中，请耐心等待'));
+                setTimeout((): void => {
+                  this.themeMode = isOn ? ReaderThemeMode.Dark : ReaderThemeMode.Light;
+                }, 80);
               })
           }
           .width('100%')
@@ -571,8 +596,12 @@ export struct SettingsAppearance {
               chipActive: this.themeMode === ReaderThemeMode.System,
               chipLabel: this.s('跟随系统'),
               chipOnTap: () => {
-                this.themeMode = ReaderThemeMode.System;
-                this.toast(this.s('主题：跟随系统'));
+                // 与深色开关同一口径：先给提示，真正的主题切换推到下一帧之后
+                this.glowTick++;
+                this.toast(this.s('切换中，请耐心等待'));
+                setTimeout((): void => {
+                  this.themeMode = ReaderThemeMode.System;
+                }, 80);
               }
             })
             Text(this.s1('当前：%1', this.s(themeModeLabel(this.themeMode))))
