@@ -29,22 +29,39 @@ export struct WallpaperImage {
   @Prop @Watch('onSourceChanged') radiusVp: number = 0;
   /** 预烘就绪信号：Store 烘完写一次时间戳，这里靠它重绘换成位图 */
   @StorageProp(WALLPAPER_BAKED_TICK_KEY) bakedTick: number = 0;
+  /**
+   * 起炉防抖计时器。设置页的模糊滑杆会连续改半径，每一档都重新解码 + 烘焙
+   * 就是连着十几次全屏解码；停手 400ms 只烘最后一档。
+   */
+  private bakeTimer: number = -1;
 
   aboutToAppear(): void {
-    setTimeout((): void => {
-      this.requestBake();
-    }, 600);
+    // 进场那一帧不起炉：等转场过去（与背景光斑动画同一口径）
+    this.scheduleBake(600);
+  }
+
+  aboutToDisappear(): void {
+    if (this.bakeTimer >= 0) {
+      clearTimeout(this.bakeTimer);
+      this.bakeTimer = -1;
+    }
   }
 
   private onSourceChanged(): void {
-    this.requestBake();
+    this.scheduleBake(400);
   }
 
-  private requestBake(): void {
-    if (this.path.length === 0 || this.radiusVp <= 0) {
-      return;
+  private scheduleBake(delayMs: number): void {
+    if (this.bakeTimer >= 0) {
+      clearTimeout(this.bakeTimer);
     }
-    WallpaperStore.bakedOf(this.path, this.radiusVp);
+    this.bakeTimer = setTimeout((): void => {
+      this.bakeTimer = -1;
+      if (this.path.length === 0 || this.radiusVp <= 0) {
+        return;
+      }
+      WallpaperStore.bakedOf(this.path, this.radiusVp);
+    }, delayMs);
   }
 
   /** 当前 path + 强度对应的预烘位图；null = 还没有（键对不上也不返回旧的）。 */
