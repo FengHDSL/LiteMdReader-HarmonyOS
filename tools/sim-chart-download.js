@@ -323,7 +323,11 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && panelEts.includes('this.withBusyAsync(() => ExportService.exportHtmlSmart('));
   check('⑤ 导出嵌图按快照的逻辑尺寸原样显示（不 clamp、不写死 height）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
-    && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)')
+    && mdHtmlEts.includes('MdToHtml.embedStyle(embed)')
+    // 图表快照统一走 chartImgTag（带右下角原地缩放按钮），公式不带
+    && mdHtmlEts.includes('private static chartImgTag(embed: string): string')
+    && mdHtmlEts.includes('body += MdToHtml.chartImgTag(pngEmbed);')
+    && mdHtmlEts.includes('.cz { display: none !important; }')
     && mdHtmlEts.includes("'width:' + w + 'px;height:auto'")
     // 用户拍板"什么比例就什么比例"：放大细长图（clamp 45%）与写死 height 都不许回来
     && !mdHtmlEts.includes('width:clamp(')

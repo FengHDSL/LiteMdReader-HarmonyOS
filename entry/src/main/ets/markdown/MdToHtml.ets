@@ -35,12 +35,23 @@ const HTML_CSS: string = `
   /* 快照图是整页截图，圆角卡片外的四个角会被合成成黑色（webPageSnapshot 不带 alpha），
      嵌进导出页就是一圈黑角 —— 图片自身裁圆角把它盖掉，与卡片观感一致 */
   img.chartimg { border-radius: 10px; max-width: 100%; height: auto; }
+  /* **图表右下角的原地缩放按钮**（用户要求：细长的图自己拉大 / 缩小，只给图表，
+     公式块是 .ktx 容器不带按钮）。外层 .cwrap 只负责给按钮定位，不改变图片布局，
+     所以"什么比例就什么比例"那条规则不受影响。 */
+  .cwrap { position: relative; display: inline-block; max-width: 100%; }
+  .cz { position: absolute; right: 6px; bottom: 6px; display: none; gap: 4px; }
+  .cwrap:hover .cz, .cwrap:focus-within .cz { display: flex; }
+  .cz button { width: 26px; height: 26px; border: 1px solid #c9d2e0; border-radius: 13px;
+    background: rgba(255, 255, 255, 0.92); color: #2f63e8; font-size: 15px; line-height: 1;
+    cursor: pointer; padding: 0; }
   /* 打印：屏幕上"能左右滑动"的东西到了纸上就是"少一段"（用户实测超宽公式打印不全）。
      公式由页尾 runner 缩字号等比适配、SVG 由上面的 max-width 等比缩放，容器一律不裁切。 */
   @media print {
     body { max-width: none; padding: 10mm 12mm; background: #fff; }
     .mermaid, .ktx, .gv, .abc, .wfx, .vgl, .puml, .nml, .cjs { overflow: visible; }
     img.chartimg { max-width: 100%; height: auto; }
+    /* 按钮是屏幕上的控件，绝不能进纸 */
+    .cz { display: none !important; }
   }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
@@ -542,6 +553,20 @@ export class MdToHtml {
      * 不是在嵌图端放大。
      */
     return w > 40 ? 'width:' + w + 'px;height:auto' : 'max-width:100%;height:auto';
+  }
+
+  /**
+   * 图表快照 → `<img>`（带右下角的原地缩放按钮）。
+   *
+   * 只给图表：块级公式是 `.ktx` 容器（透底、由 runner 现场渲染 KaTeX），不走这里。
+   * 按钮加减的是图片自己的显示宽（`height:auto` 永远等比），基准宽 = 快照逻辑宽，
+   * 页尾 runner 里限死 0.25×~4×；打印时按钮由 `@media print` 隐藏，不进纸。
+   */
+  private static chartImgTag(embed: string): string {
+    return '<span class="cwrap"><img class="chartimg" src="' + MdToHtml.embedPng(embed)
+      + '" style="' + MdToHtml.embedStyle(embed) + '">'
+      + '<span class="cz"><button type="button" data-cz="-1" aria-label="缩小">−</button>'
+      + '<button type="button" data-cz="1" aria-label="放大">+</button></span></span>';
   }
 
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */
@@ -1086,7 +1111,28 @@ export class MdToHtml {
         + '      pRun();\n'
         + '    }\n' : '')
       + '  });\n'
-      + '    // 图表/公式点击 → 上报宿主打开裁切（用户要求：打印页点击卡片图进入编辑）；\n'
+      + '  // **图表右下角的原地缩放按钮**（用户要求）：以快照逻辑宽为基准，\n'
+      + '  // 每点一次 ×1.25 / ×0.8，限 0.25×~4×；只动 img 自己的显示宽，height:auto 等比。\n'
+      + '  // 公式块是 .ktx 容器、不带这个按钮；打印时 .cz 由 @media print 隐藏，不进纸。\n'
+      + '  document.querySelectorAll(".cwrap").forEach(function (w) {\n'
+      + '    var im = w.querySelector("img.chartimg");\n'
+      + '    if (im === null) { return; }\n'
+      + '    w.querySelectorAll(".cz button").forEach(function (btn) {\n'
+      + '      btn.addEventListener("click", function () {\n'
+      + '        // 基准宽**在第一次点击时才取**：绑定时图片可能还没排版完，量到 0 会把\n'
+      + '        // 整个缩放范围算错；那时 naturalWidth 一定有了（data URL），除以屏幕密度即逻辑宽。\n'
+      + '        var base = im.dataset.czBase ? Number(im.dataset.czBase)\n'
+      + '          : (im.getBoundingClientRect().width || (im.naturalWidth / 3.5) || 320);\n'
+      + '        im.dataset.czBase = String(Math.round(base));\n'
+      + '        var step = Number(btn.getAttribute("data-cz")) > 0 ? 1.25 : 0.8;\n'
+      + '        var cur = im.getBoundingClientRect().width || base;\n'
+      + '        var next = cur * step;\n'
+      + '        if (next < base * 0.25) { next = base * 0.25; }\n'
+      + '        if (next > base * 4) { next = base * 4; }\n'
+      + '        im.style.width = Math.round(next) + "px";\n'
+      + '      });\n'
+      + '    });\n'
+      + '  });\n'
       + '})();\n</script>\n';
     return runnerCode;
   }
@@ -1267,8 +1313,7 @@ export class MdToHtml {
           }
           const pngFound: string = MdToHtml.embedPng(pngEmbed);
           if (pngFound.length > 0 && usedPngs.indexOf(pngFound) < 0) {
-            body += '<img class="chartimg" src="' + pngFound
-              + '" style="' + MdToHtml.embedStyle(pngEmbed) + '">';
+            body += MdToHtml.chartImgTag(pngEmbed);
             usedPngs.push(pngFound);
             chartIndex++;
           } else if (langLower === 'html') {
