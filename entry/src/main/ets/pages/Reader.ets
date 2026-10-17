@@ -8197,9 +8197,11 @@ export struct Reader {
       .height('100%')
       .clip(true)
       .scale({ x: this.heroScale, y: this.heroScale })
-      .translate({ x: this.heroX, y: this.heroY })
+      // ⚠️ **一整个 translate 只能写一次**：同一个节点上连着两条 `.translate()`，
+      // 后一条会整条覆盖前一条（不是叠加）。此前"标签翻页滑入"那条把一镜到底的
+      // heroX/heroY 冲掉了 → 退场只剩原地缩小、不再往封面那一格收（用户反馈）。
       // 切换标签时的**翻页动效**：整页从切换方向滑入 + 淡入（位移由 openInTab 设置）
-      .translate({ x: this.contentSlideX })
+      .translate({ x: this.heroX + this.contentSlideX, y: this.heroY })
       .opacity(this.contentFade)
       // 侧滑抽屉打开时的背景模糊（同书架搜索展开）
       .blur(this.drawerBlur())
