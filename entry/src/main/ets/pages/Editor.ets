@@ -1725,12 +1725,6 @@ export struct Editor {
     });
   }
 
-  private closeSyntax(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
-      this.showSyntax = false;
-    });
-  }
-
   // ══════════════════════ 顶栏 ══════════════════════
 
   @Builder
@@ -3841,19 +3835,6 @@ export struct Editor {
     }
     const alpha: number = Math.round(a / 255 * 100) / 100;
     return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
-  }
-
-  /** 离开 Web 编辑表面：先让 Web 导出最新内容，稍后切回原生块列表。 */
-  private leaveWebMode(): void {
-    try {
-      this.editWebCtrl.runJavaScript('window.exportToHost();');
-    } catch (err) {
-      // 忽略
-    }
-    setTimeout((): void => {
-      this.liveMode = false;
-      this.refreshPreviewBlocks();
-    }, 180);
   }
 
   private editBlock(index: number): void {

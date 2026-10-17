@@ -42,14 +42,6 @@ export class ExportService {
     }
   }
 
-  /** 渲染自包含 HTML（与阅读页导出 HTML 同一渲染器）。rich = 预装图表渲染工具。 */
-  static buildHtml(docName: string, content: string, rich: boolean = false,
-    ctx: common.UIAbilityContext | null = null, dark: boolean = false,
-    chartBg: string = ''): string {
-    const parsed = MdParser.parse(content);
-    return MdToHtml.export(docName, parsed.meta, parsed.blocks, rich, null, ctx, dark, chartBg);
-  }
-
   /**
    * **把 HTML 里的本地图片内联成 data URI**（用户要求：手写笔记、插入的图片都要
    * 跟着导出文件走，不留在外面）。仅处理相对路径（images/xxx.png 等）——

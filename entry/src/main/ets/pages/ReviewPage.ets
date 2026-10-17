@@ -99,8 +99,6 @@ export struct ReviewPage {
    * 返回 true = 已自行处理（刷卡形态 → 回到本页「学习」页签），不退出页面。
    */
   onBackBind: (cb: () => boolean) => void = (_cb: () => boolean): void => {};
-  /** Index 侧滑返回拦截的信号（刷卡形态中侧滑 = 退回学习页签，不退出页面） */
-  @StorageProp('reviewExitTick') @Watch('onReviewExitTick') exitTick: number = 0;
 
   // ── 背景（与书架同一优先级）──
   @StorageProp('wallpaperPathLight') wallpaperPathLight: string = '';
@@ -343,13 +341,6 @@ export struct ReviewPage {
 
   private syncFlashFlag(): void {
     AppStorage.setOrCreate('reviewFlashOn', this.reviewing && !this.finished);
-  }
-
-  /** Index 侧滑返回信号（保留兼容）：刷卡形态中 → 退回学习页签（保留会话）。 */
-  private onReviewExitTick(): void {
-    if (this.reviewing) {
-      this.exitReview();
-    }
   }
 
   private ctx(): common.UIAbilityContext | null {

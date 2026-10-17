@@ -1262,15 +1262,6 @@ export struct AiChat {
     return '';
   }
 
-  /** 代码放大面板：半模态内滚动展示完整代码（复用 bindSheet 基建，零新浮层）。 */
-  private openCodeSheet(code: string, lang: string): void {
-    this.codeSheetText = code;
-    this.codeSheetLang = lang;
-    this.sheetEpoch++;
-    this.sheetKind = 'code';
-    this.sheetVisible = true;
-  }
-
   /** 历史面板：恢复一个会话 */
   private restoreSession(b: AiChatSessionBrief): void {
     const c: common.UIAbilityContext | null = this.ctx();

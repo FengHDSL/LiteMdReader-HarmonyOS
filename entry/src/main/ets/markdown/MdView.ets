@@ -2587,19 +2587,6 @@ export struct MdBlockView {
 
   // ────────────────────── 数学块 / 图表块 ──────────────────────
 
-  private mathSegsCacheKey: string = '';
-  private mathSegsCache: MathSeg[] = [];
-
-  /** 公式顶层结构段（按块缓存）。 */
-  private mathSegments(): MathSeg[] {
-    const key: string = this.block.id + '|' + this.block.code.length;
-    if (key !== this.mathSegsCacheKey) {
-      this.mathSegsCacheKey = key;
-      this.mathSegsCache = MathLite.segments(this.block.code);
-    }
-    return this.mathSegsCache;
-  }
-
   @Builder
   mathSegView(seg: MathSeg) {
     if (seg.kind === 'frac') {

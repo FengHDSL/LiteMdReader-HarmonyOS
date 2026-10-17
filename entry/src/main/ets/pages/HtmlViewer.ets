@@ -20,7 +20,7 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
-import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor, isDarkTheme } from '../theme/DesignTokens';
+import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
@@ -54,10 +54,6 @@ export struct HtmlViewer {
   private pendingHtml: string = '';
   private started: boolean = false;
   private pendingLoad: boolean = false;
-
-  private isDark(): boolean {
-    return isDarkTheme(this.themeMode, this.systemDark);
-  }
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：不登记依赖的话主题切换会被 ArkUI 跳过重算

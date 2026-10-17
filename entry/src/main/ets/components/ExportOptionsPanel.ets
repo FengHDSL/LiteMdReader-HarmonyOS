@@ -116,32 +116,6 @@ export struct ExportOptionsPanel {
   }
 
   /**
-   * HTML 导出入口（用户要求**默认预装**图表渲染工具）：图表块转渲染容器 +
-   * 按需 CDN，浏览器打开自动渲染。
-   */
-  private doExportHtml(rich: boolean): void {
-    const ctx = this.ctx();
-    if (ctx === null) {
-      return;
-    }
-    const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
-    if (content === null) {
-      this.notify('读取正文失败');
-      return;
-    }
-    this.withBusy(() => {
-      try {
-        const html: string = ExportService.buildHtml(this.docName, content, rich);
-        ExportService.saveText(ctx, this.docName + '.html', html, (m: string) => {
-          this.notify(m);
-        });
-      } catch (err) {
-        this.notify('渲染 HTML 失败');
-      }
-    });
-  }
-
-  /**
    * HTML 导出入口（用户要求）：渲染库提前缓存到应用内、导出时内嵌进 HTML
    * （自包含、离线可渲染）；首次导出自动下载一次；下载失败回退在线模式。
    */

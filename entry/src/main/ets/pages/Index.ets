@@ -2268,16 +2268,6 @@ struct Index {
   /** 历史已读篇数（阅读日志里有留时记录的文档数） */
   @State readLogCount: number = 0;
 
-  private pageTitle(): string {
-    if (this.shelfPage === 0) {
-      return '文房';
-    }
-    if (this.shelfPage === 2) {
-      return '写作日志';
-    }
-    return '书架';
-  }
-
   /** 切页后的联动：文房页重新取数（其余页数据随 refresh() 走）。 */
   private onShelfPageChanged(): void {
     if (this.shelfPage === 0) {
@@ -6089,38 +6079,6 @@ struct Index {
     this.pushPage('pages/Editor', route);
   }
 
-  /**
-   * 复习卡片墙（批 3）：把批注派生成卡片，按间隔重复复习。
-   * 打开时先 sync（把批注新增/删除同步进卡片，保留已有进度），再取今日到期的。
-   */
-  private openReview(): void {
-    const c: common.UIAbilityContext | null = this.ctx();
-    if (c === null) {
-      return;
-    }
-    let due: ReviewCard[] = [];
-    try {
-      const seeds: ReviewSeed[] = this.buildReviewSeeds(c);
-      ReviewCardStore.sync(c, seeds);
-      due = ReviewCardStore.dueToday(ReviewCardStore.load(c));
-    } catch (err) {
-      this.toast(L10n.t('读取复习卡片失败'));
-      return;
-    }
-    if (due.length === 0) {
-      const s: ReviewStats = ReviewCardStore.stats(ReviewCardStore.load(c));
-      this.toast(s.total === 0
-        ? L10n.t('还没有卡片：先在文档里划几处荧光笔或写批注')
-        : L10n.t('今天没有到期卡片（共 ') + s.total + ' 张，已掌握 ' + s.learned + ' 张）');
-      return;
-    }
-    this.reviewCards = due;
-    this.reviewIndex = 0;
-    this.reviewFlipped = false;
-    this.shelfSheet = 'review';
-    this.shelfVisible = true;
-  }
-
   /** 从全部文档的批注里收集卡片素材（手写批注跳过：正反面都是图，复习价值低）。 */
   private buildReviewSeeds(c: common.UIAbilityContext): ReviewSeed[] {
     const out: ReviewSeed[] = [];
@@ -6809,26 +6767,6 @@ struct Index {
   private encodingOf(docName: string): string {
     const v: string | undefined = AppStorage.get<string>(this.encodingKeyOf(docName));
     return v === undefined || v.length === 0 ? 'auto' : v;
-  }
-
-  /** 下一档编码（循环：自动 → UTF-8 → GBK → GB18030 → Big5 → Latin-1 → 自动）。 */
-  private nextEncoding(cur: string): string {
-    if (cur === 'auto') {
-      return 'utf-8';
-    }
-    if (cur === 'utf-8') {
-      return 'gbk';
-    }
-    if (cur === 'gbk') {
-      return 'gb18030';
-    }
-    if (cur === 'gb18030') {
-      return 'big5';
-    }
-    if (cur === 'big5') {
-      return 'iso-8859-1';
-    }
-    return 'auto';
   }
 
   /** 编码档位列表（书架「⋯」面板的下拉用；与阅读页六档一致）。 */

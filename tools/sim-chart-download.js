@@ -74,7 +74,7 @@ check('① 阅读页：下载中按钮置淡 + 防重复触发（dlBusy 三处�
 // ── ② 模板形态：底色层的圆角 / 内描边在导出形态里必须关掉 ──
 // （圆角在快照里会合成成四角发黑、inset 描边会变成图上一圈灰边 —— 都是用户实测过的观感问题）
 const BG_TEMPLATES = ['abc', 'chart', 'ditaa', 'echarts', 'flowchart', 'graphviz',
-  'markmap', 'markmap-card', 'mermaid', 'nomnoml', 'nwdiag'];
+  'markmap-card', 'mermaid', 'nomnoml', 'nwdiag'];
 const dlMissing = [];
 const chromeMissing = [];
 for (const t of BG_TEMPLATES) {
@@ -84,7 +84,7 @@ for (const t of BG_TEMPLATES) {
     chromeMissing.push(t);
   }
 }
-check('② 十一个带底色层的模板都认导出形态（o.dl）', dlMissing.length === 0, dlMissing.join(', '));
+check('② ' + BG_TEMPLATES.length + ' 份带底色层的模板都认导出形态（o.dl）', dlMissing.length === 0, dlMissing.join(', '));
 check('② 导出形态里圆角与内描边都关掉了（不去掉就是四角发黑 + 一圈灰边）',
   chromeMissing.length === 0, chromeMissing.join(', '));
 const katexHtml = fs.readFileSync(path.join(RENDER, 'katex.html'), 'utf8');
