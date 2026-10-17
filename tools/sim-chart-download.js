@@ -74,7 +74,7 @@ check('① 阅读页：下载中按钮置淡 + 防重复触发（dlBusy 三处�
 // ── ② 模板形态：底色层的圆角 / 内描边在导出形态里必须关掉 ──
 // （圆角在快照里会合成成四角发黑、inset 描边会变成图上一圈灰边 —— 都是用户实测过的观感问题）
 const BG_TEMPLATES = ['abc', 'chart', 'ditaa', 'echarts', 'flowchart', 'graphviz',
-  'markmap-card', 'mermaid', 'nomnoml', 'nwdiag'];
+  'markmap-card', 'mermaid', 'nomnoml', 'nwdiag', 'salt'];
 const dlMissing = [];
 const chromeMissing = [];
 for (const t of BG_TEMPLATES) {
