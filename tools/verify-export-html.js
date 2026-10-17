@@ -15,16 +15,39 @@ fs.mkdirSync(OUT, { recursive: true });
 const stubs = {
   'common': 'module.exports = {};',
   '@kit.ArkTS': 'module.exports = { util: { TextEncoder: function(){ this.encodeInto=(s)=>new Uint8Array(Buffer.from(s)); }, TextDecoder: { create: () => ({ decodeToString: (u) => Buffer.from(u).toString("utf-8") }) }, Base64Helper: function(){ this.encodeToStringSync=(u)=>Buffer.from(u).toString("base64"); } } };',
-  '@kit.AbilityKit': 'module.exports = {};',
+  '@kit.AbilityKit': 'module.exports = { common: {} };',
   '@kit.CryptoArchitectureKit': 'module.exports = { cryptoFramework: { createMd: () => ({ updateSync: ()=>{}, digestSync: () => ({ data: Buffer.from("0000000000000000") }) }) } };',
   '@kit.CoreFileKit': 'module.exports = { fileIo: {} };',
   '@kit.ImageKit': 'module.exports = { image: {} };',
   '@kit.PerformanceAnalysisKit': 'module.exports = { hilog: { warn: ()=>{}, info: ()=>{}, error: ()=>{} } };',
-  '../service/ChartCache': `module.exports = {
-    keyFor: (m,p,d,b) => 'k_' + m + '_' + (d?'d':'l'),
-    srcPath: () => '',
-    pngBase64: () => '',
-  };`,
+  '../service/ChartCache': `let __shotN = 0;
+  class ChartCache {
+    static keyFor(m, p, d, b) { return 'k_' + m + '_' + (d ? 'd' : 'l'); }
+    static srcPath(ctx, key) { return ''; }
+    static pngBase64(ctx, m, p, d, b) { return ''; }
+    static shotKeyFor(ctx, m, p, d, b) { return ''; }
+    static hasShot(ctx, m, p, d, b) { return (__shotList().length > 0); }
+    // 桩：**没有快照**（返回空串）——导出走"容器 + 渲染库"那条路，正是本闸要断言的形态。
+    // 需要"快照优先"形态时用 CJ_SHOT=<png>[,<png>...] 喂几张真图，探针据此生成带
+    // <img class="chartimg"> 的页面；按调用次序轮着返回，绕开嵌图端的同图去重。
+    static pngEmbed(ctx, m, p, d, b) {
+      const list = __shotList();
+      if (list.length === 0) { return ''; }
+      const pick = list[__shotN % list.length];
+      __shotN++;
+      return pick + String.fromCharCode(1) + (process.env.CJ_DIM || '640|240');
+    }
+  }
+  const __fs = require('fs');
+  function __shotList() {
+    const env = process.env.CJ_SHOT || '';
+    if (__shotList.cache === undefined) {
+      __shotList.cache = env.split(',').filter(Boolean).map((f) =>
+        'data:image/png;base64,' + __fs.readFileSync(f).toString('base64'));
+    }
+    return __shotList.cache;
+  }
+  module.exports = { ChartCache: ChartCache };`,
   '../service/EngineRegistry': `module.exports = { EngineRegistry: {
     isOff: () => false,
     current: () => [],
@@ -51,7 +74,10 @@ function transpile(name, file) {
         const names = (ln.match(/\{([^}]+)\}/) || [null, ''])[1]
           .split(',').map((x) => x.trim().split(' as ')[0]).filter(Boolean);
         const req = '__stub_' + Math.abs(ln.split('').reduce((a, c) => a + c.charCodeAt(0), 0));
-        outLines.push('const __' + req + ' = (function(){ ' + stub + ' return module.exports; })();');
+        // 桩必须跑在**自己的 module 对象**里：直接写 `module.exports = ...` 会把正在转译的
+        // 这个模块的导出整个换掉，于是 require 回来只剩桩、没有 MdToHtml 本体。
+        outLines.push('const __' + req + ' = (function(){ const module = { exports: {} }; '
+          + stub + ' return module.exports; })();');
         for (const nm of names) {
           outLines.push('const ' + nm + ' = __' + req + '.' + nm + " !== undefined ? __" + req + '.' + nm + ' : ' + nm + ';');
         }
@@ -65,7 +91,9 @@ function transpile(name, file) {
     fileName: name,
     compilerOptions: { target: ts.ScriptTarget.ES2021, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
   });
-  fs.writeFileSync(path.join(OUT, name.replace('.ets', '.js')), r.outputText);
+  // NEED_MD 里是不带扩展名的短名：一律落成 .js，否则写出的是无扩展名文件，
+  // 而下面 require 的是 .js —— 校验的就会是**上一版**留下的旧产物。
+  fs.writeFileSync(path.join(OUT, name.replace(/\.ets?$/, '') + '.js'), r.outputText);
 }
 const NEED_MD = ['MdTypes', 'Emoji', 'Badge', 'MathLite', 'PlantumlBridge', 'ZenumlBridge', 'MdParser', 'CodeHighlight', 'MdToHtml'];
 for (const n of NEED_MD) {
