@@ -50,5 +50,10 @@ signing/
 /tools/.*-sim/
 /tools/.*-cache/
 /tools/.*-cjs/
+# 浏览器调试用户目录：整份 Edge/Chrome profile 曾被当源码提交进来（含 Login Data /
+# Cookies / 书签 / 缓存，45MB 且属于个人数据），下次跑脚本还会再生成，绝不入库
+**/.edge-profile/
+**/.chrome-profile/
+**/user-data-dir/
 
 XJAU-README-修复版.md
