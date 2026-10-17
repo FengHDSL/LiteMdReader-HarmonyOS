@@ -230,6 +230,17 @@ export class ChartRuntimeService {
       && ChartRuntimeService.filesForLang('katex').indexOf(file) >= 0) {
       return true;
     }
+    /**
+     * **与嵌图那一端同一套判定**：按块序走一遍，复刻 `MdToHtml` 的"取浅色快照 +
+     * 同一张图不重复嵌"两条规则，谁最终会退成"要 JS 现场画的容器"，谁的库就留下。
+     *
+     * 以前这里只问 `hasShot`，两边口径不一致就出空白块：判定说"有图"→ 把
+     * mermaid.min.js 裁掉 → 嵌图时那张图又被去重拒了 → 容器发出去了却没有库可画。
+     * 真机实锤：venn-beta 与 ZenUML 桥出来的时序图，导出文件里连 mermaid 库都没有
+     * （5 个 script 里最大的才 272KB 的 katex）。markmap 恒不进池子，走同一条
+     * "取不到快照 → 留库"的分支，不再需要特例。
+     */
+    const seen: string[] = [];
     for (let k = 0; k < blocks.length; k++) {
       const b: MdBlock = blocks[k];
       let lang: string = '';
@@ -238,10 +249,6 @@ export class ChartRuntimeService {
         if (lang === 'html') {
           continue;
         }
-        // **markmap 在这里不能跳过**（与上面 missingShots 的口径**故意不同**）：它有意
-        // 不进烘焙池（正文要实时可拖拽），所以永远"缺快照"。上一版照抄 missingShots
-        // 把它 continue 掉 → "其余图都齐"时 d3 / markmap-lib / markmap-view 被裁库
-        // 筛掉，导出页里那个 .markmap 容器没有任何库可画 = 思维导图不显示（用户实测）。
       } else if (b.kind === MdBlockKind.Math) {
         lang = 'katex';
       } else {
@@ -250,13 +257,18 @@ export class ChartRuntimeService {
       if (MdToHtml.engineOffForLang(lang)) {
         continue;
       }
-      const files: string[] =
-        ChartRuntimeService.filesForLang(lang, b.kind === MdBlockKind.Chart ? b.code : '');
-      if (files.indexOf(file) < 0) {
+      const key: string = ChartCache.shotKeyFor(ctx, lang, b.code, bg);
+      if (key.length > 0) {
+        if (ChartRuntimeService.filesForLang(lang, b.kind === MdBlockKind.Chart ? b.code : '')
+          .indexOf(file) >= 0 && seen.indexOf(key) >= 0) {
+          return true;                       // 有图，但这张图已经被前面的块用过了
+        }
+        seen.push(key);
         continue;
       }
-      if (!ChartCache.hasShot(ctx, lang, b.code, dark, bg)) {
-        return true;
+      if (ChartRuntimeService.filesForLang(lang, b.kind === MdBlockKind.Chart ? b.code : '')
+        .indexOf(file) >= 0) {
+        return true;                         // 压根没快照 → 必须带库现场画
       }
     }
     return false;

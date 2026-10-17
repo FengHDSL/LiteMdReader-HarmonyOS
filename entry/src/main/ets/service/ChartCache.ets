@@ -439,6 +439,25 @@ export class ChartCache {
   }
 
   /**
+   * 这张图**实际会取到哪个浅色快照键**（取不到返回空串）。
+   *
+   * 导出侧"判定要不要带库"和"嵌图时取哪张"必须是同一套口径。以前裁库只问 `hasShot`，
+   * 而嵌图那边还有一道"同一张图不重复嵌"的去重（`MdToHtml.usedPngs`）—— 于是出现过
+   * "说有图 → 库被裁掉 → 那张图又被去重拒了 → 容器没有库可画 = 整块空白"
+   * （真机：venn-beta 与 ZenUML 桥出来的时序图，导出文件里连 mermaid 库都没有）。
+   */
+  static shotKeyFor(ctx: common.UIAbilityContext, mode: string, payload: string,
+                    bg: string): string {
+    const variants: string[] = ChartCache.lightShotKeys(ctx, mode, payload, bg);
+    for (let k = 0; k < variants.length; k++) {
+      if (variants[k].length > 0 && ChartCache.srcPath(ctx, variants[k]).length > 0) {
+        return variants[k];
+      }
+    }
+    return '';
+  }
+
+  /**
    * 这张图**是否已有可嵌进导出的快照**（只判文件在不在，不读字节）。
    *
    * 导出 / 打印侧用它做"缺图判定"（ChartRuntimeService.missingShots）：阅读页已经
