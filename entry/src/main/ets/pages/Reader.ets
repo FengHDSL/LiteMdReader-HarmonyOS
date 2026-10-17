@@ -1284,6 +1284,10 @@ export struct Reader {
       curve: Curve.FastOutSlowIn,
       onFinish: () => {
         this.heroExiting = false;
+        // 告诉书架的 customNavContentTransition：这一次 pop 别再叠系统转场了。
+        // 页面已经缩到封面那一格，Navigation 默认的横向滑出会在它之后再来一次
+        //「侧滑收起」（用户反馈），落点也会跟着滑偏。
+        AppStorage.setOrCreate('heroPopPending', true);
         this.backNow();
       }
     }, () => {

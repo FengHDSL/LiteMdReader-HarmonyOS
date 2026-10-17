@@ -7586,10 +7586,37 @@ struct Index {
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
     .navDestination(this.navPageBuilder)
+    .customNavContentTransition((from: NavContentInfo, to: NavContentInfo,
+      operation: NavigationOperation): NavigationAnimatedTransition | undefined => {
+      return this.readerHeroTransition(from, to);
+    })
     // **主题纪元拼进 key**：系统深浅 / 应用主题一变，整棵组件树重建一次，
     // 材质、壁纸、所有派生色一次刷新到位（不用再"进别的页面"才完全刷新）。
     // key 里必须带真正变化的量（themeEpoch），否则每个节点 key 相同 = 没换 key。
     .key('index_theme_' + this.themeEpoch + '_l' + this.languageTick)
+  }
+
+  /**
+   * 阅读页「一镜到底」退场不做系统转场。
+   *
+   * heroExit 已经把整页缩回封面那一格，Navigation 默认的 Pop 还会再叠一次横向
+   * 滑出 —— 用户看到的「缩完又侧滑收起」就是它，落点也会跟着滑偏。这里只在
+   * 阅读页写好 `heroPopPending` 的那一次把交接改成瞬切（finishTransition），
+   * 其余情况返回 undefined，沿用各页自己的 pageTransition（含侧滑返回手势）。
+   */
+  private readerHeroTransition(from: NavContentInfo, to: NavContentInfo): NavigationAnimatedTransition | undefined {
+    if (from.name !== 'pages/Reader' || AppStorage.get<boolean>('heroPopPending') !== true) {
+      return undefined;
+    }
+    // 消费掉标志：下一次（例如侧滑返回）要回到系统默认转场
+    AppStorage.setOrCreate('heroPopPending', false);
+    const t: NavigationAnimatedTransition = {
+      timeout: 320,
+      transition: (proxy: NavigationTransitionProxy): void => {
+        proxy.finishTransition();
+      }
+    };
+    return t;
   }
 
   /**
