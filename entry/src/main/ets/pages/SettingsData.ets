@@ -381,11 +381,23 @@ export struct SettingsData {
     this.refreshCacheSize();
     this.refreshAnnoData();
     this.life.onShow = () => {
-      this.loadBuiltins();
-      this.refreshCacheSize();
-      this.refreshAnnoData();
+      // 第一次 onShown 紧跟 aboutToAppear（四项刚算过），跳过；之后回到本页
+      // 才重算，而且**等转场落定**：loadBuiltins 逐内置文档探测文件系统，
+      // 压在进场那一帧就是审核报告里的转场卡顿。
+      if (!this.shownOnce) {
+        this.shownOnce = true;
+        return;
+      }
+      setTimeout((): void => {
+        this.loadBuiltins();
+        this.refreshCacheSize();
+        this.refreshAnnoData();
+      }, 300);
     };
   }
+
+  /** 第一次 onShown 是否已经消费过（见上面 onShow 的跳过分支）。 */
+  private shownOnce: boolean = false;
 
   /** 缓存大小刷新（清除后延迟 500ms 再读，等系统回收磁盘空间 —— xjau 同款经验）。 */
   private refreshCacheSize(delayMs: number = 0): void {

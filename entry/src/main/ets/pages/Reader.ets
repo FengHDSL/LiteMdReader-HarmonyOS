@@ -1143,6 +1143,29 @@ export struct Reader {
     });
   }
 
+  /** 滚动补批正在排队中（见 growVisibleBlocks 的防抖）。 */
+  private growPending: boolean = false;
+
+  /**
+   * 滚到「正在加载更多」哨兵时补下一批：**拆成 30 + 30 两次**，别在一帧里挂 60 个
+   * ListItem（每个条目还要建 MdBlockView、生成 key、可能带图），那一下就是长帧。
+   * `growPending` 防抖：第一批挂上后哨兵往往仍然可见，回调会连着再触发，
+   * 只允许排一批，否则几批叠同一帧反而更卡。
+   */
+  private growVisibleBlocks(): void {
+    if (this.growPending || this.visibleBlocks >= this.blocks.length) {
+      return;
+    }
+    this.growPending = true;
+    this.visibleBlocks = Math.min(this.blocks.length, this.visibleBlocks + 30);
+    setTimeout((): void => {
+      this.growPending = false;
+      if (this.visibleBlocks < this.blocks.length) {
+        this.visibleBlocks = Math.min(this.blocks.length, this.visibleBlocks + 30);
+      }
+    }, 140);
+  }
+
   /** 原 aboutToDisappear 的内容：由 NavDestination.onHidden 转发进来（被盖住时）。 */
   private onHiddenNow(): void {
     this.flushProgress();
@@ -1821,6 +1844,16 @@ export struct Reader {
       this.progress = meta.progressRatio;
       this.progressBlock = meta.progressIndex;
       this.activeHeading = result.outline.length > 0 ? result.outline[0].text : '';
+      // **转场降载**：正文已经按当前明暗建好了，把「界面已用上的明暗」一并记账。
+      // 不记的话进场 onShown → applyThemeChange() 看到 lastAppliedValid=false，
+      // 当成"主题变了"，在转场那一帧 renderEpoch++ / themeEpoch++ **把首屏整树重建**，
+      // 还顺手重收两份预渲染任务（每块一次 md5）——审核报告里的转场卡顿就有它一份。
+      // 深浅真的变了（比如在别处切过、或系统旋转期间改了）仍会走进重建，
+      // 这里只是不拿"第一次显示"当"变化"。
+      const darkAtLoad: boolean = this.isDark();
+      this.lastAppliedDark = darkAtLoad;
+      this.lastAppliedValid = true;
+      markThemeApplied(darkAtLoad);
       // ── 恢复阅读位置 ──
       // · 任务勾选后的重载：不跳（用户就停在原地）
       // · 首次加载：交给 List 的 initialIndex（构造时就定好，不会「先顶部再闪跳」）
@@ -6037,6 +6070,13 @@ export struct Reader {
     }
     // **一镜到底**：挂载浮层必须包在 animateTo 里，geometryTransition
     // 才会把正文里的小卡片形变成全屏大画布
+    //
+    // **带色 HTML 先在动画外算好**：highlightToHtml 要逐 token 分词 + 拼串，长代码块
+    // 是几十毫秒的活，写在 animateTo 的闭包里就等于压在飞行的那一帧上。
+    const richHtml: string = mode === 'code'
+      ? MdViewUtil.highlightToHtml(pl, title, this.palette())
+      : '';
+    const hlCsv: string = mode === 'code' ? this.codeHlCsv(geoKey) : '';
     this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
       this.enlargeMode = mode;
       // 每次打开浮层都清空"切源码前的形态"：从代码块放大进来时它为空，
@@ -6046,10 +6086,8 @@ export struct Reader {
       // **代码块放大补上语法颜色**：正文卡片是 ArkUI Span 逐 token 上色，浮层走 Web，
       // 此前只喂纯文本 → 一放大颜色全丢（用户实测）。用**同一套**分词与配色生成
       // 带色 HTML 随 payload 注入，两处逐 token 一致；代码块的 title 就是围栏语言 id。
-      this.enlargeRichHtml = mode === 'code'
-        ? MdViewUtil.highlightToHtml(pl, title, this.palette())
-        : '';
-      this.enlargeHlCsv = mode === 'code' ? this.codeHlCsv(geoKey) : '';
+      this.enlargeRichHtml = richHtml;
+      this.enlargeHlCsv = hlCsv;
       this.enlargeGeo = geoKey;
       this.enlargeTitle = title;
       this.enlargeWebMounted = true;
@@ -8032,7 +8070,7 @@ export struct Reader {
               // 可见比例回调只在**真的滚到这里**时触发，语义正确且可靠。
               .onVisibleAreaChange([0.0, 1.0], (isVisible: boolean) => {
                 if (isVisible) {
-                  this.visibleBlocks = Math.min(this.blocks.length, this.visibleBlocks + 60);
+                  this.growVisibleBlocks();
                 }
               })
             }

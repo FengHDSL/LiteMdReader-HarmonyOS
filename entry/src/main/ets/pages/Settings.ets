@@ -120,6 +120,9 @@ export struct Settings {
   /** 应用版本号（loadVersion 从资源/包信息读取） */
   @State versionName: string = '1.0.0';
 
+  /** 第一次 onShown 紧跟 aboutToAppear（数据已经是刚算过的），跳过它。 */
+  private shownOnce: boolean = false;
+
   aboutToAppear(): void {
     this.refresh();
     this.loadVersion();
@@ -130,7 +133,15 @@ export struct Settings {
       AppStorage.setOrCreate('settingsStackDepth', this.stack.size());
     }
     this.life.onShow = () => {
-      this.refresh();
+      if (!this.shownOnce) {
+        this.shownOnce = true;
+        return;
+      }
+      // 回到本页才重算，而且**等转场落定再扫**：refresh → DocStore.list 是
+      // 每篇文档一次文件系统探测，压在进场那一帧就是审核报告里的转场卡顿。
+      setTimeout((): void => {
+        this.refresh();
+      }, 300);
     };
   }
 

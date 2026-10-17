@@ -144,9 +144,19 @@ export struct SettingsWriting {
     }
   }
 
+  /** 第一次 onShown 紧跟 aboutToAppear（reload 刚算过），跳过，别把扫描压在进场那一帧。 */
+  private shownOnce: boolean = false;
+
   aboutToAppear(): void {
     this.life.onShow = () => {
-      this.reload();
+      if (!this.shownOnce) {
+        this.shownOnce = true;
+        return;
+      }
+      // 回到本页才重算，且等转场落定：reload 里 DocStore.list 每篇一次文件系统探测
+      setTimeout((): void => {
+        this.reload();
+      }, 300);
     };
     this.reload();
   }
