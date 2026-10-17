@@ -27,6 +27,7 @@ import {
 } from '../service/AiChatStore';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { L10n } from '../service/L10n';
 
 const TAG: string = 'AiSettings';
@@ -398,11 +399,8 @@ export struct AiSettings {
         // 全屏形态（对话页齿轮进入）：自绘壁纸背景 + 悬浮顶栏
         // 背景：与 AI 对话页完全同一套优先级（壁纸 → 生成壁纸 → 纯色 → 渐变兜底）
         if (this.wallpaperPathEffective().length > 0) {
-          Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-            .width('100%')
-            .height('100%')
-            .objectFit(ImageFit.Cover)
-            .blur(this.wallpaperBlur)
+          // 整屏壁纸走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+          WallpaperImage({ path: this.wallpaperPathEffective(), radiusVp: this.wallpaperBlur })
           Column()
             .width('100%')
             .height('100%')

@@ -29,6 +29,7 @@ import { EditorDraft } from '../service/EditorDraft';
 import { UpdateService } from '../service/UpdateService';
 import { UnsavedConfirmDialog } from '../components/UnsavedConfirmDialog';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { withAlpha } from '../theme/DesignTokens';
 import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
@@ -4220,11 +4221,8 @@ export struct Editor {
       //   → ④ 函数壁纸 → ⑤ 自定义背景色 → ⑥ 主题渐变
       // 每层都压与阅读页同浓度的可读性遮罩，两个页面观感一致
       if (this.readerBgPath.length > 0) {
-        Image(WallpaperStore.imageSourceOf(this.readerBgPath))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .blur(this.wallpaperBlur)
+        // 整屏背景走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+        WallpaperImage({ path: this.readerBgPath, radiusVp: this.wallpaperBlur })
 
         Column()
           .width('100%')
@@ -4238,11 +4236,7 @@ export struct Editor {
           .height('100%')
           .backgroundColor(WallpaperStore.scrimColorOf(this.wallpaperScrim, this.isDark()))
       } else if (this.wallpaperPathEffective().length > 0) {
-        Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .blur(this.wallpaperBlur)
+        WallpaperImage({ path: this.wallpaperPathEffective(), radiusVp: this.wallpaperBlur })
 
         Column()
           .width('100%')

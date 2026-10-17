@@ -57,6 +57,7 @@ import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrigh
   syncSystemDarkFromContext, markThemeApplied, themeChangedSince,
   startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { DocMeta, DocStore, ReaderRoute, DocFileInfo, DocTimes } from '../service/DocStore';
 // 桌面卡片数据同步：进度落盘后即时推送（2×2 最近阅读卡片）
 import { FormSync } from '../service/FormSync';
@@ -9090,11 +9091,8 @@ export struct Reader {
     // ⚠️ ①② 两层用 `bgDark()`（只看系统深浅）而不是 `isDark()`（含主题档位）：
     // 用户挑的壁纸颜色**不因切换主题而改变**（见 bgDark 注释）。
     if (this.readerBgPath.length > 0) {
-      Image(WallpaperStore.imageSourceOf(this.readerBgPath))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .blur(this.wallpaperBlur)
+      // 整屏背景走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+      WallpaperImage({ path: this.readerBgPath, radiusVp: this.wallpaperBlur })
 
       Column()
         .width('100%')
@@ -9108,11 +9106,7 @@ export struct Reader {
         .height('100%')
         .backgroundColor(WallpaperStore.scrimColorOf(this.readerBgScrim(), this.bgDark()))
     } else if (this.wallpaperPathEffective().length > 0) {
-      Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .blur(this.wallpaperBlur)
+      WallpaperImage({ path: this.wallpaperPathEffective(), radiusVp: this.wallpaperBlur })
 
       Column()
         .width('100%')

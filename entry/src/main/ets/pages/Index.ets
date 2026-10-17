@@ -16,7 +16,6 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { image } from '@kit.ImageKit';
 import { componentUtils } from '@kit.ArkUI';
 import {
   barFrostColor,
@@ -49,7 +48,8 @@ import { MergeExportPanel } from '../components/MergeExportPanel';
 import { MergeSource } from '../service/MergeExport';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
-import { WallpaperStore, WALLPAPER_BAKED_TICK_KEY } from '../service/WallpaperStore';
+import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { DocLint, LintIssue, LintReport } from '../service/DocLint';
 import { AnnotationStore } from '../service/AnnotationStore';
@@ -238,30 +238,6 @@ struct Index {
   }
   @StorageLink('wallpaperBlur') wallpaperBlur: number = 4;
   @StorageLink('wallpaperScrim') wallpaperScrim: number = 42;
-  /**
-   * 预烘模糊位图就绪信号（Store 烘完写一次时间戳）。背景层读它登记依赖，
-   * 位图就绪那一刻自动从「原图 + 实时 .blur()」换成「已经糊好的图」。
-   */
-  @StorageProp(WALLPAPER_BAKED_TICK_KEY) wallpaperBakedTick: number = 0;
-
-  /**
-   * 当前壁纸 + 当前模糊强度对应的**预烘位图**；null = 没有，背景走实时模糊。
-   *
-   * 为什么要换掉实时模糊：`.blur()` 挂在整屏图片上，转场（一镜到底、切页）期间
-   * 每一帧都要把这张模糊层重算一遍——上架检测把书架页 JANK_RATE_TRANSITION
-   * 192ms/s 的成因就指在这一行。见 WallpaperStore.bakedOf。
-   */
-  private bakedWallpaper(): image.PixelMap | null {
-    if (this.wallpaperBakedTick <= 0) {
-      return null;
-    }
-    return WallpaperStore.peekBaked(this.wallpaperPathEffective(), this.wallpaperBlur);
-  }
-
-  /** 发起（或复用）一次预烘。**转场之后再调**，别和进场动画抢主线程。 */
-  private syncWallpaperBaked(): void {
-    WallpaperStore.bakedOf(this.wallpaperPathEffective(), this.wallpaperBlur);
-  }
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完后靠它重算派生色 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** AI 后台生成完成的新事件计数（>0 时书架 AI 入口显示官方 Badge 角标） */
@@ -460,11 +436,6 @@ struct Index {
         this.splashOn = false;
       }, 460);
     }, 1200);
-    // 壁纸模糊位图预烘：等启动转场落定再起炉（解码 + 滤镜走后台异步链，
-    // 但发起调用仍在主线程），冷启动那一帧不该带上它
-    setTimeout((): void => {
-      this.syncWallpaperBaked();
-    }, 700);
   }
 
   /** 使用模式未选择时弹窗（首次使用）；选择结果写入 appMode。 */
@@ -1310,8 +1281,6 @@ struct Index {
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
     setTimeout(() => {
       this.refresh();
-      // 可能刚在「外观设置」里换了壁纸或调了模糊度：转场之后重新要一份预烘位图
-      this.syncWallpaperBaked();
     }, 420);
     // **外部"打开方式"导入的文档**（EntryAbility 已写入书架）：刷新后提示一次
     const pending: string | undefined = AppStorage.get<string>('pendingOpenDocName');
@@ -1467,8 +1436,6 @@ struct Index {
     // 保证「自动 / 按主题」的灰字跟着深浅一起换（用户反馈深色下没换色）
     AppStorage.setOrCreate('appearanceTick',
       (AppStorage.get<number>('appearanceTick') ?? 0) + 1);
-    // 深浅换了生效壁纸（浅/深各一张）也要跟着重新要预烘位图
-    this.syncWallpaperBaked();
   }
 
   // ══════════════════════ 数据 ══════════════════════
@@ -7810,20 +7777,8 @@ struct Index {
   backdrop() {
     // 背景优先级：手选壁纸 → **函数绘制壁纸** → 自定义背景色 → 主题渐变
     if (this.wallpaperPathEffective().length > 0) {
-      // 壁纸已经预烘好 → 直接贴那张糊好的位图，**这一层不再挂实时 .blur()**
-      if (this.bakedWallpaper() !== null) {
-        Image(this.bakedWallpaper())
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-      } else {
-        // 还没烘好（首次进入 / 刚换壁纸 / 设备不支持）：沿用实时模糊，观感一致
-        Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .blur(this.wallpaperBlur)
-      }
+      // 整屏壁纸走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+      WallpaperImage({ path: this.wallpaperPathEffective(), radiusVp: this.wallpaperBlur })
 
       Column()
         .width('100%')

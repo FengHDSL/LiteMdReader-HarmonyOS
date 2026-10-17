@@ -10,6 +10,7 @@
  */
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 
 @Component
@@ -42,11 +43,8 @@ export struct PageBackdrop {
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       if (this.effectivePath().length > 0) {
-        Image(WallpaperStore.imageSourceOf(this.effectivePath()))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .blur(this.wallpaperBlur)
+        // 整屏壁纸走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+        WallpaperImage({ path: this.effectivePath(), radiusVp: this.wallpaperBlur })
 
         Column()
           .width('100%')

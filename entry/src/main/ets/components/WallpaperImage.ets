@@ -1,0 +1,72 @@
+/**
+ * LiteMdReader · 整屏壁纸图（**模糊预烘版**）
+ * ==========================================
+ *
+ * 为什么要有这个组件：上架检测（《模糊场景性能优化》bpta-fuzzy-scene-performance-optimization）
+ * 把书架页 JANK_RATE_TRANSITION 192.19ms/s、点击响应 547.73ms 的成因直接指在
+ *
+ *     Image(壁纸).blur(this.wallpaperBlur)
+ *
+ * 这一行上。整屏实时模糊是**每一帧**重算的：一进一出两个页面各挂一层，转场期间
+ * 就是两层全屏模糊同时跑。
+ *
+ * 这里改成「烘一次、之后只贴图」：调 WallpaperStore.bakedOf() 用 effectKit
+ * 把壁纸一次糊成位图（解码时先缩到不超过 1080px），页面显示的就是已经糊好的图。
+ * 还没烘好、模糊强度为 0、或设备不支持滤镜时，退回原来的实时 `.blur()`——观感一致，
+ * 只是那一小段时间仍是老写法。
+ *
+ * 起炉时机：**进场之后 600ms**（与背景光斑动画同一口径），不在转场那一帧发起。
+ */
+
+import { image } from '@kit.ImageKit';
+import { WallpaperStore, WALLPAPER_BAKED_TICK_KEY } from '../service/WallpaperStore';
+
+@Component
+export struct WallpaperImage {
+  /** 壁纸在沙箱里的绝对路径（空 = 没有壁纸，调用方自己判，这里不画东西） */
+  @Prop @Watch('onSourceChanged') path: string = '';
+  /** 模糊强度（vp，与设置页滑杆同一口径） */
+  @Prop @Watch('onSourceChanged') radiusVp: number = 0;
+  /** 预烘就绪信号：Store 烘完写一次时间戳，这里靠它重绘换成位图 */
+  @StorageProp(WALLPAPER_BAKED_TICK_KEY) bakedTick: number = 0;
+
+  aboutToAppear(): void {
+    setTimeout((): void => {
+      this.requestBake();
+    }, 600);
+  }
+
+  private onSourceChanged(): void {
+    this.requestBake();
+  }
+
+  private requestBake(): void {
+    if (this.path.length === 0 || this.radiusVp <= 0) {
+      return;
+    }
+    WallpaperStore.bakedOf(this.path, this.radiusVp);
+  }
+
+  /** 当前 path + 强度对应的预烘位图；null = 还没有（键对不上也不返回旧的）。 */
+  private baked(): image.PixelMap | null {
+    if (this.bakedTick <= 0) {
+      return null;
+    }
+    return WallpaperStore.peekBaked(this.path, this.radiusVp);
+  }
+
+  build() {
+    if (this.baked() !== null) {
+      Image(this.baked())
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+    } else {
+      Image(WallpaperStore.imageSourceOf(this.path))
+        .width('100%')
+        .height('100%')
+        .objectFit(ImageFit.Cover)
+        .blur(this.radiusVp)
+    }
+  }
+}

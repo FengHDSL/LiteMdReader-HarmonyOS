@@ -16,6 +16,7 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveBar, ImmersiveIconButton, ImmersiveCard } from '../material/ImmersiveCard';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperImage } from '../components/WallpaperImage';
 import { L10n } from '../service/L10n';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
@@ -228,11 +229,8 @@ export struct SettingsShell {
     Stack({ alignContent: Alignment.TopStart }) {
       // 背景：与全应用同一套优先级（手选壁纸 → 函数壁纸 → 主题渐变）
       if (this.wallpaperPathEffective().length > 0) {
-        Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Cover)
-          .blur(this.wallpaperBlur)
+        // 整屏壁纸走 WallpaperImage：模糊**预烘成位图**，转场期间不再每帧重算
+        WallpaperImage({ path: this.wallpaperPathEffective(), radiusVp: this.wallpaperBlur })
 
         Column()
           .width('100%')
