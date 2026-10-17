@@ -138,9 +138,11 @@ export class HeroTransition {
       out.clipW = '100%';
       const clipH: number = rectVp.height / out.scale;
       out.clipH = clipH + 'vp';
-      // 容器顶部对齐屏幕顶部（Stack TopStart 布局），缩放后视觉顶部落在
-      // (clipH - clipH*scale)/2 处，平移量即封面顶部与它的差
-      out.translateY = rectVp.top - (clipH - clipH * out.scale) / 2;
+      // ⚠️ 纵向同样是**中心对齐**：hero 那一层是 Column（100%×100%），缩放围绕它
+      // 自己的中心，里面 clipW×clipH 的内容框被它默认居中摆放。此前这里写的是
+      // 「容器顶部对齐屏幕顶部」的算法（rect.top - (clipH-clipH*scale)/2），
+      // 于是缩回去整体偏下 (1-scale)·(H-clipH)/2 —— 手机上实测约 100vp 的偏差。
+      out.translateY = cy - screenHvp / 2;
     } else {
       out.translateY = cy - screenHvp / 2;
       out.clipH = '100%';
@@ -176,7 +178,9 @@ export class HeroTransition {
       out.clipW = '100%';
       const clipH: number = ui.px2vp(rect.height) / out.scale;
       out.clipH = clipH + 'vp';
-      out.translateY = ui.px2vp(rect.top) - (clipH - clipH * out.scale) / 2;
+      // 与 computeInitFromVp 同一口径：内容框由 hero 那层 Column 居中摆放，
+      // 纵向平移取「封面中心 - 屏幕中心」，不是顶部对齐那套。
+      out.translateY = cy - screenHvp / 2;
     } else {
       out.translateY = cy - screenHvp / 2;
       out.clipH = '100%';
