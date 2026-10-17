@@ -579,12 +579,17 @@ export struct SettingsAppearance {
                 //  ③ 提示"切换中，请耐心等待"，然后**把真正的主题切换推到下一帧之后**
                 //     —— 主题一变是全应用重渲染 + 图表深浅孪生重烘，主线程一占几秒，
                 //     占在同一帧里就是审核报告里的冻屏（THREAD_BLOCK_6S）。
+                // ⚠️ 延时取 350ms：Toggle 拨杆自己的滑动动画要这么久。延得太短（试过
+                //     80ms）动画播到一半就被占住，拨杆停在卡片中间——比原来更难看。
                 this.themeKnobOn = isOn;
                 this.glowTick++;
                 this.toast(this.s('切换中，请耐心等待'));
                 setTimeout((): void => {
                   this.themeMode = isOn ? ReaderThemeMode.Dark : ReaderThemeMode.Light;
-                }, 80);
+                  // 完成提示排在真正的切换之后：切换中那条还挂着时它会被顶替，
+                  // 用户看到的就是"切换中 → 已切换"两步反馈
+                  this.toast(isOn ? this.s('已切换到深色模式') : this.s('已切换到浅色模式'));
+                }, 350);
               })
           }
           .width('100%')
@@ -601,7 +606,7 @@ export struct SettingsAppearance {
                 this.toast(this.s('切换中，请耐心等待'));
                 setTimeout((): void => {
                   this.themeMode = ReaderThemeMode.System;
-                }, 80);
+                }, 350);
               }
             })
             Text(this.s1('当前：%1', this.s(themeModeLabel(this.themeMode))))

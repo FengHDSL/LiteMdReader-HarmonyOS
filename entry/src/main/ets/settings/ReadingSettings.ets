@@ -475,7 +475,7 @@ export struct ReadingSettingsPanel {
           // 主题是持久化键：切完立刻落一次镜像，别等面板消失
           SettingsMirror.save(this.hostCtx());
           this.toast('主题：' + themeModeLabel(mode));
-        }, 80);
+        }, 350);
       })
   }
 

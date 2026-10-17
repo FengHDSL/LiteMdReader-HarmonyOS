@@ -7112,7 +7112,7 @@ export struct Reader {
         this.toast('切换中，请耐心等待');
         setTimeout((): void => {
           this.themeMode = mode;
-        }, 80);
+        }, 350);
       })
   }
 
