@@ -248,12 +248,12 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   //  · 阅读页懒挂载（ForEach key 一变 = 整条目重建，Web 销毁 + 重新 loadUrl，更卡）；
   //  · 公式图 + 浅色孪生进池子（同模式任务背靠背、组件不重载 → **串图**：
   //    旅程图的键下存着一张白字黑底的公式图）。
-  check('⑤ 阅读页不做懒挂载、池子不做公式图与浅色孪生（串图回归防线）',
+  check('⑤ 不做懒挂载、公式不进池子；图表孪生必须带硬隔离 + 刷新后再拍',
     !mdViewEts.includes('@Prop webActive')
     && !readerEts.includes('webReached')
-    && !readerEts.includes('chartExportBake')
-    && !readerEts.includes('twins')
-    && !poolEts.includes('curDark') && !poolEts.includes('dark?: boolean;')
+    && readerEts.includes('bg: lightBg')
+    && poolEts.includes('this.bakeReloadTick++;')
+    && poolEts.includes('reloadRequest: this.bakeReloadTick,')
     && readerEts.includes('const b: MdBlock = this.blocks[k];')
     && (() => {
       const at = readerEts.indexOf('if (b.kind === MdBlockKind.Math) {');

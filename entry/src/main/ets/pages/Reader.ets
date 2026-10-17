@@ -1379,6 +1379,8 @@ export struct Reader {
   private collectChartTasks(dark: boolean): ChartTask[] {
     const out: ChartTask[] = [];
     const curBg: string = withAlpha(this.palette().codeBlockBg, 'FF');
+    // 浅色孪生的底色：键里的 bg 必须与烘的时候用的同一个值，否则键对不上图
+    const lightBg: string = withAlpha(paletteFor(this.themeMode, false).codeBlockBg, 'FF');
     for (let k = 0; k < this.blocks.length; k++) {
       const b: MdBlock = this.blocks[k];
       let mode: string = '';
@@ -1432,6 +1434,22 @@ export struct Reader {
         mode: mode,
         payload: b.code
       } as ChartTask);
+      /**
+       * **深色读书时紧跟一条浅色孪生**（用户要求：导出 / 打印里的**图表**要转成图片）。
+       * 导出与打印恒认浅色快照，不补这一条，深色模式下读书的用户导出就永远是容器。
+       * 只给图表，不给公式（用户明确"不是公式块"）。
+       * ⚠️ 必须紧跟正文款入队，且池子每张之间硬隔离（`ChartRenderPool.finishOne`
+       * 先卸载组件再起下一张）—— 同模式连排曾把深色那一帧写进浅色的键（串图）。
+       */
+      if (dark) {
+        out.push({
+          key: ChartCache.keyFor(mode, b.code, false, lightBg),
+          mode: mode,
+          payload: b.code,
+          dark: false,
+          bg: lightBg
+        } as ChartTask);
+      }
     }
     return out;
   }

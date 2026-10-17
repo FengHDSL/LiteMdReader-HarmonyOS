@@ -27,6 +27,17 @@ export interface ChartTask {
   payload: string;
   /** 行内公式：按公式自身尺寸渲染（供正文 ImageSpan 内联） */
   inline?: boolean;
+  /**
+   * 这一张自己的深浅款与卡片底色（不给则跟随池子的 `dark`/`cardBg`）。
+   *
+   * 导出 / 打印恒认**浅色**快照（`ChartCache.lightShotKeys`），而浅色款此前只有
+   * "读书时正好是浅色模式"才会存在 → 深色模式下读书的用户导出永远判缺图。
+   * ⚠️ 同模式的两个任务（正文款 → 浅色孪生）连着跑曾经造成**串图**（深色那一帧被
+   * 写进浅色的键，见 0edc7a3），所以现在池子做了任务间硬隔离：`finishOne` 先把组件
+   * 摘掉、隔一帧再起下一张，任务之间不可能共用一张画过的页面。
+   */
+  dark?: boolean;
+  bg?: string;
 }
 
 @Component
@@ -68,6 +79,15 @@ export struct ChartRenderPool {
 
   /** 当前正在渲染的任务 */
   @State current: ChartTask | null = null;
+  /** 当前任务实际使用的深浅款 / 底色（见 ChartTask.dark / bg） */
+  @State curDark: boolean = false;
+  @State curBg: string = '';
+  /**
+   * **先渲染 → 刷新一次 → 再拍**（用户要求）：首帧是按瞬时宽度排版的，刷新一遍
+   * 才是最终尺寸。每张任务只放这一枪（`bakeReloaded`），放完等第二次收敛再派快照。
+   */
+  @State bakeReloadTick: number = 0;
+  private bakeReloaded: boolean = false;
   /** 截图请求计数：当前任务高度就绪后递增，驱动 DiagramWeb 快照 */
   @State captureTick: number = 0;
   /**
@@ -146,27 +166,39 @@ export struct ChartRenderPool {
       this.current = t;
       this.busyRendering = true;
       this.captureRetry = 0;
+      this.bakeReloaded = false;
+      // 深浅 / 底色按**任务**取（正文款与浅色孪生混在一条队列里，池子的 @Prop
+      // `dark`/`cardBg` 只代表读书时那一档主题）。任务间硬隔离见 finishOne。
+      this.curDark = t.dark === undefined ? this.dark : t.dark;
+      this.curBg = (t.bg === undefined || t.bg.length === 0) ? this.cardBg : t.bg;
       // 每张都按当前宿主宽重算表面宽（旋转 / 分屏后跟着变），并清掉上一张的收敛记账
       this.surfaceW = DlFit.surfaceWidthOf(this.hostWidth);
       this.dlZoom = 1;
       this.lastW = 0;
       this.lastH = 0;
-      // 启动"等高度"兜底：超时仍未回传 → 跳过该任务，队列继续
-      if (this.waitTimer >= 0) {
-        clearTimeout(this.waitTimer);
-      }
-      this.waitTimer = setTimeout(() => {
-        this.waitTimer = -1;
-        const cur: ChartTask | null = this.current;
-        if (cur !== null && this.busyRendering) {
-          this.failed.add(cur.key);
-          this.finishOne(cur);
-        }
-      }, 10000);
+      this.armWait();
       return;
     }
     // 全部就绪
     this.current = null;
+  }
+
+  /**
+   * "等高度"兜底：10 秒内没有高度回传就跳过该任务，队列继续。
+   * 单独抽出来是因为"刷新一次再拍"之后要重新续这个定时器，不能让它裸奔。
+   */
+  private armWait(): void {
+    if (this.waitTimer >= 0) {
+      clearTimeout(this.waitTimer);
+    }
+    this.waitTimer = setTimeout(() => {
+      this.waitTimer = -1;
+      const cur: ChartTask | null = this.current;
+      if (cur !== null && this.busyRendering) {
+        this.failed.add(cur.key);
+        this.finishOne(cur);
+      }
+    }, 10000);
   }
 
   /**
@@ -214,6 +246,14 @@ export struct ChartRenderPool {
       this.captureDebounce = -1;
       const t: ChartTask | null = this.current;
       if (t === null || !this.busyRendering) {
+        return;
+      }
+      if (!this.bakeReloaded) {
+        // **先渲染 → 刷新一次 → 再拍**（用户要求）：首帧那张是按瞬时宽度排版的，
+        // 刷一遍才拿到最终尺寸。放完这一枪重新续"等高度"兜底，等第二次收敛再拍。
+        this.bakeReloaded = true;
+        this.bakeReloadTick++;
+        this.armWait();
         return;
       }
       // 记下本次快照归属的任务键：onCaptured 用它丢弃"迟到"的快照
@@ -294,7 +334,7 @@ export struct ChartRenderPool {
           }
           ChartCache.save(c, t.key, pixel, w, h, true).then(() => {
             // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
-            ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.dark, t.key);
+            ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);
             this.finishOne(t);
           }).catch(() => {
             this.failed.add(t.key);
@@ -509,7 +549,13 @@ export struct ChartRenderPool {
     this.busyRendering = false;
     this.current = null;
     this.onOneDone();
-    this.pump();
+    // **任务间硬隔离**：先把渲染组件摘掉（current=null → DiagramWeb 整个卸载），
+    // 隔一帧再起下一张。上一版在这里同步 pump()，同模式的两个任务（正文款 → 浅色
+    // 孪生）会复用同一张已经画过的页面、只热注入 payload，于是深色那一帧被写进
+    // 浅色的键 —— 真机实锤：旅程图键下存着一张白字黑底的公式图（见 0edc7a3）。
+    setTimeout(() => {
+      this.pump();
+    }, 200);
   }
 
   private hostCtx(): common.UIAbilityContext | null {
@@ -527,8 +573,10 @@ export struct ChartRenderPool {
         DiagramWeb({
           mode: this.current.mode,
           payload: this.current.payload,
-          dark: this.dark,
-          cardBg: this.cardBg,
+          dark: this.curDark,
+          cardBg: this.curBg,
+          // 「先渲染 → 刷新一次 → 再拍」的刷新信号（见 bakeReloaded）
+          reloadRequest: this.bakeReloadTick,
           inlineMode: this.current.inline === true,
           // 定宽烘焙（见 hostWidth / surfaceW 声明）：表面与页面排版都用这个钉死值
           virtualWidth: this.surfaceW,
