@@ -39,16 +39,19 @@ const HTML_CSS: string = `
      公式块是 .ktx 容器不带按钮）。外层 .cwrap 只负责给按钮定位，不改变图片布局，
      所以"什么比例就什么比例"那条规则不受影响。 */
   .cwrap { position: relative; display: inline-block; max-width: 100%; }
-  .cz { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; opacity: 0.86; }
+  .cz { position: absolute; right: 6px; bottom: 26px; display: none; gap: 4px; opacity: 0.92; }
+  .cwrap.czOn .cz { display: flex; }
   .cz button { width: 26px; height: 26px; border: 1px solid #c9d2e0; border-radius: 13px;
-    background: rgba(255, 255, 255, 0.92); color: #2f63e8; font-size: 15px; line-height: 1;
+    background: rgba(255, 255, 255, 0.92); color: #2f63e8; font-size: 14px; line-height: 1;
     cursor: pointer; padding: 0; }
-  /* 右下角的**拖动把手**（用户要的是拖拽调节，加减键保留）：pointer 事件同时吃手指
-     与鼠标，touch-action:none 挡住页面跟着滚。 */
+  /* 右下角的**拖动把手**（用户要的是拖拽调节）：pointer 事件同时吃手指与鼠标，
+     touch-action:none 挡住页面跟着滚。把手平时淡淡地在角上（否则用户找不到入口），
+     加减与锁定键只在拖动 / 点按后短暂出现，静止一会儿自动隐藏。 */
   .czd { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px;
-    cursor: nwse-resize; touch-action: none; opacity: 0.7;
+    cursor: nwse-resize; touch-action: none; opacity: 0.35;
     background: linear-gradient(135deg, transparent 46%, #2f63e8 46%, #2f63e8 58%,
       transparent 58%, transparent 70%, #2f63e8 70%, #2f63e8 82%, transparent 82%); }
+  .cwrap.czOn .czd { opacity: 0.85; }
   /* 打印：屏幕上"能左右滑动"的东西到了纸上就是"少一段"（用户实测超宽公式打印不全）。
      公式由页尾 runner 缩字号等比适配、SVG 由上面的 max-width 等比缩放，容器一律不裁切。 */
   @media print {
@@ -562,17 +565,19 @@ export class MdToHtml {
   }
 
   /**
-   * 图表快照 → `<img>`（带右下角的原地缩放按钮）。
+   * 图表快照 → `<img>`（带右下角拖动把手 + 加减 / 比例锁按钮）。
    *
    * 只给图表：块级公式是 `.ktx` 容器（透底、由 runner 现场渲染 KaTeX），不走这里。
-   * 按钮加减的是图片自己的显示宽（`height:auto` 永远等比），基准宽 = 快照逻辑宽，
-   * 页尾 runner 里限死 0.25×~4×；打印时按钮由 `@media print` 隐藏，不进纸。
+   * 默认**锁定比例**：加减和拖动都只改宽（`height:auto` 等比），基准宽 = 快照逻辑宽，
+   * 页尾 runner 里限死 0.25×~4×；点锁按钮解锁后宽高各自独立调。控件平时藏起来，
+   * 点按 / 拖动时才出现，静止 1.6 秒收回；打印时由 `@media print` 隐藏，不进纸。
    */
   private static chartImgTag(embed: string): string {
     return '<span class="cwrap"><img class="chartimg" src="' + MdToHtml.embedPng(embed)
       + '" style="' + MdToHtml.embedStyle(embed) + '">'
       + '<span class="cz"><button type="button" data-cz="-1" aria-label="缩小">−</button>'
-      + '<button type="button" data-cz="1" aria-label="放大">+</button></span>'
+      + '<button type="button" data-cz="1" aria-label="放大">+</button>'
+      + '<button type="button" data-cz="lock" class="czlk" aria-label="解锁比例">&#128274;</button></span>'
       + '<span class="czd" title="拖动调节大小"></span></span>';
   }
 
@@ -961,10 +966,26 @@ export class MdToHtml {
         + '    if (!window.mermaid) { console.error("mermaid 运行时没挂上，容器无法渲染"); }\n'
         + '    if (window.mermaid) {\n'
         + '      tryRun(function() { mermaid.initialize({ startOnLoad: false }); });\n'
+        + '      // venn / 部分新图种只给 svg 写 width="100%" + viewBox，**不写 height**；\n'
+        + '      // 宿主样式里那条 height:auto 在部分内核版本上不生效，盒子直接塌成 0 高\n'
+        + '      // —— 图其实画出来了（6KB svg），只是看不见（用户实测"韦恩图不显示"）。\n'
+        + '      // 这里按 viewBox 把显示高补出来，量不到宽就等一帧再补。\n'
+        + '      var fixSvg = function (el) {\n'
+        + '        var sv = el.querySelector("svg");\n'
+        + '        if (sv === null) { return; }\n'
+        + '        var vb = (sv.getAttribute("viewBox") || "").split(/[ ,]+/);\n'
+        + '        if (sv.getBoundingClientRect().height > 4) { return; }\n'
+        + '        if (vb.length !== 4) { sv.style.height = "320px"; return; }\n'
+        + '        var w0 = sv.getBoundingClientRect().width || el.getBoundingClientRect().width || 640;\n'
+        + '        var ratio = Number(vb[3]) / Number(vb[2]);\n'
+        + '        sv.style.height = Math.round(w0 * (isFinite(ratio) && ratio > 0 ? ratio : 0.6)) + "px";\n'
+        + '      };\n'
         + '      document.querySelectorAll(".mermaid").forEach(async function(el, i) {\n'
         + '        try {\n'
         + '          var r = await mermaid.render("mmd" + i, b64u(el.dataset.b64));\n'
         + '          el.innerHTML = r.svg;\n'
+        + '          fixSvg(el);\n'
+        + '          setTimeout(function () { fixSvg(el); }, 240);\n'
         + '        } catch (e) { console.error("mermaid render failed", e); }\n'
         + '      });\n'
         + '    }\n' : '')
@@ -1118,47 +1139,99 @@ export class MdToHtml {
         + '      pRun();\n'
         + '    }\n' : '')
       + '  });\n'
-      + '  // **图表右下角的原地缩放按钮**（用户要求）：以快照逻辑宽为基准，\n'
-      + '  // 每点一次 ×1.25 / ×0.8，限 0.25×~4×；只动 img 自己的显示宽，height:auto 等比。\n'
-      + '  // 公式块是 .ktx 容器、不带这个按钮；打印时 .cz 由 @media print 隐藏，不进纸。\n'
+      + '  // **图表图片的原地缩放**（用户要求）：以快照逻辑宽为基准，加减键每点一次\n'
+      + '  // ×1.25 / ×0.8，拖把手按 1:1 跟手；两条路都限 0.25×~4×，只动 img 自己的显示尺寸。\n'
+      + '  // 默认**锁定比例**：拖只改宽、height:auto 等比；点锁按钮解锁后宽高各自独立拖。\n'
+      + '  // 按钮平时不显示，按下/点按/拖动时才亮出来，静止 1.6 秒自动收回。\n'
+      + '  // 公式块是 .ktx 容器、不带这些控件；打印时 .cz / .czd 由 @media print 隐藏，不进纸。\n'
       + '  document.querySelectorAll(".cwrap").forEach(function (w) {\n'
       + '    var im = w.querySelector("img.chartimg");\n'
       + '    if (im === null) { return; }\n'
+      + '    var hideTimer = -1;\n'
+      + '    var showCtl = function () {\n'
+      + '      w.classList.add("czOn");\n'
+      + '      if (hideTimer >= 0) { clearTimeout(hideTimer); }\n'
+      + '      hideTimer = setTimeout(function () {\n'
+      + '        hideTimer = -1;\n'
+      + '        w.classList.remove("czOn");\n'
+      + '      }, 1600);\n'
+      + '    };\n'
+      + '    var baseW = function () {\n'
+      + '      // 基准宽**第一次用到时才取**：绑定时图片可能还没排版完，量到 0 会把整个\n'
+      + '      // 缩放范围算错；那时 naturalWidth 一定有了（data URL），除以屏幕密度即逻辑宽。\n'
+      + '      var b = im.dataset.czBase ? Number(im.dataset.czBase)\n'
+      + '        : (im.getBoundingClientRect().width || (im.naturalWidth / 3.5) || 320);\n'
+      + '      im.dataset.czBase = String(Math.round(b));\n'
+      + '      return b;\n'
+      + '    };\n'
+      + '    // 锁定态就着行内 height 判：没解锁过时它是 auto（或被烘图带上的固定 px）\n'
+      + '    var lockState = function () {\n'
+      + '      return w.dataset.lock === "0" ? "0" : "1";\n'
+      + '    };\n'
+      + '    var paintLock = function () {\n'
+      + '      var lk = w.querySelector(".czlk");\n'
+      + '      if (lk === null) { return; }\n'
+      + '      var on = lockState() === "1";\n'
+      + '      lk.textContent = on ? "\\uD83D\\uDD12" : "\\uD83D\\uDD13";\n'
+      + '      lk.setAttribute("aria-label", on ? "解锁比例" : "锁定比例");\n'
+      + '    };\n'
+      + '    paintLock();\n'
+      + '    var clampW = function (next, base) {\n'
+      + '      if (next < base * 0.25) { next = base * 0.25; }\n'
+      + '      if (next > base * 4) { next = base * 4; }\n'
+      + '      return Math.round(next);\n'
+      + '    };\n'
       + '    w.querySelectorAll(".cz button").forEach(function (btn) {\n'
       + '      btn.addEventListener("click", function () {\n'
-      + '        // 基准宽**在第一次点击时才取**：绑定时图片可能还没排版完，量到 0 会把\n'
-      + '        // 整个缩放范围算错；那时 naturalWidth 一定有了（data URL），除以屏幕密度即逻辑宽。\n'
-      + '        var base = im.dataset.czBase ? Number(im.dataset.czBase)\n'
-      + '          : (im.getBoundingClientRect().width || (im.naturalWidth / 3.5) || 320);\n'
-      + '        im.dataset.czBase = String(Math.round(base));\n'
+      + '        showCtl();\n'
+      + '        if (btn.getAttribute("data-cz") === "lock") {\n'
+      + '          // 锁 / 解锁：只改比例口径，**不碰当前宽度**；解锁后按当前实测尺寸立高度基准\n'
+      + '          if (lockState() === "1") {\n'
+      + '            w.dataset.lock = "0";\n'
+      + '            im.dataset.czBaseH = String(Math.round(im.getBoundingClientRect().height || 0));\n'
+      + '          } else {\n'
+      + '            w.dataset.lock = "1";\n'
+      + '            im.style.height = "auto";\n'
+      + '          }\n'
+      + '          paintLock();\n'
+      + '          return;\n'
+      + '        }\n'
+      + '        var base = baseW();\n'
       + '        var step = Number(btn.getAttribute("data-cz")) > 0 ? 1.25 : 0.8;\n'
       + '        var cur = im.getBoundingClientRect().width || base;\n'
-      + '        var next = cur * step;\n'
-      + '        if (next < base * 0.25) { next = base * 0.25; }\n'
-      + '        if (next > base * 4) { next = base * 4; }\n'
-      + '        im.style.width = Math.round(next) + "px";\n'
+      + '        im.style.width = clampW(cur * step, base) + "px";\n'
+      + '        if (lockState() === "0") {\n'
+      + '          var bh = Number(im.dataset.czBaseH || 0) || base;\n'
+      + '          var curH = im.getBoundingClientRect().height || bh;\n'
+      + '          im.style.height = clampW(curH * step, bh) + "px";\n'
+      + '        }\n'
       + '      });\n'
       + '    });\n'
       + '    var hd = w.querySelector(".czd");\n'
       + '    if (hd !== null) {\n'
-      + '      // **拖动把手调节大小**（用户要的就是这个）：按下记下起点宽与 X，移动量按\n'
-      + '      // 1:1 加到宽上，同样限 0.25×~4×；pointer 事件 + setPointerCapture 让手指\n'
-      + '      // 和鼠标共用一套，CSS 里 touch-action:none 已经拦住页面跟着滚。\n'
+      + '      // **拖动把手调节大小**（用户要的就是这个）：按下记下起点宽高与 X/Y，移动量按\n'
+      + '      // 1:1 加上去；pointer 事件 + setPointerCapture 让手指和鼠标共用一套，\n'
+      + '      // CSS 里 touch-action:none 已经拦住页面跟着滚。锁定态只吃 dx。\n'
       + '      var drag = null;\n'
       + '      hd.addEventListener("pointerdown", function (ev) {\n'
-      + '        var b0 = im.dataset.czBase ? Number(im.dataset.czBase)\n'
-      + '          : (im.getBoundingClientRect().width || (im.naturalWidth / 3.5) || 320);\n'
-      + '        im.dataset.czBase = String(Math.round(b0));\n'
-      + '        drag = { x: ev.clientX, w: im.getBoundingClientRect().width || b0, base: b0 };\n'
+      + '        showCtl();\n'
+      + '        var b0 = baseW();\n'
+      + '        var h0 = im.dataset.czBaseH ? Number(im.dataset.czBaseH)\n'
+      + '          : Math.round(im.getBoundingClientRect().height || 0);\n'
+      + '        if (!im.dataset.czBaseH && h0 > 0) { im.dataset.czBaseH = String(h0); }\n'
+      + '        drag = { x: ev.clientX, y: ev.clientY, w: im.getBoundingClientRect().width || b0,\n'
+      + '          h: im.getBoundingClientRect().height || h0, base: b0, baseH: h0 > 0 ? h0 : b0,\n'
+      + '          lock: lockState() === "1" };\n'
       + '        try { hd.setPointerCapture(ev.pointerId); } catch (e) {}\n'
       + '        ev.preventDefault();\n'
       + '      });\n'
       + '      hd.addEventListener("pointermove", function (ev) {\n'
       + '        if (drag === null) { return; }\n'
-      + '        var next = drag.w + (ev.clientX - drag.x);\n'
-      + '        if (next < drag.base * 0.25) { next = drag.base * 0.25; }\n'
-      + '        if (next > drag.base * 4) { next = drag.base * 4; }\n'
-      + '        im.style.width = Math.round(next) + "px";\n'
+      + '        showCtl();\n'
+      + '        im.style.width = clampW(drag.w + (ev.clientX - drag.x), drag.base) + "px";\n'
+      + '        if (!drag.lock) {\n'
+      + '          im.style.height = clampW(drag.h + (ev.clientY - drag.y), drag.baseH) + "px";\n'
+      + '        }\n'
       + '      });\n'
       + '      var stop = function (ev) {\n'
       + '        if (drag === null) { return; }\n'
@@ -1168,6 +1241,8 @@ export class MdToHtml {
       + '      hd.addEventListener("pointerup", stop);\n'
       + '      hd.addEventListener("pointercancel", stop);\n'
       + '    }\n'
+      + '    // 点图片本体也亮一次控件，否则用户找不到锁按钮\n'
+      + '    im.addEventListener("pointerdown", showCtl);\n'
       + '  });\n'
       + '})();\n</script>\n';
     return runnerCode;
