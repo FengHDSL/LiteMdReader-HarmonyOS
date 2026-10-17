@@ -44,7 +44,7 @@ const HTML_CSS: string = `
     background: rgba(255, 255, 255, 0.92); color: #2f63e8; font-size: 15px; line-height: 1;
     cursor: pointer; padding: 0; }
   /* 右下角的**拖动把手**（用户要的是拖拽调节，加减键保留）：pointer 事件同时吃手指
-     与鼠标，`touch-action:none`  prevent 页面跟着滚。 */
+     与鼠标，touch-action:none 挡住页面跟着滚。 */
   .czd { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px;
     cursor: nwse-resize; touch-action: none; opacity: 0.7;
     background: linear-gradient(135deg, transparent 46%, #2f63e8 46%, #2f63e8 58%,
