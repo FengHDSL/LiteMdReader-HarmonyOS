@@ -191,11 +191,11 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     !runtimeEts.includes('static kernelNeeded(') && !runtimeEts.includes('static async waitForShots('));
   check('⑤ 导出：先发失败重试信号、再等（上限 120s）、超时按缺口裁库',
     exportEts.includes("AppStorage.setOrCreate('chartRetryTick'")
-    && exportEts.includes('waitShots(ctx, parsed.blocks, dark, chartBg, 120000')
+    && exportEts.includes('waitShots(ctx, parsed.blocks, dark, chartBg, 300000')
     && exportEts.includes('fileStillNeeded(ctx, parsed.blocks, dark, chartBg'));
   check('⑤ 打印：同一套等待 + 裁剪（120s，浅色口径）',
     printEts.includes("AppStorage.setOrCreate('chartRetryTick'")
-    && printEts.includes("waitShots(ctx, parsed.blocks, false, '', 120000")
+    && printEts.includes("waitShots(ctx, parsed.blocks, false, '', 300000")
     && printEts.includes("fileStillNeeded(ctx, parsed.blocks, false, '"));
   check('⑤ 内联语义修正：inline=[] 也必须走内联分支（零库全图化不能掉进 CDN 回退）',
     mdHtmlEts.includes('if (inline !== null) {')
@@ -307,8 +307,8 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
       const seg = at >= 0 ? readerEts.substring(at, at + 260) : '';
       return seg.includes('res.push(out[q]);') && seg.includes('res.push(twins[q]);');
     })()
-    && exportEts.includes('parsed.blocks, dark, chartBg, 120000, notify)')
-    && printEts.includes('parsed.blocks, false, \'\', 120000, notify)'));
+    && exportEts.includes('parsed.blocks, dark, chartBg, 300000, notify)')
+    && printEts.includes('parsed.blocks, false, \'\', 300000, notify)'));
   check('⑤ 导出等补烘：负结果不入内存缓存，进度文案是"共 N 张"且过程消息不收面板',
     /if \(found\.length > 0\) \{\s*\n\s*ChartCache\.memo\.set\(key, found\);/.test(cacheEts)
     && /if \(uri\.length > 0\) \{\s*\n\s*ChartCache\.uriMemo\.set\(key, uri\);/.test(cacheEts)
@@ -316,11 +316,12 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && runtimeEts.includes("ChartRuntimeService.shotsWanted(blocks)")
     && panelEts.includes('private progress(message: string): void')
     && panelEts.includes('this.withBusyAsync(() => ExportService.exportHtmlSmart('));
-  check('⑤ 导出嵌图按逻辑尺寸定宽，且细长度图有 45% 页宽下限（clamp 等比，不改 height）',
+  check('⑤ 导出嵌图按快照的逻辑尺寸原样显示（不 clamp、不写死 height）',
     mdHtmlEts.includes('private static embedStyle(embed: string)')
     && mdHtmlEts.includes('MdToHtml.embedStyle(pngEmbed)')
-    && mdHtmlEts.includes("'width:clamp(45%,' + w + 'px,100%);height:auto'")
-    // 等比是底线：embedStyle 里绝不能再写死 height（那正是用户报"改拉伸了"的成因）
+    && mdHtmlEts.includes("'width:' + w + 'px;height:auto'")
+    // 用户拍板"什么比例就什么比例"：放大细长图（clamp 45%）与写死 height 都不许回来
+    && !mdHtmlEts.includes('width:clamp(')
     && (() => {
       const at = mdHtmlEts.indexOf('private static embedStyle(');
       const seg = at >= 0 ? mdHtmlEts.substring(at, at + 900) : '\0';
@@ -332,10 +333,9 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && (viewerEts.match(/ImmersiveBar\(\{/g) || []).length >= 2
     && viewerEts.includes('barHeight: HwBar.pill')
     && !viewerEts.includes("backgroundColor('#E8FFFFFF')")
-    // 加载态底色：Web 组件底色必须透明，才能透出与阅读页同一道 pageTop→pageBottom
-    // 渐变（写死 pageBottom 是个平面色，用户实测"加载时背景颜色不对"）
-    && viewerEts.includes('.backgroundColor(Color.Transparent)')
-    && !viewerEts.includes('.backgroundColor(this.palette().pageBottom)'));
+    // 加载态底色：用户拍板"纯黑纯白"，按深浅走，不要透渐变
+    && viewerEts.includes(".backgroundColor(this.systemDark ? '#FF000000' : '#FFFFFFFF')")
+    && !viewerEts.includes('.backgroundColor(Color.Transparent)'));
   check('⑤ 打印页切深浅立即刷新（palette() 显式读 appearanceTick + 顶栏换 key 重挂）',
     viewerEts.includes("@StorageProp('appearanceTick') appearanceTick: number = 0;")
     && /private palette\(\): ReaderPalette \{\s*\n(?:\s*\/\/[^\n]*\n)*\s*const tick: number = this\.appearanceTick;/.test(viewerEts)

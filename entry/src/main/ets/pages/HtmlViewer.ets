@@ -262,15 +262,12 @@ export struct HtmlViewer {
     // 滚动时正文可以一直穿到顶栏下层。上一版是 Column 上下分栏，顶栏那条
     // 28vp 是**占位**的 —— 内容被压在下面，看着就像被顶栏"切掉了一截"。
     Stack({ alignContent: Alignment.Top }) {
-      // **加载态透出阅读页那套纸面渐变**（用户要求"和阅读界面一样的颜色"）：
-      // Web 在内容画出来之前露的就是它自己的底色。上一版写 `pageBottom` 是**一个
-      // 平面色**，而阅读页是 pageTop→pageBottom 的渐变 —— 加载时看着就是"底色不对"。
-      // 组件底色设成透明，让下层 Stack 那道一模一样的渐变透出来；文档一旦绘制，
-      // 网页自带的纸面背景自然盖在上面，不影响打印与预览。
+      // **加载态底色：纯白 / 纯黑按深浅走**（用户 2026-10-17 拍板，不要再透渐变）。
+      // Web 在内容画出来之前露的就是这块底色 —— 浅色下纯白、深色下纯黑，最简单直白。
       Web({ src: 'about:blank', controller: this.controller })
         .width('100%')
         .height('100%')
-        .backgroundColor(Color.Transparent)
+        .backgroundColor(this.systemDark ? '#FF000000' : '#FFFFFFFF')
         .javaScriptAccess(true)
         .fileAccess(true)
         .domStorageAccess(true)

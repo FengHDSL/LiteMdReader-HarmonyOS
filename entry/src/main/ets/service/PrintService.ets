@@ -71,7 +71,7 @@ export class PrintService {
         // 等待上限 120s：首次打印 / 导出要现烘"正文款 + 浅色款 + 公式图"（示例文档
         // 64 张卡片 ≈ 128 次烘焙），45s 只够三十几张，超时就退成"背渲染库的现场渲染
         // 容器"—— 正是用户报的"一大半没转成图片 + 容器被挤成一团"。第二次全命中缓存，不等待。
-        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 120000, notify);
+        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 300000, notify);
         for (let i = needed.length - 1; i >= 0; i--) {
           if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, false, '', needed[i])) {
             needed.splice(i, 1);

@@ -211,9 +211,11 @@ export class ExportService {
       // 见 Reader.chartExportBake）。现在要导出了，才让阅读页把这两类补进队列。
       const curBake: number | undefined = AppStorage.get<number>('chartExportBake');
       AppStorage.setOrCreate('chartExportBake', (curBake === undefined ? 0 : curBake) + 1);
-      // 等待上限 120s：深色模式下每篇要烘双份（正文款 + 导出用的浅色款），
-      // 超时就会把渲染库背进文件、卡片退化成现场渲染容器（见 PrintService 同一口径）
-      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 120000, notify);
+      // 等待上限 300s：公式图与浅色孪生是"点导出才排队"的，一篇 64 卡的文档首次
+      // 要烘 ~128 张（每张 1~2 秒）。120s 只够一半，剩下就退成"要 JS 现场画的容器"
+      // —— 用户实测"有的图片没有正常转成图片（这次是盐图）"。宁可多等一会儿，
+      // 也要一次就把图片插全；第二次起全命中磁盘缓存，秒过。
+      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 300000, notify);
       for (let i = needed.length - 1; i >= 0; i--) {
         if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, dark, chartBg, needed[i])) {
           needed.splice(i, 1);
