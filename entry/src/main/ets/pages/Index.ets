@@ -16,6 +16,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { image } from '@kit.ImageKit';
 import { componentUtils } from '@kit.ArkUI';
 import {
   barFrostColor,
@@ -48,7 +49,7 @@ import { MergeExportPanel } from '../components/MergeExportPanel';
 import { MergeSource } from '../service/MergeExport';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
-import { WallpaperStore } from '../service/WallpaperStore';
+import { WallpaperStore, WALLPAPER_BAKED_TICK_KEY } from '../service/WallpaperStore';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { DocLint, LintIssue, LintReport } from '../service/DocLint';
 import { AnnotationStore } from '../service/AnnotationStore';
@@ -237,6 +238,30 @@ struct Index {
   }
   @StorageLink('wallpaperBlur') wallpaperBlur: number = 4;
   @StorageLink('wallpaperScrim') wallpaperScrim: number = 42;
+  /**
+   * 预烘模糊位图就绪信号（Store 烘完写一次时间戳）。背景层读它登记依赖，
+   * 位图就绪那一刻自动从「原图 + 实时 .blur()」换成「已经糊好的图」。
+   */
+  @StorageProp(WALLPAPER_BAKED_TICK_KEY) wallpaperBakedTick: number = 0;
+
+  /**
+   * 当前壁纸 + 当前模糊强度对应的**预烘位图**；null = 没有，背景走实时模糊。
+   *
+   * 为什么要换掉实时模糊：`.blur()` 挂在整屏图片上，转场（一镜到底、切页）期间
+   * 每一帧都要把这张模糊层重算一遍——上架检测把书架页 JANK_RATE_TRANSITION
+   * 192ms/s 的成因就指在这一行。见 WallpaperStore.bakedOf。
+   */
+  private bakedWallpaper(): image.PixelMap | null {
+    if (this.wallpaperBakedTick <= 0) {
+      return null;
+    }
+    return WallpaperStore.peekBaked(this.wallpaperPathEffective(), this.wallpaperBlur);
+  }
+
+  /** 发起（或复用）一次预烘。**转场之后再调**，别和进场动画抢主线程。 */
+  private syncWallpaperBaked(): void {
+    WallpaperStore.bakedOf(this.wallpaperPathEffective(), this.wallpaperBlur);
+  }
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完后靠它重算派生色 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** AI 后台生成完成的新事件计数（>0 时书架 AI 入口显示官方 Badge 角标） */
@@ -395,19 +420,6 @@ struct Index {
   private docRects: Map<string, CoverRect> = new Map<string, CoverRect>();
   /** 书架网格的滚动控制器：展开文件夹后自动滚到面板处 */
   private gridScroller: Scroller = new Scroller();
-  /** 文档封面的「一镜到底」：docCoverName = 正在飞的封面；docCoverSlide = 向左滑走的进度 */
-  @State docCoverName: string = '';
-  @State docCoverHidden: boolean = false;
-  @State docCoverP: number = 0;
-  @State docCoverSlide: number = 0;
-  /** 飞行封面用的文档属性（决定封面配色与是否内置） */
-  private docCoverBuiltin: boolean = false;
-  /** 刚从阅读页返回的那篇：用来播放「合上封面 + 缩回原格」的第二段动画 */
-  private lastDocName: string = '';
-  private coverRectX: number = 0;
-  private coverRectY: number = 0;
-  private coverRectW: number = 80;
-  private coverRectH: number = 120;
   /** 继续阅读候选 */
   @State resumeName: string = '';
   @State resumeRatio: number = 0;
@@ -448,6 +460,11 @@ struct Index {
         this.splashOn = false;
       }, 460);
     }, 1200);
+    // 壁纸模糊位图预烘：等启动转场落定再起炉（解码 + 滤镜走后台异步链，
+    // 但发起调用仍在主线程），冷启动那一帧不该带上它
+    setTimeout((): void => {
+      this.syncWallpaperBaked();
+    }, 700);
   }
 
   /** 使用模式未选择时弹窗（首次使用）；选择结果写入 appMode。 */
@@ -800,9 +817,13 @@ struct Index {
       const img: string | undefined = f.coverImage;
       return img !== undefined && img.length > 0;
     }
-    for (let k = 0; k < this.docs.length; k++) {
-      const m: DocMeta = this.docs[k];
-      if (m.name === this.cellMenuFor) {
+    // 状态变量**在循环外各读一次**：循环里每轮读 this.docs / this.cellMenuFor
+    // 就是每轮登记一次依赖（分析器 1403「避免在 for、while 等循环逻辑中频繁读取状态变量」）
+    const docs: DocMeta[] = this.docs;
+    const target: string = this.cellMenuFor;
+    for (let k = 0; k < docs.length; k++) {
+      const m: DocMeta = docs[k];
+      if (m.name === target) {
         const img2: string | undefined = m.coverImage;
         return img2 !== undefined && img2.length > 0;
       }
@@ -816,9 +837,11 @@ struct Index {
       const f: ShelfFolder | null = this.folderByName(this.cellMenuFor);
       return f !== null && f.hideCoverName === true;
     }
-    for (let k = 0; k < this.docs.length; k++) {
-      if (this.docs[k].name === this.cellMenuFor) {
-        return this.docs[k].hideCoverName === true;
+    const docs: DocMeta[] = this.docs;
+    const target: string = this.cellMenuFor;
+    for (let k = 0; k < docs.length; k++) {
+      if (docs[k].name === target) {
+        return docs[k].hideCoverName === true;
       }
     }
     return false;
@@ -834,9 +857,11 @@ struct Index {
       const c: string | undefined = f.coverColor;
       return c === undefined ? '' : c;
     }
-    for (let k = 0; k < this.docs.length; k++) {
-      const m: DocMeta = this.docs[k];
-      if (m.name === this.cellMenuFor) {
+    const docs: DocMeta[] = this.docs;
+    const target: string = this.cellMenuFor;
+    for (let k = 0; k < docs.length; k++) {
+      const m: DocMeta = docs[k];
+      if (m.name === target) {
         const c2: string | undefined = m.coverColor;
         return c2 === undefined ? '' : c2;
       }
@@ -1285,6 +1310,8 @@ struct Index {
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
     setTimeout(() => {
       this.refresh();
+      // 可能刚在「外观设置」里换了壁纸或调了模糊度：转场之后重新要一份预烘位图
+      this.syncWallpaperBaked();
     }, 420);
     // **外部"打开方式"导入的文档**（EntryAbility 已写入书架）：刷新后提示一次
     const pending: string | undefined = AppStorage.get<string>('pendingOpenDocName');
@@ -1440,6 +1467,8 @@ struct Index {
     // 保证「自动 / 按主题」的灰字跟着深浅一起换（用户反馈深色下没换色）
     AppStorage.setOrCreate('appearanceTick',
       (AppStorage.get<number>('appearanceTick') ?? 0) + 1);
+    // 深浅换了生效壁纸（浅/深各一张）也要跟着重新要预烘位图
+    this.syncWallpaperBaked();
   }
 
   // ══════════════════════ 数据 ══════════════════════
@@ -1764,51 +1793,7 @@ struct Index {
     }
     const init: HeroInit = HeroTransition.computeInitFromVp(rectVp, this.rootWidth, this.rootHeight);
     HeroTransition.saveInit(init);
-    this.lastDocName = meta.name;
     this.pushPage('pages/Reader', { name: meta.name });
-  }
-
-  /** 文档封面几何：p=0 是原来的格子矩形，p=1 铺满屏幕。 */
-  private docCoverX(): number {
-    return this.coverRectX * (1 - this.docCoverP);
-  }
-
-  private docCoverY(): number {
-    return this.coverRectY * (1 - this.docCoverP);
-  }
-
-  private docCoverW(): number {
-    return this.coverRectW + (this.rootWidth - this.coverRectW) * this.docCoverP;
-  }
-
-  private docCoverH(): number {
-    return this.coverRectH + (this.rootHeight - this.coverRectH) * this.docCoverP;
-  }
-
-  /** 飞行中的文档封面（打开第一段 / 返回第二段共用）。 */
-  @Builder
-  docCoverOverlay() {
-    Column() {
-      // **真的那张封面**（与格子里一模一样：配色、标题、状态标），不是一块纯色
-      DocCover({
-        title: this.docCoverName,
-        builtin: this.docCoverBuiltin,
-        coverTop: coverColorsOf(this.docCoverName, this.docCoverBuiltin).top,
-        coverBottom: coverColorsOf(this.docCoverName, this.docCoverBuiltin).bottom,
-        coverInk: coverColorsOf(this.docCoverName, this.docCoverBuiltin).ink,
-        edgeColor: this.palette().divider
-      })
-    }
-    .width(this.docCoverW())
-    .height(this.docCoverH())
-    .position({ x: this.docCoverX(), y: this.docCoverY() })
-    .borderRadius(13)
-    .clip(true)
-    // 向左滑走：封面整体左移一屏（阅读页同时从右滑入，动作连续）
-    .translate({ x: -this.rootWidth * this.docCoverSlide })
-    .opacity(this.docCoverHidden ? 0 : 1)
-    .hitTestBehavior(HitTestMode.None)
-    .animation({ curve: Curve.FastOutSlowIn })
   }
 
   private editDoc(name: string): void {
@@ -2046,14 +2031,10 @@ struct Index {
 
   /**
    * 格子透明度。
-   *  · 一镜到底飞行中：隐去
    *  · 合并中（本格是合并目标）：完全淡出，让位给"长出来"的文件夹层
    *  · 被吸入的那本：淡到 0.2
    */
-  private cellAlpha(name: string, flying: boolean): number {
-    if (flying) {
-      return 0;
-    }
+  private cellAlpha(name: string): number {
     if (this.mergingAt === name) {
       return 0;
     }
@@ -2238,8 +2219,6 @@ struct Index {
       this.pageSwiper.changeIndex(this.shelfPage, false);
     }
   }
-  /** 文房页 · 今日笺摘要行 */
-  @State studyDigest: string[] = [];
   /** 文房页 · 今日到期复习卡数 */
   @State studyDue: number = 0;
   /** 文房页 · 复习总览摘要 */
@@ -2429,7 +2408,6 @@ struct Index {
     if (ctx === null) {
       return;
     }
-    const lines: string[] = [];
     const full: string[] = [];
     try {
       DocStore.init(ctx);
@@ -2451,17 +2429,14 @@ struct Index {
           reading.push(m.name + ' ' + Math.round(m.progressRatio * 100) + '%');
         }
       }
-      lines.push('今日修改：' + (changed.length > 0 ? changed.join('、') : L10n.t('无')));
-      lines.push('今日读过：' + (opened.length > 0 ? opened.join('、') : L10n.t('无')));
-      lines.push('读到一半：' + (reading.length > 0 ? reading.join('、') : L10n.t('无')));
-      // 下拉展开时的完整版（与原「今日笺」弹窗同一套口径）
+      // 下拉展开时的完整版（与原「今日笺」弹窗同一套口径）。
+      // 短版摘要（原 studyDigest）已删：它写进状态变量后没有任何 UI 读它。
       full.push('【今日修改】' + (changed.length > 0 ? changed.join('、') : L10n.t('无')));
       full.push('【今日读过】' + (opened.length > 0 ? opened.join('、') : L10n.t('无')));
       full.push('【读到一半】' + (reading.length > 0 ? reading.join('、') : L10n.t('无')));
     } catch (err) {
-      lines.push('书架数据读取失败');
+      full.push('书架数据读取失败');
     }
-    this.studyDigest = lines;
     this.studyDailyFull = full;
     try {
       const due: ReviewCard[] = ReviewCardStore.dueToday(ReviewCardStore.load(ctx));
@@ -3339,12 +3314,11 @@ struct Index {
     .alignItems(HorizontalAlign.Center)
   }
 
-  /** 网格项最终透明度：文件夹展开时的"退后"× 合并/吸入动画 × 一镜到底飞行。 */
+  /** 网格项最终透明度：文件夹展开时的"退后"× 合并/吸入动画。 */
   private gridItemAlpha(item: ShelfItem): number {
     const dim: number = item.kind === 'folder' && this.openFolderName === item.name
       ? 1 : this.cellOpacity();
-    const flying: boolean = item.kind === 'doc' && this.docCoverName === item.name;
-    return dim * this.cellAlpha(item.name, flying);
+    return dim * this.cellAlpha(item.name);
   }
 
   /** 封面图路径 → Image 可用源（相对 docs/ 的路径交给 DocStore 解析）。 */
@@ -3566,9 +3540,12 @@ struct Index {
   }
 
   private openFolder(): ShelfFolder | null {
-    for (let k = 0; k < this.folders.length; k++) {
-      if (this.folders[k].name === this.openFolderName) {
-        return this.folders[k];
+    // 循环里每轮读 this.folders / this.openFolderName = 每轮登记一次状态依赖
+    const folders: ShelfFolder[] = this.folders;
+    const name: string = this.openFolderName;
+    for (let k = 0; k < folders.length; k++) {
+      if (folders[k].name === name) {
+        return folders[k];
       }
     }
     return null;
@@ -3734,8 +3711,10 @@ struct Index {
 
   /** 当前展开的文件夹在统一排序（items）里的下标（-1 = 没展开）。 */
   private openFolderIndex(): number {
-    for (let k = 0; k < this.items.length; k++) {
-      if (this.items[k].kind === 'folder' && this.items[k].name === this.openFolderName) {
+    const items: ShelfItem[] = this.items;
+    const name: string = this.openFolderName;
+    for (let k = 0; k < items.length; k++) {
+      if (items[k].kind === 'folder' && items[k].name === name) {
         return k;
       }
     }
@@ -4203,9 +4182,10 @@ struct Index {
     DocStore.init(c);
     const list: DocMeta[] = DocStore.list(c);
     const picks: string[] = [];
+    const skip: string = this.resumeName;
     for (let k: number = 0; k < list.length; k++) {
       const n: string = list[k].name;
-      if (n.length > 0 && n !== this.resumeName) {
+      if (n.length > 0 && n !== skip) {
         picks.push(n);
       }
     }
@@ -5695,7 +5675,10 @@ struct Index {
       }
     }
     .width('100%')
-    .layoutWeight(1)
+    // **显式定高**（分析器 1403「建议初始化 List 组件的宽度和高度属性」）：
+    // 这层 Column 只有它一个孩子、本身就是 100% 高，所以 height('100%') 与
+    // layoutWeight(1) 的结果一致，但前者让 List 首帧就拿到确定尺寸，省一次测量。
+    .height('100%')
     // 右侧滚动条不显示（用户要求）
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
@@ -7541,11 +7524,6 @@ struct Index {
         .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
       }
 
-      // ── 文档封面的「一镜到底」飞行层：打开 / 返回的第二段 ──
-      if (this.docCoverName.length > 0) {
-        this.docCoverOverlay()
-      }
-
       // ── 启动页：竹影渐变底 + 应用图标（分层图标的 foreground）+ ChéngJiān ──
       // 首帧即显，约 1.2s 后淡出移除；**纯渐变底**（不画光斑圆，用户要求），
       // 铺满全屏（含状态栏 / 手势条）
@@ -7832,11 +7810,20 @@ struct Index {
   backdrop() {
     // 背景优先级：手选壁纸 → **函数绘制壁纸** → 自定义背景色 → 主题渐变
     if (this.wallpaperPathEffective().length > 0) {
-      Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .blur(this.wallpaperBlur)
+      // 壁纸已经预烘好 → 直接贴那张糊好的位图，**这一层不再挂实时 .blur()**
+      if (this.bakedWallpaper() !== null) {
+        Image(this.bakedWallpaper())
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
+      } else {
+        // 还没烘好（首次进入 / 刚换壁纸 / 设备不支持）：沿用实时模糊，观感一致
+        Image(WallpaperStore.imageSourceOf(this.wallpaperPathEffective()))
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Cover)
+          .blur(this.wallpaperBlur)
+      }
 
       Column()
         .width('100%')

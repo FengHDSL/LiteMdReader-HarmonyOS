@@ -19,6 +19,10 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { image } from '@kit.ImageKit';
+import { effectKit } from '@kit.ArkGraphics2D';
+import { display } from '@kit.ArkUI';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { L10n } from './L10n';
 
 /** AppStorage 键：壁纸在沙箱里的绝对路径；空串 = 没有壁纸（旧全局键，保留兜底） */
@@ -31,6 +35,11 @@ export const WALLPAPER_PATH_DARK_KEY: string = 'wallpaperPathDark';
 export const WALLPAPER_BLUR_KEY: string = 'wallpaperBlur';
 /** AppStorage 键：遮罩浓度 0~100，越大正文越易读 */
 export const WALLPAPER_SCRIM_KEY: string = 'wallpaperScrim';
+/**
+ * AppStorage 键：预烘模糊位图就绪的时刻（毫秒）。页面 @Watch 它，把背景从
+ * 「原图 + 实时 .blur()」换成「已经糊好的位图」——见 WallpaperStore.bakedOf。
+ */
+export const WALLPAPER_BAKED_TICK_KEY: string = 'wallpaperBakedTick';
 
 /**
  * 阅读背景（**与上面的应用壁纸完全隔离**）
@@ -65,6 +74,113 @@ export class WallpaperStore {
    */
   static imageSourceOf(path: string): string {
     return path.length > 0 ? 'file://' + path : '';
+  }
+
+  // ══════════════ 壁纸模糊位图**预烘**（effectKit） ══════════════
+  //
+  // 上架检测把书架页 JANK_RATE_TRANSITION 192ms/s 的成因直接指在这一行：
+  //   Image(壁纸).blur(this.wallpaperBlur)
+  // 实时 `.blur()` 挂在整屏图片上，转场（一镜到底、切页）期间每一帧都要把这张
+  // 模糊层重算一遍。改成「烘一次、之后只贴图」：解码时先缩到不超过 1080px，
+  // 用 effectKit.createEffect(pixelMap).blur(半径px) 一次烘成位图并缓存，
+  // 页面显示的就是已经糊好的图，转场只是普通贴图。
+  // 还没烘好、或任何一步失败 → 返回 null，调用方沿用实时 `.blur()`，观感不变。
+
+  /** 已烘好的位图与它的键（只留最新一份：全屏位图不便宜）。 */
+  private static bakedMap: image.PixelMap | null = null;
+  private static bakedMapKey: string = '';
+  /** 正在烘的键，避免同一帧重复起炉。 */
+  private static bakingKey: string = '';
+
+  /**
+   * 取「path + 模糊强度」对应的预烘位图；没有就**顺手发起烘焙**并返回 null。
+   * 烘完把 WALLPAPER_BAKED_TICK_KEY 写一次，页面靠它重绘换成位图。
+   */
+  static bakedOf(path: string, radiusVp: number): image.PixelMap | null {
+    if (path.length === 0 || radiusVp <= 0) {
+      return null;
+    }
+    const key: string = path + '|' + radiusVp.toFixed(1);
+    if (WallpaperStore.bakedMapKey === key && WallpaperStore.bakedMap !== null) {
+      return WallpaperStore.bakedMap;
+    }
+    if (WallpaperStore.bakingKey !== key) {
+      WallpaperStore.bakingKey = key;
+      WallpaperStore.bake(key, path, radiusVp);
+    }
+    return null;
+  }
+
+  /**
+   * 只查不烘：键对不上（换壁纸 / 改模糊度）一律返回 null。
+   * 页面 build 里用它，就不会在重新烘焙之前继续显示**上一张**壁纸。
+   */
+  static peekBaked(path: string, radiusVp: number): image.PixelMap | null {
+    if (path.length === 0 || radiusVp <= 0) {
+      return null;
+    }
+    const key: string = path + '|' + radiusVp.toFixed(1);
+    return WallpaperStore.bakedMapKey === key ? WallpaperStore.bakedMap : null;
+  }
+
+  private static async bake(key: string, path: string, radiusVp: number): Promise<void> {
+    let src: image.ImageSource | null = null;
+    let raw: image.PixelMap | null = null;
+    try {
+      src = image.createImageSource(path);
+      const info: image.ImageInfo = await src.getImageInfo();
+      // 模糊之后细节全无，按屏宽上限缩一下：省显存也省一次全屏采样
+      const cap: number = 1080;
+      let w: number = info.size.width;
+      let h: number = info.size.height;
+      if (w > cap || h > cap) {
+        const ratio: number = Math.min(cap / w, cap / h);
+        w = Math.max(1, Math.round(w * ratio));
+        h = Math.max(1, Math.round(h * ratio));
+      }
+      const want: image.Size = { width: w, height: h };
+      const opts: image.DecodingOptions = { desiredSize: want, editable: true };
+      raw = await src.createPixelMap(opts);
+      // .blur() 收的是 vp，effectKit 收的是 px —— 不换算会糊得比原来轻一大截
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      const fx: effectKit.Filter = effectKit.createEffect(raw);
+      fx.blur(radiusVp * density);
+      const out: image.PixelMap = await fx.getEffectPixelMap();
+      const stale: image.PixelMap | null = WallpaperStore.bakedMap;
+      WallpaperStore.bakedMap = out;
+      WallpaperStore.bakedMapKey = key;
+      AppStorage.setOrCreate(WALLPAPER_BAKED_TICK_KEY, Date.now());
+      if (stale !== null) {
+        // **延迟释放**：换壁纸/改模糊度时，旧位图可能还有一帧挂在 Image 上，
+        // 立刻 release 会让那一帧画到空图（闪一下白）。等转场过去再回收。
+        setTimeout((): void => {
+          stale.release().catch(() => {
+            // 释放失败无所谓，进程结束自然回收
+          });
+        }, 1500);
+      }
+    } catch (err) {
+      // 解码/滤镜不可用（老设备、图片损坏）：保持 null，页面继续走实时 .blur()
+      hilog.warn(0x0000, 'LiteMdReader', '壁纸预烘失败（退回实时模糊）：%{public}s',
+        String((err as BusinessError).message));
+    }
+    if (raw !== null) {
+      try {
+        await raw.release();
+      } catch (err) {
+        // 释放失败无所谓，位图生命周期到进程结束
+      }
+    }
+    if (src !== null) {
+      try {
+        await src.release();
+      } catch (err) {
+        // 同上
+      }
+    }
+    if (WallpaperStore.bakingKey === key) {
+      WallpaperStore.bakingKey = '';
+    }
   }
 
   static blur(): number {
