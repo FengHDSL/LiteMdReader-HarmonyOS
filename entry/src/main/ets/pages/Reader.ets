@@ -1786,35 +1786,16 @@ export struct Reader {
       this.docHeadingCount = result.headingCount;
       this.docCodeCount = result.codeBlockCount;
       this.docTableCount = result.tableCount;
-      // 文件实况信息（大小 / MD5）：文档很小，同步现算一次即可
-      const finfo: DocFileInfo | null = DocStore.fileInfo(ctx, this.docName);
-      this.docSizeBytes = finfo !== null ? finfo.sizeBytes : -1;
-      this.docMd5 = finfo !== null ? finfo.md5 : '';
-      // 创建 / 修改日期与收藏标记（信息卡展示 + 爱心按钮）
-      const times: DocTimes = DocStore.fileTimes(ctx, this.docName);
-      this.docCreatedAt = times.created;
-      this.docModifiedAt = times.modified;
-      this.docStarred = DocStore.isStarred(ctx, this.docName);
-      // **图表 / 公式后台预渲染任务**（用户要求：打开文件即后台加载转图片并写缓存，
-      // 不等滑到位置才加载；导出也直接用缓存图）。收集与排序、已关闭引擎跳过
-      // 见 collectChartTasks（设置 → 引擎管理）。
-      const dark: boolean = this.isDark();
-      this.chartTasks = this.collectChartTasks(dark);
-      // **行内公式图任务**：MathJax → PNG（含字号；图未就绪时正文回落线性化文本）
-      this.formulaTasks = FormulaTasks.collect(this.blocks, dark, this.fontSize);
-      // **多设备流转数据源**（应用接续）：迁移发起时 EntryAbility.onContinue
-      // 从这里取当前文档与进度
-      AppStorage.setOrCreate('continueDocName', this.docName);
-      AppStorage.setOrCreate('continueDocContent', text);
-      AppStorage.setOrCreate('continueDocProgress', meta.progressRatio);
-      // **标签栏自愈**（用户要求）：指向已删除文档的标签自动移除
-      for (let t = this.tabs.length - 1; t >= 0; t--) {
-        if (this.tabs[t].name !== this.docName
-          && DocStore.find(ctx, this.tabs[t].name) === undefined) {
-          TabStore.close(this.tabs[t].name);
-          this.tabs = TabStore.list();
-        }
-      }
+      // ── **转场降载**：下面这些首帧用不到，全部推到转场之后再算 ──
+      // · `fileInfo` 会把整篇文件**再读一遍并算 MD5**（上面 readText 已经读过一次）；
+      // · 标签自愈是**每个标签一次文件系统探测**；
+      // · 两份预渲染任务收集是**每块一次 md5**，而且一交出去池子就开始挂 Web 表面烘图，
+      //   正好和进场动画抢同一条主线程。
+      // 这些叠在 NavDestination 进场那一帧里，就是审核报告里的"转场操作卡顿率"。
+      const tailName: string = this.docName;
+      setTimeout((): void => {
+        this.afterDocLoad(ctx, meta, text, tailName);
+      }, 120);
       this.loadError = '';
       this.progress = meta.progressRatio;
       this.progressBlock = meta.progressIndex;
@@ -1845,7 +1826,6 @@ export struct Reader {
       } else {
         this.pendingJump = meta.progressIndex > 0 ? meta.progressIndex : 0;
       }
-      DocStore.touch(ctx, this.docName);
       // 等列表完成一次布局后再跳转，否则 Scroller 还没绑定到组件
       setTimeout(() => {
         this.applyPendingJump();
@@ -1855,6 +1835,51 @@ export struct Reader {
       this.loadError = '读取失败：' + DocStore.describeError(err as BusinessError);
       this.blocks = [];
       this.toast(this.loadError);
+    }
+  }
+
+  /**
+   * `loadDoc` 里"转场之后再算"的那一半（见 loadDoc 内的转场降载注释）。
+   *
+   * 里面全是**首帧用不到**的东西：信息卡的文件大小 / MD5 / 日期 / 收藏、两份预渲染
+   * 任务的收集（收集完池子就要挂 Web 表面烘图）、应用接续的数据源、标签自愈。
+   * 快速连点两个标签时 `name` 已经不是当前文档，整批直接作废。
+   */
+  private afterDocLoad(ctx: common.UIAbilityContext, meta: DocMeta,
+    text: string, name: string): void {
+    if (this.docName !== name) {
+      return;
+    }
+    // 文件实况信息（大小 / MD5）：整篇再读一次 + md5，只能放在转场之后
+    const finfo: DocFileInfo | null = DocStore.fileInfo(ctx, name);
+    this.docSizeBytes = finfo !== null ? finfo.sizeBytes : -1;
+    this.docMd5 = finfo !== null ? finfo.md5 : '';
+    // 创建 / 修改日期与收藏标记（信息卡展示 + 爱心按钮）
+    const times: DocTimes = DocStore.fileTimes(ctx, name);
+    this.docCreatedAt = times.created;
+    this.docModifiedAt = times.modified;
+    this.docStarred = DocStore.isStarred(ctx, name);
+    // **图表 / 公式后台预渲染任务**（用户要求：打开文件即后台加载转图片并写缓存，
+    // 不等滑到位置才加载；导出也直接用缓存图）。收集与排序、已关闭引擎跳过
+    // 见 collectChartTasks（设置 → 引擎管理）。
+    const dark: boolean = this.isDark();
+    this.chartTasks = this.collectChartTasks(dark);
+    // **行内公式图任务**：MathJax → PNG（含字号；图未就绪时正文回落线性化文本）
+    this.formulaTasks = FormulaTasks.collect(this.blocks, dark, this.fontSize);
+    // **多设备流转数据源**（应用接续）：迁移发起时 EntryAbility.onContinue
+    // 从这里取当前文档与进度
+    AppStorage.setOrCreate('continueDocName', name);
+    AppStorage.setOrCreate('continueDocContent', text);
+    AppStorage.setOrCreate('continueDocProgress', meta.progressRatio);
+    // 最近打开时间（写盘）：同样挪出转场帧
+    DocStore.touch(ctx, name);
+    // **标签栏自愈**（用户要求）：指向已删除文档的标签自动移除
+    for (let t = this.tabs.length - 1; t >= 0; t--) {
+      if (this.tabs[t].name !== name
+        && DocStore.find(ctx, this.tabs[t].name) === undefined) {
+        TabStore.close(this.tabs[t].name);
+        this.tabs = TabStore.list();
+      }
     }
   }
 
