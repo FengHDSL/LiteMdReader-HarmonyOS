@@ -292,6 +292,20 @@ export struct DiagramWeb {
             this.lastPostH = v;
             // 下载链路的尺寸通道（见 postWidth 同名调用）
             this.onSizeReady(this.lastPostW, this.lastPostH);
+            /**
+             * **所有正文卡片出图后都自动刷新一次**（用户要求：加载完成后刷新一次以
+             * 调整显示大小）。以前这一枪只在 postWidth 里放，而 20 个模板只有 katex
+             * 回传宽度 → 图表卡首帧按瞬时宽度排版后就一直不纠正。
+             * 后台池（带 webId，会与烘图竞速）、放大浮层（zoom / fillHeight 用户主动
+             * 放大的）、行内图都不做；高度 >60vp 才算"内容真的画出来了"。
+             */
+            if (!this.autoReloaded && this.webId.length === 0 && !this.zoom
+              && !this.fillHeight && !this.inlineMode && v > 60) {
+              this.autoReloaded = true;
+              setTimeout(() => {
+                this.doReload();
+              }, 260);
+            }
             // 撑满模式下**忽略高度回传**：回传会改变组件高度 → 页面 80vh 跟着变 →
             // markmap autoFit 再次重排（缩小 + 漂移的根源）
             if (this.fillHeight) {
