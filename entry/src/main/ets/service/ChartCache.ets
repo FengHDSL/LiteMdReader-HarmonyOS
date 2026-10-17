@@ -25,6 +25,41 @@ export class ChartCache {
   private static uriMemo: Map<string, string> = new Map();
   /** 键 → 'w|h'（**逻辑尺寸** = 期望显示的 vp 值）的会话内缓存 */
   private static dimMemo: Map<string, string> = new Map();
+  /**
+   * **只给 UI 热路径用的"这张还没烘出来"名单**（见下面的 isReady）。
+   *
+   * `path()` / `srcPath()` 故意**不**缓存空结果——导出前要每 500ms 轮询等池子补烘，
+   * 缓存了"没有"进度就冻住（2026-10-16 用户实测"还差 75 张"从头到尾不往下走）。
+   * 但正文列表不是轮询：ForEach 的 keyGenerator **每帧**要为每个图表 / 公式块问一次
+   * "就绪了没"，每次都真去 accessSync。上架自检的 AppFreeze 就撞在这条上：主线程
+   * 一个 vSyncTask 跑了 6 秒没返回，日志里低优先级队列 3 秒内从 2317 涨到 3109 条。
+   * 所以"没有"这件事单独记一份，**落盘与清缓存时抹掉**，两条口径互不影响。
+   */
+  private static missing: Set<string> = new Set();
+  /** 行内公式键的备忘（latex 串短，量也小；md5 是 native 调用，不能每帧现算） */
+  private static inlineKeyMemo: Map<string, string> = new Map();
+
+  /**
+   * UI 用的就绪探针：正结果走 memo，负结果走 missing，两边都不再碰文件系统。
+   * ⚠️ 只给"每帧都要问"的界面路径用；导出 / 补烘轮询继续走 `path()` / `srcPath()`，
+   * 那两条要的是磁盘上的最新事实。
+   */
+  static isReady(ctx: common.UIAbilityContext, key: string): boolean {
+    if (key.length === 0) {
+      return false;
+    }
+    if ((ChartCache.memo.get(key) ?? '').length > 0) {
+      return true;
+    }
+    if (ChartCache.missing.has(key)) {
+      return false;
+    }
+    if (ChartCache.path(ctx, key).length > 0) {
+      return true;
+    }
+    ChartCache.missing.add(key);
+    return false;
+  }
 
   /**
    * 清空三份会话内缓存，让下次查询按磁盘重建。
@@ -35,6 +70,7 @@ export class ChartCache {
     ChartCache.memo.clear();
     ChartCache.uriMemo.clear();
     ChartCache.dimMemo.clear();
+    ChartCache.missing.clear();
   }
 
   /**
@@ -318,7 +354,14 @@ export class ChartCache {
    * 正文字号联动——顺带修复）。
    */
   static inlineKey(latex: string, dark: boolean, size: number): string {
-    return 'iminl3_' + ChartCache.keyFor('katex', size + '|' + latex, dark);
+    const sig: string = size + '|' + (dark ? 'd' : 'l') + '|' + latex;
+    const hit: string | undefined = ChartCache.inlineKeyMemo.get(sig);
+    if (hit !== undefined) {
+      return hit;
+    }
+    const k: string = 'iminl3_' + ChartCache.keyFor('katex', size + '|' + latex, dark);
+    ChartCache.inlineKeyMemo.set(sig, k);
+    return k;
   }
 
   /**
@@ -401,6 +444,7 @@ export class ChartCache {
         }
       }
       ChartCache.memo.set(key, p);
+      ChartCache.missing.delete(key);
       ChartCache.uriMemo.set(key, 'file://' + p);
       // 逻辑尺寸：内存 + sidecar（重启后显示端仍能取到，不必反推像素/密度）
       if (w > 0 && h > 0) {
@@ -923,6 +967,7 @@ export class ChartCache {
         }
       }
       ChartCache.memo.set(key, p);
+      ChartCache.missing.delete(key);
       // **同步刷新 URI 缓存**：图就绪前若已查询过 srcPath（缓存里是空串），
       // 这里必须换新——否则图生成了、组件仍拿到空源（持续空白）
       ChartCache.uriMemo.set(key, 'file://' + p);

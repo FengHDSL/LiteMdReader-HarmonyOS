@@ -72,14 +72,22 @@ export struct MathFormulaText {
     return FormulaTasks.splitInline(this.src);
   }
 
-  /** 公式段图源（缓存命中才有；结果有会话内 memo，重复查询无磁盘 IO） */
+  /**
+   * 公式段图源。
+   * ⚠️ srcPath 的 memo **只记"有"**（导出前要轮询等补烘，不能让"没有"被缓存住），
+   * 所以这里先问一次 isReady（两个方向都记内存）—— 抽屉 / 学习卡里一段话可能
+   * 有好几枚公式，没烘出来之前每帧探一次盘就是上架自检报的冻屏。
+   */
   private imgOf(latex: string): string {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
       return '';
     }
-    return ChartCache.srcPath(c as common.UIAbilityContext,
-      ChartCache.inlineKey(latex, this.dark, this.fontSize));
+    const key: string = ChartCache.inlineKey(latex, this.dark, this.fontSize);
+    if (!ChartCache.isReady(c as common.UIAbilityContext, key)) {
+      return '';
+    }
+    return ChartCache.srcPath(c as common.UIAbilityContext, key);
   }
 
   /** 公式段逻辑尺寸（'w|h'；显示端显式定 vp 尺寸，防"放大 density 倍"老坑） */

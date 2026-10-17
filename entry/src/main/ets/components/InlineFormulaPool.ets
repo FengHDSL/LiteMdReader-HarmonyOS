@@ -87,7 +87,9 @@ export struct InlineFormulaPool {
     this.ctx = c;
     for (let k = 0; k < this.tasks.length; k++) {
       const t: FormulaTask = this.tasks[k];
-      if (ChartCache.path(c, t.key).length > 0 || this.failed.has(t.key)) {
+      // 同 ChartRenderPool：派单扫描走内存里的就绪判断，别每轮为每张未生成的公式
+      // 真去访问一次文件系统（主线程）
+      if (ChartCache.isReady(c, t.key) || this.failed.has(t.key)) {
         continue;
       }
       this.current = t;

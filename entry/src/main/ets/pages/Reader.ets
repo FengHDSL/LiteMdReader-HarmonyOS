@@ -1901,6 +1901,24 @@ export struct Reader {
     return FormulaTasks.readySuffix(this.ctx(), block, this.isDark(), this.fontSize);
   }
 
+  /**
+   * 本块图表 / 公式图的缓存键，**算一次记在块上**（`ChartCache.keyFor` 是一次 md5
+   * native 调用，ForEach 的 keyGenerator 每帧都要问一遍 → 上架自检 AppFreeze 的
+   * 主线程 6 秒不返回就撞在这类"每帧 × 每块"的同步开销上）。
+   * 口径签名含深浅、底色与源码长度：换主题 / 改底色 / 编辑过这一块都会变，
+   * 现算一次覆盖旧值，不会拿旧键去认新图。
+   */
+  private blockCacheKeyOf(block: MdBlock, mode: string): string {
+    const dark: boolean = this.isDark();
+    const bg: string = withAlpha(this.palette().codeBlockBg, 'FF');
+    const sig: string = mode + '|' + (dark ? 'd' : 'l') + '|' + bg + '|' + block.code.length;
+    if (block.ckSig !== sig || block.ck === undefined) {
+      block.ck = ChartCache.keyFor(mode, block.code, dark, bg);
+      block.ckSig = sig;
+    }
+    return block.ck;
+  }
+
   /** 列表里正文块之前占用的条目数：信息卡可开关，隐藏后正文块下标整体前移 1 位。 */
   private headerCount(): number {
     return this.showMetaCard ? LIST_HEADER_COUNT : 0;
@@ -7919,11 +7937,12 @@ export struct Reader {
                   const tick: number = this.chartReadyTick;
                   const mode: string = block.kind === MdBlockKind.Math
                     ? 'katex' : block.lang.trim().toLowerCase();
-                  const ck: string = ChartCache.keyFor(mode, block.code, this.isDark(),
-                    withAlpha(this.palette().codeBlockBg, 'FF'));
+                  const ck: string = this.blockCacheKeyOf(block, mode);
                   const c: common.UIAbilityContext | null = this.ctx();
+                  // isReady 而不是 path()：正负结果都在内存里，一帧一次 accessSync
+                  // 就是这次冻屏检测报出来的开销（见 ChartCache.isReady 的说明）
                   const ready: boolean =
-                    c !== null && ChartCache.path(c, ck).length > 0;
+                    c !== null && ChartCache.isReady(c, ck);
                   return block.id + '_' + this.docName + '_' + ck
                     + (tick >= 0 ? (ready ? '_r' : '_p') : '_p')
                     // 引擎开关（设置 → 引擎管理）变化 → 图表/公式条目也要重建成源码卡

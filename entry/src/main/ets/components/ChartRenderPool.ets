@@ -164,7 +164,10 @@ export struct ChartRenderPool {
     this.ctx = c;
     for (let k = 0; k < this.tasks.length; k++) {
       const t: ChartTask = this.tasks[k];
-      if (ChartCache.path(c, t.key).length > 0 || this.failed.has(t.key)) {
+      // isReady 而不是 path()：派单循环每完成一张就要从头扫一遍队列，未烘出来的那些
+      // 每轮都要真去 accessSync（主线程）。负结果记在 ChartCache.missing 里，
+      // 落盘时抹掉，所以"扫到刚烘出来的那张"仍然立刻换人。
+      if (ChartCache.isReady(c, t.key) || this.failed.has(t.key)) {
         continue;
       }
       this.current = t;

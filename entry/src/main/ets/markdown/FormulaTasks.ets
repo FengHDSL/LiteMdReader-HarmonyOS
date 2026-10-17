@@ -84,7 +84,7 @@ export class FormulaTasks {
       }
       total++;
       const key: string = ChartCache.inlineKey(il.text, dark, size);
-      if (ChartCache.path(ctx, key).length > 0) {
+      if (ChartCache.isReady(ctx, key)) {
         ready++;
       }
     }

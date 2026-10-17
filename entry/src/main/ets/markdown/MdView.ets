@@ -2692,6 +2692,11 @@ export struct MdBlockView {
     if (c === undefined || c === null) {
       return '';
     }
+    // 同 chartImagePath：正文里一段话可能有几枚行内公式，没烘出来之前每一帧
+    // 都探一次盘就是冻屏的来源；isReady 两个方向都记内存
+    if (!ChartCache.isReady(c as common.UIAbilityContext, key)) {
+      return '';
+    }
     return ChartCache.srcPath(c as common.UIAbilityContext, key);
   }
 
@@ -2708,10 +2713,25 @@ export struct MdBlockView {
     return withAlpha(this.palette.codeBlockBg, 'FF');
   }
 
-  /** 块级图的缓存键（v4 起含底色——五档主题深浅孪生款底色不同，必须区分，
-   *  否则换深色主题会复用别主题烘焙的图 = "深色下背景发红/发绿"）。 */
+  /**
+   * 块级图的缓存键（v4 起含底色——五档主题深浅孪生款底色不同，必须区分，
+   * 否则换深色主题会复用别主题烘焙的图 = "深色下背景发红/发绿"）。
+   *
+   * ⚠️ **算一次记住**：本组件就是一个块，一次正文重建里这个键要被取图、取尺寸、
+   * 查坏图名单好几处用到，而 `keyFor` 是一次 md5 native 调用。上架自检报的冻屏
+   * （主线程一个 vSyncTask 6 秒不返回）就出在"每帧 × 每块"现算 md5 + 探文件。
+   */
+  private ckSig: string = '';
+  private ckValue: string = '';
   private blockKeyOf(mode: string): string {
-    return ChartCache.keyFor(mode, this.block.code, this.dark, this.cardBgKey());
+    const bg: string = this.cardBgKey();
+    const sig: string = mode + '|' + (this.dark ? 'd' : 'l') + '|' + bg
+      + '|' + this.block.code.length;
+    if (this.ckSig !== sig || this.ckValue.length === 0) {
+      this.ckValue = ChartCache.keyFor(mode, this.block.code, this.dark, bg);
+      this.ckSig = sig;
+    }
+    return this.ckValue;
   }
 
   /** 块级图缓存的**逻辑尺寸**（'w|h'，css px = vp；无记录返回空串）。 */
@@ -2731,6 +2751,12 @@ export struct MdBlockView {
     }
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
+      return '';
+    }
+    // 先用内存里的就绪判断挡一道：srcPath 的 memo **只记"有"**（导出要轮询等补烘，
+    // 见 ChartCache.srcPath），所以没挡的话每张还没烘出来的公式图每帧都要
+    // accessSync 一次 —— 上架自检报的冻屏就是这类"每帧 × 每块"的同步文件系统访问
+    if (!ChartCache.isReady(c as common.UIAbilityContext, key)) {
       return '';
     }
     return ChartCache.srcPath(c as common.UIAbilityContext, key);

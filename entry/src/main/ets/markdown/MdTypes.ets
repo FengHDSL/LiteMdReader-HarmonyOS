@@ -164,6 +164,16 @@ export interface MdBlock {
   bodyStart?: number;
   /** 稳定 key（块序号） */
   id: string;
+  /**
+   * **本块图表缓存键的备忘**（`ckSig` = 这条缓存当时的口径：深浅 | 底色 | 源码长度）。
+   *
+   * 为什么要挂在块上：阅读页 ForEach 的 keyGenerator 每帧要为每个图表 / 公式块算一次
+   * 缓存键，而 `ChartCache.keyFor` 是一次 md5（native 调用）。上架自检的 AppFreeze
+   * 就是这条路径：主线程一个 vSyncTask 跑了 6 秒没返回，日志里低优先级队列 3 秒内
+   * 从 2317 涨到 3109 条。块对象随重新解析一起换新，所以这份缓存不会跨编辑存活。
+   */
+  ck?: string;
+  ckSig?: string;
   kind: MdBlockKind;
   /** 标题层级 1–6 */
   level: number;
