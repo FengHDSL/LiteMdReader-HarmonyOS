@@ -818,6 +818,12 @@ export struct Reader {
    * 每帧只在"还没暂停"时写一次状态，停手 0.42 秒后续跑。
    */
   @State bakePaused: boolean = false;
+  /**
+   * **进场转场是否已经落定**：落定之前两个后台池子都不派单（`bakePaused` 只管滚动，
+   * 转场那 400 多毫秒里池子照样会挂 ArkWeb 表面烘图，跟动画抢主线程）。
+   * onShown 之后置真；万一 onShown 没来，aboutToAppear 里还有个 1.2 秒的兜底定时器。
+   */
+  @State pageSettled: boolean = false;
   private bakeResumeTimer: number = -1;
   /**
    * 放大浮层「查看源码」切换前的内容形态（图表 / HTML / code …）。
@@ -1022,6 +1028,12 @@ export struct Reader {
       // 转场降载：首帧只渲染 24 块，转场结束（onShownNow）补回 80
       this.visibleBlocks = 24;
     }
+    // **兜底**：转场落定前不派单（见 pageSettled）。正常由 onShownNow 置真；
+    // 万一这条路径没走到（异常返回 / 浮层吞掉回调），1.2 秒后强制放行，
+    // 不能让池子永远饿着——导出等图就是等它。
+    setTimeout((): void => {
+      this.pageSettled = true;
+    }, 1200);
     // Navigation 化之后 @Entry 的 onPageShow/onPageHide 不再触发，
     // 由 NavDestination 的 onShown/onHidden 转发（见 NavLifecycle）。
     this.life.onShow = () => {
@@ -1057,11 +1069,20 @@ export struct Reader {
     this.firstLoad = false;
     // 回到阅读页：开始计这一段阅读时长
     this.readStartAt = Date.now();
-    // **转场结束后**把首屏补回标准批量（进入时只渲染 24 块降载，见 aboutToAppear）
+    // **转场结束后**把首屏补回标准批量（进入时只渲染 24 块降载，见 aboutToAppear）。
+    // ⚠️ 分两步补：一次从 24 跳到 80 会在同一帧里建 56 个 ListItem + 各自的
+    // MdBlockView / 图片，正好压在 420ms 进场动画的尾巴上 —— 转场卡顿率算的就是这种帧。
     if (this.visibleBlocks < 80) {
       setTimeout(() => {
+        this.visibleBlocks = Math.max(this.visibleBlocks, 48);
+      }, 300);
+      setTimeout(() => {
         this.visibleBlocks = Math.max(this.visibleBlocks, 80);
-      }, 450);
+        // 首屏补齐了，池子可以开始烘图（见 pageSettled）
+        this.pageSettled = true;
+      }, 620);
+    } else {
+      this.pageSettled = true;
     }
     // 系统深浅同步 + 必要刷新：实机证明 @Watch 不来，这里手动比对，
     // 不一致就重建正文整树（材质 / 壁纸 / 正文色一次到位）。
@@ -7821,8 +7842,9 @@ export struct Reader {
         hostWidth: this.rootWidth - HwSpace.lg * 2,
         // 导出 / 打印前的失败重试信号（见 ChartRenderPool.retryTick）
         retryTick: this.poolRetryTick,
-        // **正在滑动就暂停烘焙**（见 bakePaused / ChartRenderPool.paused）
-        paused: this.bakePaused,
+        // **正在滑动、或进场转场还没落定就暂停烘焙**（见 bakePaused / pageSettled）：
+        // 池子一派单就要挂 ArkWeb 表面，跟转场抢同一条主线程
+        paused: this.bakePaused || !this.pageSettled,
         onOneDone: () => {
           // 只递增**图表就绪信号**：仅图表 / 公式条目重建（换成缓存图），
           // 正文其它条目不受影响 —— 避免整树重建造成的闪烁
@@ -7835,6 +7857,8 @@ export struct Reader {
       InlineFormulaPool({
         tasks: this.formulaTasks,
         dark: this.isDark(),
+        // 与图表池同一道闸：转场落定前不派单（公式池也要挂 MathJax 的 Web 表面）
+        paused: this.bakePaused || !this.pageSettled,
         onOneDone: () => {
           this.chartReadyTick++;
         }

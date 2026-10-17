@@ -403,11 +403,43 @@ function copyPalette(p: ReaderPalette): ReaderPalette {
   return q;
 }
 
+/**
+ * paletteFor 的结果缓存（签名 → 同一份调色板）。
+ *
+ * ⚠️ 为什么必须有：`palette()` 在 Reader 里有 240 多处调用点，其中一批在正文 ForEach
+ * 的 item builder 里 —— 一次进场转场就要重建几百份调色板，每份都得拷对象、跑好几轮
+ * blendRgb 字符串混色、再解析一遍灰字覆盖（可能还要展开函数壁纸取主色）。这是审核
+ * 报"转场操作卡顿率"里**按帧计费**的那部分。
+ * 签名里带 `appearanceTick`：任何外观写入都会广播这个计数（SettingsAppearance 的
+ * onAppearanceChanged、深色切换都走它），所以连"隐藏输入"（壁纸亮度等）变了也不会
+ * 拿到过期缓存。返回同一份对象还顺带让 ArkUI 少做一轮无谓的相等性比较。
+ */
+let paletteSig: string = '';
+let paletteCache: ReaderPalette | null = null;
+
 /** 按主题模式取调色板，并套用全局主题色 / 卡片沾色 / 页面染色（照搬 xjau AppearanceStore 语义）。 */
 export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
-  const p: ReaderPalette = copyPalette(basePalette(mode, systemDark));
   const themeKey: string | undefined = AppStorage.get<string>('themeColor');
   const key: string = themeKey !== undefined && themeKey !== null ? themeKey : '';
+  const tintOn: boolean = AppStorage.get<boolean>('cardTint') === true;
+  const bgTintOff: boolean = AppStorage.get<boolean>('pageBgTint') === false;
+  const customFull: boolean = AppStorage.get<boolean>('customAccentFull') === true;
+  const tickRaw: number | undefined = AppStorage.get<number>('appearanceTick');
+  const tick: number = tickRaw === undefined || tickRaw === null ? 0 : tickRaw;
+  // 灰体文本显示增强（移植自 xjau 的灰字覆盖）：把「次级 / 三级」灰字统一换掉，
+  // 壁纸很花时能显著提升可读性。auto = 不改（跟随主题）。
+  //
+  // ⚠️ 用 **isDarkTheme()** 而不是手写：纸色两档（Sepia/Green）跟随 systemDark，
+  // 这里若按老写法（只判 Dark/System）会取到浅色档的灰字配置，
+  // 覆盖掉深色孪生款里已经调好的浅色字 → 深底深字，看不清。
+  const gray: string = grayTextOverride(isDarkTheme(mode, systemDark));
+  const sig: string = tick + '|' + mode + '|' + (systemDark ? 'd' : 'l') + '|' + key
+    + '|' + (tintOn ? 't' : '-') + '|' + (bgTintOff ? 'b' : '-')
+    + '|' + (customFull ? 'f' : '-') + '|' + gray;
+  if (sig === paletteSig && paletteCache !== null) {
+    return paletteCache;
+  }
+  const p: ReaderPalette = copyPalette(basePalette(mode, systemDark));
   const accent: string = ThemeStore.colorOf(key);
   // ⚠️ **纸色主题（羊皮纸 / 护眼绿）保持纯净纸色，不吃全局主题色的染**：
   // 用户反馈"设置羊皮纸/护眼绿后阅读背景被替换成粉色"——
@@ -422,7 +454,7 @@ export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
     p.inlineCodeText = blendRgb(p.textPrimary, accent, 0.55);
   }
   // 卡片沾色：底色混入 10% 主题色（xjau CARD_TINT_RATIO）；纸色主题跳过
-  if (!isPaper && AppStorage.get<boolean>('cardTint') === true && accent.length > 0) {
+  if (!isPaper && tintOn && accent.length > 0) {
     p.surface = blendRgb(p.surface, accent, 0.10);
     p.quoteBg = blendRgb(p.quoteBg, accent, 0.12);
     p.codeBlockBg = blendRgb(p.codeBlockBg, accent, 0.10);
@@ -430,25 +462,17 @@ export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
     p.accentSoft = withAlpha(accent, '2E');
   }
   // 页面背景跟随主题色：内置主题始终允许；自定义 hex 需「高权限自定义主题色」；纸色主题跳过
-  const bgTintOff: boolean = AppStorage.get<boolean>('pageBgTint') === false;
-  const allowed: boolean = ThemeStore.isBuiltin(key)
-    || (ThemeStore.isHex(key) && AppStorage.get<boolean>('customAccentFull') === true);
+  const allowed: boolean = ThemeStore.isBuiltin(key) || (ThemeStore.isHex(key) && customFull);
   if (!isPaper && !bgTintOff && allowed && accent.length > 0) {
     p.pageTop = blendRgb(p.pageTop, accent, 0.10);
     p.pageBottom = blendRgb(p.pageBottom, accent, 0.10);
   }
-  // 灰体文本显示增强（移植自 xjau 的灰字覆盖）：把「次级 / 三级」灰字统一换掉，
-  // 壁纸很花时能显著提升可读性。auto = 不改（跟随主题）。
-  //
-  // ⚠️ 用 **isDarkTheme()** 而不是手写：纸色两档（Sepia/Green）跟随 systemDark，
-  // 这里若按老写法（只判 Dark/System）会取到浅色档的灰字配置，
-  // 覆盖掉深色孪生款里已经调好的浅色字 → 深底深字，看不清。
-  const themeDark: boolean = isDarkTheme(mode, systemDark);
-  const gray: string = grayTextOverride(themeDark);
   if (gray.length > 0) {
     p.textSecondary = gray;
     p.textTertiary = gray;
   }
+  paletteSig = sig;
+  paletteCache = p;
   return p;
 }
 
@@ -471,7 +495,7 @@ export function paletteFor(mode: number, systemDark: boolean): ReaderPalette {
  * 注意：纯函数内读 AppStorage **不登记依赖**，所以改设置后由 SettingsAppearance 里的
  * appearanceTick 触发整树重算（见各页面 palette()）。
  */
-export function grayTextOverride(themeDark: boolean): string {
+function grayTextOverrideRaw(themeDark: boolean): string {
   const modernKey: string = themeDark ? 'grayTextModeDark' : 'grayTextModeLight';
   const modernColorKey: string = themeDark ? 'grayTextColorDark' : 'grayTextColorLight';
   const modernRaw: string | undefined = AppStorage.get<string>(modernKey);
@@ -515,6 +539,40 @@ export function grayTextOverride(themeDark: boolean): string {
     return norm.length > 0 ? '#' + norm.substring(3) : '';
   }
   return '';
+}
+
+/**
+ * 灰字覆盖色的缓存包装。
+ *
+ * `auto` 档要走到 `autoBackdropLuminance` —— 那里可能要去展开函数壁纸定义算主色，
+ * 而 paletteFor 每次现算都会经过它（一次正文重建里几百次）。签名带上 appearanceTick
+ * 与它自己读的那几个键，隐藏输入靠 tick 兜住。
+ */
+let graySig: string = '';
+let grayCache: string = '';
+
+export function grayTextOverride(themeDark: boolean): string {
+  const d: string = themeDark ? 'd' : 'l';
+  const mLight: string = AppStorage.get<string>('grayTextModeLight') ?? '';
+  const mDark: string = AppStorage.get<string>('grayTextModeDark') ?? '';
+  const mLegacy: string = AppStorage.get<string>('grayTextMode') ?? '';
+  const bgLight: string = AppStorage.get<string>('readerCustomBgLight') ?? '';
+  const bgDark: string = AppStorage.get<string>('readerCustomBgDark') ?? '';
+  const bgId: string = AppStorage.get<string>('readerBgId') ?? '';
+  const cLight: string = AppStorage.get<string>('grayTextColorLight') ?? '';
+  const cDark: string = AppStorage.get<string>('grayTextColorDark') ?? '';
+  const cLegacy: string = AppStorage.get<string>('grayTextColor') ?? '';
+  const tickRaw: number | undefined = AppStorage.get<number>('appearanceTick');
+  const sig: string = d + '|' + (tickRaw === undefined || tickRaw === null ? 0 : tickRaw)
+    + '|' + mLight + '|' + mDark + '|' + mLegacy + '|' + cLight + '|' + cDark + '|' + cLegacy
+    + '|' + bgLight + '|' + bgDark + '|' + bgId;
+  if (sig === graySig) {
+    return grayCache;
+  }
+  const v: string = grayTextOverrideRaw(themeDark);
+  graySig = sig;
+  grayCache = v;
+  return v;
 }
 
 /** #RRGGBB(A) → 相对亮度 0~1（非法返回 -1）。 */

@@ -645,7 +645,11 @@ export struct Editor {
     // 键盘上方一大截（页面没缩、只是平移）。RESIZE 让页面布局高度直接收缩，
     // 钉底的悬浮层自然贴在键盘上沿，正文区也同步缩小——平台级方案，自己不算高度。
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
-    this.startBlobDrift();
+    // 背景光斑的两条无限动画**推到转场之后**再开（与阅读页同一口径）：
+    // 在进场那一帧起动画，等于让整页在转场期间每帧都重算一次光斑变换
+    setTimeout((): void => {
+      this.startBlobDrift();
+    }, 600);
     const aiCtx: common.UIAbilityContext | null = this.ctx();
     this.aiReady = aiCtx !== null && AiChatStore.isConfigured(AiChatStore.loadConfig(aiCtx));
     const params: ReaderRoute = this.route;

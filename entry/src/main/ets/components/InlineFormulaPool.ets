@@ -46,6 +46,18 @@ export struct InlineFormulaPool {
    * 会看不见）。参与缓存键（inlineKey 含 dark），切换主题自动重生成。
    */
   @Prop dark: boolean = false;
+  /**
+   * 暂停派单（与 ChartRenderPool 同一口径）：宿主在**转场 / 滑动**期间把它挂上，
+   * 免得公式图生成与动画抢同一条主线程（审核报的"转场操作卡顿率"）。
+   * 当前这张会继续跑完并落盘，只是不开新任务。
+   */
+  @Prop @Watch('onPausedChanged') paused: boolean = false;
+
+  private onPausedChanged(): void {
+    if (!this.paused) {
+      this.pump();
+    }
+  }
   /** 每完成（或失败跳过）一张回调一次：宿主刷新正文把线性化文本换成公式图 */
   onOneDone: () => void = () => {
   };
@@ -78,6 +90,10 @@ export struct InlineFormulaPool {
 
   private pump(): void {
     if (this.busyRendering || !this.makerReady) {
+      return;
+    }
+    // 转场 / 滑动中不开新任务（见 paused）
+    if (this.paused) {
       return;
     }
     const c: common.UIAbilityContext | null = this.hostCtx();
