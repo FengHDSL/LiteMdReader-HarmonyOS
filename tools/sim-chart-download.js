@@ -191,11 +191,11 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     !runtimeEts.includes('static kernelNeeded(') && !runtimeEts.includes('static async waitForShots('));
   check('⑤ 导出：先发失败重试信号、再等（上限 120s）、超时按缺口裁库',
     exportEts.includes("AppStorage.setOrCreate('chartRetryTick'")
-    && exportEts.includes('waitShots(ctx, parsed.blocks, dark, chartBg, 300000')
+    && exportEts.includes('waitShots(ctx, parsed.blocks, dark, chartBg, 120000')
     && exportEts.includes('fileStillNeeded(ctx, parsed.blocks, dark, chartBg'));
   check('⑤ 打印：同一套等待 + 裁剪（120s，浅色口径）',
     printEts.includes("AppStorage.setOrCreate('chartRetryTick'")
-    && printEts.includes("waitShots(ctx, parsed.blocks, false, '', 300000")
+    && printEts.includes("waitShots(ctx, parsed.blocks, false, '', 120000")
     && printEts.includes("fileStillNeeded(ctx, parsed.blocks, false, '"));
   check('⑤ 内联语义修正：inline=[] 也必须走内联分支（零库全图化不能掉进 CDN 回退）',
     mdHtmlEts.includes('if (inline !== null) {')
@@ -244,14 +244,22 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && readerEts.includes('paused: this.bakePaused,')
     && readerEts.includes('if (!this.bakePaused) {')
     && readerEts.includes('this.scheduleBakeResume();'));
-  check('⑤ 阅读页不做懒挂载（webActive 已回退），导出专属任务按需排队',
+  // 2026-10-17 两件事都被实测否掉，钉住不许回来：
+  //  · 阅读页懒挂载（ForEach key 一变 = 整条目重建，Web 销毁 + 重新 loadUrl，更卡）；
+  //  · 公式图 + 浅色孪生进池子（同模式任务背靠背、组件不重载 → **串图**：
+  //    旅程图的键下存着一张白字黑底的公式图）。
+  check('⑤ 阅读页不做懒挂载、池子不做公式图与浅色孪生（串图回归防线）',
     !mdViewEts.includes('@Prop webActive')
     && !readerEts.includes('webReached')
-    && readerEts.includes("const forExport: boolean = this.chartExportBake > 0;")
-    && readerEts.includes('if (dark && forExport) {')
-    && readerEts.includes("if (!forExport) {")
-    && exportEts.includes("AppStorage.setOrCreate('chartExportBake'")
-    && printEts.includes("AppStorage.setOrCreate('chartExportBake'"));
+    && !readerEts.includes('chartExportBake')
+    && !readerEts.includes('twins')
+    && !poolEts.includes('curDark') && !poolEts.includes('dark?: boolean;')
+    && readerEts.includes('const b: MdBlock = this.blocks[k];')
+    && (() => {
+      const at = readerEts.indexOf('if (b.kind === MdBlockKind.Math) {');
+      const seg = at >= 0 ? readerEts.substring(at, at + 900) : '';
+      return seg.includes('continue;') && !seg.includes("mode = 'katex'");
+    })());
   check('⑤ payload 索引带盐（否则升键后索引还指着旧图，作废形同虚设）',
     (cacheEts.match(/ChartCache\.idxKeyOf\(mode, payload, dark\)/g) || []).length >= 2
     && !/hashOf\(mode \+ '\|' \+ \(dark \? 'd' : 'l'\)/.test(cacheEts));
@@ -283,32 +291,20 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
   check('⑤ 导出嵌图与"有图判定"同一取键口径（lightShotKeys 共用）',
     cacheEts.includes('private static lightShotKeys(')
     && (cacheEts.match(/ChartCache\.lightShotKeys\(/g) || []).length >= 2);
-  check('⑤ 公式卡片进烘焙队列、导出**快照优先**（阅读页那张卡仍实时 → 透底不变）',
-    /ChartCache\.pngEmbed\(ctx, 'katex', block\.code/.test(mdHtmlEts)
-    && (() => {
-      const at = readerEts.indexOf('if (b.kind === MdBlockKind.Math) {');
-      const seg = at >= 0 ? readerEts.substring(at, at + 900) : '';
-      return seg.includes("mode = 'katex'");
-    })()
-    // 用户要求阅读页公式仍是透底实时渲染：正文不许改成取烘焙图
-    && !/if \(this\.chartImagePath\('katex'\)\.length > 0\)/.test(mdViewEts)
+  check('⑤ 导出里公式恒走 KaTeX 容器（"全图片化"已撤销：串图 + 黑底）',
+    !/ChartCache\.pngEmbed\(ctx, 'katex'/.test(mdHtmlEts)
+    && mdHtmlEts.includes("} else if (block.kind === MdBlockKind.Math && rich) {")
+    && mdHtmlEts.includes("chartContainer('katex', [block.code])")
+    // 阅读页那张卡仍是实时渲染（透底、跟字号联动）
     && /DiagramWeb\(\{ mode: 'katex', payload: this\.block\.code/.test(mdViewEts));
-  check('⑤ 深色读书时为导出补烘**浅色孪生**（任务自带深浅/底色，池子按任务取色）',
-    readerEts.includes('const twins: ChartTask[] = [];')
-    && readerEts.includes('key: ChartCache.keyFor(mode, b.code, false, lightBg),')
-    && poolEts.includes('dark?: boolean;') && poolEts.includes('bg?: string;')
-    && poolEts.includes('this.curDark = t.dark === undefined ? this.dark : t.dark;')
-    && poolEts.includes('dark: this.curDark,')
-    // 浅色款必须登记进 payload 索引，否则导出侧的 lightShotKeys 反查不到
-    && poolEts.includes('ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);'));
-  check('⑤ 浅色款与正文款逐张交错（不能整批排前面，否则阅读页的图被推迟 = 更卡）',
+  check('⑤ 缺图判定不把公式算进去（否则每次导出都等满超时）',
     (() => {
-      const at = readerEts.indexOf('for (let q = 0; q < out.length; q++)');
-      const seg = at >= 0 ? readerEts.substring(at, at + 260) : '';
-      return seg.includes('res.push(out[q]);') && seg.includes('res.push(twins[q]);');
+      const at = runtimeEts.indexOf('private static wantsShot(');
+      const seg = at >= 0 ? runtimeEts.substring(at, at + 900) : '\0';
+      return seg.includes('if (b.kind === MdBlockKind.Math) {') && seg.includes('return false;');
     })()
-    && exportEts.includes('parsed.blocks, dark, chartBg, 300000, notify)')
-    && printEts.includes('parsed.blocks, false, \'\', 300000, notify)'));
+    && exportEts.includes('parsed.blocks, dark, chartBg, 120000, notify)')
+    && printEts.includes('parsed.blocks, false, \'\', 120000, notify)'));
   check('⑤ 导出等补烘：负结果不入内存缓存，进度文案是"共 N 张"且过程消息不收面板',
     /if \(found\.length > 0\) \{\s*\n\s*ChartCache\.memo\.set\(key, found\);/.test(cacheEts)
     && /if \(uri\.length > 0\) \{\s*\n\s*ChartCache\.uriMemo\.set\(key, uri\);/.test(cacheEts)

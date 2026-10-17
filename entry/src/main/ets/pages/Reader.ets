@@ -582,26 +582,6 @@ export struct Reader {
     this.poolRetryTick = this.poolRetryTick + 1;
   }
 
-  /**
-   * **导出 / 打印专用的补烘信号**（导出侧在 `waitShots` 前递增）。
-   *
-   * 公式图与浅色孪生**只有导出 / 打印要**：阅读页的公式卡是实时渲染（透底、跟字号
-   * 联动），浅色款在深色模式下也不显示。把它们常驻进队列，等于每篇文档的后台烘焙
-   * 量翻三倍（示例文档 41 张 → 128 张），而且每张都要"整页加载 → 等重排 → 快照 →
-   * 全图像素自检"，池子就一直占着 CPU —— 用户实测"非常非常卡"。
-   * 现在改成**按需排队**：只有用户真的点了导出 / 打印，才把这两类补进队列，
-   * 导出侧的等待循环正好盯着它们烘完。
-   */
-  @StorageProp('chartExportBake') @Watch('onExportBakeWanted') chartExportBake: number = 0;
-
-  /** 收到导出信号 → 重收一次任务清单（这次带上公式图与浅色孪生）。 */
-  onExportBakeWanted(): void {
-    if (this.chartExportBake <= 0 || this.blocks.length === 0) {
-      return;
-    }
-    this.chartTasks = this.collectChartTasks(this.isDark());
-  }
-
   /** 停止滚动 0.42 秒后让后台池子续跑（期间再滚就重新计时，队列不丢任务）。 */
   private scheduleBakeResume(): void {
     if (this.bakeResumeTimer >= 0) {
@@ -1398,25 +1378,23 @@ export struct Reader {
    */
   private collectChartTasks(dark: boolean): ChartTask[] {
     const out: ChartTask[] = [];
-    // 只为导出 / 打印存在的任务（公式图 + 浅色孪生）：见 chartExportBake
-    const forExport: boolean = this.chartExportBake > 0;
-    // 浅色孪生任务单独排队，**排在整条正文队列之前**（顺序见函数尾部）
-    const twins: ChartTask[] = [];
-    // 浅色孪生的底色：导出 / 打印**恒认浅色快照**（ChartCache.lightShotKeys），键里
-    // 的 bg 必须和烘的时候用的是同一个值，否则键对不上图
-    const lightBg: string = withAlpha(paletteFor(this.themeMode, false).codeBlockBg, 'FF');
     const curBg: string = withAlpha(this.palette().codeBlockBg, 'FF');
     for (let k = 0; k < this.blocks.length; k++) {
       const b: MdBlock = this.blocks[k];
       let mode: string = '';
       if (b.kind === MdBlockKind.Math) {
-        // **块级公式只为导出 / 打印烘**（用户拍板"公式卡片和图表卡片就是要转成图片
-        // 的那批"，但阅读页那张卡仍按"直接全透明"实时渲染）。没点导出就不排队 ——
-        // 常驻排队会把后台烘焙量翻倍，实测把阅读页拖到"非常非常卡"。
-        if (!forExport) {
-          continue;
-        }
-        mode = 'katex';
+        /**
+         * **块级公式不进烘焙队列，浅色孪生也不做**（2026-10-17 整体撤销）。
+         *
+         * 之前为了"导出全图片化"把公式图与每张图的浅色孪生排进同一条队列，结果是
+         * **串图**：同一个组件连续跑同模式的两个任务（katex 深色款 → katex 浅色款）
+         * 不触发页面重载，payload 热注入与快照竞速，深色那一帧被存进浅色的键 ——
+         * 真机实锤：旅程图（mermaid）的键下存着一张**白字黑底**的公式图，用户报的
+         * "部分公式块背景是黑色"与"用户旅程图显示错误"是同一个 bug。
+         * 要恢复"全图片化"，前提是先给池子加**任务间硬隔离**（换任务必重载 +
+         * 快照归属校验带上任务序号），别在这个基础上继续叠功能。
+         */
+        continue;
       } else if (b.kind === MdBlockKind.Chart) {
         mode = b.lang.toLowerCase();
       }
@@ -1454,33 +1432,8 @@ export struct Reader {
         mode: mode,
         payload: b.code
       } as ChartTask);
-      // **深色读书时补一条浅色孪生任务**（根治 #65）：导出 / 打印恒浅色，此前
-      // 深色模式下永远查不到浅色快照 → 整篇卡片退化成"要 JS 现场画的容器"。
-      // ⚠️ 只在导出 / 打印排队时要（forExport）：常驻会让每篇文档的烘焙量直接翻倍，
-      // 阅读页就是被这个翻倍的后台负载拖卡的。
-      if (dark && forExport) {
-        twins.push({
-          key: ChartCache.keyFor(mode, b.code, false, lightBg),
-          mode: mode,
-          payload: b.code,
-          dark: false,
-          bg: lightBg
-        } as ChartTask);
-      }
     }
-    // **正文款在前、浅色孪生紧随其后**（逐张交错，不是两段队列）：
-    // 上一版把浅色款整批排在最前，阅读页自己的图被推迟到几十张之后才烘出来 ——
-    // 卡片一直停在实时 Web 上，同时挂着的 Web 实例翻一倍，实测"比之前还卡"。
-    // 交错之后：烘到第 N 张，第 N 张的正文图与导出图就都齐了。
-    const res: ChartTask[] = [];
-    for (let q = 0; q < out.length; q++) {
-      res.push(out[q]);
-      // twins 与 out 只在"排队了孪生"时一一对应；没排（浅色读书 / 没点导出）时为空
-      if (q < twins.length) {
-        res.push(twins[q]);
-      }
-    }
-    return res;
+    return out;
   }
 
   // ══════════════════════ 顶栏 / 底栏的收起与展开 ══════════════════════

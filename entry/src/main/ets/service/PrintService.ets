@@ -64,14 +64,9 @@ export class PrintService {
         // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
         const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
         AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
-        // **按需补烘信号**：公式图与浅色孪生平时不在池子队列里（常驻会拖卡阅读页，
-        // 见 Reader.chartExportBake）；现在要打印了才补进队列。
-        const curBake: number | undefined = AppStorage.get<number>('chartExportBake');
-        AppStorage.setOrCreate('chartExportBake', (curBake === undefined ? 0 : curBake) + 1);
-        // 等待上限 120s：首次打印 / 导出要现烘"正文款 + 浅色款 + 公式图"（示例文档
-        // 64 张卡片 ≈ 128 次烘焙），45s 只够三十几张，超时就退成"背渲染库的现场渲染
-        // 容器"—— 正是用户报的"一大半没转成图片 + 容器被挤成一团"。第二次全命中缓存，不等待。
-        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 300000, notify);
+        // 等待上限 120s：队列里只有当前主题的图表款（公式图与浅色孪生已整体撤销，
+        // 见 Reader.collectChartTasks 的说明），一篇 40 来张图 120s 足够。
+        await ChartRuntimeService.waitShots(ctx, parsed.blocks, false, '', 120000, notify);
         for (let i = needed.length - 1; i >= 0; i--) {
           if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, false, '', needed[i])) {
             needed.splice(i, 1);

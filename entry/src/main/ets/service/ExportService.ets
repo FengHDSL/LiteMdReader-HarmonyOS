@@ -207,15 +207,9 @@ export class ExportService {
       // 失败集重试信号：Reader 的池子清空失败集重跑一轮（见 ChartRenderPool.retryTick）
       const curRetry: number | undefined = AppStorage.get<number>('chartRetryTick');
       AppStorage.setOrCreate('chartRetryTick', (curRetry === undefined ? 0 : curRetry) + 1);
-      // **按需补烘信号**：公式图与浅色孪生平时不在池子的队列里（常驻会把阅读页拖卡，
-      // 见 Reader.chartExportBake）。现在要导出了，才让阅读页把这两类补进队列。
-      const curBake: number | undefined = AppStorage.get<number>('chartExportBake');
-      AppStorage.setOrCreate('chartExportBake', (curBake === undefined ? 0 : curBake) + 1);
-      // 等待上限 300s：公式图与浅色孪生是"点导出才排队"的，一篇 64 卡的文档首次
-      // 要烘 ~128 张（每张 1~2 秒）。120s 只够一半，剩下就退成"要 JS 现场画的容器"
-      // —— 用户实测"有的图片没有正常转成图片（这次是盐图）"。宁可多等一会儿，
-      // 也要一次就把图片插全；第二次起全命中磁盘缓存，秒过。
-      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 300000, notify);
+      // 等待上限 120s：队列里只有"当前主题的图表款"（公式与浅色孪生已撤销，见
+      // Reader.collectChartTasks），一篇 40 来张图 120s 足够；再久就是白等。
+      await ChartRuntimeService.waitShots(ctx, parsed.blocks, dark, chartBg, 120000, notify);
       for (let i = needed.length - 1; i >= 0; i--) {
         if (!ChartRuntimeService.fileStillNeeded(ctx, parsed.blocks, dark, chartBg, needed[i])) {
           needed.splice(i, 1);

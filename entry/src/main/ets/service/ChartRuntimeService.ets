@@ -157,7 +157,10 @@ export class ChartRuntimeService {
       return !MdToHtml.engineOffForLang(lang);
     }
     if (b.kind === MdBlockKind.Math) {
-      return !MdToHtml.engineOffForLang('katex');
+      // **公式块不算"该有快照"**（2026-10-17 撤销全图片化）：块级公式不进烘焙队列
+      // （见 Reader.collectChartTasks），把它算进缺图判定会让导出**每次都等满超时**。
+      // 导出里公式走 .ktx 容器 + katex 库现场渲染，这条由 fileStillNeeded 保住库。
+      return false;
     }
     return false;
   }
@@ -171,11 +174,12 @@ export class ChartRuntimeService {
                          dark: boolean, bg: string, maxMs: number,
                          notify: (message: string) => void): Promise<void> {
     const t0: number = Date.now();
+    // 该转成图片的卡片总数（不是"此刻还缺几张"，那会让用户觉得张数报错）
+    const wanted: number = ChartRuntimeService.shotsWanted(blocks);
+    let lastDone: number = -1;
     let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
     if (n > 0) {
-      // 报**该转成图片的卡片总数**，不是"此刻还缺几张"：用户对着满屏卡片看，
-      // 缺几个报几个就是"张数错误"（实测反馈）。"有没有在加载"由界面上的加载动画表达。
-      notify('共 ' + ChartRuntimeService.shotsWanted(blocks) + ' 张图片，请耐心等待');
+      notify('共 ' + wanted + ' 张图片，请耐心等待');
     }
     while (n > 0) {
       if (Date.now() - t0 >= maxMs) {
@@ -185,6 +189,17 @@ export class ChartRuntimeService {
         setTimeout(res, 500);
       });
       n = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
+      /**
+       * **往前走的进度**（用户要求"等待时要知道有没有在工作，别一直转圈"）：
+       * 每轮报一次"已生成 X / 共 N 张"，数字只增不减 —— 之前"还差 N 张"读着像
+       * 倒退，只报一次总数又看不出动静。计数真变了才发（toast 是覆盖式的，
+       * 同文案连发看着就像卡死）。
+       */
+      const done: number = wanted - n;
+      if (done > lastDone) {
+        lastDone = done;
+        notify('已生成 ' + done + ' / ' + wanted + ' 张图片');
+      }
     }
   }
 

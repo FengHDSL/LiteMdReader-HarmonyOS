@@ -1307,27 +1307,16 @@ export class MdToHtml {
             body += MdToHtml.codeBlock(block.lang, block.codeLines, []);
           }
         } else if (block.kind === MdBlockKind.Math && rich) {
+          // **块级公式恒走 KaTeX 容器**（2026-10-17 撤销"导出全图片化"）：让公式进
+          // 后台烘焙队列带来的是串图与黑底图（同模式任务背靠背、组件不重载，深色
+          // 那一帧被写进浅色的键），收益不值这个风险。网页里由 runner 现场渲染
+          // KaTeX，文字本身透底；katex 库由 fileStillNeeded 保住。
+          // KaTeX 关闭 → 保持源码代码块（与阅读页、与引擎开关语义一致）。
           if (EngineRegistry.isOff('katex', EngineRegistry.current())) {
             body += MdToHtml.codeBlock('latex', [block.code], []);
           } else {
-            // **快照优先**（用户拍板"公式卡片和图表卡片就是要转成图片的那批"）：
-            // 现场渲染的 .katex 容器由浏览器按容器宽重排，长公式被压到读不清
-            // ——真机取证：那篇示例文档导出的 64 张卡片里 23 张公式全是容器，
-            // "挤压拉伸"全出在容器上，而 8 张 <img> 零失真。
-            // 没快照（文档没在阅读页待够 / 公式刚改过）→ 仍回落实时容器并带上
-            // katex 库，导出页不会出现空白块。
-            const kxEmbed: string = ctx !== null
-              ? ChartCache.pngEmbed(ctx, 'katex', block.code, dark, chartBg) : '';
-            const kxFound: string = MdToHtml.embedPng(kxEmbed);
-            if (kxFound.length > 0 && usedPngs.indexOf(kxFound) < 0) {
-              body += '<img class="chartimg" src="' + kxFound
-                + '" style="' + MdToHtml.embedStyle(kxEmbed) + '">';
-              usedPngs.push(kxFound);
-              chartIndex++;
-            } else {
-              body += MdToHtml.chartContainer('katex', [block.code]);
-              chartIndex++;
-            }
+            body += MdToHtml.chartContainer('katex', [block.code]);
+            chartIndex++;
           }
         } else if (block.kind === MdBlockKind.Code) {
           body += MdToHtml.codeBlock(block.lang, block.codeLines,

@@ -27,17 +27,6 @@ export interface ChartTask {
   payload: string;
   /** 行内公式：按公式自身尺寸渲染（供正文 ImageSpan 内联） */
   inline?: boolean;
-  /**
-   * **这一张自己的深浅款**（不给则跟随池子的 `dark`）。
-   * 导出 / 打印恒认**浅色**快照（`ChartCache.lightShotKeys`），而浅色款此前只有
-   * "读书时正好是浅色模式"才会存在 —— 深色模式下读书的用户导出时永远判"缺图"，
-   * 几十张卡片全退化成"浏览器现场渲染的容器"（设备取证：真机导出的示例文档
-   * 64 张卡片里只有 8 张是图片，23 张公式 + 27 张 mermaid 都是容器，挤压拉伸
-   * 全出在这些容器上，`<img>` 那 8 张零失真）。宿主据此为每张补一条浅色孪生任务。
-   */
-  dark?: boolean;
-  /** 这一张自己的卡片底色（必须与 `key` 里那个 bg 同一个值，否则键与图对不上） */
-  bg?: string;
 }
 
 @Component
@@ -79,10 +68,6 @@ export struct ChartRenderPool {
 
   /** 当前正在渲染的任务 */
   @State current: ChartTask | null = null;
-  /** 当前任务实际使用的深浅款（见 ChartTask.dark） */
-  @State curDark: boolean = false;
-  /** 当前任务实际使用的卡片底色（见 ChartTask.bg） */
-  @State curBg: string = '';
   /** 截图请求计数：当前任务高度就绪后递增，驱动 DiagramWeb 快照 */
   @State captureTick: number = 0;
   /**
@@ -161,10 +146,6 @@ export struct ChartRenderPool {
       this.current = t;
       this.busyRendering = true;
       this.captureRetry = 0;
-      // 深浅 / 底色按**任务**取（浅色孪生任务与正文任务混在同一队列里，池子的
-      // `dark`/`cardBg` 只代表读书时那一档主题）
-      this.curDark = t.dark === undefined ? this.dark : t.dark;
-      this.curBg = (t.bg === undefined || t.bg.length === 0) ? this.cardBg : t.bg;
       // 每张都按当前宿主宽重算表面宽（旋转 / 分屏后跟着变），并清掉上一张的收敛记账
       this.surfaceW = DlFit.surfaceWidthOf(this.hostWidth);
       this.dlZoom = 1;
@@ -313,7 +294,7 @@ export struct ChartRenderPool {
           }
           ChartCache.save(c, t.key, pixel, w, h, true).then(() => {
             // 顺带登记 payload 索引：导出侧凭 (mode, payload) 反查缓存图（见 ChartCache）
-            ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.curDark, t.key);
+            ChartCache.rememberPayloadKey(c, t.mode, t.payload, this.dark, t.key);
             this.finishOne(t);
           }).catch(() => {
             this.failed.add(t.key);
@@ -546,8 +527,8 @@ export struct ChartRenderPool {
         DiagramWeb({
           mode: this.current.mode,
           payload: this.current.payload,
-          dark: this.curDark,
-          cardBg: this.curBg,
+          dark: this.dark,
+          cardBg: this.cardBg,
           inlineMode: this.current.inline === true,
           // 定宽烘焙（见 hostWidth / surfaceW 声明）：表面与页面排版都用这个钉死值
           virtualWidth: this.surfaceW,
