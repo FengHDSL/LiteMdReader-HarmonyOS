@@ -254,6 +254,15 @@ fs.writeFileSync(tmpFile, head.replace(/^import .*;\s*$/gm, ''));
     && readerEts.includes('bg: lightBg')
     && poolEts.includes('this.bakeReloadTick++;')
     && poolEts.includes('reloadRequest: this.bakeReloadTick,')
+    // 刷新不保证有第二次回传（doReload 在未 ready 时直接返回；有的模板尺寸没变就不再
+    // report）→ 1.8s 兜底必须自己派单，否则任务吊死在"等高度"上、导出里永远是容器
+    && poolEts.includes('this.reloadFallback = setTimeout(')
+    && poolEts.includes('private startCapture(t: ChartTask): void {')
+    && poolEts.includes('if (this.captureStarted) {')
+    // 等待循环要有前向进度，静止 25s 提前收工（用户："卡在 51/52 很久，到底在干嘛"）
+    && runtimeEts.includes("notify('已生成 ' + done + ' / ' + wanted + ' 张图片');")
+    && runtimeEts.includes('Date.now() - lastMoveAt > 25000')
+    && runtimeEts.includes('其余仍在后台生成，先用当前结果')
     && readerEts.includes('const b: MdBlock = this.blocks[k];')
     && (() => {
       const at = readerEts.indexOf('if (b.kind === MdBlockKind.Math) {');

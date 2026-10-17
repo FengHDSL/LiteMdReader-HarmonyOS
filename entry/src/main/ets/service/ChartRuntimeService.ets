@@ -177,6 +177,8 @@ export class ChartRuntimeService {
     // 该转成图片的卡片总数（不是"此刻还缺几张"，那会让用户觉得张数报错）
     const wanted: number = ChartRuntimeService.shotsWanted(blocks);
     let lastDone: number = -1;
+    // 最后一次"真的多了一张图"的时刻：静止太久就提前收工（见下面的 25s 判定）
+    let lastMoveAt: number = Date.now();
     let n: number = ChartRuntimeService.missingShots(ctx, blocks, dark, bg);
     if (n > 0) {
       notify('共 ' + wanted + ' 张图片，请耐心等待');
@@ -198,7 +200,18 @@ export class ChartRuntimeService {
       const done: number = wanted - n;
       if (done > lastDone) {
         lastDone = done;
+        lastMoveAt = Date.now();
         notify('已生成 ' + done + ' / ' + wanted + ' 张图片');
+      } else if (Date.now() - lastMoveAt > 25000) {
+        /**
+         * **25 秒没有新图落地就不再干等**（用户实测"提示一直卡在最后一张很久，
+         * 比如 51/52，到底是在生成图片还是干嘛"）：这时候不是"生成得慢"，而是
+         * 剩下那几张卡住了（模板不出图 / 快照被拒收），继续等到 120s 上限只是让
+         * 用户盯着一串静止的数字。现在直接出当前结果并说清楚还剩几张在后台。
+         */
+        notify('已生成 ' + (lastDone > 0 ? lastDone : 0) + ' / ' + wanted
+          + ' 张，其余仍在后台生成，先用当前结果');
+        return;
       }
     }
   }

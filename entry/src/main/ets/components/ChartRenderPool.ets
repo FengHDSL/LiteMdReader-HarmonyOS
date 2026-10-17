@@ -88,6 +88,10 @@ export struct ChartRenderPool {
    */
   @State bakeReloadTick: number = 0;
   private bakeReloaded: boolean = false;
+  /** 本张任务的快照是否已派发过（刷新兜底与第二次回传只能有一个真的拍） */
+  private captureStarted: boolean = false;
+  /** 刷新后没有第二次回传时的兜底派单定时器（见 startCapture） */
+  private reloadFallback: number = -1;
   /** 截图请求计数：当前任务高度就绪后递增，驱动 DiagramWeb 快照 */
   @State captureTick: number = 0;
   /**
@@ -167,6 +171,7 @@ export struct ChartRenderPool {
       this.busyRendering = true;
       this.captureRetry = 0;
       this.bakeReloaded = false;
+      this.captureStarted = false;
       // 深浅 / 底色按**任务**取（正文款与浅色孪生混在一条队列里，池子的 @Prop
       // `dark`/`cardBg` 只代表读书时那一档主题）。任务间硬隔离见 finishOne。
       this.curDark = t.dark === undefined ? this.dark : t.dark;
@@ -254,24 +259,62 @@ export struct ChartRenderPool {
         this.bakeReloaded = true;
         this.bakeReloadTick++;
         this.armWait();
+        /**
+         * ⚠️ **刷新不一定带来第二次回传**：`doReload` 在页面还没 ready 时会直接返回；
+         * 有的模板刷新后尺寸没变，也不再 report。上一版就是被这一步吊死的 ——
+         * 任务干等 10 秒"等高度"兜底后进失败集，导出里它永远是容器
+         *（用户实测"卡在最后一张 51/52 很久"、"盐图没按下载图片插入"）。
+         * 所以再挂一个 1.8s 的兜底：没有新回传也照样拍。
+         */
+        if (this.reloadFallback >= 0) {
+          clearTimeout(this.reloadFallback);
+        }
+        this.reloadFallback = setTimeout(() => {
+          this.reloadFallback = -1;
+          const cur: ChartTask | null = this.current;
+          if (cur !== null && this.busyRendering) {
+            this.startCapture(cur);
+          }
+        }, 1800);
         return;
       }
-      // 记下本次快照归属的任务键：onCaptured 用它丢弃"迟到"的快照
-      this.pendingKey = t.key;
-      this.captureTick++;
-      if (this.guardTimer >= 0) {
-        clearTimeout(this.guardTimer);
-      }
-      this.guardTimer = setTimeout(() => {
-        this.guardTimer = -1;
-        const cur: ChartTask | null = this.current;
-        if (cur !== null && this.busyRendering) {
-          // 快照无响应：跳过这张，队列继续
-          this.failed.add(cur.key);
-          this.finishOne(cur);
-        }
-      }, 4000);
+      this.startCapture(t);
     }, 150);
+  }
+
+  /** 派发快照：每张任务只派一次，4 秒内没有产物就判失败、队列继续。 */
+  private startCapture(t: ChartTask): void {
+    if (this.captureStarted) {
+      return;
+    }
+    this.captureStarted = true;
+    if (this.reloadFallback >= 0) {
+      clearTimeout(this.reloadFallback);
+      this.reloadFallback = -1;
+    }
+    if (this.captureDebounce >= 0) {
+      clearTimeout(this.captureDebounce);
+      this.captureDebounce = -1;
+    }
+    if (this.waitTimer >= 0) {
+      clearTimeout(this.waitTimer);
+      this.waitTimer = -1;
+    }
+    // 记下本次快照归属的任务键：onCaptured 用它丢弃"迟到"的快照
+    this.pendingKey = t.key;
+    this.captureTick++;
+    if (this.guardTimer >= 0) {
+      clearTimeout(this.guardTimer);
+    }
+    this.guardTimer = setTimeout(() => {
+      this.guardTimer = -1;
+      const cur: ChartTask | null = this.current;
+      if (cur !== null && this.busyRendering) {
+        // 快照无响应：跳过这张，队列继续
+        this.failed.add(cur.key);
+        this.finishOne(cur);
+      }
+    }, 4000);
   }
 
   /** 收到快照产物 → 归属校验 → **旧表面校验（拒收并重拍）** → 空白自检 → 入库（含逻辑尺寸 sidecar）→ 收尾。 */
@@ -544,6 +587,10 @@ export struct ChartRenderPool {
     if (this.captureDebounce >= 0) {
       clearTimeout(this.captureDebounce);
       this.captureDebounce = -1;
+    }
+    if (this.reloadFallback >= 0) {
+      clearTimeout(this.reloadFallback);
+      this.reloadFallback = -1;
     }
     this.pendingKey = '';
     this.busyRendering = false;
