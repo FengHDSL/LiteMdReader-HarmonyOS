@@ -238,6 +238,26 @@ struct Index {
   }
   @StorageLink('wallpaperBlur') wallpaperBlur: number = 4;
   @StorageLink('wallpaperScrim') wallpaperScrim: number = 42;
+  /**
+   * 退场露出书架时的全屏模糊：阅读页缩回封面那一刻，书架先在底下糊着，
+   * 再一路淡到清晰（用户要求"从浓到淡再消失"）。强度由 Reader.heroExit 写进
+   * AppStorage，这里 @Watch 到就立刻上浓、再用同样 400ms 的动画收到 0。
+   */
+  @State shelfRevealBlur: number = 0;
+  @StorageProp('shelfRevealBlur') @Watch('startShelfRevealBlur') shelfRevealBlurSig: number = 0;
+
+  private startShelfRevealBlur(): void {
+    const strong: number = this.shelfRevealBlurSig;
+    if (strong <= 0) {
+      return;
+    }
+    // 信号复位，下一次退场才还能触发（写 0 会再进一次本方法，被上面的判据挡掉）
+    AppStorage.setOrCreate('shelfRevealBlur', 0);
+    this.shelfRevealBlur = strong;
+    this.getUIContext().animateTo({ duration: 400, curve: Curve.FastOutSlowIn }, () => {
+      this.shelfRevealBlur = 0;
+    });
+  }
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完后靠它重算派生色 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** AI 后台生成完成的新事件计数（>0 时书架 AI 入口显示官方 Badge 角标） */
@@ -7560,6 +7580,8 @@ struct Index {
         this.rootHeight = rawH;
       }
     })
+    // 阅读页退场缩回封面时，底下露出的书架**由浓到淡再消失**（信号见 Reader.heroExit）
+    .blur(this.shelfRevealBlur)
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)

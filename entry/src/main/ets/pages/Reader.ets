@@ -1276,6 +1276,9 @@ export struct Reader {
     }
     this.heroExiting = true;
     this.flushProgress();
+    // 退场时底下露出的是真实书架：给它一个**由浓到淡再消失**的全屏模糊
+    // （书架那边 @Watch 这个信号自己做动画）。信号写在这里、消费在书架。
+    AppStorage.setOrCreate('shelfRevealBlur', 24);
     this.getUIContext().animateTo({
       duration: 400,
       curve: Curve.FastOutSlowIn,
