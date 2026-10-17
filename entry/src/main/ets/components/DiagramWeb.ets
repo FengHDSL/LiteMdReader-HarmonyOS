@@ -215,6 +215,12 @@ export struct DiagramWeb {
    */
   private capAttempt: number = 0;
   private capDelivered: boolean = false;
+  /**
+   * **注入号**：每次 injectPayload 自增，并同时写进页面 `window.__cjInj`。
+   * 页面一 reload 这个全局就没了 → 快照前读回来一比，就知道表面上挂的是不是
+   * 当前这份 payload（防串图，见 doCapture）。
+   */
+  private injectSeq: number = 0;
   private capReqSeen: number = -1;
 
   /**
@@ -378,7 +384,12 @@ export struct DiagramWeb {
     this.injectPayload();
   }
 
-  /** 把当前 payload 注入页面（首注与热注入共用；注入后重应用缩放）。 */
+  /**
+   * 把当前 payload 注入页面（首注与热注入共用；注入后重应用缩放）。
+   * 每次注入递增 `injectSeq` 并把同号写进页面 —— 快照前用它核验"页面上确实是这一份"
+   * （见 doCapture 的串图守卫）。号写在 renderPayload **之前**：模板自己抛错也不能把
+   * 号丢掉，否则这一拍永远对不上、任务白等。
+   */
   private injectPayload(): void {
     const json: string = JSON.stringify({
       src: this.payload, dark: this.dark, fit: this.fit, bg: this.cssColor(this.cardBg),
@@ -390,8 +401,10 @@ export struct DiagramWeb {
       dl: this.dl,
       z: this.dlZoom
     });
+    this.injectSeq++;
     try {
-      this.ctrl.runJavaScript('window.renderPayload(' + json + ');');
+      this.ctrl.runJavaScript('window.__cjInj=' + this.injectSeq
+        + ';window.renderPayload(' + json + ');');
     } catch (err) {
       // 注入失败时页面保持空白高度，不影响正文
     }
@@ -574,30 +587,28 @@ export struct DiagramWeb {
       if (this.webId !== capturedId || this.capDelivered) {
         return;
       }
+      // **先问页面"你手上是哪一份 payload"再拍**（2026-10-17 真机实锤）：韦恩图与
+      // ZenUML 桥出来的时序图，两个不同键下落盘的是**同一张 Chart.js 图**（md5 逐字节
+      // 相同）—— 模板页还没换成新 payload，旧内容仍挂在这块表面上，快照拍到旧帧；
+      // 图本身完整、尺寸也自洽，所以池子的空白自检与 `.dim` 自检都拦不住，错图直接
+      // 进缓存。注入时宿主往页面写一个自增号，页面一 reload 就被清空：号不对 = 这一拍
+      // 拍的不是当前这张，作废、下一拍重来（重试次数与递增延时沿用上面那套）。
+      const want: string = String(this.injectSeq);
       try {
-        this.ctrl.webPageSnapshot({ id: capturedId },
-          (err: BusinessError, result: webview.SnapshotResult) => {
-            if (this.capDelivered || this.capAttempt !== myAttempt) {
+        this.ctrl.runJavaScript('String(typeof window.__cjInj==="undefined"?0:window.__cjInj)',
+          (jsErr: BusinessError, value: string) => {
+            if (this.webId !== capturedId || this.capDelivered) {
               return;
             }
-            if (err !== undefined || result === undefined
-              || result.status !== true || result.imagePixelMap === undefined) {
-              // 被拒（最常见：Web is not painted ready）→ 隔一拍再试
+            const got: string = value.split('"').join('');
+            if (jsErr !== undefined || got !== want) {
               this.doCapture();
               return;
             }
-            this.capDelivered = true;
-            // **快照归属的逻辑宽度**：模板自己回传的 postWidth 只有 katex 有，
-            // 其余 19 个模板一律不回 → `.dim` 缺失，池子的"拍早了"守卫
-            // （staleSnapshot）与读取侧的口径自检（dimMatchesPixels）双双失效，
-            // 挤成窄条的坏图就这么落盘了（用户实测状态图 / C4 / 韦恩图三类）。
-            // 没有回传时用**组件实测宽**顶上：快照拍的正是这块表面，
-            // 两者同一口径，守卫这才真正对所有图种生效。
-            const logicalW: number = this.lastPostW > 0 ? this.lastPostW : this.areaW;
-            this.onCaptured(result.imagePixelMap, logicalW, this.lastPostH);
+            this.takeSnapshot(capturedId, myAttempt);
           });
       } catch (err) {
-        // 快照接口异常同样按"被拒"处理，交给下一拍
+        // 查询本身发不出去（控制器还没就绪）：同"被拒"，交给下一拍
         this.doCapture();
       }
     }, wait);
@@ -609,5 +620,35 @@ export struct DiagramWeb {
       }
       this.doCapture();
     }, wait + 400);
+  }
+
+  /** 派发整页快照（doCapture 通过"页面里确实是这份 payload"的核验后才走到这里）。 */
+  private takeSnapshot(capturedId: string, myAttempt: number): void {
+    try {
+      this.ctrl.webPageSnapshot({ id: capturedId },
+        (err: BusinessError, result: webview.SnapshotResult) => {
+          if (this.capDelivered || this.capAttempt !== myAttempt) {
+            return;
+          }
+          if (err !== undefined || result === undefined
+            || result.status !== true || result.imagePixelMap === undefined) {
+            // 被拒（最常见：Web is not painted ready）→ 隔一拍再试
+            this.doCapture();
+            return;
+          }
+          this.capDelivered = true;
+          // **快照归属的逻辑宽度**：模板自己回传的 postWidth 只有 katex 有，
+          // 其余 19 个模板一律不回 → `.dim` 缺失，池子的"拍早了"守卫
+          // （staleSnapshot）与读取侧的口径自检（dimMatchesPixels）双双失效，
+          // 挤成窄条的坏图就这么落盘了（用户实测状态图 / C4 / 韦恩图三类）。
+          // 没有回传时用**组件实测宽**顶上：快照拍的正是这块表面，
+          // 两者同一口径，守卫这才真正对所有图种生效。
+          const logicalW: number = this.lastPostW > 0 ? this.lastPostW : this.areaW;
+          this.onCaptured(result.imagePixelMap, logicalW, this.lastPostH);
+        });
+    } catch (err) {
+      // 快照接口异常同样按"被拒"处理，交给下一拍
+      this.doCapture();
+    }
   }
 }
