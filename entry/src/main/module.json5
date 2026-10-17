@@ -61,6 +61,9 @@
         //   · auto_rotation_restricted → 随传感器旋转但尊重系统「自动旋转」开关；
         //   · landscape / portrait → 强制单向。
         // 用户明确要求「允许横竖屏切换」→ 用 auto_rotation（不越过系统设置改回 restricted）。
+        // ⚠️ **但手机端不许横屏**（用户后续要求）：这一项对三种 deviceTypes 是同一个值，
+        // 平板 / 2in1 要保留旋转能力，所以手机侧的锁向放到运行时收紧
+        // —— 见 service/AppWindow.ets 的 lockPortraitOnPhone()（phone → PORTRAIT）。
         "orientation": "auto_rotation",
         // **窗口模式**（官方文档《应用声明支持智慧多窗》）：显式声明全屏 / 分屏 / 悬浮窗三种。
         // 缺省值本来就是这三种，这里显式写出以便后续直接调整；华为侧排查提示的

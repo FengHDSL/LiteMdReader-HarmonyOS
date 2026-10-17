@@ -19,6 +19,7 @@
 
 import { window } from '@kit.ArkUI';
 import { ConfigurationConstant } from '@kit.AbilityKit';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ReaderThemeMode } from '../theme/DesignTokens';
 import GlobalUIAbilityContext from '../util/ContextConfig';
@@ -46,6 +47,7 @@ export function setupImmersiveWindow(windowStage: window.WindowStage): void {
   try {
     const win: window.Window = windowStage.getMainWindowSync();
     mainWindow = win;
+    lockPortraitOnPhone(win);
     win.setWindowLayoutFullScreen(true);
 
     // 系统栏底色透明：不放开的话，系统栏会画自己的底色，压在应用内容之上
@@ -100,6 +102,32 @@ export function setupImmersiveWindow(windowStage: window.WindowStage): void {
     }
   } catch (err) {
     immersiveReady = false;
+  }
+}
+
+/**
+ * **手机端禁止横屏**（用户要求）。
+ *
+ * module.json5 的 `abilities.orientation` 是全设备类型共用的一个值，本应用配的是
+ * `auto_rotation`（平板 / 2in1 要能横竖屏切换），所以只能按设备类型在**运行时收紧**：
+ * phone → 锁竖屏，其余设备一律不动。
+ * 折叠屏展开后 deviceType 仍是 phone，同样锁竖屏（要看横版布局请用平板 / 自由窗）。
+ *
+ * ⚠️ 口径（SDK @ohos.window.d.ts）：`setPreferredOrientation` 只对**主窗口**生效，
+ * 子窗口调用无效；分屏 / 悬浮窗下方向由系统按窗口布局决定，这里的请求会被忽略，
+ * 所以不会破坏「横向悬浮窗」与分屏对照。必须在 loadContent 之前调用，
+ * 否则横持手机启动时先闪一帧横屏。
+ */
+function lockPortraitOnPhone(win: window.Window): void {
+  if (deviceInfo.deviceType !== 'phone') {
+    return;
+  }
+  try {
+    win.setPreferredOrientation(window.Orientation.PORTRAIT).catch(() => {
+      // 设备不支持旋转控制（如 PC / 部分自由窗形态）：保持系统默认，不影响使用
+    });
+  } catch (err) {
+    // 同上：锁方向失败只影响显示方向，不能阻断窗口初始化
   }
 }
 
