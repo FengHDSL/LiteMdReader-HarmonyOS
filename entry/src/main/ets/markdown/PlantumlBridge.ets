@@ -589,6 +589,7 @@ export class PlantumlBridge {
     const indents: number[] = [];
     const starLevels: number[] = [];
     const names: string[] = [];
+    let multiStar: boolean = false;
     for (let k = 0; k < lines.length; k++) {
       const l: string = lines[k].replace(/\t/g, '  ');
       const low: string = l.trim().toLowerCase();
@@ -603,10 +604,12 @@ export class PlantumlBridge {
       while (p + nStars < l.length && l.charAt(p + nStars) === '*') {
         nStars++;
       }
-      // 官方 `@startfiles` 的写法是**纯缩进**（不带 `*`）。以前这里 nStars===0 就
-      // `return ''` → 按官方示例写的文件树全部退回内核，页面上是一句
-      // "Unsupported diagram type"（用户实测"文件树没有渲染"）。现在两种写法都收：
-      // 带 `*` 的行按星号个数定层，纯缩进的行走下面的缩进阶梯。
+      if (nStars === 0) {
+        return '';                         // 不是 `*` 列表 → 不猜，原样显示源码
+      }
+      if (nStars >= 2) {
+        multiStar = true;
+      }
       let nm: string = l.substring(p + nStars).trim();
       if (nm.length === 0) {
         return '';
@@ -615,17 +618,17 @@ export class PlantumlBridge {
         nm = nm.substring(1, nm.length - 1);
       }
       indents.push(p);
-      starLevels.push(nStars > 0 ? nStars - 1 : -1);
+      starLevels.push(nStars - 1);
       names.push(nm);
     }
     if (names.length === 0) {
       return '';
     }
-    // 深度：带 `*` 的行按星号个数；纯缩进的行用"递增缩进阶梯"（任意步宽都对，退格会回退层级）
+    // 深度：星号写法直接按个数；缩进写法用"递增缩进阶梯"（任意步宽都对，退格会回退层级）
     const depths: number[] = [];
     const ladder: number[] = [];
     for (let k = 0; k < names.length; k++) {
-      if (starLevels[k] >= 0) {
+      if (multiStar) {
         depths.push(starLevels[k]);
         continue;
       }
