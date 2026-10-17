@@ -227,8 +227,9 @@ export struct DiagramWeb {
    * 实际加载的模板名。脑图走 **markmap-card**（一份模板同时管正文卡片与放大浮层
    * 两种画布形态，由 renderPayload 的 fit 标志区分）。
    * ⚠️ 首载与热切换必须走同一个函数：此前 build 用 markmap-card、
-   * onModeChanged 却 loadUrl('render/' + mode + '.html') 拼出 markmap.html，
-   * 脑图「源码 ↔ 预览」来回切一次就落到另一份模板上，放大行为整个变样。
+   * onModeChanged 却 loadUrl('render/' + mode + '.html') 拼出**脑图的旧模板**
+   * （那份模板现已删除），脑图「源码 ↔ 预览」来回切一次就落到另一份模板上，
+   * 放大行为整个变样。
    */
   private renderTemplate(): string {
     // plantuml 用自己的模板 render/plantuml.html（离线内核 @plantuml/core，2026-10-14 起）；

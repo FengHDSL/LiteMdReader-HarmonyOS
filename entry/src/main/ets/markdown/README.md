@@ -35,7 +35,7 @@
 |---|---|
 | `katex.html` + `fonts/`（KaTeX 全套 20 个 woff2，含 **Size1~4**——伸缩括号/大运算符专用，缺一不可） | 公式渲染（块级与行内） |
 | `mermaid.html` | mermaid 流程图 / 时序图 / 甘特图 |
-| `markmap.html` | 思维导图 |
+| `markmap-card.html` | 思维导图（正文卡片与放大浮层同一份，靠 renderPayload 的 fit 标志分流；旧 `markmap.html` 已删） |
 | `echarts.html` | 图表 |
 | `graphviz.html` | Graphviz |
 | `abc.html` | 五线谱 |
