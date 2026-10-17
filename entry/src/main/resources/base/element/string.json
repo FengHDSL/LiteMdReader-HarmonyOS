@@ -17,14 +17,6 @@
       "value": "用于识别你的握持手，让底部工具栏跟随握姿贴近该侧"
     },
     {
-      "name": "form_shelf_display",
-      "value": "澄笺书架"
-    },
-    {
-      "name": "form_shelf_desc",
-      "value": "展示最近阅读的三篇文档"
-    },
-    {
       "name": "form_recent_display",
       "value": "澄笺 · 最近阅读"
     },

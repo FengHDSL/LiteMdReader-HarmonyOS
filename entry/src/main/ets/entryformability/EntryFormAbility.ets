@@ -2,10 +2,10 @@
  * 澄笺 · 桌面卡片能力（FormExtensionAbility）
  * =========================================
  *
- * 2×4 书架卡片：展示**最近阅读的 3 篇文档**。
+ * 2×2 桌面卡片：最近阅读的一篇文档 + 新建文档入口。
  *
  * 数据流：卡片添加 / 定时刷新时，这里用 FormSync.buildData 组装最近阅读数据
- * 推给卡片页（pages/form/ShelfCard.ets 通过 LocalStorageProp 读取）。
+ * 推给卡片页（pages/form/RecentCard.ets 通过 LocalStorageProp 读取）。
  * **即时更新走应用进程侧的 FormSync.pushRecents**（Reader 进度落盘 /
  * 应用退后台时主动 formProvider.updateForm），这里只是定时兜底。
  *
