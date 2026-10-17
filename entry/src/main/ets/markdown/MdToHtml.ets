@@ -39,11 +39,16 @@ const HTML_CSS: string = `
      公式块是 .ktx 容器不带按钮）。外层 .cwrap 只负责给按钮定位，不改变图片布局，
      所以"什么比例就什么比例"那条规则不受影响。 */
   .cwrap { position: relative; display: inline-block; max-width: 100%; }
-  .cz { position: absolute; right: 6px; bottom: 6px; display: none; gap: 4px; }
-  .cwrap:hover .cz, .cwrap:focus-within .cz { display: flex; }
+  .cz { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; opacity: 0.86; }
   .cz button { width: 26px; height: 26px; border: 1px solid #c9d2e0; border-radius: 13px;
     background: rgba(255, 255, 255, 0.92); color: #2f63e8; font-size: 15px; line-height: 1;
     cursor: pointer; padding: 0; }
+  /* 右下角的**拖动把手**（用户要的是拖拽调节，加减键保留）：pointer 事件同时吃手指
+     与鼠标，`touch-action:none`  prevent 页面跟着滚。 */
+  .czd { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px;
+    cursor: nwse-resize; touch-action: none; opacity: 0.7;
+    background: linear-gradient(135deg, transparent 46%, #2f63e8 46%, #2f63e8 58%,
+      transparent 58%, transparent 70%, #2f63e8 70%, #2f63e8 82%, transparent 82%); }
   /* 打印：屏幕上"能左右滑动"的东西到了纸上就是"少一段"（用户实测超宽公式打印不全）。
      公式由页尾 runner 缩字号等比适配、SVG 由上面的 max-width 等比缩放，容器一律不裁切。 */
   @media print {
@@ -52,6 +57,7 @@ const HTML_CSS: string = `
     img.chartimg { max-width: 100%; height: auto; }
     /* 按钮是屏幕上的控件，绝不能进纸 */
     .cz { display: none !important; }
+    .czd { display: none !important; }
   }
   /* 行内公式容器（块级 .ktx 的样式会破坏行内流，必须独立）；容器内预填源码，
      JS 未加载 / 渲染失败时以源码兜底显示 */
@@ -566,7 +572,8 @@ export class MdToHtml {
     return '<span class="cwrap"><img class="chartimg" src="' + MdToHtml.embedPng(embed)
       + '" style="' + MdToHtml.embedStyle(embed) + '">'
       + '<span class="cz"><button type="button" data-cz="-1" aria-label="缩小">−</button>'
-      + '<button type="button" data-cz="1" aria-label="放大">+</button></span></span>';
+      + '<button type="button" data-cz="1" aria-label="放大">+</button></span>'
+      + '<span class="czd" title="拖动调节大小"></span></span>';
   }
 
   /** rich 模式：图表/公式内容 → data-b64 渲染容器（runner 解码后调对应渲染库绘制）。 */
@@ -1132,6 +1139,35 @@ export class MdToHtml {
       + '        im.style.width = Math.round(next) + "px";\n'
       + '      });\n'
       + '    });\n'
+      + '    var hd = w.querySelector(".czd");\n'
+      + '    if (hd !== null) {\n'
+      + '      // **拖动把手调节大小**（用户要的就是这个）：按下记下起点宽与 X，移动量按\n'
+      + '      // 1:1 加到宽上，同样限 0.25×~4×；pointer 事件 + setPointerCapture 让手指\n'
+      + '      // 和鼠标共用一套，CSS 里 touch-action:none 已经拦住页面跟着滚。\n'
+      + '      var drag = null;\n'
+      + '      hd.addEventListener("pointerdown", function (ev) {\n'
+      + '        var b0 = im.dataset.czBase ? Number(im.dataset.czBase)\n'
+      + '          : (im.getBoundingClientRect().width || (im.naturalWidth / 3.5) || 320);\n'
+      + '        im.dataset.czBase = String(Math.round(b0));\n'
+      + '        drag = { x: ev.clientX, w: im.getBoundingClientRect().width || b0, base: b0 };\n'
+      + '        try { hd.setPointerCapture(ev.pointerId); } catch (e) {}\n'
+      + '        ev.preventDefault();\n'
+      + '      });\n'
+      + '      hd.addEventListener("pointermove", function (ev) {\n'
+      + '        if (drag === null) { return; }\n'
+      + '        var next = drag.w + (ev.clientX - drag.x);\n'
+      + '        if (next < drag.base * 0.25) { next = drag.base * 0.25; }\n'
+      + '        if (next > drag.base * 4) { next = drag.base * 4; }\n'
+      + '        im.style.width = Math.round(next) + "px";\n'
+      + '      });\n'
+      + '      var stop = function (ev) {\n'
+      + '        if (drag === null) { return; }\n'
+      + '        drag = null;\n'
+      + '        try { hd.releasePointerCapture(ev.pointerId); } catch (e) {}\n'
+      + '      };\n'
+      + '      hd.addEventListener("pointerup", stop);\n'
+      + '      hd.addEventListener("pointercancel", stop);\n'
+      + '    }\n'
       + '  });\n'
       + '})();\n</script>\n';
     return runnerCode;
