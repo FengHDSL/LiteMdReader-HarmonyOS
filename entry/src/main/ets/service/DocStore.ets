@@ -604,27 +604,43 @@ export class DocStore {
     }
     // 统一排序：新文件夹要落在「目标文档」（docNames[0]）原来的位置——
     // 视觉上就是那两张合并成了文件夹，而不是凭空跳到列表末尾。
-    // 目标文档自己的条目会随合并被丢弃，所以插入位置要减去它前面的被丢弃项。
+    //
+    // ⚠️ 定位不能用「归一化之前的下标」：normalizeOrder 会把两篇成员、已删文档、
+    // 内置教程这些条目一并剔掉，下标就整体偏移（用户实测"合并成文件夹后文档
+    // 位置不对"）。改成先数清楚**目标之前还有几项在归一化后仍然存活**，
+    // 归一化之后插到那个位置，与剔掉了多少条无关。
     const anchorEntry: string = docNames.length > 0 ? DocStore.ORDER_DOC + docNames[0] : '';
-    const anchor: number = anchorEntry.length > 0 ? DocStore.ord.indexOf(anchorEntry) : -1;
-    let droppedBefore: number = 0;
-    if (anchor > 0) {
-      for (let k = 0; k < anchor; k++) {
-        for (let j = 0; j < docNames.length; j++) {
-          if (DocStore.ord[k] === DocStore.ORDER_DOC + docNames[j]) {
-            droppedBefore++;
-          }
+    const anchorAt: number = anchorEntry.length > 0 ? DocStore.ord.indexOf(anchorEntry) : -1;
+    DocStore.folders.push(folder);
+    let survivorsBefore: number = 0;
+    for (let k: number = 0; k < anchorAt; k++) {
+      const e: string = DocStore.ord[k];
+      if (e.startsWith(DocStore.ORDER_FOLDER)) {
+        if (DocStore.findFolder(e.substring(2)) !== null) {
+          survivorsBefore++;
+        }
+        continue;
+      }
+      const dn: string = e.substring(2);
+      // 与 normalizeOrder 的判据一致：内置的、已进文件夹的、索引里已经没有的都不算
+      if (DocStore.folderOfDoc(dn).length > 0) {
+        continue;
+      }
+      for (let j: number = 0; j < DocStore.docs.length; j++) {
+        const d: DocMeta = DocStore.docs[j];
+        if (d.name === dn && !d.builtin) {
+          survivorsBefore++;
+          break;
         }
       }
     }
-    DocStore.folders.push(folder);
     DocStore.normalizeOrder();
     const entry: string = DocStore.ORDER_FOLDER + folder.name;
     const at: number = DocStore.ord.indexOf(entry);
     if (at >= 0) {
       DocStore.ord.splice(at, 1);
     }
-    let insertAt: number = anchor >= 0 ? anchor - droppedBefore : DocStore.ord.length;
+    let insertAt: number = anchorAt >= 0 ? survivorsBefore : DocStore.ord.length;
     if (insertAt < 0) {
       insertAt = 0;
     }
@@ -886,7 +902,16 @@ export class DocStore {
     return false;
   }
 
-  static moveShelfEntry(from: string, to: string): boolean {
+  /**
+   * 书架统一排序里**交换两项的位置**（文件夹↔文档、文件夹↔文件夹的拖拽换位）。
+   *
+   * ⚠️ 这里必须是「交换两个槽位」，不是「删除后按下标插入」：
+   *   旧实现 `splice(fromAt,1); splice(toAt,0,from)` 只有两项相邻时才碰巧等价；
+   *   隔得远时只有被拖的那一项挪走，目标并不回到它的位置，中间各项还整体
+   *   错位一格（toAt 是删除**之前**算的下标）—— 用户实测"换位后文档位置不对"。
+   *   文档↔文档那条走 swapShelfDocs，本来就是交换，所以只有带文件夹的操作出错。
+   */
+  static swapShelfEntries(from: string, to: string): boolean {
     if (from === to || from.length === 0 || to.length === 0) {
       return false;
     }
@@ -896,8 +921,9 @@ export class DocStore {
     if (fromAt < 0 || toAt < 0) {
       return false;
     }
-    DocStore.ord.splice(fromAt, 1);
-    DocStore.ord.splice(toAt, 0, from);
+    const keep: string = DocStore.ord[toAt];
+    DocStore.ord[toAt] = DocStore.ord[fromAt];
+    DocStore.ord[fromAt] = keep;
     DocStore.persist();
     return true;
   }

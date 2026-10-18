@@ -2482,7 +2482,7 @@ struct Index {
     // （key 稳定 → 滑动过去），用户要求"交换位置也是滑动过去交换"。
     if (dragged.startsWith('folder:')) {
       const from: string = dragged.substring(7);
-      if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_DOC + targetName)) {
+      if (DocStore.swapShelfEntries(DocStore.ORDER_FOLDER + from, DocStore.ORDER_DOC + targetName)) {
         this.animatedRefresh();
         this.toast('「' + from + '」已与「' + targetName + '」互换位置');
       }
@@ -2549,7 +2549,7 @@ struct Index {
     // 换位不播吸入缩放，两格只是交换位置 → 交给 animatedRefresh 滑动过去。
     if (dragged.startsWith('folder:')) {
       const from: string = dragged.substring(7);
-      if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_FOLDER + folderName)) {
+      if (DocStore.swapShelfEntries(DocStore.ORDER_FOLDER + from, DocStore.ORDER_FOLDER + folderName)) {
         this.animatedRefresh();
         this.toast('已把「' + from + '」移到「' + folderName + '」的位置');
       }
