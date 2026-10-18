@@ -2477,16 +2477,15 @@ struct Index {
     if (dragged.length === 0 || dragged === targetName) {
       return;
     }
-    // 拖来的是文件夹 → **与文档互换位置**（用户要求：文件夹要能和文件交换位置），
-    // 先播「吸入」动画再落库换位
+    // 拖来的是文件夹 → **与文档互换位置**（用户要求：文件夹要能和文件交换位置）。
+    // 换位不播「吸入」缩放：两格只是交换位置，直接交给 animatedRefresh 做位移
+    // （key 稳定 → 滑动过去），用户要求"交换位置也是滑动过去交换"。
     if (dragged.startsWith('folder:')) {
       const from: string = dragged.substring(7);
-      this.playAbsorbAnim(from, () => {
-        if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_DOC + targetName)) {
-          this.animatedRefresh();
-          this.toast('「' + from + '」已与「' + targetName + '」互换位置');
-        }
-      });
+      if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_DOC + targetName)) {
+        this.animatedRefresh();
+        this.toast('「' + from + '」已与「' + targetName + '」互换位置');
+      }
       return;
     }
     const targetFolder: string = DocStore.folderOfDoc(targetName);
@@ -2546,15 +2545,14 @@ struct Index {
     if (dragged.length === 0) {
       return;
     }
-    // 拖来的是文件夹 → 换位（统一排序里换条目，文件夹与文档同一条流），带吸入动画
+    // 拖来的是文件夹 → 换位（统一排序里换条目，文件夹与文档同一条流）。
+    // 换位不播吸入缩放，两格只是交换位置 → 交给 animatedRefresh 滑动过去。
     if (dragged.startsWith('folder:')) {
       const from: string = dragged.substring(7);
-      this.playAbsorbAnim(from, () => {
-        if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_FOLDER + folderName)) {
-          this.animatedRefresh();
-          this.toast('已把「' + from + '」移到「' + folderName + '」的位置');
-        }
-      });
+      if (DocStore.moveShelfEntry(DocStore.ORDER_FOLDER + from, DocStore.ORDER_FOLDER + folderName)) {
+        this.animatedRefresh();
+        this.toast('已把「' + from + '」移到「' + folderName + '」的位置');
+      }
       return;
     }
     // 文档 → 文件夹：收进该文件夹，带吸入动画
@@ -3698,7 +3696,29 @@ struct Index {
   }
 
   /** 网格项最终透明度：文件夹展开时的"退后"× 合并/吸入动画。 */
+  /**
+   * 每个格子 onDragStart 里都要调一次：**关掉系统默认的落点动画**。
+   *
+   * 系统那套是「setResult 成功 → 缩小消失；失败 → 放大消失」（SDK DragEvent
+   * .useCustomDropAnimation 的注释原文）。所以没换位置、没放进文件夹、松手回原位
+   * 时看到的"缩一下"，以及换位时目标格的缩放感，都是它 —— 关掉之后：
+   * 回原位由 GridItem 的 opacity 淡回（260ms），换位由 ForEach 的稳定 key 做
+   * 位移动画（滑动过去），两处都不再有缩放。
+   */
+  private beginShelfDrag(event: DragEvent): void {
+    this.floatPressCancel();
+    this.cancelSwapHover();
+    event.useCustomDropAnimation = true;
+  }
+
   private gridItemAlpha(item: ShelfItem): number {
+    // 被拖走的那一格整格隐身（连 ⋯ 按钮、进度条、百分比、爱心、名称、日期一起，
+    // 只藏封面会留一堆零件在原位）。挂在 GridItem 上而不是格子内部：
+    // GridItem 本来就带 .animation(260)，松手回到原位时是**淡回**而不是硬切。
+    const dragged: string = item.kind === 'folder' ? 'folder:' + item.name : item.name;
+    if (this.draggingName === dragged) {
+      return 0;
+    }
     const dim: number = item.kind === 'folder' && this.openFolderName === item.name
       ? 1 : this.cellOpacity();
     return dim * this.cellAlpha(item.name);
@@ -3733,9 +3753,6 @@ struct Index {
       }
     }
     .width('100%')
-    // 拖走时**整格**隐身：只藏封面会留下 ⋯ 按钮、进度条、百分比、爱心、
-    // 名称与日期孤零零在原位（用户实测反馈）
-    .opacity(this.draggingName === meta.name ? 0 : 1)
     // 长按面板：onTouch 只做旁观计时（不吃事件），点击 / 滚动 / 系统拖拽都不受影响；
     // 定位与遮罩留洞都按封面那一块（id `covercell_…`）的实测矩形算
     .onTouch((e: TouchEvent) => {
@@ -3746,8 +3763,7 @@ struct Index {
     //  · onDrop 与 onDragStart 同节点 → 释放一定能命中
     .onDragStart((event: DragEvent) => {
       this.draggingName = meta.name;
-      this.cancelSwapHover();
-      this.floatPressCancel();
+      this.beginShelfDrag(event);
       const info: DragItemInfo = { extraInfo: meta.name };
       return info;
     })
@@ -3900,8 +3916,6 @@ struct Index {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Center)
-    // 拖走时**整格**隐身（迷你封面、⋯ 按钮、名称、数量一起消失）
-    .opacity(this.draggingName === 'folder:' + folder.name ? 0 : 1)
     // 长按面板：onTouch 只做旁观计时；定位与遮罩留洞按封面那块（`foldercell_…`）实测
     .onTouch((e: TouchEvent) => {
       this.floatPressTouch(e, 'folder', folder.name, false, 'foldercell_' + folder.name);
@@ -3913,7 +3927,7 @@ struct Index {
     //  · onDrop 与 onDragStart 同节点 → 释放一定能命中
     .onDragStart((event: DragEvent) => {
       this.draggingName = 'folder:' + folder.name;
-      this.floatPressCancel();
+      this.beginShelfDrag(event);
       const info: DragItemInfo = { extraInfo: 'folder:' + folder.name };
       return info;
     })
@@ -5948,8 +5962,7 @@ struct Index {
     // 快速放下合并文件夹 / 拖到文件夹行收进文件夹 —— 与网格 docCell 同一套
     .onDragStart((event: DragEvent) => {
       this.draggingName = meta.name;
-      this.cancelSwapHover();
-      this.floatPressCancel();
+      this.beginShelfDrag(event);
       const info: DragItemInfo = { extraInfo: meta.name };
       return info;
     })
@@ -6055,8 +6068,7 @@ struct Index {
     // **树形文件夹行也接收拖拽**（用户要求：拖文档到文件夹行 = 收进文件夹）
     .onDragStart((event: DragEvent) => {
       this.draggingName = 'folder:' + folder.name;
-      this.cancelSwapHover();
-      this.floatPressCancel();
+      this.beginShelfDrag(event);
       const info: DragItemInfo = { extraInfo: 'folder:' + folder.name };
       return info;
     })
