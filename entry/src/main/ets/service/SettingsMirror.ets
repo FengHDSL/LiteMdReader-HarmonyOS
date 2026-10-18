@@ -59,6 +59,8 @@ export class SettingsMirror {
     // （灰体文本：旧单套键 + 深浅两套新键；新键见 DesignTokens.grayTextOverride）
     'themeColor', 'cardTint', 'immersivePressGlow', 'cardGlowTouch',
     'customAccentFull', 'pageBgTint', 'grayTextMode', 'grayTextColor',
+    // 手机端横屏开关（仅手机看得见的行；换机后保持同样的方向偏好）
+    'phoneLandscape',
     'grayTextModeLight', 'grayTextModeDark', 'grayTextColorLight', 'grayTextColorDark',
     'glassStrength', 'cardFallback', 'particleDissolve',
     // 书架显示：顶部「继续阅读」卡片 / 「回头看看」卡片是否显示

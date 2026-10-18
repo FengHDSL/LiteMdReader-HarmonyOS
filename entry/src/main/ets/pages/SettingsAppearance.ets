@@ -18,7 +18,7 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip } from '../material/ImmersiveCard';
 import { ImmersiveInput } from '../material/ImmersiveInput';
 import { SettingsShell } from './SettingsShell';
-import { applySystemBarTheme, applyAppColorMode } from '../service/AppWindow';
+import { applySystemBarTheme, applyAppColorMode, isPhoneDevice, setPhoneLandscapeAllowed } from '../service/AppWindow';
 import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
 import { FuncExpr } from '../theme/FuncExpr';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -125,6 +125,13 @@ export struct SettingsAppearance {
   /** 页面背景跟随主题色 / 自定义主题色也染背景 */
   @StorageLink('pageBgTint') @Watch('onAppearanceChanged') pageBgTint: boolean = true;
   @StorageLink('customAccentFull') @Watch('onAppearanceChanged') customAccentFull: boolean = false;
+  /**
+   * **手机端横屏开关**（关＝锁竖屏，开＝随系统横竖切换）。
+   * 只有手机显示这一行（`phoneDevice`），平板 / 2in1 本来就能转，不需要开关。
+   */
+  @StorageLink('phoneLandscape') @Watch('onPhoneLandscapeChanged') phoneLandscape: boolean = false;
+  /** 设备类型：手机端才渲染横屏开关（进程内不变，普通字段即可，不用进状态） */
+  private phoneDevice: boolean = isPhoneDevice();
   /** 灰体文本显示增强：**深浅两套独立配置**（各自默认 auto）。
    *  取值 auto / gray / black / white / custom + 对应模式的自定义色。 */
   @StorageLink('grayTextModeLight') @Watch('onAppearanceChanged') grayModeLight: string = 'auto';
@@ -301,6 +308,15 @@ export struct SettingsAppearance {
     this.broadcastAppearance();
   }
 
+  /**
+   * 拨「支持横屏模式」：不广播外观（改的不是配色，没必要全应用重算 palette），
+   * 只做两件事——把方向立刻作用到主窗口、落一次设置镜像。
+   */
+  onPhoneLandscapeChanged(): void {
+    setPhoneLandscapeAllowed(this.phoneLandscape);
+    SettingsMirror.save(this.hostCtx());
+  }
+
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
   private broadcastAppearance(): void {
     try {
@@ -353,6 +369,8 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('shelfResumeBanner', true);
     AppStorage.setOrCreate('customAccentFull', false);
     AppStorage.setOrCreate('pageBgTint', true);
+    // 横屏开关走 @StorageLink 赋值：@Watch 里负责把方向真正作用到主窗口
+    this.phoneLandscape = false;
     AppStorage.setOrCreate('grayTextMode', 'auto');
     AppStorage.setOrCreate('grayTextColor', '');
     AppStorage.setOrCreate('grayTextModeLight', 'auto');
@@ -616,6 +634,28 @@ export struct SettingsAppearance {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
+
+          // **只有手机端显示**：平板 / 2in1 本来就随系统横竖切换，不给这一行
+          if (this.phoneDevice) {
+            Row() {
+              Column({ space: 2 }) {
+                Text(this.s('支持横屏模式'))
+                  .fontSize(HwType.label + 1)
+                  .fontColor(this.palette().textPrimary)
+                Text(this.s('开启后手机可随系统横竖屏切换；关闭则锁定竖屏'))
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textTertiary)
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+              Toggle({ type: ToggleType.Switch, isOn: this.phoneLandscape })
+                .onChange((isOn: boolean) => {
+                  this.phoneLandscape = isOn;
+                })
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+          }
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

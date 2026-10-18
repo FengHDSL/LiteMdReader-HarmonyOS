@@ -32,6 +32,17 @@ export const SAFE_BOTTOM_PX: string = 'safeBottomPx';
 /** 主窗口句柄。系统的 Window 对象不能进 AppStorage（无法跨序列化），所以用模块级变量持有。 */
 let mainWindow: window.Window | null = null;
 
+/**
+ * **手机端横屏开关**的键（外观设置里那一行；平板 / 2in1 不看它，本来就随系统转）。
+ * 默认 false = 锁竖屏。注册见 EntryAbility，镜像见 SettingsMirror。
+ */
+export const PHONE_LANDSCAPE_KEY: string = 'phoneLandscape';
+
+/** 是否手机端（外观设置用它决定「支持横屏模式」这一行要不要显示）。 */
+export function isPhoneDevice(): boolean {
+  return deviceInfo.deviceType === 'phone';
+}
+
 /** 是否成功进入沉浸模式。失败时页面退回系统默认布局，界面依然可用。 */
 let immersiveReady: boolean = false;
 
@@ -47,7 +58,7 @@ export function setupImmersiveWindow(windowStage: window.WindowStage): void {
   try {
     const win: window.Window = windowStage.getMainWindowSync();
     mainWindow = win;
-    lockPortraitOnPhone(win);
+    applyPhoneOrientation(win);
     win.setWindowLayoutFullScreen(true);
 
     // 系统栏底色透明：不放开的话，系统栏会画自己的底色，压在应用内容之上
@@ -106,30 +117,46 @@ export function setupImmersiveWindow(windowStage: window.WindowStage): void {
 }
 
 /**
- * **手机端禁止横屏**（用户要求）。
+ * **手机端方向按开关设定**（外观设置里的「支持横屏模式」）。
  *
  * module.json5 的 `abilities.orientation` 是全设备类型共用的一个值，本应用配的是
- * `auto_rotation`（平板 / 2in1 要能横竖屏切换），所以只能按设备类型在**运行时收紧**：
- * phone → 锁竖屏，其余设备一律不动。
- * 折叠屏展开后 deviceType 仍是 phone，同样锁竖屏（要看横版布局请用平板 / 自由窗）。
+ * `auto_rotation`（平板 / 2in1 要能横竖屏切换），所以手机侧的方向只能在**运行时按设备类型收紧**：
+ * phone → 开关关＝锁竖屏（默认）、开关开＝随传感器横竖切换；其余设备一律不动。
+ * 折叠屏展开后 deviceType 仍是 phone，跟着开关走（要看横版布局就打开它，或用平板 / 自由窗）。
  *
  * ⚠️ 口径（SDK @ohos.window.d.ts）：`setPreferredOrientation` 只对**主窗口**生效，
  * 子窗口调用无效；分屏 / 悬浮窗下方向由系统按窗口布局决定，这里的请求会被忽略，
- * 所以不会破坏「横向悬浮窗」与分屏对照。必须在 loadContent 之前调用，
- * 否则横持手机启动时先闪一帧横屏。
+ * 所以不会破坏「横向悬浮窗」与分屏对照。启动时必须在 loadContent 之前调用，
+ * 否则横持手机启动会先闪一帧横屏。
  */
-function lockPortraitOnPhone(win: window.Window): void {
-  if (deviceInfo.deviceType !== 'phone') {
+function applyPhoneOrientation(win: window.Window): void {
+  if (!isPhoneDevice()) {
     return;
   }
+  const allowLandscape: boolean = AppStorage.get<boolean>(PHONE_LANDSCAPE_KEY) === true;
   try {
-    win.setPreferredOrientation(window.Orientation.PORTRAIT).catch(() => {
-      // 设备不支持旋转控制（如 PC / 部分自由窗形态）：保持系统默认，不影响使用
-    });
+    win.setPreferredOrientation(allowLandscape ? window.Orientation.AUTO_ROTATION : window.Orientation.PORTRAIT)
+      .catch(() => {
+        // 设备不支持旋转控制（如 PC / 部分自由窗形态）：保持系统默认，不影响使用
+      });
   } catch (err) {
     // 同上：锁方向失败只影响显示方向，不能阻断窗口初始化
   }
 }
+
+/**
+ * 外观设置里拨动「支持横屏模式」时调用：写设置 + 立刻作用到主窗口
+ * （不用等下次冷启动；开关本身由 PersistentStorage 落盘）。
+ */
+export function setPhoneLandscapeAllowed(on: boolean): void {
+  AppStorage.setOrCreate(PHONE_LANDSCAPE_KEY, on);
+  const win: window.Window | null = mainWindow;
+  if (win === null) {
+    return;
+  }
+  applyPhoneOrientation(win);
+}
+
 
 function syncAvoidArea(win: window.Window): void {
   try {
