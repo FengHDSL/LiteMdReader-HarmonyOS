@@ -110,6 +110,19 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('pageBgTint', true);
     // **手机端横屏开关**（外观设置里那一行，只在手机上显示）：默认关 = 锁竖屏
     PersistentStorage.persistProp('phoneLandscape', false);
+    // **恒星系壁纸的参数**（外观设置最底下那张卡片）+ 那片天的连续状态
+    // solarFieldState 存的是位置/速度/行星数/星色：重开应用接着往下演，不回初始位置
+    PersistentStorage.persistProp('solarBright', 1);
+    PersistentStorage.persistProp('solarSpeed', 1);
+    PersistentStorage.persistProp('solarColor', 'random');
+    PersistentStorage.persistProp('solarRings', true);
+    PersistentStorage.persistProp('solarPlanetSize', 1);
+    PersistentStorage.persistProp('solarPlanetCount', 3);
+    PersistentStorage.persistProp('solarSystemCount', 5);
+    PersistentStorage.persistProp('solarComet', true);
+    PersistentStorage.persistProp('solarGravity', true);
+    PersistentStorage.persistProp('solarEvolve', true);
+    PersistentStorage.persistProp('solarFieldState', '');
     // 灰体文本显示增强：**默认自动**（跟随主题）。
     // 自动时深浅两套各自定义（对应「深色模式用什么颜色 / 浅色模式用什么颜色」）：
     //   grayTextModeLight / grayTextModeDark：auto | gray | black | white | custom

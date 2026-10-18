@@ -61,6 +61,10 @@ export class SettingsMirror {
     'customAccentFull', 'pageBgTint', 'grayTextMode', 'grayTextColor',
     // 手机端横屏开关（仅手机看得见的行；换机后保持同样的方向偏好）
     'phoneLandscape',
+    // 恒星系壁纸：十个可调参数 + 那片天的连续状态（换机后星空接得上，不重来）
+    'solarBright', 'solarSpeed', 'solarColor', 'solarRings', 'solarPlanetSize',
+    'solarPlanetCount', 'solarSystemCount', 'solarComet', 'solarGravity', 'solarEvolve',
+    'solarFieldState',
     'grayTextModeLight', 'grayTextModeDark', 'grayTextColorLight', 'grayTextColorDark',
     'glassStrength', 'cardFallback', 'particleDissolve',
     // 书架显示：顶部「继续阅读」卡片 / 「回头看看」卡片是否显示

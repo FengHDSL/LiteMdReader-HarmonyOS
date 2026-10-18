@@ -19,7 +19,8 @@ import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip } from '../material/Im
 import { ImmersiveInput } from '../material/ImmersiveInput';
 import { SettingsShell } from './SettingsShell';
 import { applySystemBarTheme, applyAppColorMode, isPhoneDevice, setPhoneLandscapeAllowed } from '../service/AppWindow';
-import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
+import { GEN_WALLPAPERS, GenWallpaper, GenWallpaperDef, SOLAR_MOTION_KEY } from '../theme/GenWallpaper';
+import { SolarField } from '../theme/SolarField';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { L10n } from '../service/L10n';
@@ -60,6 +61,21 @@ const GRAY_MODES: NamedColor[] = [
   { name: L10n.t('黑'), value: 'black' },
   { name: L10n.t('白'), value: 'white' },
   { name: L10n.t('自定义'), value: 'custom' }
+];
+
+/** 恒星系的星色选项：hex 就是持久化值，'random' = 每系各自摇色 */
+interface SolarColorChoice {
+  name: string;
+  hex: string;
+}
+
+const SOLAR_COLORS: SolarColorChoice[] = [
+  { name: '随机', hex: 'random' },
+  { name: '暖金', hex: '#F2A93B' },
+  { name: '月白', hex: '#EAF2FF' },
+  { name: '青蓝', hex: '#6FC7E8' },
+  { name: '余烬', hex: '#FF7A45' },
+  { name: '紫霞', hex: '#B07CF0' }
 ];
 
 @Component
@@ -123,6 +139,21 @@ export struct SettingsAppearance {
   @StorageLink('phoneLandscape') @Watch('onPhoneLandscapeChanged') phoneLandscape: boolean = false;
   /** 设备类型：手机端才渲染横屏开关（进程内不变，普通字段即可，不用进状态） */
   private phoneDevice: boolean = isPhoneDevice();
+  /**
+   * 恒星系壁纸的十个参数（外观最底下那张卡片）。
+   * 每一次改动都要：写回 AppStorage（@StorageLink 自动）→ 让模拟场重读参数 →
+   *  bump solarMotionTick 让各星系的公转循环按新转速重新起。
+   */
+  @StorageLink('solarBright') @Watch('onSolarChanged') solarBright: number = 1;
+  @StorageLink('solarSpeed') @Watch('onSolarChanged') solarSpeed: number = 1;
+  @StorageLink('solarColor') @Watch('onSolarChanged') solarColor: string = 'random';
+  @StorageLink('solarRings') @Watch('onSolarChanged') solarRings: boolean = true;
+  @StorageLink('solarPlanetSize') @Watch('onSolarChanged') solarPlanetSize: number = 1;
+  @StorageLink('solarPlanetCount') @Watch('onSolarChanged') solarPlanetCount: number = 3;
+  @StorageLink('solarSystemCount') @Watch('onSolarChanged') solarSystemCount: number = 5;
+  @StorageLink('solarComet') @Watch('onSolarChanged') solarComet: boolean = true;
+  @StorageLink('solarGravity') @Watch('onSolarChanged') solarGravity: boolean = true;
+  @StorageLink('solarEvolve') @Watch('onSolarChanged') solarEvolve: boolean = true;
   /** 灰体文本显示增强：**深浅两套独立配置**（各自默认 auto）。
    *  取值 auto / gray / black / white / custom + 对应模式的自定义色。 */
   @StorageLink('grayTextModeLight') @Watch('onAppearanceChanged') grayModeLight: string = 'auto';
@@ -285,6 +316,34 @@ export struct SettingsAppearance {
     SettingsMirror.save(this.hostCtx());
   }
 
+  /** 拨了恒星系的任何一个参数：让模拟场立刻按新值跑，并落一次镜像 */
+  onSolarChanged(): void {
+    SolarField.reloadParams();
+    this.bumpSolarMotion();
+    SettingsMirror.save(this.hostCtx());
+  }
+
+  /** 转速 / 行星数变了要重启公转循环：靠这个计数把各星系叫醒 */
+  private bumpSolarMotion(): void {
+    try {
+      const cur: number | undefined = AppStorage.get<number>(SOLAR_MOTION_KEY);
+      AppStorage.setOrCreate<number>(SOLAR_MOTION_KEY, (cur === undefined || cur === null ? 0 : cur) + 1);
+    } catch (err) {
+      // 广播失败只影响转速滑杆的即时性，参数本身已经写进去了
+    }
+  }
+
+  /** 预览框用哪款配色：已选中就用选中的，没选就用出厂的竹影（预览不能是空的） */
+  private solarPreviewId(): string {
+    return this.genWallId.length > 0 ? this.genWallId : 'zhu';
+  }
+
+  /** 当前生效的深浅（主题档 + 系统浓淡），预览要跟着走 */
+  private effectiveDark(): boolean {
+    return this.themeMode === ReaderThemeMode.Dark
+      || (this.themeMode === ReaderThemeMode.System && this.systemDark);
+  }
+
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
   private broadcastAppearance(): void {
     try {
@@ -337,6 +396,29 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('shelfResumeBanner', true);
     AppStorage.setOrCreate('customAccentFull', false);
     AppStorage.setOrCreate('pageBgTint', true);
+    // 恒星系壁纸的参数回到默认（星空那片天**不**跟着重置：那是连续演化的历史）
+    AppStorage.setOrCreate('solarBright', 1);
+    AppStorage.setOrCreate('solarSpeed', 1);
+    AppStorage.setOrCreate('solarColor', 'random');
+    AppStorage.setOrCreate('solarRings', true);
+    AppStorage.setOrCreate('solarPlanetSize', 1);
+    AppStorage.setOrCreate('solarPlanetCount', 3);
+    AppStorage.setOrCreate('solarSystemCount', 5);
+    AppStorage.setOrCreate('solarComet', true);
+    AppStorage.setOrCreate('solarGravity', true);
+    AppStorage.setOrCreate('solarEvolve', true);
+    this.solarBright = 1;
+    this.solarSpeed = 1;
+    this.solarColor = 'random';
+    this.solarRings = true;
+    this.solarPlanetSize = 1;
+    this.solarPlanetCount = 3;
+    this.solarSystemCount = 5;
+    this.solarComet = true;
+    this.solarGravity = true;
+    this.solarEvolve = true;
+    SolarField.reloadParams();
+    this.bumpSolarMotion();
     // 横屏开关走 @StorageLink 赋值：@Watch 里负责把方向真正作用到主窗口
     this.phoneLandscape = false;
     AppStorage.setOrCreate('grayTextMode', 'auto');
@@ -1118,6 +1200,277 @@ export struct SettingsAppearance {
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── ⑥ 恒星系壁纸（用户要求：放外观设置最底下，并且要能预览）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.md }) {
+          Text(this.s('恒星系壁纸'))
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+          Text(this.s('天空是一个持续演化的小宇宙：星系互相吸引、被弹弓甩开、抢走对方的行星，撞上了就吞进黑洞、炸出星尘，星尘再凝成行星、点亮成新的星系。下面这块就是实时预览。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwType.caption * 1.6)
+            .width('100%')
+
+          // 预览：嵌的就是全应用那一个壁纸组件，所见即所得
+          Stack({ alignContent: Alignment.TopStart }) {
+            GenWallpaper({ styleId: this.solarPreviewId(), darkMode: this.effectiveDark(), plain: false })
+          }
+          .width('100%')
+          .height(210)
+          .borderRadius(HwRadius.card)
+          .clip(true)
+
+          Row() {
+            Text(this.s('恒星亮度'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('×' + this.solarBright.toFixed(2))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.solarBright, min: 0.4, max: 1.8, step: 0.05, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .responseRegion(this.sliderThumbRegion(this.solarBright, 0.4, 1.8))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              this.rememberSliderSize(newValue);
+            })
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.solarBright = v;
+            })
+
+          Row() {
+            Text(this.s('公转转速'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('×' + this.solarSpeed.toFixed(1))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.solarSpeed, min: 0.2, max: 3, step: 0.1, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .responseRegion(this.sliderThumbRegion(this.solarSpeed, 0.2, 3))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              this.rememberSliderSize(newValue);
+            })
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.solarSpeed = v;
+            })
+
+          Row() {
+            Text(this.s('行星大小'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('×' + this.solarPlanetSize.toFixed(2))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.solarPlanetSize, min: 0.5, max: 2, step: 0.05, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .responseRegion(this.sliderThumbRegion(this.solarPlanetSize, 0.5, 2))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              this.rememberSliderSize(newValue);
+            })
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.solarPlanetSize = v;
+            })
+
+          Row() {
+            Text(this.s('每系行星数'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('' + Math.round(this.solarPlanetCount))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.solarPlanetCount, min: 1, max: 5, step: 1, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .responseRegion(this.sliderThumbRegion(this.solarPlanetCount, 1, 5))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              this.rememberSliderSize(newValue);
+            })
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.solarPlanetCount = Math.round(v);
+            })
+
+          Row() {
+            Text(this.s('星系个数'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text('' + Math.round(this.solarSystemCount))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.solarSystemCount, min: 1, max: 5, step: 1, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .responseRegion(this.sliderThumbRegion(this.solarSystemCount, 1, 5))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              this.rememberSliderSize(newValue);
+            })
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.solarSystemCount = Math.round(v);
+            })
+
+          Text(this.s('恒星星色'))
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textPrimary)
+            .width('100%')
+          Flex({ wrap: FlexWrap.Wrap }) {
+            ForEach(SOLAR_COLORS, (c: SolarColorChoice) => {
+              Row() {
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipLabel: this.s(c.name),
+                  chipActive: this.solarColor === c.hex,
+                  chipOnTap: () => {
+                    this.solarColor = c.hex;
+                  }
+                }) {
+                  Column()
+                    .width(14)
+                    .height(14)
+                    .borderRadius(7)
+                    .backgroundColor(c.hex === 'random' ? this.palette().accent : c.hex)
+                }
+              }
+              .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+            }, (c: SolarColorChoice) => c.hex)
+          }
+          .width('100%')
+          Text(this.s('「随机」是每个星系各自摇一个颜色（低饱和的纸墨调）；选单色则全天空统一成那一色。'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('显示公转轨道'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('关掉只剩恒星与行星本体，天空更干净'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.solarRings })
+              .onChange((isOn: boolean) => {
+                this.solarRings = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('引力与碰撞'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('星系互吸、弹弓甩飞、抢行星、撞成黑洞再爆炸；关掉就是各自安静飘着'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.solarGravity })
+              .onChange((isOn: boolean) => {
+                this.solarGravity = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('星尘演化'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('爆炸后的星尘会凝成流浪行星，撞在一起点亮成新的星系，路过别家会被捕获'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.solarEvolve })
+              .onChange((isOn: boolean) => {
+                this.solarEvolve = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('彗星'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('偶尔一颗彗星横穿天空'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.solarComet })
+              .onChange((isOn: boolean) => {
+                this.solarComet = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Row({ space: HwSpace.xs }) {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: this.s('来一次碰撞'),
+              chipOnTap: () => {
+                SolarField.chargeCrash();
+                this.toast(this.s('已派出一颗流浪星，约两秒后撞上'));
+              }
+            })
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: this.s('重置星空'),
+              chipOnTap: () => {
+                SolarField.reset();
+                this.bumpSolarMotion();
+                this.toast(this.s('星空已重置'));
+              }
+            })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
