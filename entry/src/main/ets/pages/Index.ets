@@ -159,6 +159,8 @@ const FLOAT_MENU_ROWS: number = 38;
 const FLOAT_PRESS_MS: number = 380;
 /** 按下后手指移动超过这个距离就算拖拽 / 滚动，不再弹面板 */
 const FLOAT_PRESS_SLOP: number = 10;
+/** 长按遮罩的模糊半径（vp）：与打开搜索时的 cellBlur 同一档 */
+const FLOAT_BLUR_RADIUS: number = 6;
 
 /**
  * 展开文件夹时**先滚到位、再撑开**的一拍间隔（ms）。
@@ -684,23 +686,17 @@ struct Index {
   /** 面板左上角锚点（vp，窗口坐标） */
   @State floatX: number = 0;
   @State floatY: number = 0;
+  /** 面板实测高度（vp）：ImmersiveCard 内有 matchParent 的填充层，外层必须给死高度 */
+  @State floatH: number = 0;
+  /** 按下那一格封面的窗口矩形（vp）：遮罩在它周围四边糊开，中间留一个不糊的洞 */
+  @State floatRX: number = 0;
+  @State floatRY: number = 0;
+  @State floatRW: number = 0;
+  @State floatRH: number = 0;
   /** 长按计时器与按下点（同一时刻只可能有一根手指在按格子） */
   private floatTimer: number = -1;
   private floatDownX: number = 0;
   private floatDownY: number = 0;
-
-  /** 面板开着时给书架加的那层模糊（与搜索同款 = cellBlur 的 6vp）。 */
-  private floatMenuOpen(): boolean {
-    return this.floatKind.length > 0;
-  }
-
-  /**
-   * 格子用于长按定位的 id。同一篇文档可能同时出现在网格与文件夹展开面板里
-   * （展开时那份是另一棵树），所以 id 要带上 inPanel 区分，否则重名测不到。
-   */
-  private floatCellId(kind: string, name: string, inPanel: boolean): string {
-    return 'floatCell_' + kind + (inPanel ? '_p_' : '_') + name;
-  }
 
   private floatPressCancel(): void {
     if (this.floatTimer >= 0) {
@@ -709,11 +705,8 @@ struct Index {
     }
   }
 
-  /**
-   * 格子上的触摸观察者：按下起长按计时，移动超阈值 / 松手 / 取消都撤掉计时。
-   * 松手**不**收面板 —— 长按弹出后松手要还留着（用户要求）。
-   */
-  private floatPressTouch(e: TouchEvent, kind: string, name: string, builtin: boolean, cellId: string): void {
+  /** 格子上的触摸观察者：按下起长按计时，移动超阈值 / 松手 / 取消都撤掉计时。 */
+  private floatPressTouch(e: TouchEvent, kind: string, name: string, builtin: boolean, coverId: string): void {
     if (e.type === TouchType.Down) {
       this.floatPressCancel();
       const n: number = e.touches.length;
@@ -723,7 +716,7 @@ struct Index {
       }
       this.floatTimer = setTimeout((): void => {
         this.floatTimer = -1;
-        this.openFloatMenuAtCell(kind, name, builtin, cellId);
+        this.openFloatMenuAtCell(kind, name, builtin, coverId);
       }, FLOAT_PRESS_MS);
       return;
     }
@@ -737,18 +730,18 @@ struct Index {
       }
       return;
     }
-    // Up / Cancel
+    // Up / Cancel：只撤计时，**不**收面板 —— 长按弹出后松手要还留着（用户要求）
     this.floatPressCancel();
   }
 
-  /** 呼出面板：按 cellId 实测封面矩形，再在四周挑第一个放得下的位置。 */
-  private openFloatMenuAtCell(kind: string, name: string, builtin: boolean, cellId: string): void {
+  /** 呼出面板：实测封面矩形（遮罩要在它周围留洞、面板要贴着它），再挑放得下的一侧。 */
+  private openFloatMenuAtCell(kind: string, name: string, builtin: boolean, coverId: string): void {
     let rx: number = -1;
     let ry: number = -1;
     let rw: number = -1;
     let rh: number = -1;
     try {
-      const info: componentUtils.ComponentInfo = this.getUIContext().getComponentUtils().getRectangleById(cellId);
+      const info: componentUtils.ComponentInfo = this.getUIContext().getComponentUtils().getRectangleById(coverId);
       const wpx: number = info.size.width;
       const hpx: number = info.size.height;
       if (wpx > 0 && hpx > 0) {
@@ -805,6 +798,11 @@ struct Index {
       this.floatBuiltin = builtin;
       this.floatX = x;
       this.floatY = y;
+      this.floatH = ph;
+      this.floatRX = rx;
+      this.floatRY = ry;
+      this.floatRW = rw;
+      this.floatRH = rh;
     });
   }
 
@@ -850,6 +848,59 @@ struct Index {
     .onClick(() => {
       onGo();
     })
+  }
+
+  /**
+   * 长按遮罩：封面**四周**各一条 backdropBlur，中间正好留一个不糊的洞。
+   *
+   * 不做「整屏糊 + 把封面复制一份贴回来」：复制件要完全对齐圆角、描边、进度条、
+   * 角标，差一点就看得出接缝；四周留洞天然就是"只有这一格不糊"。
+   *
+   * 四条都吃点击 → 点空白收面板，顺带堵住「糊了还能点开别的文档 / 左右滑动」。
+   * 只有中间那一格没被盖住：仍可点、仍可继续拖走。
+   */
+  @Builder
+  floatMask() {
+    Stack() {
+      Column()
+        .width('100%')
+        .height(Math.max(0, this.floatRY))
+        .position({ x: 0, y: 0 })
+        .backdropBlur(FLOAT_BLUR_RADIUS)
+        .onClick(() => {
+          this.closeFloatMenu();
+        })
+      Column()
+        .width('100%')
+        .height(Math.max(0, this.rootHeight - this.floatRY - this.floatRH))
+        .position({ x: 0, y: this.floatRY + this.floatRH })
+        .backdropBlur(FLOAT_BLUR_RADIUS)
+        .onClick(() => {
+          this.closeFloatMenu();
+        })
+      Column()
+        .width(Math.max(0, this.floatRX))
+        .height(this.floatRH)
+        .position({ x: 0, y: this.floatRY })
+        .backdropBlur(FLOAT_BLUR_RADIUS)
+        .onClick(() => {
+          this.closeFloatMenu();
+        })
+      Column()
+        .width(Math.max(0, this.rootWidth - this.floatRX - this.floatRW))
+        .height(this.floatRH)
+        .position({ x: this.floatRX + this.floatRW, y: this.floatRY })
+        .backdropBlur(FLOAT_BLUR_RADIUS)
+        .onClick(() => {
+          this.closeFloatMenu();
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .zIndex(900)
+    // 命中模式用默认值：自己和四条遮罩都响应点击，同时挡住后面的书架
+    // （HitTestMode.Block 是「自己响应但屏蔽子节点」，那样遮罩就收不到点击了）
+    .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
   }
 
   /** 悬浮面板本体（挂在根 Stack 最上层，不进 cellBlur 的那几层，所以自身不糊）。 */
@@ -912,6 +963,9 @@ struct Index {
       }
     }
     .width(FLOAT_MENU_W)
+    // ⚠️ 必须给死高度：ImmersiveCard 内部有 matchParent 的填充层，外层不设高度时
+    // 它会按父级约束（整屏）撑开 —— 面板就被拉到屏幕底部（用户实测反馈）。
+    .height(this.floatH)
     .position({ x: this.floatX, y: this.floatY })
     .zIndex(1000)
     // 出现 / 消失的过渡：从锚点位置淡入 + 轻微放大（配 animateTo 的状态变更）
@@ -1474,7 +1528,7 @@ struct Index {
   private cellBlur(): number {
     // **搜索展开时整个书架同程度模糊**（用户要求：程度参考打开文件夹时的效果 = 6）
     // 长按悬浮面板开着时同款模糊：面板是唯一的焦点（用户要求"打开搜索时同款"）
-    return (this.cellDimmed() || this.searchExpanded || this.floatMenuOpen()) ? 6 : 0;
+    return (this.cellDimmed() || this.searchExpanded) ? 6 : 0;
   }
 
   /**
@@ -3396,6 +3450,8 @@ struct Index {
         .id('covercell_' + meta.name)
         .width('100%')
         .aspectRatio(0.72)
+        // 拖走时原封面不再留在原位（拖拽预览已经替它"飘"起来了）
+        .opacity(this.draggingName === meta.name ? 0 : 1)
         // 缩放 / 透明度统一由外层 GridItem 按 cellScale() / gridItemAlpha() 施加：
         // 悬停轻微缩小、合并与"吸入"时更明显，文档与文件夹走同一套
         .onClick((event: ClickEvent) => {
@@ -3599,11 +3655,10 @@ struct Index {
       }
     }
     .width('100%')
-    // 长按面板要用这一格的窗口矩形定位 → 给它一个可测量的 id；
-    // onTouch 只做旁观计时（不吃事件），所以点击 / 滚动 / 系统拖拽都不受影响
-    .id(this.floatCellId('doc', meta.name, inPanel))
+    // 长按面板：onTouch 只做旁观计时（不吃事件），点击 / 滚动 / 系统拖拽都不受影响；
+    // 定位与遮罩留洞都按封面那一块（id `covercell_…`）的实测矩形算
     .onTouch((e: TouchEvent) => {
-      this.floatPressTouch(e, 'doc', meta.name, meta.builtin, this.floatCellId('doc', meta.name, inPanel));
+      this.floatPressTouch(e, 'doc', meta.name, meta.builtin, 'covercell_' + meta.name);
     })
     // 系统拖拽：长按起拖；释放到别的文档 / 文件夹上触发 onDrop。
     //  · 只注册 onDragStart（不加 draggable(true)）→ 长按起拖，不与点击 / 网格滚动抢手势
@@ -3633,6 +3688,13 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.finishSwapOrDrop(meta.name);
+    })
+    // 取消拖拽（没落到任何目标上）时 onDrop 不会触发 → 兜底清掉被拖走的名字，
+    // 否则那一格的原封面会一直隐身（拖拽预览飘走了、原件还透明挂着）
+    .onDragEnd(() => {
+      setTimeout((): void => {
+        this.draggingName = '';
+      }, 80);
     })
   }
 
@@ -3751,10 +3813,9 @@ struct Index {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Center)
-    // 长按面板：id 供测量这一格的窗口矩形，onTouch 只做旁观计时
-    .id(this.floatCellId('folder', folder.name, false))
+    // 长按面板：onTouch 只做旁观计时；定位与遮罩留洞按封面那块（`foldercell_…`）实测
     .onTouch((e: TouchEvent) => {
-      this.floatPressTouch(e, 'folder', folder.name, false, this.floatCellId('folder', folder.name, false));
+      this.floatPressTouch(e, 'folder', folder.name, false, 'foldercell_' + folder.name);
     })
     // 拖拽与释放都挂在**整格同一个节点**上，与文档格（docCell）完全同款：
     //  · 只注册 onDragStart（不加 draggable(true)）→ 长按起拖，
@@ -3781,11 +3842,19 @@ struct Index {
     .onDrop((event: DragEvent) => {
       this.handleDropOnFolder(folder.name);
     })
+    // 取消拖拽的兜底：不清掉被拖走的名字，原封面会一直隐身
+    .onDragEnd(() => {
+      setTimeout((): void => {
+        this.draggingName = '';
+      }, 80);
+    })
     // **正在展开的那个文件夹**挂 id：展开前用它实测此刻的窗口位置，
     // 滚动目标按「文件夹落在屏幕上部、面板在它下方」来算（见 scrollPanelTopIntoPlace）。
     // ⚠️ id 必须挂在**卡片本体这层 Column** 上，不能挂 GridItem ——
     // GridItem 是布局容器，getRectangleById 在它上面实测常常拿不到矩形（本工程踩过）。
     .id(this.openFolderName === folder.name ? 'folderCellAnchor' : 'foldercell_' + folder.name)
+    // 拖走时原封面不再留在原位（拖拽预览已经替它"飘"起来了）
+    .opacity(this.draggingName === 'folder:' + folder.name ? 0 : 1)
   }
 
   /** 记录文档封面的窗口矩形：一镜到底的起点/终点必须精确到这一格。 */
@@ -5771,10 +5840,12 @@ struct Index {
     .borderRadius(HwRadius.inner)
     // 行内展开/收起时，插入与移除的行淡入淡出（key 稳定 + animateTo，三者缺一不可）
     .transition({ opacity: 0 })
-    // 长按面板：id 供测量这一行的窗口矩形，onTouch 只做旁观计时
-    .id(this.floatCellId('tdoc', meta.name, false))
+    // 长按面板：id 供测量这一行的窗口矩形，onTouch 只做旁观计时；
+    // 拖走时整行淡出（原图标不再留在原位）
+    .id('floatTDoc_' + meta.name)
+    .opacity(this.draggingName === meta.name ? 0 : 1)
     .onTouch((e: TouchEvent) => {
-      this.floatPressTouch(e, 'doc', meta.name, meta.builtin, this.floatCellId('tdoc', meta.name, false));
+      this.floatPressTouch(e, 'doc', meta.name, meta.builtin, 'floatTDoc_' + meta.name);
     })
     .onClick(() => {
       this.openDoc(meta);
@@ -5804,6 +5875,12 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.finishSwapOrDrop(meta.name);
+    })
+    // 取消拖拽的兜底：不清掉被拖走的名字，原那一行会一直隐身
+    .onDragEnd(() => {
+      setTimeout((): void => {
+        this.draggingName = '';
+      }, 80);
     })
     // 悬停换位目标行：accent 描边提示（松手即交换）
     .border({
@@ -5863,10 +5940,12 @@ struct Index {
     .padding({ left: HwSpace.sm, right: HwSpace.xs, top: 8, bottom: 8 })
     .borderRadius(HwRadius.inner)
     .backgroundColor(this.expandedFolders.indexOf(folder.name) >= 0 ? this.palette().quoteBg : '#00000000')
-    // 长按面板：id 供测量这一行的窗口矩形，onTouch 只做旁观计时
-    .id(this.floatCellId('tfolder', folder.name, false))
+    // 长按面板：id 供测量这一行的窗口矩形，onTouch 只做旁观计时；
+    // 拖走时整行淡出（原图标不再留在原位）
+    .id('floatTFolder_' + folder.name)
+    .opacity(this.draggingName === 'folder:' + folder.name ? 0 : 1)
     .onTouch((e: TouchEvent) => {
-      this.floatPressTouch(e, 'folder', folder.name, false, this.floatCellId('tfolder', folder.name, false));
+      this.floatPressTouch(e, 'folder', folder.name, false, 'floatTFolder_' + folder.name);
     })
     .onClick(() => {
       // 行内展开也要有动画：状态变更包在弹簧 animateTo 里
@@ -5891,6 +5970,12 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.handleDropOnFolder(folder.name);
+    })
+    // 取消拖拽的兜底：不清掉被拖走的名字，原那一行会一直隐身
+    .onDragEnd(() => {
+      setTimeout((): void => {
+        this.draggingName = '';
+      }, 80);
     })
   }
 
@@ -5972,10 +6057,6 @@ struct Index {
     })
     .onDidScroll((offset: number, state: ScrollState) => {
       this.onScrollFrame(offset);
-    })
-    // 点列表空白处 → 收掉长按面板（行自己有 onClick，会先被吃掉）
-    .onClick(() => {
-      this.closeFloatMenu();
     })
   }
 
@@ -7453,10 +7534,6 @@ struct Index {
           .onDidScroll((offset: number, state: ScrollState) => {
             this.onScrollFrame(offset);
           })
-          // 点网格空白处 → 收掉长按面板（格子自己有 onClick，会先被吃掉，不误收）
-          .onClick(() => {
-            this.closeFloatMenu();
-          })
           // **主题纪元拼在 Grid 容器上**：只换条目 key 时，已挂载的卡片（含其中的
           // 按钮）会被列表复用、颜色不跟着变；换容器 key 才会整段重建。
           .key('shelfGrid_' + this.themeEpoch + '_l' + this.languageTick)
@@ -7849,10 +7926,10 @@ struct Index {
       }
 
       // ── 长按格子呼出的悬浮快捷面板 ──
-      // 放在根 Stack **最后一个子节点**并给高 zIndex：封面、文件夹展开面板、
-      // 顶栏底栏都在它下面（用户要求面板图层要高于封面与文件夹）。
-      // 它也不在 cellBlur 那几层里，所以背景糊、面板自己不糊。
+      // 遮罩（四周糊、中间留洞，兼点击拦截）在下、面板在上，都在根 Stack 的
+      // 最后两个子节点：封面、文件夹展开面板、顶栏底栏全被压在下面。
       if (this.floatKind.length > 0) {
+        this.floatMask()
         this.floatMenu()
       }
 
