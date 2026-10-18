@@ -152,6 +152,10 @@ const SEARCH_IMAGE_THUMB: number = 56;
 /** 书架底栏胶囊内「新建 / 导入」按钮的直径（vp），不能超过胶囊内高（52 - 8 = 44） */
 const NEW_BTN_SIZE: number = 36;
 
+/** 长按悬浮面板：宽度与行高（vp）。样式对着系统长按菜单那张参考图。 */
+const FLOAT_MENU_W: number = 176;
+const FLOAT_MENU_ROWS: number = 46;
+
 /**
  * 展开文件夹时**先滚到位、再撑开**的一拍间隔（ms）。
  *
@@ -553,6 +557,16 @@ struct Index {
     this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
       this.searchExpanded = true;
     });
+    // **点搜索按钮就直接弹键盘**（用户要求）：`defaultFocus(true)` 只在节点
+    // 第一次创建时生效，从「收起 → 展开」这条路真机上不聚焦（键盘不出来）。
+    // 等展开动画把 TextInput 挂上再主动要一次焦点。
+    setTimeout((): void => {
+      try {
+        this.getUIContext().getFocusController().requestFocus('shelfSearchInput');
+      } catch (err) {
+        // 焦点请求失败无副作用（键盘不弹，仍可手点输入框）
+      }
+    }, 240);
   }
 
   private collapseSearch(): void {
@@ -640,6 +654,162 @@ struct Index {
     this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
       this.shelfVisible = false;
     });
+  }
+
+  // ── 长按格子呼出的悬浮快捷面板 ──
+  //
+  // 与 ⋯ 的完整菜单面板（openCellMenu → bindSheet）并存：这颗面板只放最常点的
+  // 几项，贴着手指位置弹出，背景用与搜索同款的模糊（cellBlur）压暗，让面板成为
+  // 唯一的焦点。触发点挂在格子的 onDragStart —— 那正是系统「长按即起拖」的识别
+  // 时刻，所以面板弹出后拖拽归组照旧可用（用户要求）。
+
+  /** '' = 没开；'doc' / 'folder' = 面板当前指向的格子类型 */
+  @State floatKind: string = '';
+  /** 面板指向的文档 / 文件夹名 */
+  @State floatName: string = '';
+  /** 指向的文档是否内置教程（删除一项的文案与限制沿用完整菜单的口径） */
+  @State floatBuiltin: boolean = false;
+  /** 面板左上角锚点（vp，窗口坐标） */
+  @State floatX: number = 0;
+  @State floatY: number = 0;
+  /** 面板在开时给书架加的那层模糊；一旦真的拖动就撤掉（要看清落到哪一格） */
+  @State floatBlurOn: boolean = false;
+
+  private openFloatMenu(kind: string, name: string, builtin: boolean, ev: DragEvent): void {
+    const rows: number = kind === 'doc' ? 4 : 2;
+    const ph: number = FLOAT_MENU_ROWS * rows + HwSpace.sm * 2;
+    // ⚠️ DragEvent 的坐标在这版 SDK 里是**取值方法**（getWindowX/getWindowY，
+    // @since 20），不是 ClickEvent 那样的 windowX 字段（工程里 compatibleSdk 6.1.1(24)）。
+    const px: number = ev.getWindowX();
+    const py: number = ev.getWindowY();
+    // 默认弹在手指右下；贴边就翻到左 / 上侧，最后再夹进屏幕内
+    let x: number = px + 14;
+    if (x + FLOAT_MENU_W > this.rootWidth - HwSpace.md) {
+      x = px - FLOAT_MENU_W - 14;
+    }
+    let y: number = py + 14;
+    if (y + ph > this.rootHeight - HwSpace.md) {
+      y = py - ph - 14;
+    }
+    x = Math.max(HwSpace.md, Math.min(x, this.rootWidth - FLOAT_MENU_W - HwSpace.md));
+    y = Math.max(HwSpace.md, Math.min(y, this.rootHeight - ph - HwSpace.md));
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+      this.floatKind = kind;
+      this.floatName = name;
+      this.floatBuiltin = builtin;
+      this.floatX = x;
+      this.floatY = y;
+      this.floatBlurOn = true;
+    });
+  }
+
+  private closeFloatMenu(): void {
+    if (this.floatKind.length === 0) {
+      return;
+    }
+    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+      this.floatKind = '';
+      this.floatBlurOn = false;
+    });
+  }
+
+  /** 拖动预览进入**别的**格子 = 用户确实在拖：撤掉背景模糊，面板留着。 */
+  private floatBlurOffFor(name: string): void {
+    if (this.floatBlurOn && this.floatName !== name) {
+      this.floatBlurOn = false;
+    }
+  }
+
+  /** 面板里的一行：图标 + 文案 + 分隔线（样式照参考图的系统长按菜单）。 */
+  @Builder
+  floatRow(label: string, icon: Resource, divider: boolean, onGo: () => void) {
+    if (divider) {
+      Divider().strokeWidth(1).color(this.palette().divider).margin({ left: 4, right: 4 })
+    }
+    Row({ space: HwSpace.md }) {
+      SymbolGlyph(icon)
+        .fontSize(19)
+        .fontColor([this.palette().textPrimary])
+      Text(L10n.t(label))
+        .fontSize(HwType.label + 2)
+        .fontColor(this.palette().textPrimary)
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .height(FLOAT_MENU_ROWS)
+    .padding({ left: HwSpace.xs })
+    .alignItems(VerticalAlign.Center)
+    .onClick(() => {
+      onGo();
+    })
+  }
+
+  /** 悬浮面板本体（挂在根 Stack 最上层，不进 cellBlur 的那几层，所以自身不糊）。 */
+  @Builder
+  floatMenu() {
+    // ⚠️ 定位 / 层级 / 过渡这些通用属性**不能直接挂在自定义组件上**（ArkUI 不认），
+    // 所以外面套一层 Stack 承载它们。
+    Stack() {
+      ImmersiveCard({
+        cardRadius: HwRadius.card,
+        cardPadding: HwSpace.sm,
+        cardWidth: FLOAT_MENU_W,
+        cardMaterialShadow: true,
+        palette: this.palette()
+      }) {
+        Column() {
+          if (this.floatKind === 'doc') {
+            this.floatRow('删除', $r('sys.symbol.trash'), false, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.askDeleteDoc(n);
+            })
+            this.floatRow('批量管理', $r('sys.symbol.checkmark_square_fill'), true, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.openMultiSelect(n);
+            })
+            this.floatRow('重命名', $r('sys.symbol.square_and_pencil'), true, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.openRename('doc', n);
+            })
+            this.floatRow('导出', $r('sys.symbol.arrow_up_right'), true, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.cellMenuKind = 'doc';
+              this.cellMenuFor = n;
+              this.cellMenuBuiltin = this.floatBuiltin;
+              this.openCellExport();
+            })
+          } else {
+            this.floatRow('解散', $r('sys.symbol.folder'), false, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.playAbsorbAnim(n, () => {
+                if (DocStore.dissolveFolder(n)) {
+                  this.animatedRefresh();
+                  this.toast(L10n.t('文件夹已解散，文档回到书架'));
+                }
+              });
+            })
+            this.floatRow('重命名', $r('sys.symbol.square_and_pencil'), true, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.openRename('folder', n);
+            })
+          }
+        }
+        .width('100%')
+      }
+    }
+    .width(FLOAT_MENU_W)
+    .position({ x: this.floatX, y: this.floatY })
+    .zIndex(30)
+    // 出现 / 消失的过渡：从锚点位置淡入 + 轻微放大（配 animateTo 的状态变更）
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
+      .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
   }
 
   // ── 读写 / 只读（每篇文档一个持久标记，见 DocStore.setReadOnly）──
@@ -946,6 +1116,7 @@ struct Index {
   // 其余格子整体退到后面（透明度 + 模糊），主体凸显。
 
   private openFolderPanel(name: string): void {
+    this.closeFloatMenu();
     if (this.openFolderName === name) {
       this.closeFolderPanel();
       return;
@@ -1194,7 +1365,8 @@ struct Index {
 
   private cellBlur(): number {
     // **搜索展开时整个书架同程度模糊**（用户要求：程度参考打开文件夹时的效果 = 6）
-    return (this.cellDimmed() || this.searchExpanded) ? 6 : 0;
+    // 长按悬浮面板开着时同款模糊：面板是唯一的焦点（用户要求"打开搜索时同款"）
+    return (this.cellDimmed() || this.searchExpanded || this.floatBlurOn) ? 6 : 0;
   }
 
   /**
@@ -1719,6 +1891,8 @@ struct Index {
    * 反向：从阅读页返回时先合上封面，再缩回同一格（见 onPageShow）。
    */
   private openDoc(meta: DocMeta, ev?: ClickEvent): void {
+    // 点开任何文档，长按面板就该收掉了（它可能还指着另一格）
+    this.closeFloatMenu();
     // **批量管理模式**：点封面 = 勾选 / 取消勾选，不打开文档（用户要求批量操作）
     if (this.multiSelect) {
       this.toggleMulti(meta.name);
@@ -3323,12 +3497,15 @@ struct Index {
     .onDragStart((event: DragEvent) => {
       this.draggingName = meta.name;
       this.cancelSwapHover();
+      // 长按即呼出快捷面板（拖拽归组照旧，面板不挡手）
+      this.openFloatMenu('doc', meta.name, meta.builtin, event);
       const info: DragItemInfo = { extraInfo: meta.name };
       return info;
     })
     // 拖到本格上方 → 轻微缩小，给"可以放这里"的反馈（用户要求）；
     // 悬停满 1.5 秒 → 显示「松手换位」（用户要求：拖到其他文档上方 1.5 秒自动交换）
     .onDragEnter((event: DragEvent) => {
+      this.floatBlurOffFor(meta.name);
       this.hoverDropAt = meta.name;
       this.trackSwapHover(meta.name);
     })
@@ -3342,6 +3519,10 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.finishSwapOrDrop(meta.name);
+    })
+    // 拖拽结束（放下或取消）→ 收起长按面板：格子可能已经换位，锚点不再准
+    .onDragEnd(() => {
+      this.closeFloatMenu();
     })
   }
 
@@ -3467,11 +3648,14 @@ struct Index {
     //  · onDrop 与 onDragStart 同节点 → 释放一定能命中
     .onDragStart((event: DragEvent) => {
       this.draggingName = 'folder:' + folder.name;
+      // 长按即呼出快捷面板（拖拽归组照旧，面板不挡手）
+      this.openFloatMenu('folder', folder.name, false, event);
       const info: DragItemInfo = { extraInfo: 'folder:' + folder.name };
       return info;
     })
     // 拖到本格上方 → 轻微缩小反馈
     .onDragEnter((event: DragEvent) => {
+      this.floatBlurOffFor(folder.name);
       this.hoverDropAt = folder.name;
     })
     .onDragLeave((event: DragEvent) => {
@@ -3482,6 +3666,10 @@ struct Index {
     // 落到本格 = 把拖来的文件夹换到此刻的位置（拖动换位）
     .onDrop((event: DragEvent) => {
       this.handleDropOnFolder(folder.name);
+    })
+    // 拖拽结束 → 收起长按面板（锚点已不再对应原位）
+    .onDragEnd(() => {
+      this.closeFloatMenu();
     })
     // **正在展开的那个文件夹**挂 id：展开前用它实测此刻的窗口位置，
     // 滚动目标按「文件夹落在屏幕上部、面板在它下方」来算（见 scrollPanelTopIntoPlace）。
@@ -5481,10 +5669,13 @@ struct Index {
     .onDragStart((event: DragEvent) => {
       this.draggingName = meta.name;
       this.cancelSwapHover();
+      // 长按即呼出快捷面板（树形视图与网格同一套）
+      this.openFloatMenu('doc', meta.name, meta.builtin, event);
       const info: DragItemInfo = { extraInfo: meta.name };
       return info;
     })
     .onDragEnter((event: DragEvent) => {
+      this.floatBlurOffFor(meta.name);
       this.hoverDropAt = meta.name;
       this.trackSwapHover(meta.name);
     })
@@ -5498,6 +5689,10 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.finishSwapOrDrop(meta.name);
+    })
+    // 拖拽结束 → 收起长按面板（锚点已不再对应原位）
+    .onDragEnd(() => {
+      this.closeFloatMenu();
     })
     // 悬停换位目标行：accent 描边提示（松手即交换）
     .border({
@@ -5565,10 +5760,13 @@ struct Index {
     .onDragStart((event: DragEvent) => {
       this.draggingName = 'folder:' + folder.name;
       this.cancelSwapHover();
+      // 长按即呼出快捷面板（树形视图与网格同一套）
+      this.openFloatMenu('folder', folder.name, false, event);
       const info: DragItemInfo = { extraInfo: 'folder:' + folder.name };
       return info;
     })
     .onDragEnter((event: DragEvent) => {
+      this.floatBlurOffFor(folder.name);
       this.hoverDropAt = folder.name;
     })
     .onDragLeave((event: DragEvent) => {
@@ -5578,6 +5776,10 @@ struct Index {
     })
     .onDrop((event: DragEvent) => {
       this.handleDropOnFolder(folder.name);
+    })
+    // 拖拽结束 → 收起长按面板（锚点已不再对应原位）
+    .onDragEnd(() => {
+      this.closeFloatMenu();
     })
   }
 
@@ -7489,6 +7691,11 @@ struct Index {
         .width('100%')
         .height('100%')
         .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+      }
+
+      // ── 长按格子呼出的悬浮快捷面板（最上层，不进 cellBlur 那几层所以自身不糊）──
+      if (this.floatKind.length > 0) {
+        this.floatMenu()
       }
 
       // ── 启动页：竹影渐变底 + 应用图标（分层图标的 foreground）+ ChéngJiān ──
