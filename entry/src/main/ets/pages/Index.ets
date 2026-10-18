@@ -637,6 +637,8 @@ struct Index {
   // ── 菜单 / 重命名 / 文件夹 ──
 
   private openCellMenu(kind: string, name: string, builtin: boolean): void {
+    // 长按快捷面板还开着就先收掉：两个菜单不叠着显示
+    this.closeFloatMenu();
     this.cellMenuKind = kind;
     this.cellMenuFor = name;
     this.cellMenuBuiltin = builtin;
@@ -3450,11 +3452,15 @@ struct Index {
         .id('covercell_' + meta.name)
         .width('100%')
         .aspectRatio(0.72)
-        // 拖走时原封面不再留在原位（拖拽预览已经替它"飘"起来了）
-        .opacity(this.draggingName === meta.name ? 0 : 1)
         // 缩放 / 透明度统一由外层 GridItem 按 cellScale() / gridItemAlpha() 施加：
         // 悬停轻微缩小、合并与"吸入"时更明显，文档与文件夹走同一套
         .onClick((event: ClickEvent) => {
+          // 面板开着时点自己这一格 = 收起面板，**不再打开文档**（用户要求：
+          // 要退出面板才能进文档）。长按 380ms 弹出后松手也会走到这里。
+          if (this.floatKind.length > 0 && this.floatName === meta.name) {
+            this.closeFloatMenu();
+            return;
+          }
           // 带上点击坐标：阅读页据此从这一格放大展开
           // **面板展开时背后的格子不响应**；面板内的格子（inPanel）照常打开
           if (!inPanel && this.openFolderName.length > 0) {
@@ -3655,6 +3661,9 @@ struct Index {
       }
     }
     .width('100%')
+    // 拖走时**整格**隐身：只藏封面会留下 ⋯ 按钮、进度条、百分比、爱心、
+    // 名称与日期孤零零在原位（用户实测反馈）
+    .opacity(this.draggingName === meta.name ? 0 : 1)
     // 长按面板：onTouch 只做旁观计时（不吃事件），点击 / 滚动 / 系统拖拽都不受影响；
     // 定位与遮罩留洞都按封面那一块（id `covercell_…`）的实测矩形算
     .onTouch((e: TouchEvent) => {
@@ -3767,6 +3776,11 @@ struct Index {
             ? this.folderColorOf(folder) : this.palette().quoteBg)
           .clip(true)
           .onClick((event: ClickEvent) => {
+            // 面板开着时点自己这一格 = 收起面板，不展开文件夹浮层
+            if (this.floatKind.length > 0 && this.floatName === folder.name) {
+              this.closeFloatMenu();
+              return;
+            }
             this.openFolderPanel(folder.name);
           })
         }
@@ -3813,6 +3827,8 @@ struct Index {
     }
     .width('100%')
     .alignItems(HorizontalAlign.Center)
+    // 拖走时**整格**隐身（迷你封面、⋯ 按钮、名称、数量一起消失）
+    .opacity(this.draggingName === 'folder:' + folder.name ? 0 : 1)
     // 长按面板：onTouch 只做旁观计时；定位与遮罩留洞按封面那块（`foldercell_…`）实测
     .onTouch((e: TouchEvent) => {
       this.floatPressTouch(e, 'folder', folder.name, false, 'foldercell_' + folder.name);
@@ -3853,8 +3869,6 @@ struct Index {
     // ⚠️ id 必须挂在**卡片本体这层 Column** 上，不能挂 GridItem ——
     // GridItem 是布局容器，getRectangleById 在它上面实测常常拿不到矩形（本工程踩过）。
     .id(this.openFolderName === folder.name ? 'folderCellAnchor' : 'foldercell_' + folder.name)
-    // 拖走时原封面不再留在原位（拖拽预览已经替它"飘"起来了）
-    .opacity(this.draggingName === 'folder:' + folder.name ? 0 : 1)
   }
 
   /** 记录文档封面的窗口矩形：一镜到底的起点/终点必须精确到这一格。 */
@@ -5848,6 +5862,11 @@ struct Index {
       this.floatPressTouch(e, 'doc', meta.name, meta.builtin, 'floatTDoc_' + meta.name);
     })
     .onClick(() => {
+      // 面板开着时点自己这一行 = 收起面板，不打开文档
+      if (this.floatKind.length > 0 && this.floatName === meta.name) {
+        this.closeFloatMenu();
+        return;
+      }
       this.openDoc(meta);
     })
     // **树形视图同样支持拖拽**（用户要求）：长按起拖 → 悬停另一文档 1.5 秒换位 /
@@ -5948,6 +5967,11 @@ struct Index {
       this.floatPressTouch(e, 'folder', folder.name, false, 'floatTFolder_' + folder.name);
     })
     .onClick(() => {
+      // 面板开着时点自己这一行 = 收起面板，不展开文件夹
+      if (this.floatKind.length > 0 && this.floatName === folder.name) {
+        this.closeFloatMenu();
+        return;
+      }
       // 行内展开也要有动画：状态变更包在弹簧 animateTo 里
       this.toggleFolderExpandAnimated(folder.name);
     })
