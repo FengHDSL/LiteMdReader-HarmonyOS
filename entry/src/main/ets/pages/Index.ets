@@ -159,6 +159,8 @@ const FLOAT_MENU_ROWS: number = 38;
 const FLOAT_PRESS_MS: number = 380;
 /** 按下后手指移动超过这个距离就算拖拽 / 滚动，不再弹面板 */
 const FLOAT_PRESS_SLOP: number = 10;
+/** 面板已经弹出后，再拖开超过这个距离（不分方向）就收起面板 */
+const FLOAT_DRAG_DISMISS: number = 24;
 /** 长按遮罩的模糊半径（vp）：与打开搜索时的 cellBlur 同一档 */
 const FLOAT_BLUR_RADIUS: number = 6;
 
@@ -699,6 +701,30 @@ struct Index {
   private floatTimer: number = -1;
   private floatDownX: number = 0;
   private floatDownY: number = 0;
+  /**
+   * 面板是**这次按下**弹出来的。长按松手时 ArkUI 照样会补一次 click 到格子上，
+   * 那是同一次手势带出来的，不能当成"用户点了一下封面" —— 否则就变成
+   * "面板刚出现就消失"（用户实测反馈）。第一次这样的 click 直接吞掉。
+   */
+  private floatOpenedByPress: boolean = false;
+
+  /**
+   * 面板开着时点自己那一格：
+   *  · 长按松手补出来的那一下 → 吞掉，面板留着；
+   *  · 之后真的又点了一下 → 只收面板，不进文档 / 不展开文件夹。
+   * 返回 true 表示这次点击已被本面板消化，调用方直接 return。
+   */
+  private floatTapOwns(name: string): boolean {
+    if (this.floatKind.length === 0 || this.floatName !== name) {
+      return false;
+    }
+    if (this.floatOpenedByPress) {
+      this.floatOpenedByPress = false;
+      return true;
+    }
+    this.closeFloatMenu();
+    return true;
+  }
 
   private floatPressCancel(): void {
     if (this.floatTimer >= 0) {
@@ -711,6 +737,7 @@ struct Index {
   private floatPressTouch(e: TouchEvent, kind: string, name: string, builtin: boolean, coverId: string): void {
     if (e.type === TouchType.Down) {
       this.floatPressCancel();
+      this.floatOpenedByPress = false;
       const n: number = e.touches.length;
       if (n > 0) {
         this.floatDownX = e.touches[n - 1].x;
@@ -719,16 +746,26 @@ struct Index {
       this.floatTimer = setTimeout((): void => {
         this.floatTimer = -1;
         this.openFloatMenuAtCell(kind, name, builtin, coverId);
+        this.floatOpenedByPress = true;
       }, FLOAT_PRESS_MS);
       return;
     }
     if (e.type === TouchType.Move) {
       const m: number = e.touches.length;
-      if (this.floatTimer >= 0 && m > 0) {
-        if (Math.abs(e.touches[m - 1].x - this.floatDownX) > FLOAT_PRESS_SLOP
-          || Math.abs(e.touches[m - 1].y - this.floatDownY) > FLOAT_PRESS_SLOP) {
-          this.floatPressCancel();
-        }
+      if (m <= 0) {
+        return;
+      }
+      const dx: number = Math.abs(e.touches[m - 1].x - this.floatDownX);
+      const dy: number = Math.abs(e.touches[m - 1].y - this.floatDownY);
+      // 还在计时：移动过阈值就当拖拽 / 滚动意图，不再弹面板
+      if (this.floatTimer >= 0 && (dx > FLOAT_PRESS_SLOP || dy > FLOAT_PRESS_SLOP)) {
+        this.floatPressCancel();
+      }
+      // 已经弹出来了：不管朝哪个方向，拖开一段距离就收起（用户要求）
+      if (this.floatKind.length > 0 && this.floatName === name
+        && (dx > FLOAT_DRAG_DISMISS || dy > FLOAT_DRAG_DISMISS)) {
+        this.floatOpenedByPress = false;
+        this.closeFloatMenu();
       }
       return;
     }
@@ -812,6 +849,7 @@ struct Index {
     if (this.floatKind.length === 0) {
       return;
     }
+    this.floatOpenedByPress = false;
     this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
       this.floatKind = '';
       this.floatName = '';
@@ -3455,10 +3493,8 @@ struct Index {
         // 缩放 / 透明度统一由外层 GridItem 按 cellScale() / gridItemAlpha() 施加：
         // 悬停轻微缩小、合并与"吸入"时更明显，文档与文件夹走同一套
         .onClick((event: ClickEvent) => {
-          // 面板开着时点自己这一格 = 收起面板，**不再打开文档**（用户要求：
-          // 要退出面板才能进文档）。长按 380ms 弹出后松手也会走到这里。
-          if (this.floatKind.length > 0 && this.floatName === meta.name) {
-            this.closeFloatMenu();
+          // 面板开着时点自己这一格：吞掉长按松手补出来的那一下，其余只收面板
+          if (this.floatTapOwns(meta.name)) {
             return;
           }
           // 带上点击坐标：阅读页据此从这一格放大展开
@@ -3776,9 +3812,7 @@ struct Index {
             ? this.folderColorOf(folder) : this.palette().quoteBg)
           .clip(true)
           .onClick((event: ClickEvent) => {
-            // 面板开着时点自己这一格 = 收起面板，不展开文件夹浮层
-            if (this.floatKind.length > 0 && this.floatName === folder.name) {
-              this.closeFloatMenu();
+            if (this.floatTapOwns(folder.name)) {
               return;
             }
             this.openFolderPanel(folder.name);
@@ -5862,9 +5896,7 @@ struct Index {
       this.floatPressTouch(e, 'doc', meta.name, meta.builtin, 'floatTDoc_' + meta.name);
     })
     .onClick(() => {
-      // 面板开着时点自己这一行 = 收起面板，不打开文档
-      if (this.floatKind.length > 0 && this.floatName === meta.name) {
-        this.closeFloatMenu();
+      if (this.floatTapOwns(meta.name)) {
         return;
       }
       this.openDoc(meta);
@@ -5967,9 +5999,7 @@ struct Index {
       this.floatPressTouch(e, 'folder', folder.name, false, 'floatTFolder_' + folder.name);
     })
     .onClick(() => {
-      // 面板开着时点自己这一行 = 收起面板，不展开文件夹
-      if (this.floatKind.length > 0 && this.floatName === folder.name) {
-        this.closeFloatMenu();
+      if (this.floatTapOwns(folder.name)) {
         return;
       }
       // 行内展开也要有动画：状态变更包在弹簧 animateTo 里
