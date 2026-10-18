@@ -870,7 +870,7 @@ export struct SettingsAppearance {
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
             .width('100%')
-          Text(this.s('按「澄·笺」意境生成的渐变纸墨底，无位图资源，任意分辨率都清晰'))
+          Text(this.s('一组极简恒星系：小星球绕恒星公转，整组慢慢漫游，深色还有星星闪烁；无位图资源，任意分辨率都清晰'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')

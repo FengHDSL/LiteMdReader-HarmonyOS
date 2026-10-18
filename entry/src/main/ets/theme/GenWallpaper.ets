@@ -1,12 +1,24 @@
 /**
- * 澄笺 · 函数绘制壁纸
- * ==================
+ * 澄笺 · 程序化壁纸（恒星系统）
+ * ============================
  *
- * **不内置任何 png**：所有壁纸都用「渐变 + 柔光斑 + 细纹」程序化绘制出来，
- * 所以没有位图资源、任意分辨率都清晰，也天然契合「澄笺」的意象
- * （澄 = 澄澈透光；笺 = 文人纸笺）。
+ * **不内置任何 png**：壁纸全部用声明式节点画出来（渐变 + 圆形 + 径向渐变），
+ * 所以没有位图资源、任意分辨率都清晰。
  *
- * 配色全部落在宣纸、砚台、松烟、竹影、晚霞、夜笺这组中国传统纸墨色里。
+ * 构图是**最多五组恒星系**：每组一颗恒星、两三条轨道、几颗小星球绕着恒星公转，
+ * 整组还会**自己慢慢漫游**。基准点全部落在边缘带（上两角、下两角、底部中央），
+ * 屏幕正中那一条留给正文。深色模式下再叠一层会闪烁的满天星。
+ * 七款预设只换配色（天空上下色、恒星的光色、轨道与星球的取色），构图完全一致。
+ *
+ * 两条实现口径，改之前先读完：
+ *  · **位置与进度不写盘**：公转相位和漫游位移都由**绝对时间**算出来 ——
+ *    同一时刻在任何页面实例上都是同一个值，所以冷启动、切页、杀进程重开都
+ *    自动接上进度，既不用存，也不会出现两个页面各走各的。
+ *  · **每帧零 JS**：旋转 / 位移 / 透明度全部交给 `animateTo`，插值发生在渲染线程；
+ *    漫游是一趟一趟续上的（一趟 18 秒），只在换目标时跑一次函数。
+ *    旧版那两个整屏 `.blur(56)` 光斑层是转场卡顿率报告点名的开销，已撤。
+ *
+ * 配色沿用宣纸、砚台、松烟、竹影、晚霞、夜笺这组中国传统纸墨色。
  */
 
 import { L10n } from '../service/L10n';
@@ -20,10 +32,10 @@ export interface GenWallpaperDef {
   /** 底色渐变：上 / 下 */
   top: string;
   bottom: string;
-  /** 两团柔光斑 */
+  /** 恒星与多数星球的取色 / 第二取色 */
   glowA: string;
   glowB: string;
-  /** 细纹颜色（透明度已写进 #AARRGGBB） */
+  /** 轨道线颜色（透明度已写进 #AARRGGBB） */
   weave: string;
   /**
    * **深色孪生款 id**：深色模式下自动改用这一款，让默认主题深浅都成立。
@@ -35,7 +47,7 @@ export interface GenWallpaperDef {
 /** AppStorage 键：选中的程序化壁纸 id；空串 = 不用 */
 export const GEN_WALLPAPER_KEY: string = 'wallpaperGenId';
 
-/** '#RRGGBB' → [r,g,b]；非法回退默认。 */
+/** '#RRGGBB'/'#AARRGGBB' → [r,g,b]；非法回退默认。 */
 function parseRgb(hex: string, fallback: number[]): number[] {
   let s: string = hex.trim();
   if (s.startsWith('#')) {
@@ -148,6 +160,24 @@ export function genWallpaperById(id: string): GenWallpaperDef | null {
   return null;
 }
 
+/**
+ * 深色孪生解析：深色模式下改用该款的 darkId（竹影 → 夜笺）。
+ * id 为空或找不到都返回 null，由调用方回落。
+ */
+export function resolveGenWallpaper(id: string, dark: boolean): GenWallpaperDef | null {
+  const found: GenWallpaperDef | null = genWallpaperById(id);
+  if (found === null) {
+    return null;
+  }
+  if (dark && found.darkId.length > 0 && found.darkId !== found.id) {
+    const twin: GenWallpaperDef | null = genWallpaperById(found.darkId);
+    if (twin !== null) {
+      return twin;
+    }
+  }
+  return found;
+}
+
 /** '#RRGGBB'/'#AARRGGBB' 两色按 k∈[0,1] 线性混色，返回 '#AARRGGBB'。 */
 function mixHex(a: string, b: string, k: number): string {
   const ca: number[] = parseRgb(a, [0, 0, 0]);
@@ -156,6 +186,115 @@ function mixHex(a: string, b: string, k: number): string {
   const g: number = ca[1] + (cb[1] - ca[1]) * k;
   const bl: number = ca[2] + (cb[2] - ca[2]) * k;
   return '#FF' + hex2(r) + hex2(g) + hex2(bl);
+}
+
+/** 换掉一个颜色的透明度字节（aa 是两位十六进制，如 '8C' ≈ 0.55）。 */
+function withAlpha(hex: string, aa: string): string {
+  const c: number[] = parseRgb(hex, [128, 128, 128]);
+  return '#' + aa + hex2(c[0]) + hex2(c[1]) + hex2(c[2]);
+}
+
+// ══════════════════════ 恒星系的构图参数 ══════════════════════
+
+/** 一个恒星系的参数（长度类数值一律按 短边 × scale 换算，横竖屏都是正圆） */
+interface SolarSpec {
+  /** 恒星中心的基准位置（占屏宽 / 屏高）——刻意都在边缘带，不占正文那一条 */
+  x: number;
+  y: number;
+  /** 整体大小（× 短边） */
+  scale: number;
+  /** 轨道直径、星球直径（都 × 短边 × scale） */
+  rings: number[];
+  planets: number[];
+  /** 初始相位（度）、公转一圈毫秒、方向（1 顺 / -1 逆） */
+  angles: number[];
+  periods: number[];
+  dirs: number[];
+  /** 漫游幅度（× 短边）与三段正弦的周期（ms）/ 初相 */
+  roam: number;
+  roamP: number[];
+  roamQ: number[];
+}
+
+/** 时间原点：所有相位 / 位移都相对它算，改这个数等于把整个星空拨回起点 */
+const SOLAR_EPOCH: number = 1730000000000;
+/** 一次漫游目标的持续时长；到点再取下一个 */
+const ROAM_LEG_MS: number = 18000;
+/** 恒星核心 / 光晕直径（× 短边 × scale） */
+const STAR_CORE: number = 0.30;
+const STAR_HALO: number = 1.15;
+
+/** 五组恒星系：一大四小，周期 / 方向 / 相位 / 漫游节奏全部错开 */
+const SOLAR_SYSTEMS: SolarSpec[] = [
+  {
+    x: 0.20, y: 0.14, scale: 0.34, rings: [0.42, 0.66, 0.92], planets: [0.052, 0.040, 0.062],
+    angles: [38, 214, 322], periods: [30000, 52000, 84000], dirs: [1, -1, 1],
+    roam: 0.055, roamP: [47000, 113000, 233000], roamQ: [0.0, 1.7, 3.1]
+  },
+  {
+    x: 0.84, y: 0.20, scale: 0.22, rings: [0.46, 0.74], planets: [0.055, 0.038],
+    angles: [150, 300], periods: [38000, 66000], dirs: [-1, 1],
+    roam: 0.070, roamP: [53000, 127000, 199000], roamQ: [2.3, 0.4, 4.6]
+  },
+  {
+    x: 0.11, y: 0.73, scale: 0.26, rings: [0.44, 0.72], planets: [0.046, 0.034],
+    angles: [72, 250], periods: [44000, 29000], dirs: [1, -1],
+    roam: 0.062, roamP: [61000, 149000, 271000], roamQ: [4.1, 2.6, 0.9]
+  },
+  {
+    x: 0.87, y: 0.68, scale: 0.30, rings: [0.40, 0.64, 0.90], planets: [0.048, 0.036, 0.058],
+    angles: [12, 168, 244], periods: [34000, 58000, 92000], dirs: [-1, 1, -1],
+    roam: 0.058, roamP: [43000, 107000, 223000], roamQ: [1.2, 5.0, 3.3]
+  },
+  {
+    x: 0.47, y: 0.93, scale: 0.18, rings: [0.50], planets: [0.060],
+    angles: [206], periods: [41000], dirs: [1],
+    roam: 0.085, roamP: [59000, 131000, 251000], roamQ: [3.7, 1.1, 5.4]
+  }
+];
+
+/**
+ * 某一时刻、某个恒星系相对基准点的漫游位移（±1 之内，乘上 roam 才是屏占比）。
+ * 三段互质周期的正弦叠加 = 有机的漫游，且天然有界（漂不出屏幕）。
+ * axis 只用来给 x / y 两个方向错开初相，否则整组星会沿对角线来回。
+ */
+function roamAt(t: number, s: SolarSpec, axis: number): number {
+  const weight: number[] = [1.0, 0.5, 0.333];
+  let v: number = 0;
+  let norm: number = 0;
+  for (let i = 0; i < s.roamP.length; i++) {
+    v += Math.sin((t / s.roamP[i]) * Math.PI * 2 + s.roamQ[i] + axis * 2.1) * weight[i];
+    norm += weight[i];
+  }
+  return v / norm;
+}
+
+/** 一颗背景星：位置按整屏百分比算，d 是直径（vp），g 是闪烁相位组 */
+interface TwinkleSpec {
+  x: number;
+  y: number;
+  d: number;
+  g: number;
+}
+
+/** 深色模式的满天星：铺在四角与上下边缘，避开正文那一条竖向区域 */
+const TWINKLE_STARS: TwinkleSpec[] = [
+  { x: 0.12, y: 0.10, d: 2.0, g: 0 }, { x: 0.78, y: 0.06, d: 1.4, g: 1 },
+  { x: 0.30, y: 0.18, d: 1.2, g: 2 }, { x: 0.62, y: 0.14, d: 2.2, g: 0 },
+  { x: 0.90, y: 0.26, d: 1.3, g: 1 }, { x: 0.06, y: 0.34, d: 1.8, g: 2 },
+  { x: 0.44, y: 0.05, d: 1.3, g: 3 }, { x: 0.70, y: 0.40, d: 1.5, g: 1 },
+  { x: 0.20, y: 0.52, d: 1.2, g: 4 }, { x: 0.86, y: 0.60, d: 2.0, g: 0 },
+  { x: 0.10, y: 0.74, d: 1.4, g: 1 }, { x: 0.55, y: 0.68, d: 1.2, g: 2 },
+  { x: 0.34, y: 0.88, d: 1.7, g: 3 }, { x: 0.78, y: 0.86, d: 1.3, g: 4 },
+  { x: 0.04, y: 0.94, d: 1.2, g: 2 }, { x: 0.62, y: 0.96, d: 1.6, g: 0 }
+];
+
+/** 五组闪烁周期（ms）：星星分给五组、每组再按直径给一点幅度差，看着就是各闪各的 */
+const TWINKLE_PHASE_MS: number[] = [2300, 2900, 3400, 4100, 4800];
+
+/** 当前时刻（相对 SOLAR_EPOCH 的毫秒数）——所有动画都从这里取时间基准 */
+function solarNow(): number {
+  return Date.now() - SOLAR_EPOCH;
 }
 
 /**
@@ -169,110 +308,383 @@ function mixHex(a: string, b: string, k: number): string {
  * @returns '#AARRGGBB'；返回空串表示找不到该款式（调用方自行回落）。
  */
 export function genWallpaperFlatColor(id: string, dark: boolean): string {
-  if (id.length === 0) {
+  const use: GenWallpaperDef | null = resolveGenWallpaper(id, dark);
+  if (use === null) {
     return '';
-  }
-  const def: GenWallpaperDef | null = genWallpaperById(id);
-  if (def === null) {
-    return '';
-  }
-  let use: GenWallpaperDef = def;
-  if (dark && def.darkId.length > 0 && def.darkId !== def.id) {
-    const twin: GenWallpaperDef | null = genWallpaperById(def.darkId);
-    if (twin !== null) {
-      use = twin;
-    }
   }
   return mixHex(use.top, use.bottom, 0.5);
 }
 
+// ══════════════════════ 一个恒星系 ══════════════════════
+
 /**
- * 程序化壁纸本体。铺满父容器，纯绘制、无位图。
+ * 一个恒星系：恒星（光晕 + 核心）、几条轨道、几颗绕转的小星球。
  *
- * 构图固定四层：底色渐变 → 左上暖光斑 → 右下冷光斑 → 细纹。
- * 光斑用大半径 + 高模糊的圆形叠色，避免出现硬边。
+ * 盒子只有**最大那条轨道**那么大（不是整屏），旋转的是盒子内部那圈小容器 ——
+ * 五组星系就是五层小图层，比整屏图层便宜得多；位移走 translate、旋转走 rotate，
+ * 都是合成层属性，不参与每帧重排。
+ */
+@Component
+struct SolarSystem {
+  /** 取 SOLAR_SYSTEMS 里的哪一组（传下标：数组对象不适合当 @Prop 传） */
+  @Prop idx: number = 0;
+  /** 父容器实测尺寸（vp） */
+  @Prop boxW: number = 0;
+  @Prop boxH: number = 0;
+  @Prop styleId: string = '';
+  @Prop darkMode: boolean = false;
+  /** 纯底模式：照样画，但一样都不动 */
+  @Prop plain: boolean = false;
+  /** 漫游位移（vp，相对基准点） */
+  @State rx: number = 0;
+  @State ry: number = 0;
+  /** 三颗星球各自的公转进度（不足三颗的系用不到后面那几个槽） */
+  @State orb1: number = 0;
+  @State orb2: number = 0;
+  @State orb3: number = 0;
+  /** 恒星呼吸 */
+  @State pulse: number = 0;
+  /** 启动定时器 + 存活标记（漫游是一趟一趟续上的，销毁后不能再续） */
+  private startTimer: number = -1;
+  private alive: boolean = true;
+
+  aboutToAppear(): void {
+    // 首帧就落在"此刻该在的地方"：这一步不带动画，不需要等 UI 就绪
+    this.snapToNow();
+    if (this.plain) {
+      return;
+    }
+    // 延迟 600ms：转场期会抢主线程把 animateTo 丢掉（上一轮"壁纸完全不动"的根因）
+    this.startTimer = setTimeout(() => {
+      this.startTimer = -1;
+      if (!this.alive) {
+        return;
+      }
+      this.startMotion();
+    }, 600);
+  }
+
+  aboutToDisappear(): void {
+    this.alive = false;
+    if (this.startTimer >= 0) {
+      clearTimeout(this.startTimer);
+      this.startTimer = -1;
+    }
+  }
+
+  private spec(): SolarSpec {
+    return SOLAR_SYSTEMS[this.idx >= 0 && this.idx < SOLAR_SYSTEMS.length ? this.idx : 0];
+  }
+
+  private def(): GenWallpaperDef {
+    const found: GenWallpaperDef | null = resolveGenWallpaper(this.styleId, this.darkMode);
+    return found !== null ? found : GEN_WALLPAPERS[0];
+  }
+
+  /** 短边（vp）：半径都以它为基准，横屏 / 平板上才是正圆 */
+  private short(): number {
+    return this.boxW < this.boxH ? this.boxW : this.boxH;
+  }
+
+  /** 第 i 条轨道的直径（vp） */
+  private ringD(i: number): number {
+    return this.spec().rings[i] * this.short() * this.spec().scale;
+  }
+
+  /** 第 i 颗星球的直径（vp） */
+  private planetD(i: number): number {
+    return this.spec().planets[i] * this.short() * this.spec().scale;
+  }
+
+  /** 盒子边长 = 最大那条轨道再留一点余量 */
+  private size(): number {
+    const s: SolarSpec = this.spec();
+    let maxRing: number = s.rings[0];
+    for (let i = 1; i < s.rings.length; i++) {
+      if (s.rings[i] > maxRing) {
+        maxRing = s.rings[i];
+      }
+    }
+    return maxRing * this.short() * s.scale * 1.25;
+  }
+
+  /** 恒星中心的基准位置（vp） */
+  private baseX(): number {
+    return this.spec().x * this.boxW;
+  }
+
+  private baseY(): number {
+    return this.spec().y * this.boxH;
+  }
+
+  /** 第 i 颗星球当前这一圈的进度 */
+  private orbOf(i: number): number {
+    return i === 0 ? this.orb1 : i === 1 ? this.orb2 : this.orb3;
+  }
+
+  private setOrb(i: number, v: number): void {
+    if (i === 0) {
+      this.orb1 = v;
+    } else if (i === 1) {
+      this.orb2 = v;
+    } else {
+      this.orb3 = v;
+    }
+  }
+
+  /** 星球取色：深色往白里提、浅色往墨里压，否则在底色上根本看不见 */
+  private planetColor(i: number): string {
+    const base: string = i === 1 ? this.def().glowB : this.def().glowA;
+    return mixHex(base, this.darkMode ? '#FFFFFF' : '#20252D', this.darkMode ? 0.58 : 0.74);
+  }
+
+  /**
+   * 恒星核心的边缘色。浅色底（纸白 / 淡青）直接用款色会被吞掉，
+   * 所以固定往暖金里靠；深色本来就是夜空，给月白。
+   */
+  private starCore(): string {
+    return this.darkMode ? '#FFFFF4DC' : mixHex(this.def().glowA, '#F2A93B', 0.62);
+  }
+
+  /** 把位移与公转相位拨到"此刻"的值——时间函数，所以不需要任何持久化 */
+  private snapToNow(): void {
+    const s: SolarSpec = this.spec();
+    const t: number = solarNow();
+    this.rx = roamAt(t, s, 0) * s.roam * this.boxW;
+    this.ry = roamAt(t, s, 1) * s.roam * this.boxH;
+    for (let i = 0; i < s.periods.length; i++) {
+      this.setOrb(i, (t % s.periods[i]) / s.periods[i] * 360);
+    }
+  }
+
+  /** 公转 + 呼吸 + 漫游。全部交给 animateTo，只有换漫游目标时才跑一次 JS。 */
+  private startMotion(): void {
+    const s: SolarSpec = this.spec();
+    for (let i = 0; i < s.periods.length; i++) {
+      this.loopOrbit(i, s.periods[i]);
+    }
+    this.getUIContext().animateTo({
+      duration: 5500, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
+    }, () => {
+      this.pulse = 1;
+    });
+    this.nextRoam();
+  }
+
+  /**
+   * 一颗星球的无限公转。
+   * ⚠️ 起点是"此刻的相位"、终点是它 +360：直接写 0→360 会让每次打开都从初相
+   *    重来（用户要求记住进度）。360 与 0 视觉同位，所以循环接缝看不出来。
+   */
+  private loopOrbit(i: number, period: number): void {
+    const to: number = this.orbOf(i) + 360;
+    this.getUIContext().animateTo({
+      duration: period, curve: Curve.Linear, iterations: -1
+    }, () => {
+      this.setOrb(i, to);
+    });
+  }
+
+  /** 漫游：朝"18 秒后该在的地方"匀速挪过去，到点再取下一个目标。 */
+  private nextRoam(): void {
+    if (!this.alive) {
+      return;
+    }
+    const s: SolarSpec = this.spec();
+    const t1: number = solarNow() + ROAM_LEG_MS;
+    this.getUIContext().animateTo({
+      duration: ROAM_LEG_MS, curve: Curve.Linear,
+      onFinish: () => {
+        this.nextRoam();
+      }
+    }, () => {
+      this.rx = roamAt(t1, s, 0) * s.roam * this.boxW;
+      this.ry = roamAt(t1, s, 1) * s.roam * this.boxH;
+    });
+  }
+
+  build() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // 轨道：只描边、不填充，透明度压得很低，读起来是"纸上一条淡线"
+      ForEach(this.spec().rings, (r: number, ri: number) => {
+        Circle({ width: this.ringD(ri), height: this.ringD(ri) })
+          .fillOpacity(0)
+          .stroke(withAlpha(this.def().weave, this.darkMode ? '8C' : '9E'))
+          .strokeWidth(1)
+          .position({ x: this.size() / 2 - this.ringD(ri) / 2, y: this.size() / 2 - this.ringD(ri) / 2 })
+      }, (r: number, ri: number) => 'r' + ri)
+
+      // 恒星光晕：径向渐变从款色向外透明，与核心一起呼吸（尺寸 + 亮度同相）
+      Circle({ width: STAR_HALO * this.short() * this.spec().scale,
+        height: STAR_HALO * this.short() * this.spec().scale })
+        .radialGradient({
+          center: [STAR_HALO * this.short() * this.spec().scale / 2,
+            STAR_HALO * this.short() * this.spec().scale / 2],
+          radius: STAR_HALO * this.short() * this.spec().scale / 2,
+          colors: [[withAlpha(this.def().glowA, this.darkMode ? 'B8' : '80'), 0.0],
+            [withAlpha(this.def().glowA, this.darkMode ? '48' : '33'), 0.42],
+            ['#00000000', 1.0]]
+        })
+        .position({
+          x: this.size() / 2 - STAR_HALO * this.short() * this.spec().scale / 2,
+          y: this.size() / 2 - STAR_HALO * this.short() * this.spec().scale / 2
+        })
+        .opacity(0.72 + this.pulse * 0.30)
+        .scale({ x: 0.94 + this.pulse * 0.10, y: 0.94 + this.pulse * 0.10 })
+
+      // 恒星核心
+      Circle({ width: STAR_CORE * this.short() * this.spec().scale,
+        height: STAR_CORE * this.short() * this.spec().scale })
+        .radialGradient({
+          center: [STAR_CORE * this.short() * this.spec().scale / 2,
+            STAR_CORE * this.short() * this.spec().scale / 2],
+          radius: STAR_CORE * this.short() * this.spec().scale / 2,
+          colors: [[this.darkMode ? '#FFFFFFFF' : '#FFFFF7E4', 0.26],
+            [this.starCore(), 0.62],
+            ['#00000000', 1.0]]
+        })
+        .position({
+          x: this.size() / 2 - STAR_CORE * this.short() * this.spec().scale / 2,
+          y: this.size() / 2 - STAR_CORE * this.short() * this.spec().scale / 2
+        })
+        .opacity(0.88 + this.pulse * 0.12)
+
+      // 小星球：每颗一个**轨道那么大**的透明容器绕自己的心转，星球摆在正上方，
+      // 转起来就是沿那条轨道公转（相位乘 dirs → 有的顺转、有的逆转）。
+      ForEach(this.spec().planets, (p: number, pi: number) => {
+        Stack() {
+          Circle({ width: this.planetD(pi), height: this.planetD(pi) })
+            .fill(this.planetColor(pi))
+            .position({ x: this.ringD(pi) / 2 - this.planetD(pi) / 2, y: -this.planetD(pi) / 2 })
+        }
+        .width(this.ringD(pi))
+        .height(this.ringD(pi))
+        .position({ x: this.size() / 2 - this.ringD(pi) / 2, y: this.size() / 2 - this.ringD(pi) / 2 })
+        .hitTestBehavior(HitTestMode.None)
+        .rotate({
+          x: 0, y: 0, z: 1, angle: this.orbOf(pi) * this.spec().dirs[pi],
+          centerX: '50%', centerY: '50%'
+        })
+      }, (p: number, pi: number) => 'p' + pi)
+    }
+    .width(this.size())
+    .height(this.size())
+    .position({ x: this.baseX() - this.size() / 2, y: this.baseY() - this.size() / 2 })
+    .translate({ x: this.rx, y: this.ry })
+    .hitTestBehavior(HitTestMode.None)
+  }
+}
+
+// ══════════════════════ 壁纸本体 ══════════════════════
+
+/**
+ * 程序化壁纸本体：底色渐变 + 最多五组恒星系（+ 深色的满天星），铺满父容器。
+ * 纯声明式节点绘制、无位图、每帧零 JS。
  */
 @Component
 export struct GenWallpaper {
   @Prop @Watch('onStyleChanged') styleId: string = '';
-  /** 深色模式下降一点亮度，避免夜里刺眼 */
+  /** 深色模式：改用深色孪生款配色，并叠满天星 */
   @Prop darkMode: boolean = false;
   /**
-   * **纯底模式**：只画渐变 + 细纹，不画两个光斑圆。
-   * 设置页等"内容为主"的页面用（用户要求：设置页不要那两个圆）。
+   * **纯底模式**：恒星系照画，但**一样都不动**（不启动任何动画）。
+   * 设置页等"内容为主"的页面用（用户要求：设置页背景不要动来动去）。
    */
   @Prop plain: boolean = false;
-  /** 光斑绕屏心公转的角度（两团转速不同 → 相位错开） */
-  @State orbitA: number = 0;
-  @State orbitB: number = 0;
-  /** 光斑呼吸：透明度往复（两团节奏不同 → 错相淡入淡出） */
-  @State glowPulseA: number = 0;
-  @State glowPulseB: number = 0;
-  /** 漂移动画的启动定时器（首帧之后才播；换壁纸 / 重建都要重来） */
-  private driftTimer: number = -1;
+  /** 实测尺寸（vp）：半径按短边换算，量到之前只铺底色渐变 */
+  @State boxW: number = 0;
+  @State boxH: number = 0;
+  /** 满天星的五组闪烁相位：一组一条无限往复动画，星星按 g 取自己那组 */
+  @State tw0: number = 0;
+  @State tw1: number = 0;
+  @State tw2: number = 0;
+  @State tw3: number = 0;
+  @State tw4: number = 0;
+  /** 闪烁动画的启动定时器（首帧之后才播） */
+  private twTimer: number = -1;
 
   aboutToAppear(): void {
-    this.startDrift();
+    this.startTwinkle();
   }
 
   aboutToDisappear(): void {
-    if (this.driftTimer >= 0) {
-      clearTimeout(this.driftTimer);
-      this.driftTimer = -1;
+    if (this.twTimer >= 0) {
+      clearTimeout(this.twTimer);
+      this.twTimer = -1;
     }
   }
 
-  /**
-   * 光斑公转 + 呼吸的启动。三条口径都是这轮修「壁纸完全不动」时定下的，别再改回去：
-   *  · **先把状态打回起点再启动**——组件被 `if` 分支重建时 @State 已经是终值
-   *    （orbitA=360≡0°、pulse=1），"初始即终值"就没有可播的过渡（工程在别处也总结过同一条）；
-   *  · **延迟 600ms**——转场期（一镜到底首帧）会抢主线程把 animateTo 丢掉，
-   *    原来只给 50ms 且失败后永不重试，看着就是"完全固定不动"；
-   *  · 换壁纸 / 深浅切换由 onStyleChanged 再走一遍，退出时清定时器。
-   */
-  private startDrift(): void {
-    if (this.driftTimer >= 0) {
-      clearTimeout(this.driftTimer);
-      this.driftTimer = -1;
+  /** 深色满天星：五组 2.3s ~ 4.8s 的往复淡入淡出。 */
+  private startTwinkle(): void {
+    if (this.twTimer >= 0) {
+      clearTimeout(this.twTimer);
+      this.twTimer = -1;
     }
-    this.orbitA = 0;
-    this.orbitB = 0;
-    this.glowPulseA = 0;
-    this.glowPulseB = 0;
-    if (this.plain) {
+    this.tw0 = 0;
+    this.tw1 = 0;
+    this.tw2 = 0;
+    this.tw3 = 0;
+    this.tw4 = 0;
+    if (this.plain || !this.darkMode) {
       return;
     }
-    this.driftTimer = setTimeout(() => {
-      this.driftTimer = -1;
-      // **光斑绕屏心公转**：全屏透明容器绕屏心无限旋转，光斑偏心放在容器里 →
-      // 沿大圆轨道公转。两团转速不同（40s / 56s）、方向相反 → 永远错开。
-      this.getUIContext().animateTo({
-        duration: 40000, curve: Curve.Linear, iterations: -1
-      }, () => {
-        this.orbitA = 360;
-      });
-      this.getUIContext().animateTo({
-        duration: 56000, curve: Curve.Linear, iterations: -1
-      }, () => {
-        this.orbitB = -360;
-      });
-      // **呼吸**：亮度 + 尺寸一起往复（9s / 12s 两团错相）。周期太短像闪烁，
-      // 幅度太小会被 blur 糊掉。
-      this.getUIContext().animateTo({
-        duration: 9000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
-      }, () => {
-        this.glowPulseA = 1;
-      });
-      this.getUIContext().animateTo({
-        duration: 12000, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate
-      }, () => {
-        this.glowPulseB = 1;
-      });
+    this.twTimer = setTimeout(() => {
+      this.twTimer = -1;
+      for (let g = 0; g < TWINKLE_PHASE_MS.length; g++) {
+        this.getUIContext().animateTo({
+          duration: TWINKLE_PHASE_MS[g], curve: Curve.EaseInOut,
+          iterations: -1, playMode: PlayMode.Alternate
+        }, () => {
+          this.setTw(g, 1);
+        });
+      }
     }, 600);
   }
 
+  private setTw(g: number, v: number): void {
+    if (g === 0) {
+      this.tw0 = v;
+    } else if (g === 1) {
+      this.tw1 = v;
+    } else if (g === 2) {
+      this.tw2 = v;
+    } else if (g === 3) {
+      this.tw3 = v;
+    } else {
+      this.tw4 = v;
+    }
+  }
+
+  /** 一颗背景星的透明度：所在相位 × 自己那点幅度差 */
+  private twinkleOf(s: TwinkleSpec): number {
+    const p: number = s.g === 0 ? this.tw0 : s.g === 1 ? this.tw1
+      : s.g === 2 ? this.tw2 : s.g === 3 ? this.tw3 : this.tw4;
+    return 0.16 + p * (0.40 + s.d * 0.16);
+  }
+
+  /** 换壁纸 / 深浅切换 → 满天星重新起（恒星系随 @Prop 自己更新） */
+  private onStyleChanged(): void {
+    this.startTwinkle();
+  }
+
+  private def(): GenWallpaperDef {
+    const found: GenWallpaperDef | null = resolveGenWallpaper(this.styleId, this.darkMode);
+    return found !== null ? found : GEN_WALLPAPERS[0];
+  }
+
+  /** 记下容器尺寸（vp）。没变就不写，省掉一次全组件重绘。 */
+  private rememberSize(area: Area): void {
+    const w: Length = area.width;
+    const h: Length = area.height;
+    if (typeof w === 'number' && typeof h === 'number'
+      && (w !== this.boxW || h !== this.boxH)) {
+      this.boxW = w;
+      this.boxH = h;
+    }
+  }
+
   build() {
-    Stack() {
+    Stack({ alignContent: Alignment.TopStart }) {
       Column()
         .width('100%')
         .height('100%')
@@ -281,120 +693,31 @@ export struct GenWallpaper {
           colors: [[this.def().top, 0.0], [this.def().bottom, 1.0]]
         })
 
-      // 左上暖光（plain 模式不画：设置页等内容为主的地方不要两个圆）。
-      // **公转结构**：全屏透明容器绕屏心无限旋转（orbitA/orbitB），
-      // 光斑中心放在**距屏心约 12~19% 屏宽**的偏心位置 → 沿小半径大圆轨道公转，
-      // **始终在屏内**（之前 position 让光斑中心在屏外，一转就转出屏幕看不见）。
-      // **径向渐变 + 呼吸透明度**：光斑从中心向边缘渐隐，透明度随 glowPulse 往复。
-      if (!this.plain) {
-      Stack()
-        .width('100%')
-        .height('100%')
-        .hitTestBehavior(HitTestMode.None)
-        .rotate({
-          x: 0, y: 0, z: 1,
-          angle: this.orbitA,
-          centerX: '50%', centerY: '50%'
-        }) {
-          Column()
-            // **光斑收小**（72% → 46%）：原来是一大团柔光铺满屏心，"移动"被自身面积
-            // 完全淹没了；收小之后才看得出是**一枚光点在缓慢游走**（用户反馈"光点移动不明显"）。
-            .width('46%')
-            .aspectRatio(1)
-            .borderRadius('50%')
-            .radialGradient({
-              center: ['50%', '50%'],
-              radius: 62,
-              colors: [['#B4' + this.def().glowA.substring(1), 0.0],
-                ['#4D' + this.def().glowA.substring(1), 0.55],
-                ['#00000000', 1.0]]
-            })
-            // 亮度呼吸：基础 + 峰值（幅度加大到 0.36 —— 光斑带大模糊，幅度小会被糊掉看不出）
-            .opacity((this.darkMode ? 0.18 : 0.30) + this.glowPulseA * 0.36)
-            // 尺寸呼吸：0.88 ↔ 1.12（幅度 0.24），与亮度同相
-            .scale({ x: 0.88 + this.glowPulseA * 0.24, y: 0.88 + this.glowPulseA * 0.24 })
-            .blur(56)
-            // **光斑只在角落区域活动**（用户要求：不许出现在屏幕中间）：
-            // 光斑 46% 宽 → 中心在 (x+23%, y+23%)；取 (-8%, -8%) 让中心落在 (15%, 15%)，
-            // 公转半径约 49% 屏宽 → 光斑边缘距屏心最近也有 26%，扫不到屏心附近。
-            .position({ x: '-8%', y: '-8%' })
+      // 半径按短边算，所以必须先量到尺寸；量不到就只留上面那层渐变（不影响可读性）。
+      if (this.boxW > 0 && this.boxH > 0) {
+        // 深色模式的满天星：小圆点 + 五组相位交替淡入淡出
+        if (this.darkMode) {
+          ForEach(TWINKLE_STARS, (s: TwinkleSpec, idx: number) => {
+            Circle({ width: s.d, height: s.d })
+              .fill('#FFFFFFFF')
+              .position({ x: s.x * this.boxW, y: s.y * this.boxH })
+              .opacity(this.twinkleOf(s))
+          }, (s: TwinkleSpec, idx: number) => 'tw' + idx)
         }
 
-      // 右下冷光（反向公转：130s 一圈，轨道半径约 15%）
-      Stack()
-        .width('100%')
-        .height('100%')
-        .hitTestBehavior(HitTestMode.None)
-        .rotate({
-          x: 0, y: 0, z: 1,
-          angle: this.orbitB,
-          centerX: '50%', centerY: '50%'
-        }) {
-          Column()
-            // 78% → 50%（与上面同理：收小才有"光点在走"的观感）
-            .width('50%')
-            .aspectRatio(1)
-            .borderRadius('50%')
-            .radialGradient({
-              center: ['50%', '50%'],
-              radius: 62,
-              colors: [['#B4' + this.def().glowB.substring(1), 0.0],
-                ['#4D' + this.def().glowB.substring(1), 0.55],
-                ['#00000000', 1.0]]
-            })
-            .opacity((this.darkMode ? 0.14 : 0.26) + this.glowPulseB * 0.32)
-            .scale({ x: 0.88 + this.glowPulseB * 0.24, y: 0.88 + this.glowPulseB * 0.24 })
-            .blur(62)
-            // 同上：光斑 50% 宽 → 中心在 (x+25%, y+25%)；取 (58%, 58%) 让中心落在 (83%, 83%)，
-            // 公转半径约 47% 屏宽 → 同样只在角落区域活动，反向公转。
-            .position({ x: '58%', y: '58%' })
-        }
+        // 五组恒星系：各自公转 + 各自漫游
+        ForEach(SOLAR_SYSTEMS, (s: SolarSpec, idx: number) => {
+          SolarSystem({
+            idx: idx, boxW: this.boxW, boxH: this.boxH,
+            styleId: this.styleId, darkMode: this.darkMode, plain: this.plain
+          })
+        }, (s: SolarSpec, idx: number) => 'sys' + idx)
       }
-
-      // 细纹：等距细线（宣纸纤维 / 竹影竖纹的抽象）
-      Column()
-        .width('100%')
-        .height('100%')
-        .linearGradient({
-          angle: 90,
-          colors: [[this.def().weave, 0.0], ['#00000000', 0.5], [this.def().weave, 1.0]],
-          repeating: true
-        })
-        .opacity(0.5)
     }
     .width('100%')
     .height('100%')
-  }
-
-  /**
-   * 换壁纸 → 漂移动画重新起：那四条 animateTo 绑的是这一份组件实例的状态，
-   * 内容换了之后旧动画不会跟过来。
-   */
-  private onStyleChanged(): void {
-    this.startDrift();
-  }
-
-  /** 取当前定义；id 非法时退到「澄光」，保证一定画得出来。 */
-  private def(): GenWallpaperDef {
-    const found: GenWallpaperDef | null = this.resolve(this.styleId);
-    return found !== null ? found : GEN_WALLPAPERS[0];
-  }
-
-  /**
-   * 深色孪生解析：深色模式下自动改用该款的 darkId，
-   * 于是「默认主题」在浅色是竹影、深色自动变夜笺，深浅都成立。
-   */
-  private resolve(id: string): GenWallpaperDef | null {
-    const found: GenWallpaperDef | null = genWallpaperById(id);
-    if (found === null) {
-      return null;
-    }
-    if (this.darkMode && found.darkId.length > 0 && found.darkId !== found.id) {
-      const twin: GenWallpaperDef | null = genWallpaperById(found.darkId);
-      if (twin !== null) {
-        return twin;
-      }
-    }
-    return found;
+    .onAreaChange((oldArea: Area, newArea: Area) => {
+      this.rememberSize(newArea);
+    })
   }
 }
