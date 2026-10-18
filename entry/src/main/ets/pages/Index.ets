@@ -160,7 +160,7 @@ const FLOAT_PRESS_MS: number = 380;
 /** 按下后手指移动超过这个距离就算拖拽 / 滚动，不再弹面板 */
 const FLOAT_PRESS_SLOP: number = 10;
 /** 面板已经弹出后，再拖开超过这个距离（不分方向）就收起面板 */
-const FLOAT_DRAG_DISMISS: number = 24;
+const FLOAT_DRAG_DISMISS: number = 60;
 /** 长按遮罩的模糊半径（vp）：与打开搜索时的 cellBlur 同一档 */
 const FLOAT_BLUR_RADIUS: number = 6;
 
@@ -701,6 +701,9 @@ struct Index {
   private floatTimer: number = -1;
   private floatDownX: number = 0;
   private floatDownY: number = 0;
+  /** 按下点的**窗口坐标**：拖拽事件给的就是窗口坐标，两者才能直接比距离 */
+  private floatDownWinX: number = 0;
+  private floatDownWinY: number = 0;
   /**
    * 面板是**这次按下**弹出来的。长按松手时 ArkUI 照样会补一次 click 到格子上，
    * 那是同一次手势带出来的，不能当成"用户点了一下封面" —— 否则就变成
@@ -742,6 +745,8 @@ struct Index {
       if (n > 0) {
         this.floatDownX = e.touches[n - 1].x;
         this.floatDownY = e.touches[n - 1].y;
+        this.floatDownWinX = e.touches[n - 1].windowX;
+        this.floatDownWinY = e.touches[n - 1].windowY;
       }
       this.floatTimer = setTimeout((): void => {
         this.floatTimer = -1;
@@ -857,11 +862,42 @@ struct Index {
   }
 
   /**
-   * 拖动预览进入**别的**格子 = 用户确实在拖 → 收掉面板（含背景模糊）。
-   * 进入自己那一格不算（手指按在原位没动过），否则长按会被自己取消。
+   * 预览进入**别的**格子：只登记悬停目标，**不**收面板。
+   * 格子是紧挨着的，靠"进没进别的格子"判断位移，动一点点就收起（用户实测）。
+   * 收面板改由 floatDragProbe（拖开够远）与 floatDragLeftCell（离开本格）决定。
    */
-  private floatMenuCancelOnDrag(name: string): void {
-    if (this.floatKind.length > 0 && this.floatName !== name) {
+  /**
+   * 拖拽过程中按**拖拽事件自己的坐标**量距离：超过 FLOAT_DRAG_DISMISS（不分方向）
+   * 就收面板。挂在被拖那一格的 onDragMove 上 —— 手指还在本格里来回挪不算，
+   * 拖开一段才收（之前用"预览进入别的格子"判断，格子是紧挨着的，动一点点就收）。
+   */
+  private floatDragProbe(ev: DragEvent, name: string): void {
+    if (this.floatKind.length === 0 || this.floatName !== name) {
+      return;
+    }
+    let dx: number = 0;
+    let dy: number = 0;
+    try {
+      dx = Math.abs(ev.getWindowX() - this.floatDownWinX);
+      dy = Math.abs(ev.getWindowY() - this.floatDownWinY);
+    } catch (err) {
+      return;
+    }
+    if (dx > FLOAT_DRAG_DISMISS || dy > FLOAT_DRAG_DISMISS) {
+      this.floatOpenedByPress = false;
+      this.closeFloatMenu();
+    }
+  }
+
+  /**
+   * 预览**离开被拖那一格** → 收面板。
+   * 往格子里的空白方向拖（下方、侧边）时不会进入任何邻居格子，onDragMove 也就
+   * 不再回调，只靠距离判断会漏掉（用户实测：左右两侧的文档往下拖不消失）。
+   * 离开本格本身就是"拖开了一段距离"，所以这里直接收。
+   */
+  private floatDragLeftCell(name: string): void {
+    if (this.floatKind.length > 0 && this.floatName === name) {
+      this.floatOpenedByPress = false;
       this.closeFloatMenu();
     }
   }
@@ -3718,12 +3754,15 @@ struct Index {
     // 拖到本格上方 → 轻微缩小，给"可以放这里"的反馈（用户要求）；
     // 悬停满 1.5 秒 → 显示「松手换位」（用户要求：拖到其他文档上方 1.5 秒自动交换）
     .onDragEnter((event: DragEvent) => {
-      // 预览进入别格 = 真的在拖 → 收掉长按面板（松手没拖则面板留着）
-      this.floatMenuCancelOnDrag(meta.name);
       this.hoverDropAt = meta.name;
       this.trackSwapHover(meta.name);
     })
+    // 拖拽中：量位移够远就收面板；离开本格也收（往下拖进空白不会进任何邻居）
+    .onDragMove((event: DragEvent) => {
+      this.floatDragProbe(event, meta.name);
+    })
     .onDragLeave((event: DragEvent) => {
+      this.floatDragLeftCell(meta.name);
       if (this.hoverDropAt === meta.name) {
         this.hoverDropAt = '';
       }
@@ -3880,10 +3919,14 @@ struct Index {
     })
     // 拖到本格上方 → 轻微缩小反馈
     .onDragEnter((event: DragEvent) => {
-      this.floatMenuCancelOnDrag(folder.name);
       this.hoverDropAt = folder.name;
     })
+    // 拖拽中：量位移够远就收面板；离开本格也收（往下拖进空白不会进任何邻居）
+    .onDragMove((event: DragEvent) => {
+      this.floatDragProbe(event, folder.name);
+    })
     .onDragLeave((event: DragEvent) => {
+      this.floatDragLeftCell(folder.name);
       if (this.hoverDropAt === folder.name) {
         this.hoverDropAt = '';
       }
@@ -5912,11 +5955,15 @@ struct Index {
     })
     .onDragEnter((event: DragEvent) => {
       // 预览进入别行 = 真的在拖 → 收掉长按面板（松手没拖则面板留着）
-      this.floatMenuCancelOnDrag(meta.name);
       this.hoverDropAt = meta.name;
       this.trackSwapHover(meta.name);
     })
+    // 拖拽中：量位移够远就收面板；离开本行也收（往下拖进空白不会进任何邻居）
+    .onDragMove((event: DragEvent) => {
+      this.floatDragProbe(event, meta.name);
+    })
     .onDragLeave((event: DragEvent) => {
+      this.floatDragLeftCell(meta.name);
       if (this.hoverDropAt === meta.name) {
         this.hoverDropAt = '';
       }
@@ -6014,10 +6061,14 @@ struct Index {
       return info;
     })
     .onDragEnter((event: DragEvent) => {
-      this.floatMenuCancelOnDrag(folder.name);
       this.hoverDropAt = folder.name;
     })
+    // 拖拽中：量位移够远就收面板；离开本行也收（往下拖进空白不会进任何邻居）
+    .onDragMove((event: DragEvent) => {
+      this.floatDragProbe(event, folder.name);
+    })
     .onDragLeave((event: DragEvent) => {
+      this.floatDragLeftCell(folder.name);
       if (this.hoverDropAt === folder.name) {
         this.hoverDropAt = '';
       }
