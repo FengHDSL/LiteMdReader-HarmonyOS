@@ -238,26 +238,6 @@ struct Index {
   }
   @StorageLink('wallpaperBlur') wallpaperBlur: number = 4;
   @StorageLink('wallpaperScrim') wallpaperScrim: number = 42;
-  /**
-   * 退场露出书架时的全屏模糊：阅读页缩回封面那一刻，书架先在底下糊着，
-   * 再一路淡到清晰（用户要求"从浓到淡再消失"）。强度由 Reader.heroExit 写进
-   * AppStorage，这里 @Watch 到就立刻上浓、再用同样 400ms 的动画收到 0。
-   */
-  @State shelfRevealBlur: number = 0;
-  @StorageProp('shelfRevealBlur') @Watch('startShelfRevealBlur') shelfRevealBlurSig: number = 0;
-
-  private startShelfRevealBlur(): void {
-    const strong: number = this.shelfRevealBlurSig;
-    if (strong <= 0) {
-      return;
-    }
-    // 信号复位，下一次退场才还能触发（写 0 会再进一次本方法，被上面的判据挡掉）
-    AppStorage.setOrCreate('shelfRevealBlur', 0);
-    this.shelfRevealBlur = strong;
-    this.getUIContext().animateTo({ duration: 400, curve: Curve.FastOutSlowIn }, () => {
-      this.shelfRevealBlur = 0;
-    });
-  }
   /** 外观刷新计数（见 SettingsMirror）：主题色 / 灰字 / 沾色改完后靠它重算派生色 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** AI 后台生成完成的新事件计数（>0 时书架 AI 入口显示官方 Badge 角标） */
@@ -7580,43 +7560,14 @@ struct Index {
         this.rootHeight = rawH;
       }
     })
-    // 阅读页退场缩回封面时，底下露出的书架**由浓到淡再消失**（信号见 Reader.heroExit）
-    .blur(this.shelfRevealBlur)
     }
     .hideTitleBar(true)
     .mode(NavigationMode.Stack)
     .navDestination(this.navPageBuilder)
-    .customNavContentTransition((from: NavContentInfo, to: NavContentInfo,
-      operation: NavigationOperation): NavigationAnimatedTransition | undefined => {
-      return this.readerHeroTransition(from, to);
-    })
     // **主题纪元拼进 key**：系统深浅 / 应用主题一变，整棵组件树重建一次，
     // 材质、壁纸、所有派生色一次刷新到位（不用再"进别的页面"才完全刷新）。
     // key 里必须带真正变化的量（themeEpoch），否则每个节点 key 相同 = 没换 key。
     .key('index_theme_' + this.themeEpoch + '_l' + this.languageTick)
-  }
-
-  /**
-   * 阅读页「一镜到底」退场不做系统转场。
-   *
-   * heroExit 已经把整页缩回封面那一格，Navigation 默认的 Pop 还会再叠一次横向
-   * 滑出 —— 用户看到的「缩完又侧滑收起」就是它，落点也会跟着滑偏。这里只在
-   * 阅读页写好 `heroPopPending` 的那一次把交接改成瞬切（finishTransition），
-   * 其余情况返回 undefined，沿用各页自己的 pageTransition（含侧滑返回手势）。
-   */
-  private readerHeroTransition(from: NavContentInfo, to: NavContentInfo): NavigationAnimatedTransition | undefined {
-    if (from.name !== 'pages/Reader' || AppStorage.get<boolean>('heroPopPending') !== true) {
-      return undefined;
-    }
-    // 消费掉标志：下一次（例如侧滑返回）要回到系统默认转场
-    AppStorage.setOrCreate('heroPopPending', false);
-    const t: NavigationAnimatedTransition = {
-      timeout: 320,
-      transition: (proxy: NavigationTransitionProxy): void => {
-        proxy.finishTransition();
-      }
-    };
-    return t;
   }
 
   /**

@@ -1264,40 +1264,20 @@ export struct Reader {
     }, 32);
   }
 
-  /** 一镜到底·退场：缩回来源封面位置后再真正返回（动画期间下层书架可见）。 */
+  /**
+   * 退场：直接交回系统转场（侧滑收起，与侧滑返回手势同一条动画）。
+   *
+   * 曾经这里做「缩回封面那一格」的一镜到底退场（配下层书架由浓到淡的模糊），
+   * 用户看过之后改主意了：不要缩小，退出就跟侧滑返回一样。进场仍然从封面
+   * 那一格展开（见 heroEnter），只有退场回到系统默认。
+   */
   private heroExit(): void {
     if (this.heroExiting) {
       return;
     }
-    const init: HeroInit | null = this.heroInit;
-    if (init === null) {
-      this.backNow();
-      return;
-    }
     this.heroExiting = true;
     this.flushProgress();
-    // 退场时底下露出的是真实书架：给它一个**由浓到淡再消失**的全屏模糊
-    // （书架那边 @Watch 这个信号自己做动画）。信号写在这里、消费在书架。
-    AppStorage.setOrCreate('shelfRevealBlur', 24);
-    this.getUIContext().animateTo({
-      duration: 400,
-      curve: Curve.FastOutSlowIn,
-      onFinish: () => {
-        this.heroExiting = false;
-        // 告诉书架的 customNavContentTransition：这一次 pop 别再叠系统转场了。
-        // 页面已经缩到封面那一格，Navigation 默认的横向滑出会在它之后再来一次
-        //「侧滑收起」（用户反馈），落点也会跟着滑偏。
-        AppStorage.setOrCreate('heroPopPending', true);
-        this.backNow();
-      }
-    }, () => {
-      this.heroScale = init.scale;
-      this.heroX = init.translateX;
-      this.heroY = init.translateY;
-      this.heroClipW = init.clipW;
-      this.heroClipH = init.clipH;
-      this.heroBg = 0;
-    });
+    this.backNow();
   }
 
   /** 真正返回（路由 back）。**不要在这里调 heroExit，否则递归**。 */
@@ -2149,16 +2129,8 @@ export struct Reader {
     });
     this.closeTabMenu();
     if (next.length === 0) {
-      // 最后一个标签关掉了，回书架
-      try {
-        // 返程共享元素动画：必须包在 animateTo 里
-        this.getUIContext().animateTo({ duration: 350, curve: Curve.FastOutSlowIn }, () => {
-          // 一镜到底退场：先缩回书架封面位置，动画结束再真正返回
-          this.heroExit();
-        });
-      } catch (err) {
-        this.toast(L10n.t('返回失败'));
-      }
+      // 最后一个标签关掉了，回书架（退场走系统侧滑收起，见 heroExit）
+      this.heroExit();
       return;
     }
     if (wasActive && next !== this.docName) {
@@ -2182,15 +2154,8 @@ export struct Reader {
     TabStore.closeAll();
     this.tabs = TabStore.list();
     this.closeTabMenu();
-    try {
-      // 返程共享元素动画：必须包在 animateTo 里
-      this.getUIContext().animateTo({ duration: 350, curve: Curve.FastOutSlowIn }, () => {
-        // 一镜到底退场：先缩回书架封面位置，动画结束再真正返回
-        this.heroExit();
-      });
-    } catch (err) {
-      this.toast(L10n.t('返回失败'));
-    }
+    // 全部标签关掉就回书架（退场走系统侧滑收起，见 heroExit）
+    this.heroExit();
   }
 
   /** 重新解析当前文档（标签菜单里的「刷新」）。 */
