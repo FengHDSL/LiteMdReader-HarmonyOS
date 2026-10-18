@@ -332,8 +332,8 @@ struct SolarSystem {
     return this.sc * (0.35 + 0.65 * this.gr);
   }
 
-  /** 盒子边长：装得下最外圈轨道 */
-  private size(): number {
+  /** 盒子边长：装得下最外圈轨道（**不能取名 size** —— CustomComponent 已有 size 属性方法） */
+  private boxSize(): number {
     let maxR: number = 0.21;
     for (let i = 0; i < this.pl; i++) {
       const r: number = (0.21 + i * 0.12);
@@ -389,7 +389,7 @@ struct SolarSystem {
             .fillOpacity(0)
             .stroke(withAlpha(this.def().weave, this.darkMode ? '8C' : '9E'))
             .strokeWidth(1)
-            .position({ x: this.size() / 2 - this.orbitD(i) / 2, y: this.size() / 2 - this.orbitD(i) / 2 })
+            .position({ x: this.boxSize() / 2 - this.orbitD(i) / 2, y: this.boxSize() / 2 - this.orbitD(i) / 2 })
         }, (i: number) => 'r' + i)
       }
 
@@ -402,7 +402,7 @@ struct SolarSystem {
             [brightAlpha(this.hex, 72, SolarField.params.bright * (1 - this.dk * 0.7)), 0.42],
             ['#00000000', 1.0]]
         })
-        .position({ x: this.size() / 2 - this.haloD() / 2, y: this.size() / 2 - this.haloD() / 2 })
+        .position({ x: this.boxSize() / 2 - this.haloD() / 2, y: this.boxSize() / 2 - this.haloD() / 2 })
         .opacity(0.72 + this.pulse * 0.30)
         .scale({ x: 0.94 + this.pulse * 0.10, y: 0.94 + this.pulse * 0.10 })
 
@@ -415,8 +415,8 @@ struct SolarSystem {
           .stroke(withAlpha('#FFC178', 'BF'))
           .strokeWidth(2.2 * this.rg + 0.6)
           .position({
-            x: this.size() / 2 - this.coreD() * (0.9 + this.rg * 1.1) / 2,
-            y: this.size() / 2 - this.coreD() * (0.9 + this.rg * 1.1) * 0.17
+            x: this.boxSize() / 2 - this.coreD() * (0.9 + this.rg * 1.1) / 2,
+            y: this.boxSize() / 2 - this.coreD() * (0.9 + this.rg * 1.1) * 0.17
           })
           .rotate({ x: 0, y: 0, z: 1, angle: this.orb * 1.6, centerX: '50%', centerY: '50%' })
       }
@@ -430,7 +430,7 @@ struct SolarSystem {
             [mixHex(this.hex, '#05060A', this.dk), 0.62],
             ['#00000000', 1.0]]
         })
-        .position({ x: this.size() / 2 - this.coreD() / 2, y: this.size() / 2 - this.coreD() / 2 })
+        .position({ x: this.boxSize() / 2 - this.coreD() / 2, y: this.boxSize() / 2 - this.coreD() / 2 })
         .opacity(0.88 + this.pulse * 0.12)
 
       // 行星：每颗一个轨道大小的容器绕自己的心转（合成层，每帧零 JS）
@@ -443,7 +443,7 @@ struct SolarSystem {
           }
           .width(this.orbitD(i))
           .height(this.orbitD(i))
-          .position({ x: this.size() / 2 - this.orbitD(i) / 2, y: this.size() / 2 - this.orbitD(i) / 2 })
+          .position({ x: this.boxSize() / 2 - this.orbitD(i) / 2, y: this.boxSize() / 2 - this.orbitD(i) / 2 })
           .hitTestBehavior(HitTestMode.None)
           .rotate({
             x: 0, y: 0, z: 1, angle: this.planetAngle(i),
@@ -452,11 +452,11 @@ struct SolarSystem {
         }, (i: number) => 'p' + i)
       }
     }
-    .width(this.size())
-    .height(this.size())
+    .width(this.boxSize())
+    .height(this.boxSize())
     .position({
-      x: this.px * this.boxW - this.size() / 2,
-      y: this.py * this.boxH - this.size() / 2
+      x: this.px * this.boxW - this.boxSize() / 2,
+      y: this.py * this.boxH - this.boxSize() / 2
     })
     .hitTestBehavior(HitTestMode.None)
   }
