@@ -20,7 +20,6 @@ import { ImmersiveInput } from '../material/ImmersiveInput';
 import { SettingsShell } from './SettingsShell';
 import { applySystemBarTheme, applyAppColorMode, isPhoneDevice, setPhoneLandscapeAllowed } from '../service/AppWindow';
 import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
-import { FuncExpr } from '../theme/FuncExpr';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { L10n } from '../service/L10n';
@@ -100,14 +99,6 @@ export struct SettingsAppearance {
   @State showLangSection: boolean = false;
   /** 函数绘制壁纸选中款（空 = 不用） */
   @StorageLink('wallpaperGenId') genWallId: string = '';
-  /** 自定义函数壁纸三键（GenWallpaper 的 custom 分支读取绘制） */
-  @StorageLink('wallpaperCustomFunc') customFunc: string = 'sin(x*4)*0.25+0.75';
-  @StorageLink('wallpaperCustomA') customA: string = '#1E222B';
-  @StorageLink('wallpaperCustomB') customB: string = '#E8EDF4';
-  /** 编辑草稿（点「应用」先校验再写生效键） */
-  @State customFuncDraft: string = '';
-  @State customADraft: string = '';
-  @State customBDraft: string = '';
   /** 应用壁纸（手选图）的路径 / 模糊 / 遮罩 */
   @StorageProp('wallpaperPath') wallpaperPath: string = '';
   /** 浅色 / 深色模式各自的壁纸路径（自动切换不同壁纸） */
@@ -196,29 +187,6 @@ export struct SettingsAppearance {
     }
     WallpaperStore.clearFor(c as common.UIAbilityContext, this.wallpaperEditMode === 'dark');
     this.toast(this.s('已清除壁纸'));
-  }
-
-  /**
-   * 应用自定义函数壁纸：先本地编译表达式校验语法，颜色做 #RRGGBB 归一；
-   * 通过后写生效键并选中 custom 款。失败只提示，不覆盖上次有效值。
-   */
-  private applyCustomFuncWallpaper(): void {
-    const check: FuncExpr = FuncExpr.compile(this.customFuncDraft);
-    if (!check.ok) {
-      this.toast(this.s1('表达式有误：%1', check.error));
-      return;
-    }
-    const normA: string = normalizeHex8(this.customADraft);
-    const normB: string = normalizeHex8(this.customBDraft);
-    if (normA.length === 0 || normB.length === 0) {
-      this.toast(this.s('颜色格式：#RRGGBB'));
-      return;
-    }
-    this.customFunc = this.customFuncDraft;
-    this.customA = '#' + normA.substring(3, 9);
-    this.customB = '#' + normB.substring(3, 9);
-    this.genWallId = 'custom';
-    this.toast(this.s('已应用自定义函数壁纸'));
   }
 
   private rememberSliderSize(area: Area): void {
@@ -400,10 +368,6 @@ export struct SettingsAppearance {
   aboutToAppear(): void {
     // 拨杆与生效主题对齐（从别处改过主题再进这页时不能对不上）
     this.themeKnobOn = this.themeMode === ReaderThemeMode.Dark;
-    // 草稿带入当前生效值（已用自定义函数壁纸时打开设置即可见）
-    this.customFuncDraft = this.customFunc;
-    this.customADraft = this.customA;
-    this.customBDraft = this.customB;
     // 灰字自定义草稿带入各自当前值
     this.grayDraftLight = this.grayColorLight;
     this.grayDraftDark = this.grayColorDark;
@@ -941,92 +905,7 @@ export struct SettingsAppearance {
           }
           .width('100%')
 
-          // ── 自定义函数壁纸（用户要求：支持手动写函数绘画）──
           Divider().strokeWidth(1).color(this.palette().divider)
-
-          Text(this.s('自定义函数壁纸'))
-            .fontSize(HwType.label)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.palette().textPrimary)
-            .width('100%')
-          Text(this.s('写一个 f(x, y) 表达式（结果 0~1），逐格上色：值越大越接近亮色。变量 x / y 是 0~1 的位置；可用 + - * / ^ ( ) 与 sin cos tan abs sqrt floor round min max pow、pi、e'))
-            .fontSize(HwType.caption)
-            .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.6)
-            .width('100%')
-
-          ImmersiveInput({
-            palette: this.palette(),
-            text: this.customFuncDraft,
-            placeholder: this.s('例如 sin(x*4)*0.25+0.75'),
-            onInput: (value: string) => {
-              this.customFuncDraft = value;
-            }
-          })
-            .width('100%')
-
-          Row({ space: HwSpace.xs }) {
-            ImmersiveInput({
-              palette: this.palette(),
-              text: this.customADraft,
-              placeholder: this.s('暗端 #1E222B'),
-              onInput: (value: string) => {
-                this.customADraft = value;
-              }
-            })
-              .layoutWeight(1)
-            ImmersiveInput({
-              palette: this.palette(),
-              text: this.customBDraft,
-              placeholder: this.s('亮端 #E8EDF4'),
-              onInput: (value: string) => {
-                this.customBDraft = value;
-              }
-            })
-              .layoutWeight(1)
-            ImmersiveChip({
-              palette: this.palette(),
-              chipActive: this.genWallId === 'custom',
-              chipLabel: this.s('应用'),
-              chipOnTap: () => {
-                this.applyCustomFuncWallpaper();
-              }
-            })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          Row({ space: HwSpace.xs }) {
-            Text(this.s('示例'))
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textTertiary)
-            ImmersiveChip({
-              palette: this.palette(),
-              chipLabel: this.s('波纹'),
-              chipOnTap: () => {
-                this.customFuncDraft = 'sin(x*6.28)*sin(y*6.28)*0.4+0.6';
-                this.applyCustomFuncWallpaper();
-              }
-            })
-            ImmersiveChip({
-              palette: this.palette(),
-              chipLabel: this.s('对角波'),
-              chipOnTap: () => {
-                this.customFuncDraft = 'sin((x+y)*9)*0.35+0.65';
-                this.applyCustomFuncWallpaper();
-              }
-            })
-            ImmersiveChip({
-              palette: this.palette(),
-              chipLabel: this.s('涟漪'),
-              chipOnTap: () => {
-                this.customFuncDraft = 'sqrt(abs(sin(sqrt((x-0.5)*(x-0.5)+(y-0.5)*(y-0.5))*20)))*0.7+0.3';
-                this.applyCustomFuncWallpaper();
-              }
-            })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
 
           // 模糊只对手选的图片壁纸有意义；遮罩与「取消蒙版」对两类壁纸都生效
           // （程序化壁纸也会叠这层可读性遮罩），所以放在条件外。

@@ -9,7 +9,6 @@
  * 配色全部落在宣纸、砚台、松烟、竹影、晚霞、夜笺这组中国传统纸墨色里。
  */
 
-import { FuncExpr } from './FuncExpr';
 import { L10n } from '../service/L10n';
 
 /** 一款程序化壁纸的定义 */
@@ -35,11 +34,6 @@ export interface GenWallpaperDef {
 
 /** AppStorage 键：选中的程序化壁纸 id；空串 = 不用 */
 export const GEN_WALLPAPER_KEY: string = 'wallpaperGenId';
-
-/** 自定义函数壁纸三键：表达式（f(x,y) → 0~1）与暗端 / 亮端颜色 */
-export const CUSTOM_WALL_FUNC_KEY: string = 'wallpaperCustomFunc';
-export const CUSTOM_WALL_A_KEY: string = 'wallpaperCustomA';
-export const CUSTOM_WALL_B_KEY: string = 'wallpaperCustomB';
 
 /** '#RRGGBB' → [r,g,b]；非法回退默认。 */
 function parseRgb(hex: string, fallback: number[]): number[] {
@@ -172,20 +166,11 @@ function mixHex(a: string, b: string, k: number): string {
  * 深浅必须解析**孪生款**（竹影 → 夜笺），否则深色下会拿到浅色款的亮色
  * —— 与 `DesignTokens.autoBackdropLuminance()` 同一套口径。
  *
- * 自定义函数壁纸（id === 'custom'）没有预设款：它的底色是用户在
- * 「外观 → 壁纸 → 自定义」里挑的 A（暗端）/ B（亮端），同样取中值。
- * 这两端色由调用方传入（而不是在这里读 AppStorage）：纯函数里读全局态
- * **不登记渲染依赖**，改色后已画出的侧边栏不会重算。
- *
  * @returns '#AARRGGBB'；返回空串表示找不到该款式（调用方自行回落）。
  */
-export function genWallpaperFlatColor(id: string, dark: boolean,
-                                      customA: string, customB: string): string {
+export function genWallpaperFlatColor(id: string, dark: boolean): string {
   if (id.length === 0) {
     return '';
-  }
-  if (id === 'custom') {
-    return mixHex(customA, customB, 0.5);
   }
   const def: GenWallpaperDef | null = genWallpaperById(id);
   if (def === null) {
@@ -225,31 +210,15 @@ export struct GenWallpaper {
   @State glowPulseB: number = 0;
   /** 漂移动画的启动定时器（首帧之后才播；换壁纸 / 重建都要重来） */
   private driftTimer: number = -1;
-  /** 自定义函数壁纸的时间轴与重绘节拍 */
-  private customPhase: number = 0;
-  private customTimer: number = -1;
-  // ── 自定义函数壁纸（styleId === 'custom'）──
-  private customCtx: CanvasRenderingContext2D =
-    new CanvasRenderingContext2D(new RenderingContextSettings(true));
-  @State customW: number = 0;
-  @State customH: number = 0;
-  @StorageProp('wallpaperCustomFunc') @Watch('onCustomChanged') customFunc: string = 'sin(x*4)*0.25+0.75';
-  @StorageProp('wallpaperCustomA') @Watch('onCustomChanged') customColorA: string = '#1E222B';
-  @StorageProp('wallpaperCustomB') @Watch('onCustomChanged') customColorB: string = '#E8EDF4';
 
   aboutToAppear(): void {
     this.startDrift();
-    this.restartCustomTick();
   }
 
   aboutToDisappear(): void {
     if (this.driftTimer >= 0) {
       clearTimeout(this.driftTimer);
       this.driftTimer = -1;
-    }
-    if (this.customTimer >= 0) {
-      clearInterval(this.customTimer);
-      this.customTimer = -1;
     }
   }
 
@@ -302,45 +271,7 @@ export struct GenWallpaper {
     }, 600);
   }
 
-  /**
-   * 自定义函数壁纸的时间轴：FuncExpr 一直支持 `t` 变量，但**以前这里把 t 写死成 0**，
-   * 所以带 `t` 的表达式也永远定格在同一帧。现在按秒推进、约 3fps 重绘
-   * （整屏 step=12 网格每帧两千多格，帧率再高就是白烧 CPU，而"缓慢移动"本来就要慢）。
-   */
-  private restartCustomTick(): void {
-    if (this.customTimer >= 0) {
-      clearInterval(this.customTimer);
-      this.customTimer = -1;
-    }
-    if (this.styleId !== 'custom') {
-      return;
-    }
-    this.customTimer = setInterval(() => {
-      this.customPhase = this.customPhase + 0.35;
-      this.drawCustom();
-    }, 350);
-  }
-
   build() {
-    // ── 自定义函数壁纸（用户手写 f(x,y)，Canvas 逐格采样上色）──
-    if (this.styleId === 'custom') {
-      Canvas(this.customCtx)
-        .width('100%')
-        .height('100%')
-        .onReady(() => {
-          this.drawCustom();
-        })
-        .onAreaChange((oldArea: Area, newArea: Area) => {
-          const w: Length = newArea.width;
-          const h: Length = newArea.height;
-          if (typeof w === 'number' && typeof h === 'number'
-            && (w !== this.customW || h !== this.customH)) {
-            this.customW = w;
-            this.customH = h;
-            this.drawCustom();
-          }
-        })
-    } else {
     Stack() {
       Column()
         .width('100%')
@@ -433,42 +364,14 @@ export struct GenWallpaper {
     }
     .width('100%')
     .height('100%')
-    }
-  }
-
-  /** 三个自定义键任意变化 → 重绘。 */
-  private onCustomChanged(): void {
-    this.drawCustom();
   }
 
   /**
-   * 换壁纸（含从别处切到 / 切走「自定义」）→ 动画与时间轴都要重新起：
-   * 光斑那四条 animateTo 绑的是这一份组件实例的状态，`if` 分支换了内容后
-   * 旧动画不会跟过来；自定义的定时器也不该在别的壁纸下空转。
+   * 换壁纸 → 漂移动画重新起：那四条 animateTo 绑的是这一份组件实例的状态，
+   * 内容换了之后旧动画不会跟过来。
    */
   private onStyleChanged(): void {
     this.startDrift();
-    this.restartCustomTick();
-    this.drawCustom();
-  }
-
-  /** 自定义函数壁纸：按 step 网格采样 f(x,y)，在 A（暗端）↔ B（亮端）间插值上色。 */
-  private drawCustom(): void {
-    if (this.customW <= 0 || this.customH <= 0) {
-      return;
-    }
-    const prog: FuncExpr = FuncExpr.compile(this.customFunc);
-    const a: number[] = parseRgb(this.customColorA, [30, 34, 43]);
-    const b: number[] = parseRgb(this.customColorB, [232, 237, 244]);
-    const step: number = 12;
-    for (let gy = 0; gy <= this.customH; gy += step) {
-      for (let gx = 0; gx <= this.customW; gx += step) {
-        const v: number = prog.eval(gx / this.customW, gy / this.customH, this.customPhase);
-        this.customCtx.fillStyle = '#' + hex2(a[0] + (b[0] - a[0]) * v)
-          + hex2(a[1] + (b[1] - a[1]) * v) + hex2(a[2] + (b[2] - a[2]) * v);
-        this.customCtx.fillRect(gx, gy, step + 0.6, step + 0.6);
-      }
-    }
   }
 
   /** 取当前定义；id 非法时退到「澄光」，保证一定画得出来。 */

@@ -855,13 +855,6 @@ export struct Reader {
   private sysTabBaseY: number = 0;
   /** 函数绘制壁纸的 id（空 = 不用） */
   @StorageProp('wallpaperGenId') genWallId: string = '';
-  /**
-   * 自定义函数壁纸的两端色（暗端 A / 亮端 B）。
-   * 侧边栏关闭沉浸光感时用它算"与背景同色"的底色，**必须在本页订阅**：
-   * 纯函数里读 AppStorage 不登记渲染依赖，改色后已画出的侧边栏不会重算。
-   */
-  @StorageProp('wallpaperCustomA') customWallA: string = '#1E222B';
-  @StorageProp('wallpaperCustomB') customWallB: string = '#E8EDF4';
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
   @StorageProp('readerBgPath') readerBgPath: string = '';
   @StorageProp('readerBgId') readerBgId: string = '';
@@ -2270,8 +2263,7 @@ export struct Reader {
     }
     // ② 阅读背景生成壁纸：取当前深浅下生效款的主底色
     if (this.readerBgId.length > 0) {
-      const c: string = genWallpaperFlatColor(this.readerBgId, this.bgDark(),
-        this.customWallA, this.customWallB);
+      const c: string = genWallpaperFlatColor(this.readerBgId, this.bgDark());
       if (c.length > 0) {
         return c;
       }
@@ -2282,8 +2274,7 @@ export struct Reader {
     }
     // ④ 外观生成壁纸
     if (this.genWallId.length > 0) {
-      const c: string = genWallpaperFlatColor(this.genWallId, this.bgDark(),
-        this.customWallA, this.customWallB);
+      const c: string = genWallpaperFlatColor(this.genWallId, this.bgDark());
       if (c.length > 0) {
         return c;
       }

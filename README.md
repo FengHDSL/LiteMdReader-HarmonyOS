@@ -315,7 +315,7 @@ entry/src/main/
     service/                      DocStore / TabStore / AnnotationStore / ChartCache / BackupStore /
                                   WebDavStore / FontStore / WallpaperStore / ExportService /
                                   HeroTransition / NavLifecycle / SettingsMirror / GripAware …
-    theme/                        DesignTokens（令牌 + 调色板）/ ThemeStore / GenWallpaper / FuncExpr
+    theme/                        DesignTokens（令牌 + 调色板）/ ThemeStore / GenWallpaper
     util/                         全局上下文等小工具
     settings/ReadingSettings.ets  阅读排版设置面板（阅读页与设置页共用）
 tools/                            开发用的小脚本（括号平衡检查、构建辅助）

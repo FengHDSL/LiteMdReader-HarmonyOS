@@ -137,10 +137,6 @@ export default class EntryAbility extends UIAbility {
     // 版本历史（编辑页）：自动保存开关与间隔（分钟）
     PersistentStorage.persistProp('versionAutoSave', true);
     PersistentStorage.persistProp('versionAutoSaveInterval', 5);
-    // 自定义函数壁纸：表达式 + 暗端 / 亮端颜色
-    PersistentStorage.persistProp('wallpaperCustomFunc', 'sin(x*4)*0.25+0.75');
-    PersistentStorage.persistProp('wallpaperCustomA', '#1E222B');
-    PersistentStorage.persistProp('wallpaperCustomB', '#E8EDF4');
 
     // 壁纸：路径 + 模糊强度 + 可读性遮罩浓度
     PersistentStorage.persistProp('wallpaperPath', '');
@@ -177,6 +173,11 @@ export default class EntryAbility extends UIAbility {
     // "设置改完、退出应用重进就恢复默认"）。放在 persistProp 之后恢复，
     // 镜像更新时覆盖刚读进来的值 —— 见 service/SettingsMirror.ets 的冲突处理说明。
     SettingsMirror.restore(this.context);
+    // **旧「自定义函数壁纸」这个 id 已经不存在了**：存过 'custom' 的设备会既画不出
+    // 对应的款、设置页也没有任何芯片高亮，看起来像"壁纸丢了"。归零成「不用程序化壁纸」。
+    if (AppStorage.get<string>('wallpaperGenId') === 'custom') {
+      AppStorage.setOrCreate('wallpaperGenId', '');
+    }
     // 收藏名单的第二腿：按镜像把收藏标记补回 shelf.json（真机上出现过重启丢收藏）
     DocStore.applyStarredMirror(this.context);
     // 应用语言：把持久化的选择同步给平台（setAppPreferredLanguage 是冷启动生效，

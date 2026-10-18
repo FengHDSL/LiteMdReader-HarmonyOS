@@ -19,8 +19,6 @@ export const EN_GB_ENTRIES: L10nEntry[] = [
   { k: '自定义色也染背景', v: 'Custom colours tint it too' },
   { k: '关闭时，只有澄笺 5 色会染页面背景',
     v: 'When off, only the five 澄笺 colours tint the page background.' },
-  { k: '写一个 f(x, y) 表达式（结果 0~1），逐格上色：值越大越接近亮色。变量 x / y 是 0~1 的位置；可用 + - * / ^ ( ) 与 sin cos tan abs sqrt floor round min max pow、pi、e',
-    v: 'Write an f(x, y) expression (result 0 to 1) that colours every cell: the larger the value, the closer to the light colour. x / y are positions from 0 to 1. You can use + - * / ^ ( ) with sin cos tan abs sqrt floor round min max pow, pi and e.' },
   { k: '按压卡片时的流光改用主题色（关闭为白光）',
     v: 'Press glow follows the accent colour; off gives plain white light.' },
   { k: '卡片染上一成主题色，整体更协调（需先选主题色）',
@@ -31,7 +29,6 @@ export const EN_GB_ENTRIES: L10nEntry[] = [
   { k: '灰', v: 'Grey' },
   { k: '%1灰体文本：%2', v: '%1 grey text: %2' },
   { k: '%1灰体色已生效', v: '%1 grey text colour applied' },
-  { k: '颜色格式：#RRGGBB', v: 'Colour format: #RRGGBB' },
   { k: '主题色：%1', v: 'Accent colour: %1' },
   { k: '默认「自动」＝有背景亮度信息时按对比度选色、否则跟随主题原本的灰字；深浅两套各设各的，互不影响。',
     v: 'Auto (the default) chooses its colour by contrast when it knows how bright the background is, and otherwise follows the theme grey. Light and dark are set separately and never interfere.' }
