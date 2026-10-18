@@ -523,47 +523,52 @@ struct SolarSkyLayer {
           })
       }, (d: SolarDust, i: number) => 'd' + i + '_' + this.tick)
 
-      // 彗星：一条渐变尾巴 + 一颗头
+      // 彗星：一条渐变尾巴 + 一颗头（ForEach 的每一项只能有一个根节点，所以套 Stack）
       ForEach(this.comets, (c: SolarComet, i: number) => {
-        Column()
-          .width(this.short() * 0.30)
-          .height(2.4)
-          .linearGradient({
-            angle: 90,
-            colors: [[withAlpha('#FFFFFF', 'D8'), 0.0], ['#00000000', 1.0]]
-          })
-          .position({ x: c.x * this.boxW, y: c.y * this.boxH })
-          .rotate({
-            x: 0, y: 0, z: 1, angle: Math.atan2(c.vy * this.boxH, c.vx * this.boxW) * 180 / Math.PI + 180,
-            centerX: 0, centerY: '50%'
-          })
-        Circle({ width: 5, height: 5 })
-          .fill('#FFFFFFFF')
-          .position({ x: c.x * this.boxW - 2.5, y: c.y * this.boxH - 2.5 })
+        Stack({ alignContent: Alignment.TopStart }) {
+          Column()
+            .width(this.short() * 0.30)
+            .height(2.4)
+            .linearGradient({
+              angle: 90,
+              colors: [[withAlpha('#FFFFFF', 'D8'), 0.0], ['#00000000', 1.0]]
+            })
+            .position({ x: -this.short() * 0.30, y: -1.2 })
+          Circle({ width: 5, height: 5 })
+            .fill('#FFFFFFFF')
+            .position({ x: -2.5, y: -2.5 })
+        }
+        .width(0.1)
+        .height(0.1)
+        .position({ x: c.x * this.boxW, y: c.y * this.boxH })
+        .rotate({
+          x: 0, y: 0, z: 1,
+          angle: Math.atan2(c.vy * this.boxH, c.vx * this.boxW) * 180 / Math.PI + 180,
+          centerX: 0, centerY: 0
+        })
       }, (c: SolarComet, i: number) => 'c' + i)
 
-      // 爆炸冲击环（黑洞合并的 power 更大）
+      // 爆炸：冲击环 + 中心闪光（黑洞合并的 power 更大）
       ForEach(this.flashes, (f: SolarFlash, i: number) => {
-        Circle({ width: this.ringSize(f), height: this.ringSize(f) })
-          .fillOpacity(0)
-          .stroke(withAlpha('#FFE7B0', this.ringAlpha(f)))
-          .strokeWidth(2.6 * (1 - f.t / 1400) + 0.5)
-          .position({
-            x: f.x * this.boxW - this.ringSize(f) / 2,
-            y: f.y * this.boxH - this.ringSize(f) / 2
-          })
-        Circle({ width: this.flashSize(f), height: this.flashSize(f) })
-          .radialGradient({
-            center: [this.flashSize(f) / 2, this.flashSize(f) / 2],
-            radius: this.flashSize(f) / 2,
-            colors: [[withAlpha('#FFF3D6', this.ringAlpha(f)), 0.0],
-              [withAlpha('#FFC178', this.ringAlpha(f) * 0.4), 0.5],
-              ['#00000000', 1.0]]
-          })
-          .position({
-            x: f.x * this.boxW - this.flashSize(f) / 2,
-            y: f.y * this.boxH - this.flashSize(f) / 2
-          })
+        Stack({ alignContent: Alignment.TopStart }) {
+          Circle({ width: this.ringSize(f), height: this.ringSize(f) })
+            .fillOpacity(0)
+            .stroke(withAlpha('#FFE7B0', this.aa(this.ringLevel(f))))
+            .strokeWidth(2.6 * (1 - f.t / 1400) + 0.5)
+            .position({ x: -this.ringSize(f) / 2, y: -this.ringSize(f) / 2 })
+          Circle({ width: this.flashSize(f), height: this.flashSize(f) })
+            .radialGradient({
+              center: [this.flashSize(f) / 2, this.flashSize(f) / 2],
+              radius: this.flashSize(f) / 2,
+              colors: [[withAlpha('#FFF3D6', this.aa(this.ringLevel(f))), 0.0],
+                [withAlpha('#FFC178', this.aa(this.ringLevel(f) * 0.4)), 0.5],
+                ['#00000000', 1.0]]
+            })
+            .position({ x: -this.flashSize(f) / 2, y: -this.flashSize(f) / 2 })
+        }
+        .width(0.1)
+        .height(0.1)
+        .position({ x: f.x * this.boxW, y: f.y * this.boxH })
       }, (f: SolarFlash, i: number) => 'f' + i + '_' + this.tick)
     }
     .width('100%')
@@ -581,9 +586,14 @@ struct SolarSkyLayer {
     return this.short() * (0.10 + k * 0.30) * f.power;
   }
 
-  private ringAlpha(f: SolarFlash): string {
-    const k: number = Math.max(0, 1 - f.t / 1400);
-    return hex2(Math.round(200 * k));
+  private ringLevel(f: SolarFlash): number {
+    return Math.max(0, 1 - f.t / 1400);
+  }
+
+  /** 0~1 的亮度 → '#AARRGGBB' 里那两位透明度 */
+  private aa(level: number): string {
+    const v: number = Math.max(0, Math.min(1, level));
+    return hex2(Math.round(v * 255));
   }
 }
 
