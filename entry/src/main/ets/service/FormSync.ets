@@ -369,8 +369,9 @@ export class FormSync {
 
   /** **卡片进程「下一个」**：索引 +1（循环）→ 重写快照 → 返回新数据 */
   static studyNext(ctx: common.UIAbilityContext): formBindingData.FormBindingData {
-    const snap: StudySnapshot | null = FormSync.readStudySnapshot(ctx);
-    if (snap !== null && snap.items.length > 0) {
+    const snap0: StudySnapshot | null = FormSync.readStudySnapshot(ctx);
+    if (snap0 !== null && snap0.items.length > 0) {
+      const snap: StudySnapshot = snap0;
       snap.index = (snap.index + 1) % snap.items.length;
       try {
         const file: fs.File = fs.openSync(FormSync.studyPath(ctx),

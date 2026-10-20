@@ -2407,7 +2407,8 @@ export struct Reader {
       this.pendingBlockId = blockId;
       this.pendingStart = start;
       this.pendingEnd = end;
-      this.pendingColor = -1;
+      // **文字批注也有荧光笔效果**（用户要求）：默认黄色荧光底（索引 3）
+      this.pendingColor = 3;
       this.pendingStyle = '';
       this.noteQuote = text;
       // 公式批注：面板要带渲染与源码编辑。非公式路径必须清空，否则上一次的
@@ -2472,7 +2473,8 @@ export struct Reader {
       this.pendingBlockId = blockId;
       this.pendingStart = start;
       this.pendingEnd = end;
-      this.pendingColor = -1;
+      // **文字批注也有荧光笔效果**（用户要求）：默认黄色荧光底（索引 3）
+      this.pendingColor = 3;
       this.noteQuote = text;
       this.clearMathNoteContext();
       AppStorage.setOrCreate('sketchMode', 'annotate');
@@ -2793,7 +2795,8 @@ export struct Reader {
     const isCard: boolean = style === 'card';
     this.pendingStyle = style;
     // 学习卡要实色底（同 studycard 入口的口径：默认黄色索引 3）
-    this.pendingColor = isCard ? 3 : -1;
+    // **文字批注同样给荧光黄底**（用户要求），学习卡实色底同为黄
+    this.pendingColor = 3;
     let aStart: number = this.pendingStart;
     let aEnd: number = this.pendingEnd;
     let aText: string = this.noteQuote;

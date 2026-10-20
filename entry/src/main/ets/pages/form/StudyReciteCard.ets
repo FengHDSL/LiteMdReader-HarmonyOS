@@ -85,7 +85,10 @@ struct StudyReciteCard {
         .padding({ left: 10, right: 10, top: 5, bottom: 5 })
         .borderRadius(13)
         .border({ width: 1, color: '#FF1565C0' })
-        .position({ right: 12, y: '46%' })
+        // ⚠️ position 没有 right 键——之前写 right 被忽略，按钮跑到左边（用户截图实锤）。
+        // 改用 x='100%'（贴右缘）+ markAnchor 反向偏移按钮自身宽度
+        .position({ x: '100%', y: '46%' })
+        .markAnchor({ x: 64, y: 10 })
         .onClick(() => {
           // **「具体」→ 展示这张卡的批注内容**（卡片内切换，不再跳应用）
           this.showBack = !this.showBack;
