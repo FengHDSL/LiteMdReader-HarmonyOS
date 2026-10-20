@@ -4,8 +4,9 @@
  * 两个全局开关，**默认都关闭**（用户要求：默认轻量、省电、不发热）：
  *   · `immersiveLook` 沉浸光感：关闭 → 所有卡片一律**纯色不透明**（不挂材质、不做磨砂）；
  *     开启 → 走 API 26 的 systemMaterial 光感材质（会掉帧 / 发热，开启时弹窗提醒）。
- *   · `motionFx` 过渡动画：关闭 → **所有动效瞬时完成**（页面切换硬切、出现即显示）；
- *     开启 → 恢复项目原有的过渡动画。
+ *   · `motionFx` 过渡动画：**只控制"页面切换"**（2026-10-20 收窄语义）——
+ *     关闭 → 页面进出直接显示/消失（栈跳转 animated=false、返回键 hardBack、一镜到底归零）；
+ *     **展开收起、淡入淡出、按压流光等局部动效一律保留**，不再受这个开关影响。
  *
  * 判定统一走 AppStorage：键由「设置 → 外观」写入，EntryAbility 负责持久化
  * （persistProp 白名单 + SettingsMirror.KEYS 都要登记）。
@@ -30,10 +31,23 @@ export class AppearanceFx {
   }
 
   /**
-   * 统一动画参数：过渡动画关闭时 **duration = 0**（animateTo 里状态直接到位，
-   * 视觉上就是"突然出现 / 突然消失"）。
+   * 统一动画参数（**局部动效**：展开收起 / 淡入淡出 / 尺寸变化等）。
+   * ⚠️ 2026-10-20 起**不再受「过渡动画」开关影响**——该开关只停页面切换，
+   * 组件级动效按要求保留（用户："只停用页面切换时的动画，其他保留"）。
    */
   static anim(duration: number, curve: Curve = Curve.FastOutSlowIn): AnimateParam {
+    const param: AnimateParam = {
+      duration: duration,
+      curve: curve
+    };
+    return param;
+  }
+
+  /**
+   * **页面级**动画参数（页面进场的一镜到底等）：过渡动画关闭时 duration=0。
+   * 只有"页面进出"这类动效才用它，别拿来包组件动效。
+   */
+  static pageAnim(duration: number, curve: Curve = Curve.FastOutSlowIn): AnimateParam {
     const param: AnimateParam = {
       duration: AppearanceFx.motion() ? duration : 0,
       curve: curve
@@ -42,11 +56,11 @@ export class AppearanceFx {
   }
 
   /**
-   * 统一过渡效果：过渡动画关闭时返回 `TransitionEffect.IDENTITY`（无任何过渡）。
+   * 统一过渡效果（局部出现/消失）——同样**不受「过渡动画」开关影响**。
    * 用法：`.transition(AppearanceFx.fx(TransitionEffect.OPACITY.animation({ duration: 200 })))`
    */
   static fx(effect: TransitionEffect): TransitionEffect {
-    return AppearanceFx.motion() ? effect : TransitionEffect.IDENTITY;
+    return effect;
   }
 
   /**
@@ -55,11 +69,8 @@ export class AppearanceFx {
    * `animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }))`
    */
   static param(p: AnimateParam): AnimateParam {
-    if (AppearanceFx.motion()) {
-      return p;
-    }
-    const zero: AnimateParam = { duration: 0 };
-    return zero;
+    // 局部动效参数：原样透传（不再受页面切换开关影响）
+    return p;
   }
 
   /** 页面栈跳转的 `animated` 参数：过渡动画关闭 → false（硬切）。 */

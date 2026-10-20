@@ -1152,7 +1152,7 @@ export struct SettingsAppearance {
               Text(this.s('过渡动画'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text(this.s('关闭后动效与页面转场全部硬切（直接显示/消失）'))
+              Text(this.s('只停用页面切换动画：页面进出直接显示/消失，其它动效保留'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -1161,7 +1161,7 @@ export struct SettingsAppearance {
             Toggle({ type: ToggleType.Switch, isOn: this.motionFx })
               .onChange((isOn: boolean) => {
                 this.motionFx = isOn;
-                this.toast(isOn ? this.s('已开启过渡动画') : this.s('已关闭过渡动画（全部硬切）'));
+                this.toast(isOn ? this.s('已开启页面切换动画') : this.s('已关闭页面切换动画（其它动效保留）'));
               })
           }
           .width('100%')
