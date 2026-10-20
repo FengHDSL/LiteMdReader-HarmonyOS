@@ -225,7 +225,10 @@ export struct ImmersiveCard {
       return this.cardBackground.length > 0 ? withAlpha(this.cardBackground, '8C') : '#00000000';
     }
     if (this.cardBackground.length > 0) {
-      return this.cardBackground;
+      // **强制不透明**（2026-10-20）：调用方给的底色有时是半透明薄染
+      // （如批注选择胶囊的 26 透明度染色），光感关时被当卡片底色直接铺开 = 整卡"透明"。
+      // 保留色相、把 alpha 段提到 FF。
+      return withAlpha(this.cardBackground, 'FF');
     }
     // 云母磨砂：与顶/底栏同一套配方（barFrostColor，随「玻璃通透程度」变化），
     // 半透明能看到壁纸透出来——实色纯底会像一块灰板贴在壁纸上。

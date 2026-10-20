@@ -744,6 +744,8 @@ export struct Reader {
   @State heroBg: number = 1;
   /** 当前文档是否属于"渲染负担重"（公式 + 图表 ≥ 20）：目录跳转时给加载提示 */
   @State docIsHeavy: boolean = false;
+  /** 目录跳转的加载提示（重文档专用）：**Stack 内嵌层**，禁用 .overlay（会拦整页手势） */
+  @State jumpLoading: boolean = false;
   /** 正在播放缩回动画（避免重复触发返回） */
   private heroExiting: boolean = false;
   /** 本次来源几何（缩回时的目标） */
@@ -4000,9 +4002,12 @@ export struct Reader {
 
   private jumpTo(blockIndex: number): void {
     // **重文档跳转提示**（用户要求）：目录跳转会现场渲染目标区域的图表，
-    // 用 toast 给"正在加载"反馈——不用浮层/overlay（实测 .overlay 挂载会拦截整页手势）。
-    if (this.docIsHeavy) {
-      this.toast(L10n.t('图表较多，正在跳转…'));
+    // 显示加载提示框（**Stack 内嵌层**；.overlay 实测会拦截整页手势，禁用）。
+    if (this.docIsHeavy && !this.jumpLoading) {
+      this.jumpLoading = true;
+      setTimeout(() => {
+        this.jumpLoading = false;
+      }, 1200);
     }
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
     // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
@@ -7931,6 +7936,7 @@ export struct Reader {
       // 背景层：一镜到底展开时从透明渐显（缩回时渐隐，露出下层书架封面）
       Column() {
         this.backdrop()
+
       }
       .width('100%')
       .height('100%')
@@ -8000,6 +8006,7 @@ export struct Reader {
             if (this.isWide() && this.tocPinned) {
               Column() {
                 this.tocDrawer(true)
+
               }
               .width(this.tocPanelWidth)
               .height('100%')
@@ -8206,6 +8213,31 @@ export struct Reader {
 
           // ── 对照列（分屏对照，批 5）：右半屏渲染第二篇文档（只读）──
           // 与正文 List 平级的 layoutWeight 兄弟 → 五五开；退出 = 屏幕侧缘中部浮钮（随握姿）。
+          // **目录跳转的加载提示**（重文档专用）：正文区内居中浮层。
+          // ⚠️ 内嵌在 Column 里（.overlay() 会拦截整页手势），position 脱离布局流不挤占 List。
+          if (this.jumpLoading) {
+            Column() {
+              Column({ space: 10 }) {
+                LoadingProgress()
+                  .width(38)
+                  .height(38)
+                  .color(this.palette().accent)
+                Text(L10n.t('图表较多，正在跳转…'))
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textSecondary)
+              }
+              .padding({ left: 22, right: 22, top: 18, bottom: 18 })
+              .borderRadius(HwRadius.card)
+              .backgroundColor(this.palette().surface)
+            }
+            .width('100%')
+            .height('100%')
+            .position({ x: 0, y: 0 })
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .hitTestBehavior(HitTestMode.Block)
+          }
+
           if (this.compareSplit) {
             Column({ space: HwSpace.xs }) {
               Row({ space: HwSpace.xs }) {
