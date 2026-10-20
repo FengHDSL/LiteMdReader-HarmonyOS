@@ -9012,7 +9012,8 @@ export struct Reader {
           }
           .padding({ left: 22, right: 22, top: 18, bottom: 18 })
           .borderRadius(HwRadius.card)
-          .backgroundColor(this.palette().surface)
+          // **纯色不透明**（用户要求）：surface 在部分主题下带透明度，会透出正文
+          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
         }
         .width('100%')
         .height('100%')
