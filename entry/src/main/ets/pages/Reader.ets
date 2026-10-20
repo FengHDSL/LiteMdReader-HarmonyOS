@@ -4000,22 +4000,39 @@ export struct Reader {
     }
   }
 
+  /**
+   * 目录 / 批注 / 搜索跳转的**编排入口**（用户要求 2026-10-20）：
+   * 重文档时按「收目录 → 弹加载框 → **再执行真跳转** → 跳完立即收框」的顺序走——
+   * 大文档跳转的卡顿（懒渲染扩容 + scrollToIndex）发生在弹窗已经显示之后，
+   * 用户看到的是"弹窗出现 → 跳到位 → 弹窗淡出"，而不是"点了卡住"。
+   * 跳完**立即**收框（不再固定等 1.2 秒），短内容不拖沓。
+   */
   private jumpTo(blockIndex: number): void {
-    // **重文档跳转提示**（用户要求）：先收起目录（露出正文），再弹加载框；
-    // 出现 / 消失都带过渡（animateTo 包状态 + 节点显式 transition）。
     if (this.docIsHeavy && !this.jumpLoading) {
+      // ① 先收目录（露出正文），同时弹加载框（淡入 220ms）
       if (this.tocOpen) {
         this.closeSide('toc');
       }
       this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
         this.jumpLoading = true;
       });
+      // ② 弹窗出现后再做真跳转（真跳转的卡顿被弹窗遮住）
       setTimeout(() => {
-        this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
-          this.jumpLoading = false;
-        });
-      }, 1200);
+        this.jumpToNow(blockIndex);
+        // ③ 跳完立即收框：保底显示 420ms（避免"闪一下"），跳得慢时也就多等这一会儿
+        setTimeout(() => {
+          this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+            this.jumpLoading = false;
+          });
+        }, 420);
+      }, 260);
+      return;
     }
+    this.jumpToNow(blockIndex);
+  }
+
+  /** 真正的跳转执行（懒渲染扩容 + 定位 + 收抽屉），由 jumpTo 编排调用。 */
+  private jumpToNow(blockIndex: number): void {
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
     // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
     // 先把它纳入渲染范围，再跳。
