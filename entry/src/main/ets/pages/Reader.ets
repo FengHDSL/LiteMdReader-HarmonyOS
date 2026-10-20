@@ -17,6 +17,7 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 import { image } from '@kit.ImageKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import {
@@ -741,6 +742,16 @@ export struct Reader {
   @State heroClipH: string = '100%';
   /** 页面底不透明度：展开时从 0 渐显，缩回时渐隐（露出下层书架） */
   @State heroBg: number = 1;
+  /**
+   * **封面色渐隐层**（2026-10-20）：一镜到底放大期间，一层"封面色"随页面展开
+   * 逐步变透明——观感是"封面放大的同时一步步消失"，不再有放大完成后
+   * "封面感突然没了"的断层。hero 起始置 1，heroEnter 的动画里归 0。
+   */
+  @State heroFade: number = 0;
+  /** 当前文档是否属于"渲染负担重"（公式 + 图表 ≥ 20）：目录跳转时给加载提示 */
+  @State docIsHeavy: boolean = false;
+  /** 目录跳转的加载提示（重文档专用，见 jumpTo） */
+  @State jumpLoading: boolean = false;
   /** 正在播放缩回动画（避免重复触发返回） */
   private heroExiting: boolean = false;
   /** 本次来源几何（缩回时的目标） */
@@ -973,6 +984,20 @@ export struct Reader {
   });
 
   aboutToAppear(): void {
+    // 预取封面色：hero 封面色渐隐层在 loadDoc 之前就要用（loadDoc 现在是延迟的）
+    try {
+      const ctx0 = this.ctx();
+      if (ctx0 !== null && this.docName.length > 0) {
+        DocStore.init(ctx0);
+        const m0: DocMeta | undefined = DocStore.find(ctx0, this.docName);
+        if (m0 !== undefined) {
+          const cc0: string | undefined = m0.coverColor;
+          this.docCoverColor = cc0 === undefined ? '' : cc0;
+        }
+      }
+    } catch (err) {
+      // 取不到就用主题底色兜底（heroFade 层的 backgroundColor 有默认分支）
+    }
     this.startBlobDrift();
     // Navigation 迁移后参数由 navPageBuilder 直接注入（不再走 router.getParams）
     const params: ReaderRoute = this.route;
@@ -1025,6 +1050,12 @@ export struct Reader {
       this.heroClipW = hero.clipW;
       this.heroClipH = hero.clipH;
       this.heroBg = 0;
+      // 封面色层先全显，heroEnter 放大的同时逐步透明（用户要求"一步步消失"）
+      this.heroFade = 1;
+      // **兜底**：任何路径都不允许封面色层卡在"全屏不透明"（正常 420ms 动画内归 0）
+      setTimeout(() => {
+        this.heroFade = 0;
+      }, 1000);
       // 转场降载：首帧只渲染 24 块，转场结束（onShownNow）补回 80
       this.visibleBlocks = 24;
     }
@@ -1262,6 +1293,8 @@ export struct Reader {
         this.heroClipW = '100%';
         this.heroClipH = '100%';
         this.heroBg = 1;
+        // 封面色随放大同步透明消失（见 heroFade）
+        this.heroFade = 0;
       });
     }, 32);
   }
@@ -1772,6 +1805,43 @@ export struct Reader {
     return c as common.UIAbilityContext;
   }
 
+  /** 读「已提示过渲染负担」的名单（filesDir/heavy_warned.txt，逗号分隔） */
+  private readHeavyWarned(ctx: common.UIAbilityContext): string {
+    try {
+      const path: string = ctx.filesDir + '/heavy_warned.txt';
+      if (!fs.accessSync(path)) {
+        return '';
+      }
+      const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const stat = fs.statSync(path);
+      if (stat.size <= 0) {
+        fs.closeSync(file.fd);
+        return '';
+      }
+      const buf = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file.fd);
+      const decoder: util.TextDecoder = util.TextDecoder.create('utf-8');
+      return decoder.decodeToString(new Uint8Array(buf));
+    } catch (err) {
+      return '';
+    }
+  }
+
+  /** 写名单（写失败只影响"下次重复提示"，不致命） */
+  private writeHeavyWarned(ctx: common.UIAbilityContext, value: string): void {
+    try {
+      const path: string = ctx.filesDir + '/heavy_warned.txt';
+      const file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      const encoder: util.TextEncoder = util.TextEncoder.create('utf-8');
+      const encoded = encoder.encodeInto(value);
+      fs.writeSync(file.fd, encoded.buffer);
+      fs.closeSync(file.fd);
+    } catch (err) {
+      // 忽略
+    }
+  }
+
   /**
    * **重文档提醒**（2026-10-20）：一篇里公式 + 图表超过阈值时，首次打开弹一次提示——
    * 「文档内公式、图表过多，渲染时负载大，出现掉帧为正常现象！」
@@ -1789,17 +1859,23 @@ export struct Reader {
       }
     }
     // 20 张是"能明显感到掉帧"的经验下限（示例文档 58 张、内置介绍文档远低于此）
+    this.docIsHeavy = n >= 20;
     if (n < 20) {
       return;
     }
-    const warnedRaw: string | undefined = AppStorage.get<string>('heavyDocWarned');
-    const warned: string = warnedRaw === undefined ? '' : warnedRaw;
+    // **名单走文件存储**（用户反馈"每次都弹"）：PersistentStorage 的这条实测不可靠，
+    // 改为应用目录下的纯文本（逗号分隔文档名），同步读写。
+    const ctxH = this.ctx();
+    if (ctxH === null) {
+      return;
+    }
+    const warned: string = this.readHeavyWarned(ctxH);
     const list: string[] = warned.length > 0 ? warned.split(',') : [];
     if (list.indexOf(this.docName) >= 0) {
       return;
     }
     list.push(this.docName);
-    AppStorage.setOrCreate('heavyDocWarned', list.join(','));
+    this.writeHeavyWarned(ctxH, list.join(','));
     // 延后一拍：等正文首帧画出来再弹，否则会和加载抢帧、弹窗还可能压住转场
     setTimeout(() => {
       this.getUIContext().showAlertDialog({
@@ -3951,6 +4027,14 @@ export struct Reader {
   }
 
   private jumpTo(blockIndex: number): void {
+    // **重文档跳转加载提示**（用户要求）：目录跳转会现场渲染目标区域的图表，
+    // 给一个明确的"正在加载"反馈（1.2 秒后自动收起）。
+    if (this.docIsHeavy && !this.jumpLoading) {
+      this.jumpLoading = true;
+      setTimeout(() => {
+        this.jumpLoading = false;
+      }, 1200);
+    }
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
     // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
     // 先把它纳入渲染范围，再跳。
@@ -7884,6 +7968,16 @@ export struct Reader {
       .opacity(this.heroBg)
       .hitTestBehavior(HitTestMode.None)
 
+      // **封面色渐隐层**：hero 放大的同时逐步透明（用户要求"一步步消失"，不要放大后突然消失）
+      if (this.heroFade > 0.01) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(this.docCoverColor.length > 0 ? this.docCoverColor : this.palette().pageTop)
+          .opacity(this.heroFade)
+          .hitTestBehavior(HitTestMode.None)
+      }
+
       // 图表后台预渲染池：打开文件即把公式 / 图表逐个渲染成 PNG 写缓存
       //（完成后 renderEpoch++ 让正文把 DiagramWeb 占位换成缓存图）。
       // 放在背景层之上、内容层之下；视觉透明、不吃触摸。
@@ -9091,6 +9185,34 @@ export struct Reader {
           this.onPinchUpdate(event.scale);
         })
     )
+    // **目录跳转的加载提示**（重文档专用）：居中浮层，期间挡住点击
+    .overlay(this.jumpLoadingOverlay, { align: Alignment.Center })
+  }
+
+  /** 重文档跳转时的加载提示浮层 */
+  @Builder
+  jumpLoadingOverlay() {
+    if (this.jumpLoading) {
+      Column() {
+        Column({ space: 10 }) {
+          LoadingProgress()
+            .width(38)
+            .height(38)
+            .color(this.palette().accent)
+          Text(L10n.t('图表较多，正在跳转…'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textSecondary)
+        }
+        .padding({ left: 22, right: 22, top: 18, bottom: 18 })
+        .borderRadius(HwRadius.card)
+        .backgroundColor(this.palette().surface)
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .hitTestBehavior(HitTestMode.Block)
+    }
   }
 
   /**
