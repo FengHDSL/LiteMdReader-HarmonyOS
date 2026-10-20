@@ -85,14 +85,20 @@ export struct NotePanel {
       const ctx = getContext(this) as common.UIAbilityContext;
       DocStore.init(ctx);
       const dest: string = DocStore.imagesDirPath() + '/' + name;
-      // **uri 直传 copyFile**（fd 版在部分系统上失败）：src=picker uri、dest=沙箱路径，
-      // 官方支持 uri→path 的拷贝；失败 toast 带错误码便于诊断
+      // **字节级拷贝**（uri 直传 / fd 版都失败过）：openSync(uri) 读全量字节 → 写入沙箱
       try {
-        fs.copyFile(uri, dest);
+        const src = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+        const size: number = fs.statSync(src.fd).size;
+        const buf = new ArrayBuffer(size);
+        fs.readSync(src.fd, buf);
+        fs.closeSync(src.fd);
+        const out = fs.openSync(dest, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+        fs.writeSync(out.fd, buf);
+        fs.closeSync(out.fd);
         // **只入图片列表，不动文本框**（用户要求：文本框里不要一串引用）
         this.pickedImages.push(name);
         this.onDraft(this.composeDraft());
-        this.toast('图片已插入：' + name);
+        this.toast('图片已插入（' + Math.round(size / 1024) + 'KB）');
       } catch (copyErr) {
         this.toast('插入失败：' + (copyErr as BusinessError).code + ' ' + (copyErr as BusinessError).message);
       }

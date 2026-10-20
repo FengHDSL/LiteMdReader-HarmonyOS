@@ -9484,7 +9484,7 @@ export struct Reader {
                 .layoutWeight(1)
               // **操作三连：修改 / 复制 / 删除（图标）**
               ImmersiveIconButton({
-                buttonSize: 26,
+                buttonSize: 34,
                 buttonMaterialShadow: false,
                 palette: this.palette(),
                 buttonOnTap: () => {
@@ -9496,11 +9496,11 @@ export struct Reader {
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.square_and_pencil'))
-                  .fontSize(13)
+                  .fontSize(16)
                   .fontColor([this.palette().accent])
               }
               ImmersiveIconButton({
-                buttonSize: 26,
+                buttonSize: 34,
                 buttonMaterialShadow: false,
                 palette: this.palette(),
                 buttonOnTap: () => {
@@ -9511,11 +9511,11 @@ export struct Reader {
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.doc_plaintext'))
-                  .fontSize(13)
+                  .fontSize(16)
                   .fontColor([this.palette().textSecondary])
               }
               ImmersiveIconButton({
-                buttonSize: 26,
+                buttonSize: 34,
                 buttonMaterialShadow: false,
                 palette: this.palette(),
                 buttonOnTap: () => {
@@ -9527,7 +9527,7 @@ export struct Reader {
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.trash'))
-                  .fontSize(13)
+                  .fontSize(16)
                   .fontColor([this.palette().accent])
               }
             }
@@ -9535,18 +9535,22 @@ export struct Reader {
             .alignItems(VerticalAlign.Center)
             // **批注内容摘要**（带荧光底色，呼应正文样式）
             Text(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text : '')
-              .fontSize(HwType.label)
+              .fontSize(HwType.label + 1)
               .fontColor(this.palette().textPrimary)
-              .maxLines(3)
+              .maxLines(5)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
               .width('100%')
           }
-          .width('88%')
-          .padding(HwSpace.sm)
+          .width('92%')
+          .padding(HwSpace.md)
           .borderRadius(HwRadius.card)
           .backgroundColor(withAlpha(this.palette().surface, 'FF'))
           .border({ width: 1, color: this.palette().divider })
-          // **空 onClick 消费点击**：点卡片/间隙不再穿透到遮罩关闭（用户反馈"点击直接关"）
+          // **onTouch stopPropagation**：点击/触摸不再穿透到遮罩（空 onClick 不够，
+          // 遮罩的 onClick 仍会收到冒泡——用户反馈"点按钮只是关闭"）
+          .onTouch((e: TouchEvent) => {
+            e.stopPropagation();
+          })
           .onClick(() => {
           })
           .transition(TransitionEffect.OPACITY
