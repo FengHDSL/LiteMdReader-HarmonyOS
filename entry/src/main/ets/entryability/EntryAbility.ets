@@ -1,6 +1,7 @@
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { PageWarmup } from '../service/PageWarmup';
 import { window } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { fileIo } from '@kit.CoreFileKit';
@@ -65,7 +66,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerLineHeight', 1.75);
     PersistentStorage.persistProp('readerMeasure', 40);
     PersistentStorage.persistProp('readerThemeMode', 0);
-    PersistentStorage.persistProp('immersiveLightEnabled', true);
+    // 旧「材质开关」（保留给旧设置页读取）：真正的用户开关是下面的 immersiveLook
+    PersistentStorage.persistProp('immersiveLightEnabled', false);
     // 函数绘制壁纸（无位图）的选中款；空串 = 不用
     PersistentStorage.persistProp('wallpaperGenId', 'zhu'); // 默认竹影
     PersistentStorage.persistProp('readerBgId', 'zhu'); // 阅读背景默认竹影
@@ -125,9 +127,17 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('grayTextColorDark', '');
     // 玻璃通透程度 0~100（越高越透明），默认 70
     PersistentStorage.persistProp('glassStrength', 70);
-    // **沉浸光感强制开启**：设置项已按需求移除，这里每次启动都置回 true，
-    // 免得旧版本关过它的用户升级后一直跑在降级样式上
-    AppStorage.setOrCreate('immersiveLightEnabled', true);
+    // **沉浸光感改为用户可控**（2026-10-20）：外观设置新增「沉浸光感」总开关，
+    // **默认关闭**（关掉后卡片纯色不透明，更省电、帧率更稳）。
+    // 这里不再强制置 true——否则用户关了光感、下次启动又被打开。
+    PersistentStorage.persistProp('immersiveLook', false);
+    // 过渡动画总开关，**默认关闭**（关掉后所有动效瞬时完成、页面硬切）
+    PersistentStorage.persistProp('motionFx', false);
+    // 「页面组件预热」beta 开关，默认关闭（关闭后不预热、不占内存）
+    PersistentStorage.persistProp('preloadPages', false);
+    if (AppStorage.get<boolean>('immersiveLightEnabled') === undefined) {
+      AppStorage.setOrCreate('immersiveLightEnabled', false);
+    }
 
     // 材质类型 / 等级（外观设置；口径与参考工程的 HDS systemMaterialEffect 一致）
     PersistentStorage.persistProp("appearanceMaterialType", 0);
@@ -193,6 +203,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    PageWarmup.clear();
     SettingsMirror.save(this.context);
     hilog.info(DOMAIN, 'LiteMdReader', '%{public}s', 'Ability onDestroy');
   }
@@ -587,6 +598,8 @@ export default class EntryAbility extends UIAbility {
 
   /** 退到后台 / 被系统回收前落盘一次设置镜像（用户"退出应用"最常见的路径）。 */
   onBackground(): void {
+    // 退后台即释放页面预热（Beta：不长期占内存）
+    PageWarmup.clear();
     SettingsMirror.save(this.context);
     // **后台信号**：阅读页据此复位易失的浮层状态（如图表放大浮层）——
     // 关屏 / 切后台再回来时，Web 浮层容易残留异常（触摸错乱、错误控制阅读页）。

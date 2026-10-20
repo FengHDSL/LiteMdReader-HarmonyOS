@@ -22,6 +22,7 @@ import { LengthMetrics } from '@kit.ArkUI';
 import { getImmersiveMaterial, carrierModifier, appAppearanceDark } from './SystemMaterial';
 import { appearanceMaterialType } from './SystemMaterial';
 import { HwRadius, HwSpace, LIGHT_PALETTE, ReaderPalette, barFrostColor, withAlpha } from '../theme/DesignTokens';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /**
  * 材质承载层：一块「看不见的画布」。
@@ -179,7 +180,7 @@ export struct ImmersiveCard {
 
   /** 材质是否真的会渲染。用于决定降级层是否可见。 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return AppearanceFx.immersive() && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   private fallbackColor(): string {
@@ -194,7 +195,8 @@ export struct ImmersiveCard {
     }
     // 云母磨砂：与顶/底栏同一套配方（barFrostColor，随「玻璃通透程度」变化），
     // 半透明能看到壁纸透出来——实色纯底会像一块灰板贴在壁纸上。
-    if (this.fallbackMode === 'mica') {
+    // **光感总开关关闭时一律纯色不透明**（用户要求：关掉光感后卡片不能还是半透明磨砂）
+    if (this.fallbackMode === 'mica' && AppearanceFx.immersive()) {
       return barFrostColor(this.palette.surface);
     }
     return withAlpha(this.palette.surface, 'FF');
@@ -257,6 +259,10 @@ export struct ImmersiveCard {
 
   private fallbackBlur(): BlurStyle {
     if (this.materialOn()) {
+      return BlurStyle.NONE;
+    }
+    // 光感关 → 不做磨砂（纯色不透明，省 GPU）
+    if (!AppearanceFx.immersive()) {
       return BlurStyle.NONE;
     }
     return this.fallbackMode === 'mica' ? BlurStyle.Thin : BlurStyle.NONE;
@@ -428,7 +434,7 @@ export struct ImmersiveIconButton {
   @BuilderParam buttonIcon: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return AppearanceFx.immersive() && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   // ── 按压跟手流光：开关与坐标字段的声明放在组件顶部，见 struct 开头 ──
@@ -510,7 +516,7 @@ export struct ImmersiveIconButton {
         .height(LayoutPolicy.matchParent)
         .borderRadius(this.buttonRadius)
         .backgroundColor(this.materialOn() ? '#00000000' : this.palette.surface)
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       ImmersiveCardLayer({ layerRadius: this.buttonRadius, layerShadow: this.buttonMaterialShadow })
@@ -591,7 +597,7 @@ export struct ImmersiveChip {
   @BuilderParam chipPrefix: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return AppearanceFx.immersive() && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   private tintSoft(): string {
@@ -624,7 +630,7 @@ export struct ImmersiveChip {
         .height(LayoutPolicy.matchParent)
         .borderRadius(HwRadius.pill)
         .backgroundColor(this.chipColor())
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
@@ -684,7 +690,7 @@ export struct ImmersiveSheetPanel {
   @BuilderParam panelContent: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
+    return AppearanceFx.immersive() && this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {
@@ -695,7 +701,7 @@ export struct ImmersiveSheetPanel {
         .borderRadius(this.panelRadius)
         .backgroundColor(this.materialOn() ? '#00000000'
           : (this.panelPlainColor.length > 0 ? this.panelPlainColor : this.palette.surface))
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       // 关闭沉浸光感时不挂材质承载层（纯色面板）
@@ -785,7 +791,7 @@ export struct ImmersiveBar {
 
   /** 材质真的可用吗（开关开 + 构造成功）。只有不可用时才需要磨砂兜底。 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return AppearanceFx.immersive() && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {
@@ -797,8 +803,8 @@ export struct ImmersiveBar {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(HwRadius.pill)
-        .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette.surface))
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .backgroundColor(this.materialOn() ? '#00000000' : (AppearanceFx.immersive() ? barFrostColor(this.palette.surface) : withAlpha(this.palette.surface, 'FF')))
+        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       // ② 材质承载层：与卡片/芯片/按钮**同一个承载层组件**（鸿米家那套 Toggle 方案）。
@@ -822,6 +828,6 @@ export struct ImmersiveBar {
     // 圆角才参与裁剪，否则裁成直角。
     .clip(true)
     // 宽度插值就是「原地横向收缩」的动画本体。放在链尾，只作用于上面声明过的属性。
-    .animation({ duration: 320, curve: Curve.FastOutSlowIn })
+    .animation(AppearanceFx.anim(320, Curve.FastOutSlowIn))
   }
 }

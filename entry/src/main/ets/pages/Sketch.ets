@@ -25,6 +25,7 @@ import { HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme } fro
 import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /** 手写画布背景候选：淡色暖色系纯色 +「跟随主题」（空串表示跟随） */
 interface SketchBgOption {
@@ -643,7 +644,7 @@ export struct Sketch {
             }
             this.saving = false;
             if (this.stack !== null) {
-              this.stack.pop();
+              this.stack.pop(AppearanceFx.navAnimated());
             }
           }).catch((err: BusinessError) => {
             this.saving = false;
@@ -669,7 +670,7 @@ export struct Sketch {
           palette: this.palette(),
           buttonOnTap: () => {
             if (this.stack !== null) {
-              this.stack.pop();
+              this.stack.pop(AppearanceFx.navAnimated());
             }
           }
         }) {

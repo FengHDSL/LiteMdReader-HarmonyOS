@@ -26,6 +26,7 @@ import { L10n } from '../service/L10n';
 import { ThemeStore } from '../theme/ThemeStore';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -113,6 +114,12 @@ export struct SettingsAppearance {
   @StorageLink('cardGlowTouch') @Watch('onAppearanceChanged') glowTouch: boolean = true;
   /** 书架顶部的「继续阅读」卡片是否显示（用户要求：可在外观设置里关掉） */
   @StorageLink('shelfResumeBanner') @Watch('onAppearanceChanged') resumeBanner: boolean = true;
+  /** 沉浸光感总开关（2026-10-20 新增，**默认关**）：关 → 所有卡片纯色不透明 */
+  @StorageLink('immersiveLook') @Watch('onAppearanceChanged') immersiveLook: boolean = false;
+  /** 过渡动画总开关（**默认关**）：关 → 所有动效瞬时完成、页面切换硬切 */
+  @StorageLink('motionFx') @Watch('onAppearanceChanged') motionFx: boolean = false;
+  /** 页面组件预热（beta，默认关）：结合「页面加载逻辑」使用，关掉即不占内存 */
+  @StorageLink('preloadPages') @Watch('onAppearanceChanged') preloadPages: boolean = false;
   /** 页面背景跟随主题色 / 自定义主题色也染背景 */
   @StorageLink('pageBgTint') @Watch('onAppearanceChanged') pageBgTint: boolean = true;
   @StorageLink('customAccentFull') @Watch('onAppearanceChanged') customAccentFull: boolean = false;
@@ -251,7 +258,7 @@ export struct SettingsAppearance {
     if (id === this.appLang) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.Friction }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.Friction), () => {
       L10n.setChoice(id);
     });
     this.toast(this.s1('语言已切换为 %1', L10n.endonym(L10n.current())));
@@ -331,6 +338,10 @@ export struct SettingsAppearance {
   /** 一键恢复外观默认：主题色 / 卡片 / 灰体 / 壁纸 / 遮罩全部回到出厂值。 */
   private restoreDefaults(): void {
     AppStorage.setOrCreate('themeColor', '');
+    // 性能与动效三项回到默认（都关）
+    AppStorage.setOrCreate('immersiveLook', false);
+    AppStorage.setOrCreate('motionFx', false);
+    AppStorage.setOrCreate('preloadPages', false);
     AppStorage.setOrCreate('cardTint', true);
     AppStorage.setOrCreate('immersivePressGlow', true);
     AppStorage.setOrCreate('cardGlowTouch', true);
@@ -483,10 +494,10 @@ export struct SettingsAppearance {
       .transition(TransitionEffect.asymmetric(
         TransitionEffect.OPACITY
           .combine(TransitionEffect.translate({ y: -12 }))
-          .animation({ duration: 280, curve: Curve.Friction }),
+          .animation(AppearanceFx.anim(280, Curve.Friction)),
         TransitionEffect.OPACITY
           .combine(TransitionEffect.translate({ y: -10 }))
-          .animation({ duration: 220, curve: Curve.Friction })
+          .animation(AppearanceFx.anim(220, Curve.Friction))
       ))
     }
   }
@@ -499,7 +510,7 @@ export struct SettingsAppearance {
    * 平滑伸展 / 收回；否则子行在动画、卡片却"啪"地跳一下（用户反馈）。
    */
   private applyGrayMode(light: boolean, mode: string): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.Friction }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.Friction), () => {
       if (light) {
         this.grayModeLight = mode;
       } else {
@@ -518,7 +529,7 @@ export struct SettingsAppearance {
       onTitleTap: () => {
         this.langHiddenTaps = this.langHiddenTaps + 1;
         if (this.langHiddenTaps >= 5 && !this.showLangSection) {
-          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
             this.showLangSection = true;
           });
         }
@@ -989,7 +1000,102 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── ④ 卡片与流光 ──
+      // ── ④ 性能与动效（2026-10-20 新增：沉浸光感 / 过渡动画 / 页面预热，默认全关）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.md }) {
+          Text(this.s('性能与动效'))
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
+          // 沉浸光感：开 → 卡片/条栏挂系统材质；关 → 一律纯色不透明
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('沉浸光感'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('关闭后所有卡片为纯色不透明；开启会掉帧、发热'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.immersiveLook })
+              .onChange((isOn: boolean) => {
+                // 先落状态让开关跟随手指；开启时再弹窗确认，取消则回退（值从 true→false 会触发重建）
+                this.immersiveLook = isOn;
+                if (!isOn) {
+                  return;
+                }
+                this.getUIContext().showAlertDialog({
+                  title: this.s('开启沉浸光感？'),
+                  message: this.s('开启后会导致应用帧率下降，设备发热，请酌情考虑开启！'),
+                  primaryButton: {
+                    value: this.s('取消'),
+                    action: () => {
+                      this.immersiveLook = false;
+                    }
+                  },
+                  secondaryButton: {
+                    value: this.s('依然开启'),
+                    action: () => {
+                      this.immersiveLook = true;
+                    }
+                  }
+                });
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          // 过渡动画：关 → 所有 animateTo / transition / 页面转场瞬时完成（硬切）
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('过渡动画'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('关闭后动效与页面转场全部硬切（直接显示/消失）'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.motionFx })
+              .onChange((isOn: boolean) => {
+                this.motionFx = isOn;
+                this.toast(isOn ? this.s('已开启过渡动画') : this.s('已关闭过渡动画（全部硬切）'));
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          // 页面组件预热（beta）：打开页面即后台预加载组件，进程退出或超时自动释放
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('页面组件预热（Beta）'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('提前把页面与组件加载进内存（不含文档内容），退出应用或超时后自动清除'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.preloadPages })
+              .onChange((isOn: boolean) => {
+                this.preloadPages = isOn;
+                this.toast(isOn ? this.s('已开启页面预热（Beta）') : this.s('已关闭页面预热'));
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── ⑤ 卡片与流光 ──
       // 「沉浸光感」开关按需求**取消**：材质强制开启（EntryAbility 每次启动置回 true），
       // 「材质类型 / 等级 / 玻璃通透程度 / 卡片降级样式」也一律不再暴露。
       // 这里保留的是真正会被用户感知的三项观感开关（语义照搬 xjau 的外观设置）。

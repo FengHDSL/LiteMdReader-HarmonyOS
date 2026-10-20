@@ -94,6 +94,7 @@ import { MdBlockView } from '../markdown/MdView';
 import { ExportService } from '../service/ExportService';
 import { EpubExport } from '../service/EpubExport';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 // ══ 乐谱音频合成（后台线程）：音符事件 → 16bit WAV ══
 /**
@@ -511,7 +512,7 @@ export struct Reader {
 
   /** 旋转 / 取消旋转（横屏展示），带转场动画。 */
   private toggleRotate(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.rotated = !this.rotated;
     });
   }
@@ -666,7 +667,7 @@ export struct Reader {
     this.imgDx = 0;
     this.imgDy = 0;
     this.rotated = false;
-    this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
       this.enlargeMode = 'image';
       this.enlargePayload = uri;
       this.enlargeGeo = '';
@@ -704,7 +705,7 @@ export struct Reader {
 
   /** 关闭所有放大浮层（图表 / 图片）并复位缩放、旋转等临时状态。 */
   closeOverlays(): void {
-    this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
       this.enlargeMode = '';
       this.enlargeGeo = '';
       this.enlargeTitle = '';
@@ -1007,7 +1008,12 @@ export struct Reader {
     // 首次加载放在 build 之前：这样 List 能在**构造时**就用 initialIndex 定到上次位置，
     // 而不是先渲染到顶部、再 setTimeout 跳过去（那会看到一次明显的闪跳）。
     if (this.docName.length > 0) {
-      this.loadDoc();
+      // **页面先出来、内容再加载**（2026-10-20 用户要求：点击后立刻有响应，
+      // 内容晚一拍没关系）。loadDoc 是同步读文件 + 解析，大文档会把首帧卡住；
+      // 放到下一拍照常执行，骨架先绘制出来，观感是"点了就开"。
+      setTimeout(() => {
+        this.loadDoc();
+      }, 0);
     }
     // 一镜到底·首帧就位（必须在 build 之前）：让第一帧就出现在封面位置/尺寸上
     const hero: HeroInit | null = HeroTransition.takeInit();
@@ -1058,7 +1064,10 @@ export struct Reader {
     // "保存后返回自动上移"）。浮层开着 = 用户仍在阅读上下文里，无需重载。
     const enlargeOpen: boolean = this.enlargeMode.length > 0;
     if (!this.firstLoad && !resumedFromBg && !enlargeOpen) {
-      this.loadDoc();
+      // 同上：回到阅读页先呈现已有画面，刷新放下一拍
+      setTimeout(() => {
+        this.loadDoc();
+      }, 0);
     }
     this.firstLoad = false;
     // 回到阅读页：开始计这一段阅读时长
@@ -1115,7 +1124,7 @@ export struct Reader {
         if (this.floatBtnVisible()) {
           const targetX: number = this.sideToX(side, 44);
           if (targetX !== this.pauseBtnX) {
-            this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(320, Curve.FastOutSlowIn), () => {
               this.pauseBtnX = targetX;
             });
           }
@@ -1246,7 +1255,7 @@ export struct Reader {
       return;   // 无来源几何（菜单入口等）：普通进入
     }
     setTimeout(() => {
-      this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
+      this.getUIContext().animateTo(AppearanceFx.anim(420, Curve.FastOutSlowIn), () => {
         this.heroScale = 1;
         this.heroX = 0;
         this.heroY = 0;
@@ -1277,7 +1286,7 @@ export struct Reader {
   private backNow(): void {
     try {
       if (this.stack !== null) {
-        this.stack.pop();
+        this.stack.pop(AppearanceFx.navAnimated());
       }
     } catch (err) {
       this.toast(L10n.t('返回失败'));
@@ -1494,7 +1503,7 @@ export struct Reader {
     if (this.topBarVisible === show && this.bottomBarVisible === show) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.topBarVisible = show;
       this.bottomBarVisible = show;
     });
@@ -1507,7 +1516,7 @@ export struct Reader {
     if (this.topBarVisible === show) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.topBarVisible = show;
     });
   }
@@ -1519,7 +1528,7 @@ export struct Reader {
     if (this.bottomBarVisible === show) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.bottomBarVisible = show;
     });
   }
@@ -1688,7 +1697,7 @@ export struct Reader {
   /** 切换沉浸阅读：进入即收起顶栏 / 底栏，退出即恢复。 */
   private toggleImmersive(): void {
     const next: boolean = !this.immersiveRead;
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.immersiveRead = next;
       this.topBarVisible = !next;
       this.bottomBarVisible = !next;
@@ -2094,7 +2103,7 @@ export struct Reader {
     this.contentFade = 0.3;
     this.loadDoc();
     // 滑到位：位移 + 透明度一起回位，就是一次「翻页」
-    this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(320, Curve.FastOutSlowIn), () => {
       this.contentSlideX = 0;
       this.contentFade = 1;
     });
@@ -2116,7 +2125,7 @@ export struct Reader {
     let next: string = '';
     // **包在 animateTo 里**：标签芯片的 transition（淡出）才会播放，
     // 兄弟标签也会以布局动画滑动补位（用户要求）
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       next = TabStore.close(name);
       this.tabs = TabStore.list();
     });
@@ -2372,7 +2381,7 @@ export struct Reader {
       AppStorage.setOrCreate('sketchMode', 'annotate');
       AppStorage.setOrCreate('sketchAnnotationImage', '');
       if (this.stack !== null) {
-        this.stack.pushPath({ name: 'pages/Sketch' });
+        this.stack.pushPath({ name: 'pages/Sketch' }, AppearanceFx.navAnimated());
       } else {
         this.toast(L10n.t('当前环境无法打开手写页'));
       }
@@ -2784,7 +2793,7 @@ export struct Reader {
 
   /** 展开 / 收起搜索条（带动画；收起时清词） */
   private toggleNotesSearch(): void {
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.notesSearchOpen = !this.notesSearchOpen;
       if (!this.notesSearchOpen) {
         this.notesQuery = '';
@@ -3245,7 +3254,7 @@ export struct Reader {
 
   private toggleCollapse(seq: number): void {
     // 折叠/展开包在 animateTo 里：存活行位移、新增/移除行的 transition 才会播放
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       const next: number[] = [];
       let removed: boolean = false;
       for (let k = 0; k < this.collapsedSeqs.length; k++) {
@@ -3277,7 +3286,7 @@ export struct Reader {
 
   /** 全部展开 / 只保留到二级标题（带折叠动画）。 */
   private setAllCollapsed(collapse: boolean): void {
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       const next: number[] = [];
       if (collapse) {
         for (let k = 0; k < this.docOutline.length; k++) {
@@ -3741,7 +3750,7 @@ export struct Reader {
     AppStorage.setOrCreate('aiChatDocContent', this.rawContent);
     AppStorage.setOrCreate('aiChatQuote', quote);
     if (this.stack !== null) {
-      this.stack.pushPath({ name: 'pages/AiChat' });
+      this.stack.pushPath({ name: 'pages/AiChat' }, AppearanceFx.navAnimated());
     }
   }
 
@@ -3888,7 +3897,7 @@ export struct Reader {
     try {
       // 先瞬时到位（不用动画），再做一次偏移：避免两段滚动互相打断
       this.scroller.scrollToIndex(blockIndex + this.headerCount(), false, ScrollAlign.START);
-      this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+      this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
         this.scroller.scrollBy(0, -SEARCH_BAR_INSET);
       });
     } catch (err) {
@@ -4267,7 +4276,7 @@ export struct Reader {
           )
           // **关闭淡出**（用户要求）：删除标签时整片淡出，
           // 包在 animateTo 里的数组变更会让兄弟标签自动滑动补位
-          .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+          .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
         }, (tab: ReaderTab) => tab.name)
       }
       // 左内边距用 lg：视口是整屏宽（标签栏层没有左右 padding），
@@ -6041,7 +6050,7 @@ export struct Reader {
       ? MdViewUtil.highlightToHtml(pl, title, this.palette())
       : '';
     const hlCsv: string = mode === 'code' ? this.codeHlCsv(geoKey) : '';
-    this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(320, Curve.FastOutSlowIn), () => {
       this.enlargeMode = mode;
       // 每次打开浮层都清空"切源码前的形态"：从代码块放大进来时它为空，
       // 用于隐藏「查看源码」开关（见 enlargeHasCode）
@@ -6980,7 +6989,7 @@ export struct Reader {
       const targetX: number = this.sideToX(side, 44);
       if (targetX !== this.pauseBtnX) {
         // 与事件路径同一套动画：兜底核对也不该瞬移
-        this.getUIContext().animateTo({ duration: 320, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(320, Curve.FastOutSlowIn), () => {
           this.pauseBtnX = targetX;
         });
       }
@@ -7433,7 +7442,7 @@ export struct Reader {
                 .defaultFocus(true)
                 .onChange((v: string) => {
                   // 筛选变化包动画：列表高度随之平滑变化，不跳变
-                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                  this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
                     this.notesQuery = v;
                   });
                 })
@@ -7443,7 +7452,7 @@ export struct Reader {
                   buttonMaterialShadow: false,
                   palette: this.palette(),
                   buttonOnTap: () => {
-                    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
                       this.notesQuery = '';
                     });
                   }
@@ -7461,7 +7470,7 @@ export struct Reader {
             .backgroundColor(this.palette().quoteBg)
             // 展开 / 收起：显式 TransitionEffect（自带时长，不依赖 animateTo）
             .transition(TransitionEffect.OPACITY
-              .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
               .combine(TransitionEffect.translate({ y: -8 })))
           }
 
@@ -7548,7 +7557,7 @@ export struct Reader {
                       chipLabel: L10n.t('删除'),
                       chipOnTap: () => {
                         // **包在 animateTo 里**：卡片淡出（transition），其余卡片滑动补位
-                        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                           this.deleteAnnotation(ann);
                         });
                       }
@@ -7601,7 +7610,7 @@ export struct Reader {
                   this.jumpToBlockId(ann.blockId);
                 })
                 // **删除 / 筛选淡出**（配 animateTo 的数组变更，其余卡片滑动补位）
-                .transition(TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+                .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
               }, (ann: MdAnnotation) => 'ann_' + ann.id + '_t' + this.drawerFormulaTick)
 
               Text(L10n.t('脚注'))
@@ -7657,7 +7666,7 @@ export struct Reader {
                   .onClick(() => {
                     this.jumpTo(note.blockIndex);
                   })
-                  .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+                  .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
                 }, (note: MdNote, index: number) => 'n' + index + '_' + note.no)
               }
 
@@ -7714,14 +7723,14 @@ export struct Reader {
     this.zoomImgKey = key;
     this.zoomImgSrc = src;
     AppStorage.setOrCreate('readerOverlayOpen', true);
-    this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(300, Curve.FastOutSlowIn), () => {
       this.zoomImgOpen = true;
     });
   }
 
   private closeZoomImage(): void {
     AppStorage.setOrCreate('readerOverlayOpen', false);
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.zoomImgOpen = false;
     });
     // 关闭过渡结束后清掉内容（避免下一次打开先闪上一张）
@@ -7755,7 +7764,7 @@ export struct Reader {
     this.flushProgress();
     const route: ReaderRoute = { name: this.docName };
     try {
-      this.stack.pushPath({ name: 'pages/Editor', param: route });
+      this.stack.pushPath({ name: 'pages/Editor', param: route }, AppearanceFx.navAnimated());
     } catch (err) {
       this.toast(L10n.t('打不开编辑页'));
     }
@@ -8147,9 +8156,9 @@ export struct Reader {
             // 打开从右侧滑入、退出向右滑出（用户要求出入都有动画）
             .transition(TransitionEffect.asymmetric(
               TransitionEffect.translate({ x: 80 }).combine(TransitionEffect.OPACITY)
-                .animation({ duration: 300, curve: Curve.FastOutSlowIn }),
+                .animation(AppearanceFx.anim(300, Curve.FastOutSlowIn)),
               TransitionEffect.translate({ x: 80 }).combine(TransitionEffect.OPACITY)
-                .animation({ duration: 240, curve: Curve.FastOutSlowIn })))
+                .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))))
           }
         }
       .width(this.heroClipW)
@@ -8178,7 +8187,7 @@ export struct Reader {
             buttonMaterialShadow: true,
             palette: this.palette(),
             buttonOnTap: () => {
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+              this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                 this.compareSplit = false;
               });
             }
@@ -8209,15 +8218,15 @@ export struct Reader {
             // 吸附：重心在左半 → 贴左缘，否则贴右缘
             const targetX: number = this.exitBtnX + 17 < this.rootWidth / 2
               ? 10 : this.rootWidth - 44;
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.exitBtnX = targetX;
             });
           }))
         .transition(TransitionEffect.asymmetric(
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
-            .animation({ duration: 260, curve: Curve.FastOutSlowIn }),
+            .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn)),
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
-            .animation({ duration: 200, curve: Curve.FastOutSlowIn })))
+            .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))))
       }
 
       // ── 自动滚屏的**暂停浮钮**：屏幕中部靠边、沉浸光感，可自由拖拽后吸附最近侧缘。
@@ -8286,16 +8295,16 @@ export struct Reader {
             // 吸附：重心在左半 → 贴左缘，否则贴右缘（垂直位置保留用户拖到的位置）
             const targetX: number = this.pauseBtnX + 22 < this.rootWidth / 2
               ? 10 : this.rootWidth - 54;
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.pauseBtnX = targetX;
             });
           })))
         // 进出场：缩放 + 淡入淡出（突然冒出来会显得突兀）
         .transition(TransitionEffect.asymmetric(
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
-            .animation({ duration: 240, curve: Curve.FastOutSlowIn }),
+            .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)),
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
-            .animation({ duration: 180, curve: Curve.FastOutSlowIn })))
+            .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))))
       }
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
@@ -8360,7 +8369,7 @@ export struct Reader {
           }
           .width('100%')
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -10 })))
         }
       }
@@ -8412,7 +8421,7 @@ export struct Reader {
       // 智感握姿：收起态跟随握持手左右偏移，单手操作时胶囊贴近拇指一侧；
       // 展开态不偏移（要与正文列对齐）。side = -1 左 / 0 居中 / 1 右。
       .translate({ x: this.gripOffset() })
-      .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+      .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
       .hitTestBehavior(HitTestMode.Transparent)
       // **主题纪元拼在底栏层上**：明暗切换时整颗胶囊（含里面的按钮与标签数字）重建
       .key('readerBottomLayer_' + this.themeEpoch + '_l' + this.languageTick)
@@ -8505,15 +8514,15 @@ export struct Reader {
               //（避开停靠列），y 保持在松手高度。
               const leftX: number = this.barInsetLeft() + 8;
               const rightX: number = this.rootWidth - this.barInsetRight() - 54;
-              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+              this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
                 this.sysTabX = Math.abs(this.sysTabX - leftX) <= Math.abs(this.sysTabX - rightX)
                   ? leftX : rightX;
               });
             })
         )
-        .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+        .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
         .onClick(() => {
-          this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
             this.systemSelectBlock = '';
           });
           // 退出即重置位置：下次进入恢复初始贴边（用户要求）
@@ -8522,10 +8531,10 @@ export struct Reader {
           this.toast(L10n.t('已恢复批注菜单'));
         })
         .transition(TransitionEffect.asymmetric(
-          TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 }))
             .combine(TransitionEffect.translate({ x: 24 })),
-          TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 }))
             .combine(TransitionEffect.translate({ x: 24 }))
         ))
@@ -8830,7 +8839,7 @@ export struct Reader {
         .width('100%')
         .height('100%')
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-        .transition(TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
       }
 
       // 导出链路已统一走自研渲染器，这里不再挂载任何隐藏 Web（见 exportHtml 注释）。

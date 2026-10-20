@@ -33,6 +33,7 @@
  */
 
 import { withAlpha } from '../theme/DesignTokens';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /**
  * 半模态内容的**键盘抬高包装层**（所有面板共用，内容都包在里面）。
@@ -82,7 +83,7 @@ export struct SheetKeyboardLift {
     // **抬/落都走过渡**（用户要求平滑移动上去、平滑移动下来）：
     // ArkUI 的 .animation 只管**它之前声明的那些属性**，所以必须排在 padding 之后。
     // 时长取 200ms：再长会和系统键盘动画脱节，再短就还是"跳"。
-    .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+    .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
   }
 }
 

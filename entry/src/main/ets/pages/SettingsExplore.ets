@@ -20,6 +20,7 @@ import { SettingsMirror } from '../service/SettingsMirror';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
 import { promptAction } from '@kit.ArkUI';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -139,7 +140,7 @@ export struct SettingsExplore {
 
   private openLegal(doc: string): void {    if (this.embedded) {
       if (this.legalDoc !== doc) {
-        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
           this.legalDoc = doc;
         });
       } else {
@@ -211,7 +212,7 @@ export struct SettingsExplore {
     if (this.stack === null) {
       return;
     }
-    this.stack.pushPath({ name: 'pages/SettingsHelp' });
+    this.stack.pushPath({ name: 'pages/SettingsHelp' }, AppearanceFx.navAnimated());
   }
 
   private openLink(url: string): void {
@@ -446,7 +447,7 @@ export struct SettingsExplore {
                 if (this.stack === null) {
                   return;
                 }
-                this.stack.pushPath({ name: 'pages/Changelog' });
+                this.stack.pushPath({ name: 'pages/Changelog' }, AppearanceFx.navAnimated());
               }
             })
           }

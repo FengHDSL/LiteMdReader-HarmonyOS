@@ -24,6 +24,7 @@ import {
   paletteFor
 } from '../theme/DesignTokens';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /** 路由参数（navPageBuilder 注入）：doc = 'privacy' | 'terms' */
 export interface LegalDocRoute {
@@ -102,7 +103,7 @@ export struct LegalDoc {
               if (this.onBack !== undefined) {
                 this.onBack();
               } else if (this.stack !== null) {
-                this.stack.pop();
+                this.stack.pop(AppearanceFx.navAnimated());
               }
             }
           }) {

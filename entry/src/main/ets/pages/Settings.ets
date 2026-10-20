@@ -31,6 +31,7 @@ import { bundleManager, common } from '@kit.AbilityKit';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -232,7 +233,7 @@ export struct Settings {
   private openSection(route: string): void {
     if (this.isWide()) {
       if (this.inlineSection !== route) {
-        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
           this.inlineSection = route;
         });
       }
@@ -242,7 +243,7 @@ export struct Settings {
       return;
     }
     try {
-      this.stack.pushPath({ name: route });
+      this.stack.pushPath({ name: route }, AppearanceFx.navAnimated());
     } catch (err) {
       this.toast(this.s('页面跳转失败'));
     }
@@ -312,7 +313,7 @@ export struct Settings {
         if (!this.isWide() && this.inlineSection.length > 0 && this.stack !== null) {
           const route: string = this.inlineSection;
           this.inlineSection = '';
-          this.stack.pushPath({ name: route });
+          this.stack.pushPath({ name: route }, AppearanceFx.navAnimated());
         }
       })
     } else {
@@ -335,7 +336,7 @@ export struct Settings {
         if (!this.isWide() && this.inlineSection.length > 0 && this.stack !== null) {
           const route2: string = this.inlineSection;
           this.inlineSection = '';
-          this.stack.pushPath({ name: route2 });
+          this.stack.pushPath({ name: route2 }, AppearanceFx.navAnimated());
         }
       })
     }

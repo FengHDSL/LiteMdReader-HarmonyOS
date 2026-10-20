@@ -16,6 +16,7 @@ import { MdToPlain } from '../markdown/MdToPlain';
 import { DocStore, PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 @Component
 export struct ExportOptionsPanel {
@@ -154,7 +155,7 @@ export struct ExportOptionsPanel {
       this.stack.pushPath({
         name: 'pages/HtmlViewer',
         param: { docName: this.docName, content: content, htmlPath: '' } as PrintRoute
-      });
+      }, AppearanceFx.navAnimated());
     } catch (err) {
       this.notify('无法打开打印');
     }

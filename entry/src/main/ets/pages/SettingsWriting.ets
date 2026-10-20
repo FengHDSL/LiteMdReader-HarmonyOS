@@ -29,6 +29,7 @@ import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
 import { DocCover, coverColorsOf, coverStyleFromColor } from '../components/DocCover';
 import { DocMeta, DocStore } from '../service/DocStore';
 import { DayRecord, LogRange, WritingLog, dayKeyOf } from '../service/WritingLog';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   CoverStyle,
   HwRadius,
@@ -544,7 +545,7 @@ export struct SettingsWriting {
            .onSelect((index: number) => {
             const y: number = this.yearOptions()[index];
             // 切年份带动画：key 含 viewYear → 整片格子重建，animateTo 让新格淡入
-            this.getUIContext().animateTo({ duration: 280, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
               this.viewYear = y;
             });
             // 切年份后重新定位到该年最新有数据的列

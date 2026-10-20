@@ -56,6 +56,7 @@ import { ChartCache } from '../service/ChartCache';
 import { EngineRegistry } from '../service/EngineRegistry';
 import { UpdateService } from '../service/UpdateService';
 import { common } from '@kit.AbilityKit';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   CodeFamily,
   CodeHighlighter,
@@ -2174,10 +2175,10 @@ export struct MdBlockView {
     // 出现 / 消失动画：淡入 + 轻微上浮（TransitionEffect 自带 animation，
     // 不依赖 animateTo，系统选择菜单挂载 / 卸载时都能播）
     .transition(TransitionEffect.asymmetric(
-      TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn })
+      TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))
         .combine(TransitionEffect.translate({ y: 8 })
-          .animation({ duration: 180, curve: Curve.FastOutSlowIn })),
-      TransitionEffect.OPACITY.animation({ duration: 130, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))),
+      TransitionEffect.OPACITY.animation(AppearanceFx.anim(130, Curve.FastOutSlowIn))
     ))
   }
 
@@ -2360,7 +2361,7 @@ export struct MdBlockView {
           .justifyContent(FlexAlign.Center)
           .padding({ top: HwSpace.xs, bottom: HwSpace.sm })
           .onClick(() => {
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.codeExpanded = !this.codeExpanded;
             });
           })
@@ -3203,7 +3204,7 @@ export struct MdBlockView {
           buttonMaterialShadow: false,
           palette: this.palette,
           buttonOnTap: () => {
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.chartShowCode = !this.chartShowCode;
             });
           }
@@ -3474,7 +3475,7 @@ export struct MdBlockView {
       // 复用"缓存图受损"这条现成通道：它会让本块走实时 Web（而不是读旧 PNG）
       this.brokenCharts = this.brokenCharts.concat([key]);
     }
-    this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
       this.chartReloadTick = this.chartReloadTick + 1;
     });
   }
@@ -3597,7 +3598,7 @@ export struct MdBlockView {
                     .backgroundColor((this.groupActiveKey === this.block.id + '|' + gi)
                       ? this.palette.surface : Color.Transparent)
                     .onClick(() => {
-                      this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+                      this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
                         this.groupActiveKey = this.block.id + '|' + gi;
                       });
                     })
@@ -3709,7 +3710,7 @@ export struct MdBlockView {
           .height(14)
           .fillColor(this.palette.textTertiary)
           .rotate({ angle: this.detailsShown() ? 90 : 0 })
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
         Text() {
           ForEach(MdViewUtil.toPieces(this.block.inlines, this.dark), (piece: MdPiece) => {
             Span(piece.text)
@@ -3725,7 +3726,7 @@ export struct MdBlockView {
       .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
       .onClick(() => {
         // 展开收起包 animateTo：内容出现 / 消失才有过渡动画
-        this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
           this.setDetailsShown(!this.detailsShown());
         });
       })

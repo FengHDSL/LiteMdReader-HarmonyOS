@@ -28,11 +28,13 @@ import {
   HwType,
   LIGHT_PALETTE,
   ReaderPalette,
-  barFrostColor
+  barFrostColor,
+  withAlpha
 } from '../theme/DesignTokens';
 import { ImmersiveCardLayer } from './ImmersiveCard';
 import { getImmersiveMaterial } from './SystemMaterial';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 @Component
 export struct ImmersiveInput {
@@ -59,8 +61,8 @@ export struct ImmersiveInput {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(HwRadius.inner)
-        .backgroundColor(this.materialOn() ? '#00000000' : barFrostColor(this.palette.surface))
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
+        .backgroundColor(this.materialOn() ? '#00000000' : (AppearanceFx.immersive() ? barFrostColor(this.palette.surface) : withAlpha(this.palette.surface, 'FF')))
+        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       // ② 沉浸光感承载层

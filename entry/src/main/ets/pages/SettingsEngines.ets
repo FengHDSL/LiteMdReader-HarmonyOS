@@ -15,6 +15,7 @@ import { SettingsShell } from './SettingsShell';
 import { EngineInfo, ENGINE_LIST, EngineRegistry } from '../service/EngineRegistry';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { common, Want } from '@kit.AbilityKit';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -46,7 +47,7 @@ export struct SettingsEngines {
 
   private toggle(id: string, on: boolean): void {
     // 开关包动画：行淡显 / 恢复要平滑
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.disabled = EngineRegistry.withToggled(this.disabled, id, !on);
     });
   }
@@ -54,7 +55,7 @@ export struct SettingsEngines {
   /** 一键全部启用（关闭列表清空；有引擎处于关闭态时才显示入口）。 */
   private enableAll(): void {
     const n: number = EngineRegistry.countOff(this.disabled);
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.disabled = '';
     });
     this.getUIContext().getPromptAction().showToast({ message: L10n.t('已重新启用 ') + n + ' 个引擎' });
@@ -200,7 +201,7 @@ export struct SettingsEngines {
           .width('100%')
           .transition(TransitionEffect.OPACITY.combine(
             TransitionEffect.scale({ x: 0.92, y: 0.92 })
-          ).animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+          ).animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
         }
 
         ForEach(ENGINE_LIST, (info: EngineInfo) => {

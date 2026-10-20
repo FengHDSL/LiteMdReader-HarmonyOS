@@ -29,6 +29,7 @@ import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 const TAG: string = 'AiSettings';
 
@@ -442,7 +443,7 @@ export struct AiSettings {
                 palette: this.palette(),
                 buttonOnTap: () => {
                   if (this.stack !== null) {
-                    this.stack.pop();
+                    this.stack.pop(AppearanceFx.navAnimated());
                   }
                 }
               }) {

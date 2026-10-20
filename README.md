@@ -201,6 +201,12 @@
 - 材质缓存键按「应用深浅 + 系统深浅」双维组织（材质底子只跟系统深浅走，应用深浅只决定压哪层色），
   深浅切换时靠承载层的 `key` 强制重建节点，避免材质不刷新。
 - 全局开关在 `module.json5` 的 `metadata: ohos.arkui.UIMaterial.state = enable`。
+- **用户侧总开关**（2026-10-20 起）：外观设置新增「沉浸光感」与「过渡动画」两项，**默认都关闭**。
+  光感关 → 所有卡片 / 条栏一律**纯色不透明**（`AppearanceFx.immersive()` 收口在
+  `material/ImmersiveCard.ets` 的 `materialOn()`，同时让 mica 磨砂与降级模糊让位给实色）；
+  动效关 → `animateTo` / `.animation()` / `.transition()` / 页面栈跳转一律**瞬时完成**
+  （统一走 `service/AppearanceFx.ets` 的 `anim()/param()/fx()/navAnimated()`）。
+  开启光感时弹窗提示「掉帧 / 发热」代价。
 
 ### 书架与拖拽归组
 

@@ -20,6 +20,7 @@ import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../them
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 @Component
 export struct NotePanel {
@@ -197,7 +198,7 @@ export struct NotePanel {
             .backgroundColor(this.palette.quoteBg)
             .borderRadius(HwRadius.inner)
             // 长高/回落都走过渡；.animation 只管它之前声明的属性，必须排在后头
-            .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
             .onChange((value: string) => {
               this.mathSrc = value;
             })
@@ -265,7 +266,7 @@ export struct NotePanel {
         // 所以键盘弹起时不会把面板顶出屏幕，键盘收起后还能继续长。
         .constraintSize({ minHeight: 120, maxHeight: this.draftMax() })
         // 长高/回落都走过渡（.animation 只管它之前声明的属性，位置别挪）
-        .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+        .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
         .fontSize(HwType.label)
         .fontColor(this.palette.textPrimary)
         .placeholderColor(this.palette.textTertiary)

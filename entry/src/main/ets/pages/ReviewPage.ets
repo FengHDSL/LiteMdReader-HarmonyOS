@@ -39,6 +39,7 @@ import { ReviewCard, ReviewCardStore, ReviewSeed } from '../service/ReviewCard';
 import { DocCover, coverColorsOf } from '../components/DocCover';
 import { MathFormulaText } from '../components/MathFormulaText';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /** 遗忘曲线的一个分桶：区间上限（天）+ 展示名。 */
 interface DueBucket {
@@ -168,7 +169,7 @@ export struct ReviewPage {
 
   /** 切换互换模式（学习主页提前选好，复习中只执行） */
   private toggleSwapMode(): void {
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.swapMode = !this.swapMode;
       this.flipped = false;
       this.typeWrong = false;
@@ -177,7 +178,7 @@ export struct ReviewPage {
 
   /** 切换拼写模式 */
   private toggleTypingMode(): void {
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.typingMode = !this.typingMode;
       this.typeInput = '';
       this.typeWrong = false;
@@ -1173,9 +1174,9 @@ export struct ReviewPage {
         .width('100%')
         .height('100%')
         .transition(TransitionEffect.asymmetric(
-          TransitionEffect.OPACITY.animation({ duration: 260, curve: Curve.FastOutSlowIn })
+          TransitionEffect.OPACITY.animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: 36 })),
-          TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: 18 }))
         ))
       } else {
@@ -1200,7 +1201,7 @@ export struct ReviewPage {
                   palette: this.palette(),
                   buttonOnTap: () => {
                     if (this.stack !== null) {
-                      this.stack.pop();
+                      this.stack.pop(AppearanceFx.navAnimated());
                     }
                   }
                 }) {
@@ -1303,7 +1304,7 @@ export struct ReviewPage {
         .width('100%')
         .height('100%')
         // 返回学习主页：淡入（与进入背诵的转场对称）
-        .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
       }
     }
     .width('100%')
@@ -1717,7 +1718,7 @@ export struct ReviewPage {
                 .height(10)
                 .borderRadius(5)
                 .backgroundColor(this.palette().accent)
-                .animation({ duration: 300, curve: Curve.FastOutSlowIn })
+                .animation(AppearanceFx.anim(300, Curve.FastOutSlowIn))
             }
             .layoutWeight(1)
             .height(10)
@@ -2042,9 +2043,9 @@ export struct ReviewPage {
           .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.safeTopVp() + HwBar.pill + HwSpace.xl })
           .alignItems(HorizontalAlign.Start)
           .transition(TransitionEffect.asymmetric(
-            TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
               .combine(TransitionEffect.translate({ y: 14 })),
-            TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn })
+            TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))
           ))
         } else if (this.queueIndex < this.queue.length) {
           Column({ space: HwSpace.md }) {
@@ -2084,7 +2085,7 @@ export struct ReviewPage {
                   textAlign: TextAlign.Start
                 })
                 .transition(TransitionEffect.OPACITY
-                  .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+                  .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
               } else {
                 Text(L10n.t('（这条批注没有写文字批注 —— 回想一下当时为什么划它）'))
                   .fontSize(HwType.label + 3)
@@ -2092,7 +2093,7 @@ export struct ReviewPage {
                   .lineHeight((HwType.label + 3) * 1.7)
                   .width('100%')
                   .transition(TransitionEffect.OPACITY
-                    .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+                    .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
               }
             }
             if (this.hintText.length > 0) {
@@ -2101,16 +2102,16 @@ export struct ReviewPage {
                 .fontColor(this.palette().accent)
                 .width('100%')
                 .transition(TransitionEffect.OPACITY
-                  .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+                  .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
             }
           }
           .width('100%')
           .padding({ left: HwSpace.lg, right: HwSpace.lg, top: this.safeTopVp() + HwBar.pill + HwSpace.xl })
           .alignItems(HorizontalAlign.Start)
           .transition(TransitionEffect.asymmetric(
-            TransitionEffect.OPACITY.animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
               .combine(TransitionEffect.translate({ y: 14 })),
-            TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn })
+            TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))
           ))
           .onClick(() => {
             if (!this.typingMode) {
@@ -2138,7 +2139,7 @@ export struct ReviewPage {
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
-              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+              .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
           // 沉浸光感大按钮：**居中排布、不贴屏幕边缘**（用户要求），材质由 chip 自带
           Row({ space: HwSpace.md }) {
@@ -2184,7 +2185,7 @@ export struct ReviewPage {
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
-              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+              .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
           if (this.typeWrong) {
             Text(L10n.t('不对——正确内容已翻面显示，按「下一个」继续'))
@@ -2192,7 +2193,7 @@ export struct ReviewPage {
               .fontColor('#FFD32F2F')
               .textAlign(TextAlign.Center)
               .width('100%')
-              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+              .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
           Row({ space: HwSpace.sm }) {
             TextInput({ text: this.typeInput, placeholder: L10n.t('输入隐藏的内容…') })
@@ -2232,7 +2233,7 @@ export struct ReviewPage {
                 chipFontSize: 15,
                 chipLabel: L10n.t('提示'),
                 chipOnTap: () => {
-                  this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                  this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
                     this.flipped = true;
                   });
                 }
@@ -2264,7 +2265,7 @@ export struct ReviewPage {
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
-              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+              .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
           Row() {
             this.flashButton('记得', '#FF1F9E66', 2)
@@ -2340,9 +2341,9 @@ export struct ReviewPage {
               })
               // 出现 / 消失带缩放淡入淡出过渡（用户要求：凡事有动画）
               .transition(TransitionEffect.asymmetric(
-                TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn })
+                TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
                   .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })),
-                TransitionEffect.OPACITY.animation({ duration: 160, curve: Curve.FastOutSlowIn })
+                TransitionEffect.OPACITY.animation(AppearanceFx.anim(160, Curve.FastOutSlowIn))
                   .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 }))
               ))
             }

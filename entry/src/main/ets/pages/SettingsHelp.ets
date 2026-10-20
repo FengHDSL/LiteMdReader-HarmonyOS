@@ -24,6 +24,7 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { SettingsShell } from './SettingsShell';
 import { ImmersiveCard } from '../material/ImmersiveCard';
 import { ImmersiveInput } from '../material/ImmersiveInput';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -830,7 +831,7 @@ export struct SettingsHelp {
               .fontSize(HwType.label)
               .fontColor(this.palette().textTertiary)
               .width('100%')
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
           }
           .width('100%')
         }
@@ -934,7 +935,7 @@ export struct SettingsHelp {
           }
           .width('100%')
           .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 10 }))
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
         }, (sec: HelpSection) => 's_' + sec.name + '_' + sec.items.length)
 
         // ④ 常见问题
@@ -987,7 +988,7 @@ export struct SettingsHelp {
           }
           .width('100%')
           .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 10 }))
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
         } else if (this.query.trim().length > 0) {
           // 一条都没命中：给个明确交代（否则用户只看到搜索框下面空着）
           Column() {
@@ -999,7 +1000,7 @@ export struct SettingsHelp {
               .padding(HwSpace.lg)
           }
           .width('100%')
-          .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
         }
 
         Text(L10n.t('没找到想要的？可在「参考与致谢」里查看项目主页，或到更新日志里看看每个版本新增了什么。'))

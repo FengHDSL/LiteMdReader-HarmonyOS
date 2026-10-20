@@ -64,6 +64,7 @@ import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
 import { LiveBlockEditor } from '../components/LiveBlockEditor';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /** 可一键插入的 Markdown 片段 */
 interface MdSnippet {
@@ -749,7 +750,7 @@ export struct Editor {
     }
     this.versionList = VersionStore.list(ctx, this.docName);
     this.diffFor = -1;
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.showVersions = true;
     });
   }
@@ -1159,7 +1160,7 @@ export struct Editor {
     AppStorage.setOrCreate('aiChatDocContent', this.content);
     AppStorage.setOrCreate('aiChatQuote', quote);
     if (this.stack !== null) {
-      this.stack.pushPath({ name: 'pages/AiChat' });
+      this.stack.pushPath({ name: 'pages/AiChat' }, AppearanceFx.navAnimated());
     }
   }
 
@@ -1237,7 +1238,7 @@ export struct Editor {
     AppStorage.setOrCreate('sketchInsertMd', '');
     try {
       if (this.stack !== null) {
-        this.stack.pushPath({ name: 'pages/Sketch' });
+        this.stack.pushPath({ name: 'pages/Sketch' }, AppearanceFx.navAnimated());
       }
     } catch (err) {
       this.toast(L10n.t('无法打开手写页'));
@@ -1296,13 +1297,13 @@ export struct Editor {
   // 上一处/下一处直接把光标选区设到匹配段上（TextArea 会自动把选区滚进可视区）。
 
   private openFind(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.showFind = true;
     });
   }
 
   private closeFind(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.showFind = false;
       this.replaceRowOpen = false;
     });
@@ -1642,7 +1643,7 @@ export struct Editor {
   private closePage(): void {
     try {
       if (this.stack !== null) {
-        this.stack.pop();
+        this.stack.pop(AppearanceFx.navAnimated());
       }
     } catch (err) {
       this.toast(L10n.t('返回失败'));
@@ -1718,14 +1719,14 @@ export struct Editor {
       }
     }
     // 切换包在 animateTo 里：配合两侧的 .transition，预览/编辑互切有淡入淡出 + 轻微缩放
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.preview = !this.preview;
     });
   }
 
   /** 语法浮层的开关。条件挂载包在 animateTo 里，进出场动画才会播放。 */
   private openSyntax(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.showSyntax = true;
     });
   }
@@ -1784,7 +1785,7 @@ export struct Editor {
           buttonMaterialShadow: false,
           palette: this.palette(),
           buttonOnTap: () => {
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.toggleLive();
             });
           }
@@ -1820,7 +1821,7 @@ export struct Editor {
                 .fontColor([this.preview ? this.palette().accent : this.palette().textPrimary])
             }
           }
-          .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.7, y: 0.7 })))
         }
 
@@ -1927,7 +1928,7 @@ export struct Editor {
 
   /** 展开 / 收起：状态翻转包在 animateTo 里，面板的 transition 才会有动画。 */
   private toggleBarExpanded(): void {
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.barExpanded = !this.barExpanded;
     });
   }
@@ -2216,7 +2217,7 @@ export struct Editor {
     .shadow({ radius: 20, color: this.palette().shadow, offsetY: 4 })
     .alignItems(HorizontalAlign.Start)
     .transition(TransitionEffect.OPACITY
-      .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+      .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
       .combine(TransitionEffect.translate({ y: 16 })))
   }
 
@@ -2355,7 +2356,7 @@ export struct Editor {
             chipLabel: L10n.t('专注'),
             chipOnTap: () => {
               // 焦点写作（批 5）：隐藏顶栏 / 底部工具层，只留正文
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+              this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                 this.focusMode = true;
               });
             }
@@ -3042,8 +3043,8 @@ export struct Editor {
             .margin({ top: HwSpace.sm, bottom: HwSpace.sm })
             .transition(TransitionEffect.asymmetric(
               TransitionEffect.scale({ x: 0.985, y: 0.985 }).combine(TransitionEffect.OPACITY)
-                .animation({ duration: 220, curve: Curve.FastOutSlowIn }),
-              TransitionEffect.OPACITY.animation({ duration: 140, curve: Curve.FastOutSlowIn })))
+                .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)),
+              TransitionEffect.OPACITY.animation(AppearanceFx.anim(140, Curve.FastOutSlowIn))))
           } else {
             Column() {
               MdBlockView({
@@ -3391,13 +3392,13 @@ export struct Editor {
 
   private openOutline(): void {
     this.refreshOutline();
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.outlineOpen = true;
     });
   }
 
   private closeOutline(): void {
-    this.getUIContext().animateTo({ duration: 180, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
       this.outlineOpen = false;
     });
   }
@@ -4178,7 +4179,7 @@ export struct Editor {
 
   /** 分屏模式：0 纯编辑/预览 1 上下 2 左右。进入分屏时立即解析一次。 */
   private cycleSplit(): void {
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       // 分屏顺序（用户要求）：纯编辑 → **左右分屏** → 上下分屏 → 纯编辑
       this.splitMode = this.splitMode === 0 ? 2 : (this.splitMode === 2 ? 1 : 0);
     });
@@ -4466,7 +4467,7 @@ export struct Editor {
           .shadow({ radius: 24, color: this.palette().shadow, offsetY: 6 })
           .alignItems(HorizontalAlign.Start)
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -10 })))
         }
         .width('100%')
@@ -4492,7 +4493,7 @@ export struct Editor {
         }
         .width('100%')
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .combine(TransitionEffect.translate({ y: 18 })))
       }
 
@@ -4534,7 +4535,7 @@ export struct Editor {
               buttonMaterialShadow: false,
               palette: this.palette(),
               buttonOnTap: () => {
-                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                   this.focusMode = false;
                 });
               }
@@ -4796,7 +4797,7 @@ export struct Editor {
         }
         .width('100%')
         .height('100%')
-        .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
       }
 
 
@@ -5058,7 +5059,7 @@ export struct Editor {
         // animateTo 里才有动画，而"点放大按钮打开"与"点空白关闭"这两条路径都没包，
         // 会直接硬切（本工程在搜索结果面板上已踩过同一个坑）。
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .combine(TransitionEffect.scale({ x: 0.92, y: 0.92, centerX: '50%', centerY: '50%' })))
       }
     }

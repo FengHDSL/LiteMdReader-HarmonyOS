@@ -23,6 +23,7 @@ import { PrintService } from '../service/PrintService';
 import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 @Component
 export struct HtmlViewer {
@@ -311,7 +312,7 @@ export struct HtmlViewer {
             palette: this.palette(),
             buttonOnTap: () => {
               if (this.stack !== null) {
-                this.stack.pop();
+                this.stack.pop(AppearanceFx.navAnimated());
               }
             }
           }) {

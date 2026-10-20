@@ -26,6 +26,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { MdAnnotation } from '../markdown/MdTypes';
+import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
   HwSpace,
@@ -1058,7 +1059,7 @@ export struct SettingsData {
             chipActive: this.annoOpen,
             chipLabel: this.annoOpen ? L10n.t('收起预览') : L10n.t('预览全部批注'),
             chipOnTap: () => {
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+              this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                 this.annoOpen = !this.annoOpen;
               });
             }
@@ -1112,7 +1113,7 @@ export struct SettingsData {
             .edgeEffect(EdgeEffect.Spring)
             .align(Alignment.Top)
             .transition(TransitionEffect.OPACITY
-              .animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+              .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
           }
 
           if (this.annoTotal > 100 && this.annoOpen) {
@@ -1339,7 +1340,7 @@ export struct SettingsData {
                   .constraintSize({ maxHeight: 320 })
                   .borderRadius(HwRadius.inline)
                   .transition(TransitionEffect.OPACITY
-                    .animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+                    .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
                   .onClick(() => {
                     this.getUIContext().animateTo(
                       { duration: 240, curve: Curve.FastOutSlowIn }, () => {
@@ -1410,7 +1411,7 @@ export struct SettingsData {
                   .constraintSize({ maxHeight: 320 })
                   .borderRadius(HwRadius.inline)
                   .transition(TransitionEffect.OPACITY
-                    .animation({ duration: 240, curve: Curve.FastOutSlowIn }))
+                    .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
                   .onClick(() => {
                     this.getUIContext().animateTo(
                       { duration: 240, curve: Curve.FastOutSlowIn }, () => {
@@ -1540,7 +1541,7 @@ export struct SettingsData {
           }
           .width('100%')
           // 间隔切换的提示行出现 / 消失带过渡（凡事带动画）
-          .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
 
           if (this.webdavAutoStatus.length > 0) {
             Text(L10n.t('上次自动任务：') + this.webdavAutoStatus)

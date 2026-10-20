@@ -47,6 +47,7 @@ import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import { DiagramWeb } from '../components/DiagramWeb';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 /**
  * 外部文件附件（大文件分批上传用）：
@@ -1132,7 +1133,7 @@ export struct AiChat {
     }
     // **动画驱动编辑态切换**（用户要求：编辑框出现 / 收起要有过渡、不跳变）：
     // animateTo 让气泡⇄编辑框的高度差也参与补间，配合 editBubble 上的 transition
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.editingIdx = idx;
       this.editText = m.content;
     });
@@ -1188,7 +1189,7 @@ export struct AiChat {
       this.session.title = text.length > 20 ? text.substring(0, 20) : text;
     }
     // 收起编辑框走动画（与展开对称，避免跳变）
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.editingIdx = -1;
       this.editText = '';
     });
@@ -1219,7 +1220,7 @@ export struct AiChat {
 
   private openSettings(): void {
     if (this.stack !== null) {
-      this.stack.pushPath({ name: 'pages/AiSettings' });
+      this.stack.pushPath({ name: 'pages/AiSettings' }, AppearanceFx.navAnimated());
     }
   }
 
@@ -1344,13 +1345,13 @@ export struct AiChat {
 
   private openDrawer(): void {
     this.refreshSessionList();
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.drawerOpen = true;
     });
   }
 
   private closeDrawer(): void {
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.drawerOpen = false;
     });
   }
@@ -1595,7 +1596,7 @@ export struct AiChat {
       // 变化由 syncListToSpace 逐帧跟随（气泡与输入区顶边一起移动），无需手动滚动
       this.hideIme();
     }
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
       this.attachPanelOpen = !this.attachPanelOpen;
     });
   }
@@ -1613,7 +1614,7 @@ export struct AiChat {
     if (!this.attachPanelOpen) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.attachPanelOpen = false;
     });
   }
@@ -1719,7 +1720,7 @@ export struct AiChat {
         const h: number = Number(newValue.height);
         // 输入区高度变化包动画：空态问候文本（padding.bottom=inputH）随之平滑移动
         if (Math.abs(h - this.inputH) > 0.5) {
-          this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
             this.inputH = h;
           });
         }
@@ -1838,7 +1839,7 @@ export struct AiChat {
         .width('100%')
         .height('100%')
         .zIndex(9)
-        .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
       }
 
       // ── 悬浮顶栏：返回 + 标题 + 新话题 + 历史 + 设置 ──
@@ -1857,7 +1858,7 @@ export struct AiChat {
               palette: this.palette(),
               buttonOnTap: () => {
                 if (this.stack !== null) {
-                  this.stack.pop();
+                  this.stack.pop(AppearanceFx.navAnimated());
                 }
               }
             }) {
@@ -2300,7 +2301,7 @@ export struct AiChat {
           ? { width: 0 }
           : { width: 0.8, color: this.palette().surfaceBorder })
         // 气泡 ↔ 编辑框互换时淡入淡出（显式 TransitionEffect）
-        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn)))
         if (m.role !== 'user') {
           Blank()
         }
@@ -2309,7 +2310,7 @@ export struct AiChat {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       // 消息出现动画：占位替换为正式回复 / 新消息插入时淡入
-      .transition(TransitionEffect.OPACITY.animation({ duration: 260, curve: Curve.FastOutSlowIn }))
+      .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(260, Curve.FastOutSlowIn)))
 
       // ── 气泡下方操作行：图标按钮 + 日期（AI 4 钮靠左 / 用户 2 钮靠右）──
       if (m.role === 'user' && idx !== this.editingIdx) {
@@ -2421,7 +2422,7 @@ export struct AiChat {
       .alignItems(VerticalAlign.Center)
       .onClick(() => {
         // animateTo 驱动展开/收起：折叠条高度平滑拉长/收短
-        this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
           this.thinkingOpenIdx = this.thinkingOpenIdx === idx ? -1 : idx;
         });
       })
@@ -2438,7 +2439,7 @@ export struct AiChat {
         .constraintSize({ maxHeight: 240 })
         .scrollBar(BarState.Off)
         .align(Alignment.Top)
-        .transition(TransitionEffect.OPACITY.animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
       }
     }
     .alignItems(HorizontalAlign.Start)
@@ -2569,7 +2570,7 @@ export struct AiChat {
               .fontSize(16)
               .fontColor([this.attachPanelOpen ? this.palette().accent : this.palette().textSecondary])
               .rotate({ angle: this.attachPanelOpen ? 45 : 0 })
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
           }
 
           // 发送 / 停止（发送中点按 = 中止本次请求）
@@ -2631,7 +2632,7 @@ export struct AiChat {
         }
         .width('100%')
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
           .combine(TransitionEffect.translate({ y: 12 })))
       }
 
@@ -3040,7 +3041,7 @@ export struct AiChat {
       y: this.attachPressIdx === idx ? 0.94 : 1
     })
     .opacity(this.attachPressIdx === idx ? 0.78 : 1)
-    .animation({ duration: 150, curve: Curve.EaseOut })
+    .animation(AppearanceFx.anim(150, Curve.EaseOut))
     .onTouch((e: TouchEvent) => {
       if (e.type === TouchType.Down) {
         this.attachPressIdx = idx;
@@ -3118,7 +3119,7 @@ export struct AiChat {
       return;
     }
     const route: ReaderRoute = { name: name };
-    this.stack.pushPath({ name: 'pages/Reader', param: route });
+    this.stack.pushPath({ name: 'pages/Reader', param: route }, AppearanceFx.navAnimated());
   }
 
   /** AI 回复正文：与阅读页同引擎的 Markdown 块渲染（标题/列表/表格/代码框/引用等）。
@@ -3212,7 +3213,7 @@ export struct AiChat {
           .backgroundColor(this.palette().quoteBg)
           .onClick(() => {
             // 收起编辑框也走动画（与展开对称）
-            this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
               this.editingIdx = -1;
               this.editText = '';
             });
@@ -3247,7 +3248,7 @@ export struct AiChat {
     // **展开 / 收起过渡**：从右上方（原气泡那一侧）放大淡入、反向缩回。
     // 用显式 TransitionEffect.animation 形式，不依赖 animateTo。
     .transition(TransitionEffect.OPACITY
-      .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+      .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
       .combine(TransitionEffect.scale({ x: 0.94, y: 0.94, centerX: '100%', centerY: '0%' })))
   }
 

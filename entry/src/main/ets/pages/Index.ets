@@ -87,6 +87,8 @@ import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { uniformDataStruct, uniformTypeDescriptor } from '@kit.ArkData';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
+import { PageWarmup } from '../service/PageWarmup';
 
 // ══════════════ 模块级常量（⚠️ 必须位于**全部 import 之后**）══════════════
 // ArkTS 硬性规则：import 必须全部在文件顶部；夹在 import 之间声明 interface / const
@@ -365,6 +367,12 @@ struct Index {
   @State expandedFolders: string[] = [];
   /** iOS 6 主屏式文件夹展开：面板从被点图标正下方长出来，其余格子退到后面 */
   @State openFolderName: string = '';
+  /**
+   * 文件夹面板里的文档列表（**打开时算一次**）。
+   * 面板的 ForEach 原来直接调 folderDocs(name)，滑动/重绘每一帧都遍历全量文档过滤；
+   * 现在只在开面板与数据刷新时重算，滑动期间零分配。
+   */
+  @State panelDocs: DocMeta[] = [];
   @State folderPanelOpen: boolean = false;
   /**
    * 面板是否**还挂在网格流里**（与 openFolderName 分开：收起时名字要留到动画跑完，
@@ -441,7 +449,7 @@ struct Index {
     });
     // 启动页时序：首帧即显 → 1.2s 后开始淡出（420ms）→ 淡出结束移除
     setTimeout(() => {
-      this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
+      this.getUIContext().animateTo(AppearanceFx.anim(420, Curve.FastOutSlowIn), () => {
         this.splashOpacity = 0;
       });
       setTimeout(() => {
@@ -529,7 +537,7 @@ struct Index {
     if (this.barsVisible === show) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.barsVisible = show;
     });
   }
@@ -562,7 +570,7 @@ struct Index {
   // ── 搜索：按钮原地展开，不做半模态 ──
 
   private expandSearch(): void {
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.searchExpanded = true;
     });
     // **点搜索按钮就直接弹键盘**（用户要求）：`defaultFocus(true)` 只在节点
@@ -578,7 +586,7 @@ struct Index {
   }
 
   private collapseSearch(): void {
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.searchExpanded = false;
       this.searchQuery = '';
       this.searchHits = [];
@@ -654,14 +662,14 @@ struct Index {
     }
     // 打开时同步一次只读状态（后面由按钮自己维护，不再每次渲染现问数据层）
     this.cellMenuReadOnly = kind === 'doc' ? this.isDocReadOnly(name) : false;
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.shelfSheet = 'cellMenu';
       this.shelfVisible = true;
     });
   }
 
   private closeCellMenu(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.shelfVisible = false;
     });
   }
@@ -836,7 +844,7 @@ struct Index {
       x = Math.max(HwSpace.md, Math.min(rx, maxRight));
       y = Math.max(HwSpace.md, Math.min(ry + rh + gap, maxBottom));
     }
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.floatKind = kind;
       this.floatName = name;
       this.floatBuiltin = builtin;
@@ -855,7 +863,7 @@ struct Index {
       return;
     }
     this.floatOpenedByPress = false;
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.floatKind = '';
       this.floatName = '';
     });
@@ -976,7 +984,7 @@ struct Index {
     .zIndex(900)
     // 命中模式用默认值：自己和四条遮罩都响应点击，同时挡住后面的书架
     // （HitTestMode.Block 是「自己响应但屏蔽子节点」，那样遮罩就收不到点击了）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+    .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
   }
 
   /** 悬浮面板本体（挂在根 Stack 最上层，不进 cellBlur 的那几层，所以自身不糊）。 */
@@ -1047,7 +1055,7 @@ struct Index {
     // 出现 / 消失的过渡：从锚点位置淡入 + 轻微放大（配 animateTo 的状态变更）
     .transition(TransitionEffect.OPACITY
       .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
-      .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+      .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
   }
 
   // ── 读写 / 只读（每篇文档一个持久标记，见 DocStore.setReadOnly）──
@@ -1285,21 +1293,21 @@ struct Index {
     // （用户反馈：更多 → 重命名，点完没弹输入框还崩）。
     // 正确做法：面板保持打开，只把**内容标识**从 menu 换成 rename
     // （indexSheet() 里的 if 分支会换成重命名内容），顺带还有"菜单就地变输入框"的观感。
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.shelfSheet = 'rename';
       this.shelfVisible = true;
     });
   }
 
   private closeRename(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.shelfVisible = false;
     });
   }
 
   /** 格子菜单 → 导出（HTML / MD / 分享，用户要求）。 */
   private openCellExport(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.shelfSheet = 'export';
       this.shelfVisible = true;
     });
@@ -1320,7 +1328,7 @@ struct Index {
     }
     this.mergeSources = src;
     this.mergePreselect = pre;
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.sheetEpoch++;
       this.shelfSheet = 'merge';
       this.shelfVisible = true;
@@ -1328,7 +1336,7 @@ struct Index {
   }
 
   private toggleShelfMode(): void {
-    this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.treeMode = !this.treeMode;
     });
   }
@@ -1375,7 +1383,9 @@ struct Index {
     }
     // 挂载包在 animateTo 里：其他格子的模糊 / 透明度**渐入**（不再瞬间变糊）。
     // 先挂载（高度 0），下一拍再撑高——同一拍里改两个状态就没有「推开下面图标」的过程
-    this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
+    // 面板文档列表先算好（滑动期间不再逐帧过滤，见 panelDocs 说明）
+    this.panelDocs = this.folderDocs(name);
+    this.getUIContext().animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }), () => {
       this.openFolderName = name;
       // 与 openFolderName 同一拍挂载：下面的格子一次动画被推开，不会二次跳
       this.folderPanelMounted = true;
@@ -1398,7 +1408,7 @@ struct Index {
         return;
       }
       this.scrollPanelTopIntoPlace();
-      this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
+      this.getUIContext().animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }), () => {
         this.folderPanelOpen = true;
       });
     }, FOLDER_SCROLL_SETTLE);
@@ -1473,7 +1483,10 @@ struct Index {
         yOffset: cur + dist,
         // 曲线与展开动画**同一支** FOLDER_SPRING：滑动与撑开同步收放
         // （用户反馈"滑动速度要和文件夹展开的速度一样"）
-        animation: { duration: FOLDER_GLIDE_MS, curve: FOLDER_SPRING }
+        animation: {
+          duration: AppearanceFx.motion() ? FOLDER_GLIDE_MS : 0,
+          curve: FOLDER_SPRING
+        }
       });
     } catch (err) {
       // 定位失败不影响展开本身（面板仍会展开，用户可手动滚）
@@ -1574,7 +1587,7 @@ struct Index {
     // 摘的那一刻网格要再量一次布局，底部那行提示文本会**第二次上移**
     // （用户看到的「上移 → 顿一下 → 再上移」）。现在一起做完，提示文本一次到位；
     // 节点的消失由 folderExpandPanel 那层透明度 + 缩放收尾，不会有硬切感。
-    this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(300, Curve.FastOutSlowIn), () => {
       this.folderPanelOpen = false;
       this.folderPanelMounted = false;
     });
@@ -1583,6 +1596,7 @@ struct Index {
     setTimeout(() => {
       if (!this.folderPanelOpen) {
         this.openFolderName = '';
+        this.panelDocs = [];
       }
     }, 340);
   }
@@ -1641,7 +1655,7 @@ struct Index {
 
   /** 树形视图的行内展开也要有动画：状态变更包在弹簧 animateTo 里。 */
   private toggleFolderExpandAnimated(name: string): void {
-    this.getUIContext().animateTo({ curve: FOLDER_SPRING }, () => {
+    this.getUIContext().animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }), () => {
       this.toggleFolderExpand(name);
     });
   }
@@ -1655,6 +1669,9 @@ struct Index {
   private panelWinBottom: number = 0;
 
   onPageShow(): void {
+    // 页面组件预热（Beta，默认关）：开关打开时后台把主题 / 词典等页面依赖备好，
+    // 退后台 / 关闭应用 / 超时（10 分钟）自动释放（见 PageWarmup）
+    PageWarmup.maybeWarmup();
     this.pageAlive = true;
     // **系统深浅同步 + 必要的整页刷新**：
     // 实机日志证明 AppStorage 里 systemDark 会更新，但 @Watch 不触发，
@@ -1674,7 +1691,7 @@ struct Index {
     const gripCtx = this.ctx();
     if (gripCtx !== null) {
       GripAware.startWithPermission(gripCtx, (side: number) => {
-        this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
           this.gripSide = side;
         });
       }).catch(() => {
@@ -1682,7 +1699,7 @@ struct Index {
       });
     } else {
       GripAware.start((side: number) => {
-        this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
           this.gripSide = side;
         });
       });
@@ -1835,7 +1852,7 @@ struct Index {
       return;
     }
     markThemeApplied(dark);
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.themeEpoch = this.themeEpoch + 1;
       // **半模态面板也要跟着重建**：面板内容由 bindSheet 的 builder 渲染，
       // 它不跟随宿主状态刷新——深色切换时会出现"切换不完全"（正文/卡片变了、
@@ -1894,7 +1911,7 @@ struct Index {
           chipLabel: L10n.t('全部'),
           chipActive: this.tagFilter.length === 0,
           chipOnTap: () => {
-            this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
               this.tagFilter = '';
               this.refreshShelfItems();
             });
@@ -1906,7 +1923,7 @@ struct Index {
             chipLabel: '#' + tag,
             chipActive: this.tagFilter === tag,
             chipOnTap: () => {
-              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+              this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
                 this.tagFilter = this.tagFilter === tag ? '' : tag;
                 this.refreshShelfItems();
               });
@@ -1920,7 +1937,7 @@ struct Index {
     .scrollBar(BarState.Off)
     .width('100%')
     // 随分页切换渐入渐出（与页名同一节奏）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+    .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
   }
 
   /** 按标签过滤重建书架网格（保持书架顺序） */
@@ -1960,7 +1977,7 @@ struct Index {
       // 让新封面淡入 + 轻微放大进场（否则新格子是"啪"地出现，用户反馈没动画）。
       if (this.animateNextRefresh) {
         this.animateNextRefresh = false;
-        this.getUIContext().animateTo({ duration: 300, curve: Curve.Friction }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(300, Curve.Friction), () => {
           this.items = this.buildItems(ctx, list);
         });
       } else {
@@ -2211,9 +2228,9 @@ struct Index {
   private pushPage(url: string, params?: ReaderRoute): void {
     try {
       if (params !== undefined) {
-        this.pathStack.pushPath({ name: url, param: params });
+        this.pathStack.pushPath({ name: url, param: params }, AppearanceFx.navAnimated());
       } else {
-        this.pathStack.pushPath({ name: url });
+        this.pathStack.pushPath({ name: url }, AppearanceFx.navAnimated());
       }
     } catch (err) {
       this.toast(L10n.t('页面跳转失败'));
@@ -2368,7 +2385,7 @@ struct Index {
    * 系统会把位置变化、以及带 .transition 的出入场都做成动画。
    */
   private animatedRefresh(): void {
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.refresh();
     });
   }
@@ -2380,7 +2397,7 @@ struct Index {
    * 在 animateTo 里改 absorbAt 就能让过渡跑起来。
    */
   private playAbsorbAnim(name: string, done: () => void): void {
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.absorbAt = name;
       this.hoverDropAt = '';
     });
@@ -2522,7 +2539,7 @@ struct Index {
     this.mergingAt = target;
     this.mergeGrow = false;
     const absorb: boolean = source.length > 0 && source !== target;
-    this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(300, Curve.FastOutSlowIn), () => {
       this.mergeGrow = true;
       // 被拖的那本书同步缩小淡出（"被吸进去"）—— 写在 animateTo 里才有过渡
       if (absorb) {
@@ -3002,7 +3019,7 @@ struct Index {
           .width(36)
           .height(36)
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
 
           Column({ space: 1 }) {
@@ -3013,21 +3030,21 @@ struct Index {
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
-                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                  .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             } else if (this.shelfPage === 2) {
               Text(L10n.t('写作日志'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
-                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                  .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             } else {
               Text(L10n.t('书架'))
                 .fontSize(22)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
-                  .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                  .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             }
           }
           .alignItems(HorizontalAlign.Start)
@@ -3055,7 +3072,7 @@ struct Index {
           .width(36)
           .height(36)
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
         }
 
@@ -3078,7 +3095,7 @@ struct Index {
           }
         }
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
       }
 
@@ -3099,7 +3116,7 @@ struct Index {
           }
         }
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
       }
 
@@ -3189,7 +3206,7 @@ struct Index {
     // **出现 / 收起的过渡**：从顶缘「伸长」出来（高度方向缩放）+ 淡入 + 轻微位移，
     // 收起时反向缩回。用 scale 的 centerY: 0 让缩放钉在面板顶缘，看起来就是往下长出来。
     .transition(TransitionEffect.OPACITY
-      .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+      .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
       .combine(TransitionEffect.scale({ x: 1, y: 0.9, centerX: '50%', centerY: 0 }))
       .combine(TransitionEffect.translate({ y: -10 })))
   }
@@ -3224,7 +3241,7 @@ struct Index {
         .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
         // **出现 / 消失过渡**（用户要求）
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .combine(TransitionEffect.translate({ y: -8 })))
       } else {
         // ══ ① 文档（文件名命中：展示具体文档，参考系统搜索的卡片样式）══
@@ -3289,7 +3306,7 @@ struct Index {
               .margin({ bottom: HwSpace.xs })
               // 逐条出现 / 消失的过渡（用户要求：结果的出现与伸长收起都要有动画）
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+                .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn)))
               .onClick(() => {
                 this.openSearchHit(hit);
               })
@@ -3306,7 +3323,7 @@ struct Index {
           .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
           // **出现 / 消失过渡**（用户要求）
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -8 })))
         }
 
@@ -3380,7 +3397,7 @@ struct Index {
               .margin({ bottom: HwSpace.xs })
               // 逐条出现 / 消失的过渡（用户要求：结果的出现与伸长收起都要有动画）
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+                .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn)))
               .onClick(() => {
                 this.openSearchHit(hit);
               })
@@ -3395,7 +3412,7 @@ struct Index {
           .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
           // **出现 / 消失过渡**（用户要求）
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -8 })))
         }
 
@@ -3460,7 +3477,7 @@ struct Index {
               .margin({ bottom: HwSpace.xs })
               // 逐条出现 / 消失的过渡
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+                .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn)))
               .onClick(() => {
                 // 看完大图关掉后还要能接着看别的图 → 打开浮层后**不收搜索**
                 // （面板外壳的 onClick 会读 imgPreviewSrc 判断，见 searchResultsPanel）
@@ -3476,7 +3493,7 @@ struct Index {
           .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
           // **出现 / 消失过渡**（用户要求）
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -8 })))
         }
 
@@ -3748,7 +3765,7 @@ struct Index {
           .backgroundColor('#FF2E7D32')
           .margin({ top: 3 })
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 180, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.6, y: 0.6 })))
       }
     }
@@ -4311,7 +4328,7 @@ struct Index {
         Divider().strokeWidth(1).color(this.palette().divider)
 
         Grid() {
-          ForEach(this.folderDocs(this.openFolderName), (meta: DocMeta) => {
+          ForEach(this.panelDocs, (meta: DocMeta) => {
             GridItem() {
               this.docCell(meta, true)
             }
@@ -4320,6 +4337,8 @@ struct Index {
         .columnsTemplate(this.panelColumnsStr())
         .columnsGap(HwSpace.sm)
         .rowsGap(HwSpace.sm)
+        // 面板内同样预取（面板高度有限，预取 6 个足够覆盖一屏）
+        .cachedCount(6)
         .layoutWeight(1)
         .scrollBar(BarState.Off)
         .padding({ left: HwSpace.sm, right: HwSpace.sm, top: HwSpace.sm })
@@ -4339,7 +4358,7 @@ struct Index {
       // 收起是与高度同时淡出的一层：面板在收起动画的第一帧就摘掉节点（见 closeFolderPanel），
       // 光靠高度收缩会「啪」一下消失；压一层透明度，摘节点时已经看不清了。
       .opacity(this.folderPanelOpen ? 1 : 0)
-      .animation({ curve: FOLDER_SPRING })
+      .animation(AppearanceFx.param({ curve: FOLDER_SPRING }))
       }
       // 顶缘那颗旋转 45° 的方块（菱形）指示箭头已按用户要求删除，
       // 面板顶缘直接就是卡片上沿；展开的缩放原点仍对准原文件夹所在列。
@@ -4347,7 +4366,7 @@ struct Index {
     .width('100%')
     .height(this.folderPanelOpen ? this.folderPanelTarget() : 0)
     .opacity(this.folderPanelOpen ? 1 : 0)
-    .animation({ curve: FOLDER_SPRING })
+    .animation(AppearanceFx.param({ curve: FOLDER_SPRING }))
   }
 
   /** 文件夹预览里最多 4 篇文档的封面主色。 */
@@ -4718,7 +4737,7 @@ struct Index {
       palette: this.palette(),
       cardClickable: true,
       cardOnTap: (): void => {
-        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
           this.studyDailyOpen = !this.studyDailyOpen;
         });
       }
@@ -4743,7 +4762,7 @@ struct Index {
               .fillColor(this.palette().textTertiary)
               .draggable(false)
               .rotate({ x: 0, y: 0, z: 1, angle: this.studyDailyOpen ? 90 : 0 })
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
           }
           .alignItems(VerticalAlign.Center)
         }
@@ -4765,7 +4784,7 @@ struct Index {
           }
           .width('100%')
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -8 })))
         }
       }
@@ -4786,7 +4805,7 @@ struct Index {
       palette: this.palette(),
       cardClickable: true,
       cardOnTap: (): void => {
-        this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
           this.studyTasksOpen = !this.studyTasksOpen;
         });
       }
@@ -4811,7 +4830,7 @@ struct Index {
               .fillColor(this.palette().textTertiary)
               .draggable(false)
               .rotate({ x: 0, y: 0, z: 1, angle: this.studyTasksOpen ? 90 : 0 })
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
           }
           .alignItems(VerticalAlign.Center)
         }
@@ -4885,7 +4904,7 @@ struct Index {
           .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
             .combine(TransitionEffect.translate({ y: -8 })))
         }
       }
@@ -6012,7 +6031,7 @@ struct Index {
           z: 1,
           angle: this.expandedFolders.indexOf(folder.name) >= 0 ? 90 : 0
         })
-        .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+        .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
       SymbolGlyph($r('sys.symbol.folder'))
         .fontSize(16)
         // 文件夹图标颜色**跟随文件夹封面色**（用户要求；自定义色优先，
@@ -6313,7 +6332,7 @@ struct Index {
         buttonMaterialShadow: false,
         palette: this.palette(),
         buttonOnTap: () => {
-          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
             this.openTrail();
           });
         }
@@ -6345,7 +6364,7 @@ struct Index {
             return;
           }
           this.starredDocs = DocStore.starredList(c, this.starSort);
-          this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
             this.shelfSheet = 'starred';
             this.shelfVisible = true;
           });
@@ -7357,7 +7376,7 @@ struct Index {
             return;
           }
           if (this.pathStack !== null) {
-            this.pathStack.pushPath({ name: 'pages/AiChat' });
+            this.pathStack.pushPath({ name: 'pages/AiChat' }, AppearanceFx.navAnimated());
           }
         }
       }) {
@@ -7377,7 +7396,7 @@ struct Index {
           .margin({ top: 2, right: 2 })
           // 出现 / 清零带过渡（凡事带动画）
           .transition(TransitionEffect.OPACITY
-            .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             .combine(TransitionEffect.scale({ x: 0.5, y: 0.5 })))
       }
     }
@@ -7500,14 +7519,14 @@ struct Index {
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())
             // 淡入淡出：文件夹展开时其他格子是渐隐渐糊，不是硬切
-            .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
 
             GridItem() {
               this.newCell()
             }
             .opacity(this.cellOpacity())
             .blur(this.cellBlur())
-            .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+            .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
 
             ForEach(this.looseBuiltinDocs(), (meta: DocMeta) => {
               GridItem() {
@@ -7515,7 +7534,7 @@ struct Index {
               }
               .opacity(this.cellOpacity())
               .blur(this.cellBlur())
-              .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
             }, (meta: DocMeta) => 'b_' + meta.name)
 
             // ── 文件夹与松散文档**排在同一条流里**（顺序见 DocStore.shelfOrder）──
@@ -7542,7 +7561,7 @@ struct Index {
                 scale: { x: 0.9, y: 0.9 }
               })
               // 淡入淡出：透明度/模糊的变化要有过渡，否则是硬切、很突兀
-              .animation({ duration: 260, curve: Curve.FastOutSlowIn })
+              .animation(AppearanceFx.anim(260, Curve.FastOutSlowIn))
 
               // 展开面板插在「本行最后一个格子」之后（见 panelAfterIndex），
               // 这样同行的左右邻居留在原格，只有下方的图标被推开（1.0.2 的做法）。
@@ -7625,6 +7644,9 @@ struct Index {
           .columnsTemplate(this.columnsTemplateStr())
           .columnsGap(HwSpace.md)
           .rowsGap(HwSpace.lg)
+          // **预渲染屏幕外两屏**（2026-10-20 性能）：书架格子含封面 Image 解码，
+          // 不预取时每次滑动都在"边滚边建"，用户实测打开文件夹后滑动明显掉帧。
+          .cachedCount(8)
           // Grid 自己吃 layoutWeight（与 1.0.2 一致：面板在网格流内，外层无 Stack）
           .width('100%')
           .layoutWeight(1)
@@ -7744,7 +7766,7 @@ struct Index {
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
-                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                      .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
                 } else if (this.shelfPage === 2) {
                   Text(L10n.t('写作日志'))
                     .fontSize(24)
@@ -7752,7 +7774,7 @@ struct Index {
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
-                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                      .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
                 } else {
                   Text(L10n.t('书架'))
                     .fontSize(24)
@@ -7760,7 +7782,7 @@ struct Index {
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
-                      .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                      .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
                 }
               }
               .alignItems(HorizontalAlign.Start)
@@ -7797,7 +7819,7 @@ struct Index {
             .position({ x: 0, y: this.padTop() + HwBar.pill + HwSpace.xs })
             .hitTestBehavior(HitTestMode.Transparent)
             .transition(TransitionEffect.OPACITY
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
 
           // ── 页数指示器（用户要求：悬浮底栏上方，**高度压低贴近底栏**）──
@@ -7815,7 +7837,7 @@ struct Index {
                     this.pageSwiper.changeIndex(page, true);
                   }
                 })
-                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+                .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
             }, (page: number) => 'dot_' + page)
           }
           .justifyContent(FlexAlign.Center)
@@ -7869,20 +7891,20 @@ struct Index {
                 }
               }
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+                .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
                 .combine(TransitionEffect.translate({ y: 16 })))
             } else if (this.multiSelect) {
               Column() {
                 this.multiBar()
               }
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 220, curve: Curve.FastOutSlowIn }))
+                .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             } else {
               Column() {
                 this.bottomBar()
               }
               .transition(TransitionEffect.OPACITY
-                .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+                .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
                 .combine(TransitionEffect.translate({ y: 16 })))
             }
           }
@@ -7903,7 +7925,7 @@ struct Index {
             ? HitTestMode.Transparent : HitTestMode.None)
           .opacity(this.shelfPage !== 1 || this.multiSelect || this.barsVisible ? 1 : 0)
           .translate({ y: this.shelfPage !== 1 || this.multiSelect || this.barsVisible ? 0 : 16 })
-          .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn))
           .enabled(this.barsVisible || this.shelfPage !== 1)
         }
         .width('100%')
@@ -7936,7 +7958,7 @@ struct Index {
         // 隐式 transition 于是被跳过，面板「啪」地瞬移消失（用户反馈收起动画生硬）。
         // 显式形式自带时长，两条路径都会播放动画。
         .transition(TransitionEffect.OPACITY
-          .animation({ duration: 240, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn))
           .combine(TransitionEffect.translate({ y: -12 })))
       }
 
@@ -8003,7 +8025,7 @@ struct Index {
         }
         .width('100%')
         .height('100%')
-        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn)))
       }
 
       // ── 启动页：竹影渐变底 + 应用图标（分层图标的 foreground）+ ChéngJiān ──
@@ -8207,7 +8229,7 @@ struct Index {
           if (names.length > 0) {
             AppStorage.setOrCreate('settingsInlineSection', names[names.length - 1]);
           }
-          this.pathStack.pop();
+          this.pathStack.pop(AppearanceFx.navAnimated());
         }
       }
     })
@@ -8442,7 +8464,7 @@ export struct CoverProgressBar {
     this.shown = prev;
     // 延迟一帧再起动画：挂载当帧直接改值不会产生补间
     setTimeout(() => {
-      this.getUIContext().animateTo({ duration: 560, curve: Curve.EaseInOut }, () => {
+      this.getUIContext().animateTo(AppearanceFx.anim(560, Curve.EaseInOut), () => {
         this.shown = this.target;
       });
     }, 16);

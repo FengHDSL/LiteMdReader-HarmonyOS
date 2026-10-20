@@ -18,6 +18,7 @@ import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import {
@@ -110,7 +111,7 @@ export struct SettingsShell {
       return;
     }
     markThemeApplied(dark);
-    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
       this.themeEpoch = this.themeEpoch + 1;
     });
   }
@@ -197,7 +198,7 @@ export struct SettingsShell {
     if (this.barVisible === show) {
       return;
     }
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
       this.barVisible = show;
     });
   }
@@ -221,7 +222,7 @@ export struct SettingsShell {
       return;
     }
     if (this.stack !== null) {
-      this.stack.pop();
+      this.stack.pop(AppearanceFx.navAnimated());
     }
   }
 

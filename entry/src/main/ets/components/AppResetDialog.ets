@@ -1,4 +1,5 @@
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 /**
  * 澄笺 · 应用初始化确认弹窗（AppResetDialog）
  * ==========================================
@@ -94,7 +95,7 @@ export struct AppResetDialog {
         .fontSize(HwTypeLabel())
         .fontColor(this.left > 0 ? this.pal().textTertiary : '#FFD93B3B')
         .width('100%')
-        .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+        .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
 
       Row({ space: 10 }) {
         Text(L10n.t('取消'))
@@ -121,7 +122,7 @@ export struct AppResetDialog {
           .backgroundColor('#FFD93B3B')
           .opacity(this.left > 0 ? 0.45 : 1)
           .enabled(this.left <= 0)
-          .animation({ duration: 200, curve: Curve.FastOutSlowIn })
+          .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
           .onClick(() => {
             if (this.left <= 0) {
               this.onConfirm();

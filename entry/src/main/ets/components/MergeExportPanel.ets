@@ -21,6 +21,7 @@ import { PrintRoute } from '../service/DocStore';
 import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
+import { AppearanceFx } from '../service/AppearanceFx';
 
 @Component
 export struct MergeExportPanel {
@@ -246,7 +247,7 @@ export struct MergeExportPanel {
           content: merged,
           htmlPath: ''
         } as PrintRoute
-      });
+      }, AppearanceFx.navAnimated());
     } catch (err) {
       this.notify('无法打开打印');
     }
