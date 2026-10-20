@@ -1152,7 +1152,7 @@ export struct SettingsAppearance {
               Text(this.s('过渡动画'))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
-              Text(this.s('只停用页面切换动画：页面进出直接显示/消失，其它动效保留'))
+              Text(this.s('只停用页面切换动画：进出直接显示/消失；打开文档的展开动画与其它动效保留'))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }

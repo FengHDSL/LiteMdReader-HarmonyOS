@@ -1255,7 +1255,7 @@ export struct Reader {
       return;   // 无来源几何（菜单入口等）：普通进入
     }
     setTimeout(() => {
-      this.getUIContext().animateTo(AppearanceFx.pageAnim(420, Curve.FastOutSlowIn), () => {
+      this.getUIContext().animateTo(AppearanceFx.anim(420, Curve.FastOutSlowIn), () => {
         this.heroScale = 1;
         this.heroX = 0;
         this.heroY = 0;
