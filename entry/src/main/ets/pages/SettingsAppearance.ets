@@ -1036,8 +1036,12 @@ export struct SettingsAppearance {
             .alignItems(HorizontalAlign.Start)
             Toggle({ type: ToggleType.Switch, isOn: this.immersiveLook })
               .onChange((isOn: boolean) => {
-                // 先落状态让开关跟随手指；开启时再弹窗确认，取消则回退（值从 true→false 会触发重建）
-                this.immersiveLook = isOn;
+                // **档位行随开关展开/收起，整张卡片的高度一起长**（用户要求）：
+                // 状态变更包在 animateTo 里，`if (immersiveLook)` 的插入/移除才会走布局过渡。
+                // 过渡动画总开关关闭时 AppearanceFx.anim 返回 duration 0 → 仍瞬时到位。
+                this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+                  this.immersiveLook = isOn;
+                });
                 if (!isOn) {
                   return;
                 }
@@ -1047,7 +1051,10 @@ export struct SettingsAppearance {
                   primaryButton: {
                     value: this.s('取消'),
                     action: () => {
-                      this.immersiveLook = false;
+                      // 回滚同样走过渡（值 true→false，开关与档位行一起收回去）
+                      this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
+                        this.immersiveLook = false;
+                      });
                     }
                   },
                   secondaryButton: {
@@ -1064,8 +1071,9 @@ export struct SettingsAppearance {
 
           // 光感档位（只在开启后出现）：默认 = 完整玻璃材质；节能 = 磨砂降级、明显省电
           if (this.immersiveLook) {
-            Row() {
-              Text(this.s('光感强度'))
+            Column({ space: HwSpace.md }) {
+              Row() {
+                Text(this.s('光感强度'))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
                 .layoutWeight(1)
@@ -1073,30 +1081,36 @@ export struct SettingsAppearance {
             .width('100%')
             .alignItems(VerticalAlign.Center)
 
-            Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach(GRADE_MODES, (item: NamedColor) => {
-                Row() {
-                  ImmersiveChip({
-                    palette: this.palette(),
-                    chipLabel: this.s(item.name),
-                    chipActive: this.immersiveGrade === item.value,
-                    chipOnTap: () => {
-                      this.immersiveGrade = item.value;
-                      this.toast(item.value === 'eco'
-                        ? this.s('已切到节能：不挂系统材质，更省电')
-                        : this.s('已切到默认：完整沉浸光感'));
-                    }
-                  })
-                }
-                .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
-              }, (item: NamedColor) => 'grade_' + item.value)
+              Flex({ wrap: FlexWrap.Wrap }) {
+                ForEach(GRADE_MODES, (item: NamedColor) => {
+                  Row() {
+                    ImmersiveChip({
+                      palette: this.palette(),
+                      chipLabel: this.s(item.name),
+                      chipActive: this.immersiveGrade === item.value,
+                      chipOnTap: () => {
+                        this.immersiveGrade = item.value;
+                        this.toast(item.value === 'eco'
+                          ? this.s('已切到节能：不挂系统材质，更省电')
+                          : this.s('已切到默认：完整沉浸光感'));
+                      }
+                    })
+                  }
+                  .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+                }, (item: NamedColor) => 'grade_' + item.value)
+              }
+              .width('100%')
+
+              Text(this.s('节能档走磨砂、几乎不耗 GPU；默认档是完整玻璃光感（耗电、可能掉帧）'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+                .width('100%')
             }
             .width('100%')
-
-            Text(this.s('节能档走磨砂、几乎不耗 GPU；默认档是完整玻璃光感（耗电、可能掉帧）'))
-              .fontSize(HwType.caption)
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            // 出现/收起：淡入淡出（高度变化由外层 animateTo 插值）
+            .transition(AppearanceFx.fx(
+              TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))))
           }
 
           // 过渡动画：关 → 所有 animateTo / transition / 页面转场瞬时完成（硬切）
