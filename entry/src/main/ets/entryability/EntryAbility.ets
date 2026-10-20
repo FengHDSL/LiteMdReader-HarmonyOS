@@ -135,6 +135,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('immersiveLook', false);
     // 光感档位：default 完整材质 / eco 节能（磨砂降级）
     PersistentStorage.persistProp('immersiveGrade', 'default');
+    // 已提示过「渲染负担重」的文档名（逗号分隔，不参与备份）
+    PersistentStorage.persistProp('heavyDocWarned', '');
     // 过渡动画总开关，**默认关闭**（关掉后所有动效瞬时完成、页面硬切）
     PersistentStorage.persistProp('motionFx', false);
     // 「页面组件预热」beta 开关，默认关闭（关闭后不预热、不占内存）

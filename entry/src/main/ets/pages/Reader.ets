@@ -1772,6 +1772,49 @@ export struct Reader {
     return c as common.UIAbilityContext;
   }
 
+  /**
+   * **重文档提醒**（2026-10-20）：一篇里公式 + 图表超过阈值时，首次打开弹一次提示——
+   * 「文档内公式、图表过多，渲染时负载大，出现掉帧为正常现象！」
+   *
+   * 为什么不绑文档名：用户说的「功能展示」与示例文档都可能很重，按**块数量**判断
+   * 才对得上文案（也覆盖以后新增的重文档）。每个文档只提示一次，名单持久化在
+   * `heavyDocWarned`（逗号分隔，不参与备份），重装前不再打扰。
+   */
+  private maybeWarnHeavyDoc(blocks: MdBlock[]): void {
+    let n: number = 0;
+    for (let k = 0; k < blocks.length; k++) {
+      const b: MdBlock = blocks[k];
+      if (b.kind === MdBlockKind.Chart || b.kind === MdBlockKind.Math) {
+        n++;
+      }
+    }
+    // 20 张是"能明显感到掉帧"的经验下限（示例文档 58 张、内置介绍文档远低于此）
+    if (n < 20) {
+      return;
+    }
+    const warnedRaw: string | undefined = AppStorage.get<string>('heavyDocWarned');
+    const warned: string = warnedRaw === undefined ? '' : warnedRaw;
+    const list: string[] = warned.length > 0 ? warned.split(',') : [];
+    if (list.indexOf(this.docName) >= 0) {
+      return;
+    }
+    list.push(this.docName);
+    AppStorage.setOrCreate('heavyDocWarned', list.join(','));
+    // 延后一拍：等正文首帧画出来再弹，否则会和加载抢帧、弹窗还可能压住转场
+    setTimeout(() => {
+      this.getUIContext().showAlertDialog({
+        title: L10n.t('这篇文档渲染负担较重'),
+        message: L10n.t('文档内公式、图表过多，渲染时负载大，出现掉帧为正常现象！'),
+        confirm: {
+          value: L10n.t('我知道了'),
+          action: () => {
+            // 用户已知悉
+          }
+        }
+      });
+    }, 600);
+  }
+
   private loadDoc(): void {
     // 换文档：先把上一篇的阅读时长结掉，再为下一篇起算
     this.settleReadTime(true);
@@ -1798,6 +1841,8 @@ export struct Reader {
       this.rawContent = text;
       const result: MdParseResult = MdParser.parse(text);
       this.blocks = result.blocks;
+      // 重文档提醒（首次打开才提示，见 maybeWarnHeavyDoc）
+      this.maybeWarnHeavyDoc(result.blocks);
       // 换文档 / 换编码都从首批重新开始（否则上一份文档的加载进度会带过来）
       this.visibleBlocks = 80;
       this.docOutline = result.outline;
