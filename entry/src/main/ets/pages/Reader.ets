@@ -4007,6 +4007,52 @@ export struct Reader {
    * 用户看到的是"弹窗出现 → 跳到位 → 弹窗淡出"，而不是"点了卡住"。
    * 跳完**立即**收框（不再固定等 1.2 秒），短内容不拖沓。
    */
+  /**
+   * **内联文本清洗**（批注原文 / 脚注 / 备注用）：
+   * ① 去转义反斜杠（文档里写 `\[^标签\]`，正文渲染成字面 `[^标签]`，这里同步）；
+   * ② 去行内标记（`\`x\``、**x**、*x*、__x__）留纯文字——公式 $..$ 保留给 MathFormulaText。
+   */
+  private inlineClean(src: string): string {
+    let t: string = src.replace(/\\([\\\[\](){}*_#`~!+"'>.-])/g, '$1');
+    t = t.replace(/`([^`]+)`/g, '$1');
+    t = t.replace(/\*\*([^*]+)\*\*/g, '$1');
+    t = t.replace(/__([^_]+)__/g, '$1');
+    t = t.replace(/\*([^*\n]+)\*/g, '$1');
+    return t;
+  }
+
+  /** 批注 / 脚注条目的「展开」状态（key = 'n'+脚注序号 / 'a'+批注序号） */
+  @State expandedKeys: string[] = [];
+
+  private isExpanded(key: string): boolean {
+    return this.expandedKeys.indexOf(key) >= 0;
+  }
+
+  private toggleExpand(key: string): void {
+    // **包在 animateTo 里**：内容截断↔全文的高度变化走过渡（用户要求）
+    this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
+      if (this.isExpanded(key)) {
+        const next: string[] = [];
+        for (let k = 0; k < this.expandedKeys.length; k++) {
+          if (this.expandedKeys[k] !== key) {
+            next.push(this.expandedKeys[k]);
+          }
+        }
+        this.expandedKeys = next;
+      } else {
+        this.expandedKeys.push(key);
+      }
+    });
+  }
+
+  /** 超长截断：未展开且超过 120 字符时只显示前 120 字 + 省略号 */
+  private trimmed(text: string, key: string): string {
+    if (this.isExpanded(key) || text.length <= 120) {
+      return text;
+    }
+    return text.substring(0, 120) + '…';
+  }
+
   private jumpTo(blockIndex: number): void {
     if (this.docIsHeavy && !this.jumpLoading) {
       // ① 先收目录（露出正文），同时弹加载框（淡入 220ms）
@@ -7642,7 +7688,7 @@ export struct Reader {
                   .textAlign(TextAlign.Center)
               }
 
-              ForEach(this.searchedAnnotations(), (ann: MdAnnotation) => {
+              ForEach(this.searchedAnnotations(), (ann: MdAnnotation, annIndex: number) => {
                 Column({ space: HwSpace.xs }) {
                   Row({ space: HwSpace.xs }) {
                     // **形态分类文字提示**（学习卡 / 文字批注 / 荧光笔 / 波浪线 / 手写批注）
@@ -7697,12 +7743,20 @@ export struct Reader {
                   // 公式学习卡 / 公式批注的原文与正文公式同键（同字号同深浅）→ 缓存直出；
                   // generate=false 只吃缓存，由抽屉的共用池统一出图（不逐条挂 Web）
                   MathFormulaText({
-                    src: ann.text,
+                    src: this.inlineClean(this.trimmed(ann.text, 'a' + annIndex)),
                     dark: this.isDark(),
                     fontSize: this.fontSize,
                     color: this.palette().textPrimary,
                     generate: false
                   })
+                  if (ann.text.length > 120) {
+                    Text(this.isExpanded('a' + annIndex) ? L10n.t('收起') : L10n.t('展开全部'))
+                      .fontSize(HwType.caption)
+                      .fontColor(this.palette().accent)
+                      .onClick(() => {
+                        this.toggleExpand('a' + annIndex);
+                      })
+                  }
 
                   if (ann.note.length > 0) {
                     if (ann.note.startsWith('hw:')) {
@@ -7776,14 +7830,23 @@ export struct Reader {
                     .alignItems(VerticalAlign.Center)
 
                     // **脚注内容渲染公式**（同批注：吃全局缓存，共用池出图）
+                    // 文本先做内联清洗（去转义/标记，用户反馈显示原始语法）+ 超长截断
                     MathFormulaText({
-                      src: note.text,
+                      src: this.inlineClean(this.trimmed(note.text, 'n' + note.no)),
                       dark: this.isDark(),
                       fontSize: this.fontSize,
                       color: this.palette().textSecondary,
                       lineMul: 1.7,
                       generate: false
                     })
+                    if (note.text.length > 120) {
+                      Text(this.isExpanded('n' + note.no) ? L10n.t('收起') : L10n.t('展开全部'))
+                        .fontSize(HwType.caption)
+                        .fontColor(this.palette().accent)
+                        .onClick(() => {
+                          this.toggleExpand('n' + note.no);
+                        })
+                    }
                   }
                   .width('100%')
                   .padding(HwSpace.sm)
