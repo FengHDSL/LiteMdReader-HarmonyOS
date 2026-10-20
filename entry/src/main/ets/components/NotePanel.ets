@@ -60,6 +60,8 @@ export struct NotePanel {
   @State docPickerOpen: boolean = false;
   /** 关联文档候选（书架全部文档） */
   @State docCandidates: DocMeta[] = [];
+  /** **已插入的图片**（独立于草稿文本，提交时拼回；文本框不再显示长串） */
+  @State pickedImages: string[] = [];
   /** **已关联的文档**（独立于草稿文本，提交时拼回，界面上只显示图标行） */
   @State linkedDocs: DocMeta[] = [];
   /** 当前文档名（关联文档列表里自动忽略自己） */
@@ -89,8 +91,9 @@ export struct NotePanel {
       try {
         fs.copyFile(src.fd, dest);
         fs.closeSync(src.fd);
-        this.draft = this.draft + (this.draft.length > 0 ? '\n' : '') + '![](images/' + name + ')';
-        this.onDraft(this.draft);
+        // **只入图片列表，不动文本框**（用户要求：文本框里不要一串引用）
+        this.pickedImages.push(name);
+        this.onDraft(this.composeDraft());
         this.toast('图片已插入');
       } catch (copyErr) {
         try {
@@ -140,11 +143,26 @@ export struct NotePanel {
   /** 草稿正文 + 关联文档标记合并成最终提交内容 */
   private composeDraft(): string {
     let full: string = this.draft;
+    for (let k = 0; k < this.pickedImages.length; k++) {
+      full = full + '\n![](images/' + this.pickedImages[k] + ')';
+    }
     for (let k = 0; k < this.linkedDocs.length; k++) {
       const d: DocMeta = this.linkedDocs[k];
       full = full + '\n[' + d.name + '](doc://' + d.name + ')';
     }
     return full;
+  }
+
+  /** 移除已插入的图片（预览行上的 × ） */
+  private removeImage(img: string): void {
+    const next: string[] = [];
+    for (let k = 0; k < this.pickedImages.length; k++) {
+      if (this.pickedImages[k] !== img) {
+        next.push(this.pickedImages[k]);
+      }
+    }
+    this.pickedImages = next;
+    this.onDraft(this.composeDraft());
   }
 
   /** 移除已关联的文档（图标行上的 × ） */
@@ -157,18 +175,6 @@ export struct NotePanel {
     }
     this.linkedDocs = next;
     this.onDraft(this.composeDraft());
-  }
-
-  /** 解析草稿里的插图引用（插入后立即可见预览） */
-  private previewImages(): string[] {
-    const out: string[] = [];
-    const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)/g;
-    let m: RegExpExecArray | null = re.exec(this.draft);
-    while (m !== null) {
-      out.push(m[1]);
-      m = re.exec(this.draft);
-    }
-    return out;
   }
 
   private toast(msg: string): void {
@@ -212,7 +218,15 @@ export struct NotePanel {
   aboutToAppear(): void {
     this.mathQuote = this.initMathQuote;
     this.mathSrc = this.initMathQuote;
-    this.draft = this.initDraft;
+    // **编辑已有批注**：把图片引用从文本抽到 pickedImages（文本框保持干净）
+    const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)\n?/g;
+    this.pickedImages = [];
+    let m: RegExpExecArray | null = re.exec(this.initDraft);
+    while (m !== null) {
+      this.pickedImages.push(m[1]);
+      m = re.exec(this.initDraft);
+    }
+    this.draft = this.initDraft.replace(re, '').trim();
     this.style = this.initStyle;
   }
 
@@ -458,8 +472,8 @@ export struct NotePanel {
         .backgroundColor(this.palette.quoteBg)
       }, (d: DocMeta) => d.fileName)
 
-      // **图片预览**（插入图片后立即显示缩略图，用户反馈"文本框上没有"）
-      ForEach(this.previewImages(), (img: string) => {
+      // **图片预览**（独立列表：56×56 缩略 + × 移除，文本框不再显示引用串）
+      ForEach(this.pickedImages, (img: string) => {
         Row({ space: HwSpace.xs }) {
           Image('file://' + DocStore.imagesDirPath() + '/' + img)
             .width(56)
@@ -472,6 +486,12 @@ export struct NotePanel {
             .layoutWeight(1)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text('×')
+            .fontSize(14)
+            .fontColor(this.palette.textTertiary)
+            .onClick(() => {
+              this.removeImage(img);
+            })
         }
         .width('100%')
         .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })

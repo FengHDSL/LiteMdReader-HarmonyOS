@@ -1012,6 +1012,10 @@ export struct MdBlockView {
     text: string, color: number) => void = () => {
   };
 
+  /** **荧光 span 点击**（用户要求：点击批注弹批注条浮窗）——按 blockId+文本交给页面定位 */
+  highlightTapHandler: (blockId: string, text: string) => void = () => {
+  };
+
   /** 站内锚点跳转（`[文字](#标题)`）。同样只能用普通成员。 */
   anchorHandler: (href: string) => void = () => {
   };
@@ -1820,6 +1824,11 @@ export struct MdBlockView {
     if (this.systemSelectId === this.block.id) {
       // 系统选择模式下点正文 = 退出该模式，恢复自定义批注菜单
       this.sysSelectExit(this.block.id);
+      return;
+    }
+    if (piece.highlight.length > 0) {
+      // **荧光 span 点击**（用户要求：点批注弹浮窗）：按 blockId + 文本交给页面定位批注
+      this.highlightTapHandler(this.block.id, piece.text);
       return;
     }
     if (piece.kind !== MdInlineKind.Link) {

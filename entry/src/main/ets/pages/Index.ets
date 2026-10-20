@@ -395,6 +395,8 @@ struct Index {
   @State hoverDropAt: string = '';
   /** 被"吸入"的格子（收进文件夹 / 换位 / 解散时缩小淡出） */
   @State absorbAt: string = '';
+  /** **长按后拖动的悬停态**（用户要求）：长按弹面板不悬停，拖动才开始悬停凸显 */
+  @State hoverLiftAt: string = '';
   /** 外部文件拖到新建卡片上时，显示"释放导入"提示 */
   @State dragOverNewCard: boolean = false;
   /** 悬停满 1.5 秒的目标文档（松手 = 与它交换位置，用户要求） */
@@ -774,11 +776,12 @@ struct Index {
       if (this.floatTimer >= 0 && (dx > FLOAT_PRESS_SLOP || dy > FLOAT_PRESS_SLOP)) {
         this.floatPressCancel();
       }
-      // 已经弹出来了：不管朝哪个方向，拖开一段距离就收起（用户要求）
-      if (this.floatKind.length > 0 && this.floatName === name
-        && (dx > FLOAT_DRAG_DISMISS || dy > FLOAT_DRAG_DISMISS)) {
-        this.floatOpenedByPress = false;
-        this.closeFloatMenu();
+      // 已经弹出来了：**拖动 = 进入悬停态**（用户要求：长按不悬停，拖动才开始悬停），面板保持
+      if (this.floatKind.length > 0 && this.floatName === name) {
+        if (dx > FLOAT_PRESS_SLOP || dy > FLOAT_PRESS_SLOP) {
+          this.hoverLiftAt = name;
+        }
+        return;
       }
       return;
     }
@@ -863,6 +866,7 @@ struct Index {
       return;
     }
     this.floatOpenedByPress = false;
+    this.hoverLiftAt = '';
     this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.floatKind = '';
       this.floatName = '';
@@ -2447,6 +2451,10 @@ struct Index {
    *  · 拖拽悬停：0.94，只作"可以放这里"的提示
    */
   private cellScale(name: string): number {
+    // **拖动悬停态**（用户要求）：长按不放大，拖动才开始放大凸显
+    if (this.hoverLiftAt === name) {
+      return 1.08;
+    }
     if (this.mergingAt === name) {
       return 0.5;
     }

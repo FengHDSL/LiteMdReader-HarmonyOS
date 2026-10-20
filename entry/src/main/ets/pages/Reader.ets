@@ -4051,6 +4051,8 @@ export struct Reader {
   @State bookmarkOnly: boolean = false;
   /** **快速修改**的批注 id（非空 = NotePanel 提交时替换该条正文） */
   @State editingAnnId: string = '';
+  /** **点批注弹出的浮条**对应的批注 id（空 = 关闭） */
+  @State tapAnnId: string = '';
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
@@ -4178,6 +4180,47 @@ export struct Reader {
    * 提交时（saveNoteDraft 的 editingAnnId 分支）只替换这条批注的正文，
    * 选区 / 颜色 / 学习卡关联保持不动。
    */
+  /**
+   * **正文点击批注**（荧光 span）：按 blockId + 文本定位批注，弹出批注条浮窗
+   * （用户要求：样式与长按文本弹出的批注条一致）。文本完全匹配优先，其次包含关系。
+   */
+  private onHighlightTap(blockId: string, text: string): void {
+    let found: string = '';
+    for (let k = 0; k < this.annotations.length; k++) {
+      const a: MdAnnotation = this.annotations[k];
+      if (a.text === text) {
+        found = a.id;
+        break;
+      }
+      if (found.length === 0 && a.text.indexOf(text) >= 0) {
+        found = a.id;
+      }
+    }
+    if (found.length === 0) {
+      this.toast(L10n.t('这条批注已被修改或删除'));
+      return;
+    }
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+      this.tapAnnId = found;
+    });
+  }
+
+  /** 浮条当前对应的批注（已被删除时返回 null，浮条自动可关） */
+  private tapAnn(): MdAnnotation | null {
+    for (let k = 0; k < this.annotations.length; k++) {
+      if (this.annotations[k].id === this.tapAnnId) {
+        return this.annotations[k];
+      }
+    }
+    return null;
+  }
+
+  private closeTapBar(): void {
+    this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
+      this.tapAnnId = '';
+    });
+  }
+
   private editAnn(ann: MdAnnotation): void {
     this.editingAnnId = ann.id;
     this.noteDraft = ann.text;
@@ -8455,6 +8498,9 @@ export struct Reader {
                                     end: number, text: string, color: number) => {
                     this.onAnnotate(action, blockId, start, end, text, color);
                   },
+                  highlightTapHandler: (blockId: string, text: string) => {
+                    this.onHighlightTap(blockId, text);
+                  },
                   anchorHandler: (href: string) => {
                     this.jumpToAnchor(href);
                   },
@@ -9388,6 +9434,95 @@ export struct Reader {
 
 
 
+
+      // **点批注弹出的浮条**（用户要求：样式与长按文本弹出的批注条一致）——
+      // 全应用最顶层（.overlay 会拦手势，继续用内嵌层），点空白关
+      if (this.tapAnnId.length > 0) {
+        Column() {
+          Column({ space: HwSpace.xs }) {
+            Row({ space: HwSpace.xs }) {
+              SymbolGlyph($r('sys.symbol.paintbrush'))
+                .fontSize(13)
+                .fontColor([this.palette().accent])
+              Text(L10n.t('批注'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+                .layoutWeight(1)
+              // **操作三连：修改 / 复制 / 删除（图标）**
+              ImmersiveIconButton({
+                buttonSize: 26,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => {
+                  const a: MdAnnotation | null = this.tapAnn();
+                  if (a !== null) {
+                    this.closeTapBar();
+                    this.editAnn(a);
+                  }
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.square_and_pencil'))
+                  .fontSize(13)
+                  .fontColor([this.palette().accent])
+              }
+              ImmersiveIconButton({
+                buttonSize: 26,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => {
+                  const a: MdAnnotation | null = this.tapAnn();
+                  if (a !== null) {
+                    this.copyNoteText(this.stripNoteMeta(this.inlineClean(a.text)));
+                  }
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                  .fontSize(13)
+                  .fontColor([this.palette().textSecondary])
+              }
+              ImmersiveIconButton({
+                buttonSize: 26,
+                buttonMaterialShadow: false,
+                palette: this.palette(),
+                buttonOnTap: () => {
+                  const a: MdAnnotation | null = this.tapAnn();
+                  if (a !== null) {
+                    this.closeTapBar();
+                    this.deleteAnnotation(a);
+                  }
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.trash'))
+                  .fontSize(13)
+                  .fontColor([this.palette().accent])
+              }
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            // **批注内容摘要**（带荧光底色，呼应正文样式）
+            Text(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text : '')
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textPrimary)
+              .maxLines(3)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+          }
+          .padding(HwSpace.sm)
+          .borderRadius(HwRadius.card)
+          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
+          .border({ width: 1, color: this.palette().divider })
+          .transition(TransitionEffect.OPACITY
+            .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
+        }
+        .width('100%')
+        .height('100%')
+        .alignItems(HorizontalAlign.Center)
+        .justifyContent(FlexAlign.Start)
+        .hitTestBehavior(HitTestMode.Block)
+        .onClick(() => {
+          this.closeTapBar();
+        })
+      }
 
       // **目录跳转的加载提示**（重文档专用）：全应用最顶层浮层（盖过目录抽屉/顶栏）。
       // ⚠️ 内嵌在根 Stack 里——.overlay() 会拦截整页手势（2026-10-20 实测），禁用。
