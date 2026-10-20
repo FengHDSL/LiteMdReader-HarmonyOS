@@ -23,6 +23,22 @@
     {
       "name": "form_recent_desc",
       "value": "最近阅读的文档与新建文档入口"
+    },
+    {
+      "name": "form_study_recite_display",
+      "value": "学习卡 · 背诵"
+    },
+    {
+      "name": "form_study_recite_desc",
+      "value": "桌面直接背今日到期学习卡"
+    },
+    {
+      "name": "form_study_memory_display",
+      "value": "学习卡 · 记忆"
+    },
+    {
+      "name": "form_study_memory_desc",
+      "value": "学习卡内容与批注一起看"
     }
   ]
 }

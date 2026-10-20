@@ -28,6 +28,7 @@ const TAG: string = 'ShelfForm';
 export default class EntryFormAbility extends FormExtensionAbility {
   onAddForm(want: Want): formBindingData.FormBindingData {
     this.rememberFromWant(want);
+    // 学习卡（背诵/记忆）与最近阅读共用一份数据键集（buildData 已并入 study 键）
     return FormSync.buildData(this.appCtx());
   }
 
@@ -51,6 +52,11 @@ export default class EntryFormAbility extends FormExtensionAbility {
     try {
       // 顺带登记（首次 message 也能把 ID 收进存档）
       FormSync.rememberFormId(this.appCtx(), formId);
+      // **学习卡「下一个」**：索引推进并重推（带新内容）
+      if (message.indexOf('next') >= 0) {
+        formProvider.updateForm(formId, FormSync.studyNext(this.appCtx()));
+        return;
+      }
       formProvider.updateForm(formId, FormSync.buildData(this.appCtx()));
     } catch (err) {
       hilog.warn(0x0000, TAG, 'onFormEvent failed: %{public}s', (err as Error).message);

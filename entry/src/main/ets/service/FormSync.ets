@@ -25,6 +25,7 @@
  * DocStore 的初始化时序；快照缺失时回落 DocStore 现算（应用首装首次添加卡片）。
  */
 import { formBindingData, formProvider } from '@kit.FormKit';
+import { ReviewCard, ReviewCardStore } from './ReviewCard';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
@@ -50,6 +51,19 @@ interface FormIdFile {
 interface FormSnapshot {
   savedAt: number;
   docs: RecentDoc[];
+}
+
+/** 学习卡桌面卡片的快照（今日到期卡的 front/back + 当前索引） */
+interface StudySnapshot {
+  savedAt: number;
+  items: StudyItem[];
+  index: number;
+}
+
+/** 今日到期的单张学习卡（front=题面，back=批注/答案） */
+interface StudyItem {
+  front: string;
+  back: string;
 }
 
 let lastPushAt: number = 0;
@@ -259,7 +273,122 @@ export class FormSync {
       // 卡片点击路由参数：要打开的文档名（postCardAction params 用）
       'docName': hasRecent === '1' ? recents[0].name : ''
     };
+    // **学习卡键并入**（背诵卡 / 记忆卡桌面卡片共用一次推送）
+    FormSync.studyKeys(ctx, data);
     return formBindingData.createFormBindingData(data);
+  }
+
+  /** 学习卡快照路径（应用级目录，两进程一致） */
+  private static studyPath(ctx: common.UIAbilityContext): string {
+    return FormSync.appFilesDir(ctx) + '/form_snapshot_study.json';
+  }
+
+  /** **应用进程**组装学习卡快照：今日到期卡（due 升序，front/back 截 80 字） */
+  static writeStudySnapshot(ctx: common.UIAbilityContext): void {
+    try {
+      const cards: ReviewCard[] = ReviewCardStore.load(ctx);
+      const due: ReviewCard[] = ReviewCardStore.dueToday(cards);
+      const items: StudyItem[] = [];
+      for (let k = 0; k < due.length && k < 30; k++) {
+        const f: string = due[k].front.length > 80 ? due[k].front.substring(0, 80) + '…' : due[k].front;
+        const b: string = due[k].back.length > 80 ? due[k].back.substring(0, 80) + '…' : due[k].back;
+        items.push({ front: f, back: b });
+      }
+      const file: fs.File = fs.openSync(FormSync.studyPath(ctx),
+        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      try {
+        const snap: StudySnapshot = { savedAt: Date.now(), items: items, index: 0 };
+        fs.writeSync(file.fd, JSON.stringify(snap));
+      } finally {
+        try {
+          fs.closeSync(file);
+        } catch (closeErr) {
+          // 忽略
+        }
+      }
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'writeStudySnapshot failed: %{public}s', (err as Error).message);
+    }
+  }
+
+  /** 读学习卡快照；不存在/损坏/为空返回 null */
+  private static readStudySnapshot(ctx: common.UIAbilityContext): StudySnapshot | null {
+    try {
+      const path: string = FormSync.studyPath(ctx);
+      if (!fs.accessSync(path)) {
+        return null;
+      }
+      const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
+      if (text.length === 0) {
+        return null;
+      }
+      const parsed: StudySnapshot = JSON.parse(text) as StudySnapshot;
+      if (parsed === null || parsed === undefined || parsed.items === undefined || parsed.items === null) {
+        return null;
+      }
+      return parsed;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
+   * **学习卡键组装**（背诵卡 / 记忆卡共用）：
+   * 剩余个数 = 今日到期数；当前内容 = items[index]（背诵卡只读 front，记忆卡 front+back）。
+   * 直接并入 buildData 的键集——一次 updateForm 同时刷新两类卡片。
+   */
+  private static studyKeys(ctx: common.UIAbilityContext, data: Record<string, string>): void {
+    const snap: StudySnapshot | null = FormSync.readStudySnapshot(ctx);
+    if (snap === null || snap.items.length === 0) {
+      data['studyHas'] = '0';
+      data['studyRemain'] = '0';
+      data['studyFront'] = L10n.t('今天没有待背的学习卡');
+      data['studyBack'] = '';
+      return;
+    }
+    data['studyHas'] = '1';
+    data['studyRemain'] = String(snap.items.length);
+    const cur: StudyItem = snap.items[snap.index % snap.items.length];
+    data['studyFront'] = cur.front;
+    data['studyBack'] = cur.back;
+  }
+
+  /** **应用进程侧推送学习卡数据**（复习数据变化 / 评分后调用）：重写快照并全量 updateForm */
+  static pushStudy(ctx: common.UIAbilityContext): void {
+    FormSync.writeStudySnapshot(ctx);
+    const data: formBindingData.FormBindingData = FormSync.buildData(ctx);
+    const ids: string[] = FormSync.savedFormIds(ctx);
+    for (let k = 0; k < ids.length; k++) {
+      try {
+        formProvider.updateForm(ids[k], data);
+      } catch (err) {
+        // 单卡片失败不影响其它
+      }
+    }
+  }
+
+  /** **卡片进程「下一个」**：索引 +1（循环）→ 重写快照 → 返回新数据 */
+  static studyNext(ctx: common.UIAbilityContext): formBindingData.FormBindingData {
+    const snap: StudySnapshot | null = FormSync.readStudySnapshot(ctx);
+    if (snap !== null && snap.items.length > 0) {
+      snap.index = (snap.index + 1) % snap.items.length;
+      try {
+        const file: fs.File = fs.openSync(FormSync.studyPath(ctx),
+          fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+        try {
+          fs.writeSync(file.fd, JSON.stringify(snap));
+        } finally {
+          try {
+            fs.closeSync(file);
+          } catch (closeErr) {
+            // 忽略
+          }
+        }
+      } catch (err) {
+        hilog.warn(0x0000, TAG, 'studyNext save failed: %{public}s', (err as Error).message);
+      }
+    }
+    return FormSync.buildData(ctx);
   }
 
   /**

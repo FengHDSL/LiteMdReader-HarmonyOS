@@ -254,6 +254,10 @@ export default class EntryAbility extends UIAbility {
         // tick 自增保证连续点两次也能触发 @StorageProp 变更
         const tick: number = AppStorage.get<number>('formJumpNewDoc') ?? 0;
         AppStorage.setOrCreate('formJumpNewDoc', tick + 1);
+      } else if (t === 'study') {
+        // 学习卡「具体」按钮：进背诵页看批注详情（Index.onPageShow 消费）
+        const tick: number = AppStorage.get<number>('formJumpStudy') ?? 0;
+        AppStorage.setOrCreate('formJumpStudy', tick + 1);
       }
       // target=shelf 无需信号：拉起后本来就落在书架
     } catch (err) {
@@ -597,6 +601,7 @@ export default class EntryAbility extends UIAbility {
     // 桌面卡片推送：回前台刷一次最近阅读数据（30 分钟定时刷新兜底之外的即时通道）
     try {
       FormSync.pushRecents(this.context, false);
+      FormSync.pushStudy(this.context);
     } catch (err) {
       // 推送失败不影响主流程
     }

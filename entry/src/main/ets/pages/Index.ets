@@ -1754,6 +1754,12 @@ struct Index {
       AppStorage.setOrCreate('formJumpNewDoc', 0);
       this.pushPage('pages/Editor');
     }
+    // **学习卡「具体」**：进背诵页（复习）看批注详情
+    const jumpStudy: number | undefined = AppStorage.get<number>('formJumpStudy');
+    if (jumpStudy !== undefined && jumpStudy > 0) {
+      AppStorage.setOrCreate('formJumpStudy', 0);
+      this.pushPage('pages/Review');
+    }
     // **多设备流转接续**（EntryAbility 已把迁移数据写进 AppStorage）：
     // 目标端有同名文档 → 直接打开；没有 → 用迁移来的正文创建一篇再打开。
     const cName: string | undefined = AppStorage.get<string>('pendingContinueDocName');

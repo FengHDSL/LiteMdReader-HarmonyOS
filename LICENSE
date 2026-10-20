@@ -1,21 +1,22 @@
-MIT License
+澄笺 (LiteMdReader)
+Copyright (C) 2026 FengHDSL
 
-Copyright (c) 2026 FengHDSL
+本程序自 v1.1.6 起依据 **GNU 通用公共许可证第 3 版（GPL-3.0）** 授权发布：
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+  本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+  （第 3 版）重新分发和/或修改它。发布本程序的目的是希望它有用，但**不提供
+  任何担保**；也不提供适销性或特定用途适用性的隐含担保。详情参见
+  GNU 通用公共许可证第 3 版。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+  你应当已经随本程序收到一份 GNU 通用公共许可证的副本；如果没有，请访问：
+      https://www.gnu.org/licenses/gpl-3.0.txt
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+  SPDX 许可证标识：GPL-3.0-only
+
+要点（非正式摘要，以许可证全文为准）：
+  · 分发（含上架、发送 hap 给他人）时必须一并开源完整源码，并以 GPL-3.0 授权；
+  · 修改后的版本同样必须以 GPL-3.0 发布；
+  · 仅在个人设备上自用不触发上述义务。
+
+为什么选择 GPL-3.0：本项目的第三方依赖（KaTeX、mermaid 等，均为 MIT）
+允许并入 GPL 项目；作者自愿选择更严格的 GPL 以保证衍生版本同样开源。

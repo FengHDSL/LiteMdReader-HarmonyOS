@@ -6,7 +6,7 @@
 图表与公式离线渲染、荧光笔批注、多标签阅读——**数据全部留在本机，不上传、不收集、不做账号**。
 
 **完全开源**：产品用到的每一行源码、每一个渲染模板、每一份构建配置都在这个仓库里
-（唯一的例外是签名证书与密码，见文末）。采用 [MIT License](LICENSE)。
+（唯一的例外是签名证书与密码，见文末）。自 v1.1.6 起采用 [GPL-3.0](LICENSE) 授权。
 
 | | |
 | --- | --- |
@@ -16,7 +16,7 @@
 | 包名 | `com.litemdreader.lzb` |
 | 下载 | [Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases)（HAP 安装包） · 仓库内 [`releases/`](releases) 目录 |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · 应用内「探索中心 → 更新日志」 |
-| 许可证 | [MIT](LICENSE) |
+| 许可证 | [GPL-3.0](LICENSE) |
 
 ---
 
@@ -390,3 +390,10 @@ Copyright 2026 FengHDSL，基于 [MIT License](LICENSE) 开源。
 > 除这些之外，产品的全部源码、资源与配置都在这里——**完全开源**。
 > 应用内联的第三方渲染库（ECharts 为 Apache-2.0，其余多为 MIT）仍遵循其各自许可，
 > 详见上方「第三方开源组件」。
+
+
+## 开源协议说明
+
+本项目自 v1.1.6 起采用 **GPL-3.0-only**。第三方依赖（KaTeX、mermaid 等，均为 MIT 或同类宽松协议）
+允许并入 GPL 项目；选择 GPL 是作者的主动决定，目的是保证所有衍生版本同样开源。
+仅个人自用不触发开源义务；对外分发（含发送安装包）需附带本 LICENSE 并开放源码。
