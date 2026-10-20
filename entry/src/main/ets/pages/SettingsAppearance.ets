@@ -36,7 +36,8 @@ import {
   ReaderThemeMode,
   normalizeHex8,
   paletteFor,
-  themeModeLabel
+  themeModeLabel,
+  withAlpha
 } from '../theme/DesignTokens';
 
 /**
@@ -128,6 +129,13 @@ export struct SettingsAppearance {
   @StorageLink('immersiveLook') @Watch('onAppearanceChanged') immersiveLook: boolean = false;
   /** 光感档位：'default' 完整材质 / 'eco' 节能（磨砂降级），仅总开关打开时可选 */
   @StorageLink('immersiveGrade') immersiveGrade: string = 'default';
+  /**
+   * 光感开关的**视觉草稿**：Toggle 的 isOn 绑它，而不是直接绑 immersiveLook。
+   * 原因（用户要求）：开启光感必须先点「依然开启」才真正切换——
+   * 若直接绑真实值，取消就得"先置 true 再回滚"，档位行会闪一下再收回去。
+   * 绑草稿后：拨开关只动草稿（视觉跟手），确认才写真实值；取消仅把草稿拨回。
+   */
+  @State lookDraft: boolean = false;
   /** 过渡动画总开关（**默认关**）：关 → 所有动效瞬时完成、页面切换硬切 */
   @StorageLink('motionFx') @Watch('onAppearanceChanged') motionFx: boolean = false;
   /** 页面组件预热（beta，默认关）：结合「页面加载逻辑」使用，关掉即不占内存 */
@@ -292,6 +300,8 @@ export struct SettingsAppearance {
    * 计数一变，全应用当帧重算灰字颜色——改完不用重进页面。
    */
   onAppearanceChanged(): void {
+    // 光感真实值被外部改动（恢复默认 / 其它页）时，草稿跟着对齐
+    this.lookDraft = this.immersiveLook;
     this.broadcastAppearance();
   }
 
@@ -390,6 +400,8 @@ export struct SettingsAppearance {
   }
 
   aboutToAppear(): void {
+    // 开关视觉跟真实值对齐（进页面时可能是上次开着的状态）
+    this.lookDraft = this.immersiveLook;
     // 拨杆与生效主题对齐（从别处改过主题再进这页时不能对不上）
     this.themeKnobOn = this.themeMode === ReaderThemeMode.Dark;
     // 灰字自定义草稿带入各自当前值
@@ -1016,10 +1028,27 @@ export struct SettingsAppearance {
       // ── ④ 性能与动效（2026-10-20 新增：沉浸光感 / 过渡动画 / 页面预热，默认全关）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.md }) {
-          Text(this.s('性能与动效'))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.palette().textSecondary)
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('性能与动效'))
+              .fontSize(HwType.label + 1)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.palette().textSecondary)
+            // BETA 徽章（用户要求）
+            Text('BETA')
+              .fontSize(10)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.palette().accent)
+              .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+              .borderRadius(5)
+              .backgroundColor(withAlpha(this.palette().accent, '26'))
+            Blank()
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Text(this.s('实验性质，酌情开启'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
             .width('100%')
 
           // 沉浸光感：开 → 卡片/条栏挂系统材质；关 → 一律纯色不透明
@@ -1034,33 +1063,37 @@ export struct SettingsAppearance {
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
-            Toggle({ type: ToggleType.Switch, isOn: this.immersiveLook })
+            // isOn 绑**草稿**：拨动只改视觉，确认后才写真实开关（见 lookDraft 注释）
+            Toggle({ type: ToggleType.Switch, isOn: this.lookDraft })
               .onChange((isOn: boolean) => {
-                // **档位行随开关展开/收起，整张卡片的高度一起长**（用户要求）：
-                // 状态变更包在 animateTo 里，`if (immersiveLook)` 的插入/移除才会走布局过渡。
-                // 过渡动画总开关关闭时 AppearanceFx.anim 返回 duration 0 → 仍瞬时到位。
-                this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
-                  this.immersiveLook = isOn;
-                });
+                this.lookDraft = isOn;
                 if (!isOn) {
+                  // 关闭不需要确认：立即生效，档位行同步收起（高度走过渡）
+                  this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+                    this.immersiveLook = false;
+                  });
                   return;
                 }
+                // **开启：先弹窗，点「依然开启」才真正切换**（用户要求）
                 this.getUIContext().showAlertDialog({
                   title: this.s('开启沉浸光感？'),
                   message: this.s('开启后会导致应用帧率下降，设备发热，请酌情考虑开启！'),
                   primaryButton: {
                     value: this.s('取消'),
                     action: () => {
-                      // 回滚同样走过渡（值 true→false，开关与档位行一起收回去）
-                      this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
-                        this.immersiveLook = false;
+                      // 只把草稿拨回：真实开关从未动过 → 档位行不会先冒出来再收回去
+                      this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+                        this.lookDraft = false;
                       });
                     }
                   },
                   secondaryButton: {
                     value: this.s('依然开启'),
                     action: () => {
-                      this.immersiveLook = true;
+                      // 此刻才落真实值：档位行随 animateTo 展开
+                      this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+                        this.immersiveLook = true;
+                      });
                     }
                   }
                 });

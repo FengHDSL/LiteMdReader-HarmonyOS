@@ -1617,20 +1617,13 @@ struct Index {
   }
 
   private cellOpacity(): number {
-    // 面板打开时不再模糊格子，所以压暗要更狠一点，才能拉开"面板 vs 背后"的主次
-    return this.cellDimmed() ? 0.2 : 1;
+    return this.cellDimmed() ? 0.32 : 1;
   }
 
   private cellBlur(): number {
-    // **文件夹面板打开时不再逐格模糊**（2026-10-20 性能修复）：
-    // 模糊挂在每个 GridItem 上，书架十几格就是每帧十几次全屏背景采样，
-    // 加上打开文件夹时的自动滚动/上下滑动，是用户实测掉帧的主因。
-    // 主次关系改用「压暗更狠一点」表达（见 cellOpacity：0.32 → 0.20）。
-    if (this.cellDimmed()) {
-      return 0;
-    }
-    // 搜索展开仍保留模糊（不是每格重复滚动的场景）
-    return this.searchExpanded ? 6 : 0;
+    // **搜索展开时整个书架同程度模糊**（用户要求：程度参考打开文件夹时的效果 = 6）
+    // 长按悬浮面板开着时同款模糊：面板是唯一的焦点（用户要求"打开搜索时同款"）
+    return (this.cellDimmed() || this.searchExpanded) ? 6 : 0;
   }
 
   /**
@@ -7673,10 +7666,9 @@ struct Index {
           .columnsTemplate(this.columnsTemplateStr())
           .columnsGap(HwSpace.md)
           .rowsGap(HwSpace.lg)
-          // **预渲染屏幕外一屏半**（2026-10-20 性能）：书架格子含封面 Image 解码，
-          // 不预取时每次滑动都在"边滚边建"；但也别预太多——开着光感时**屏外卡片
-          // 也要渲染材质**，预取量过大反而增加每帧的材质合成开销（用户实测掉帧）。
-          .cachedCount(this.folderPanelOpen ? 2 : 5)
+          // **预渲染屏幕外一屏半**：书架格子含封面 Image 解码，不预取时每次滑动都在
+          // "边滚边建"（用户实测打开文件夹后滑动明显掉帧）。
+          .cachedCount(5)
           // Grid 自己吃 layoutWeight（与 1.0.2 一致：面板在网格流内，外层无 Stack）
           .width('100%')
           .layoutWeight(1)
