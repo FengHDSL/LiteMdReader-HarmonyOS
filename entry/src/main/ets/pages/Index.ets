@@ -2153,13 +2153,6 @@ struct Index {
       this.toggleMulti(meta.name);
       return;
     }
-    // **文件夹面板内打开**：面板格不在主网格的坐标表里，hero 的起跳矩形
-    // 只能靠点击点估算，会从错误的位置展开（用户反馈"打开效果异常"）——
-    // 这种进入方式直接普通打开，不播一镜到底。
-    if (this.openFolderName.length > 0) {
-      this.pushPage('pages/Reader', { name: meta.name });
-      return;
-    }
     // 一镜到底·出发（官方 BookFlip 方案）：拿到这一格封面的窗口矩形并预算展开几何。
     // 几何来源按可靠性排三层（任何一层拿到都能播动画）：
     //   ① onAreaChange 记录的 globalPosition（vp，窗口坐标，最稳）
