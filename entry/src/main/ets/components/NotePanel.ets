@@ -83,13 +83,23 @@ export struct NotePanel {
       const ctx = getContext(this) as common.UIAbilityContext;
       DocStore.init(ctx);
       const dest: string = DocStore.imagesDirPath() + '/' + name;
-      fs.copy(uri, dest).then(() => {
+      // **fd 直读**：picker uri 用 fs.copy 在部分系统上不落盘（用户反馈"没显示"），
+      // 改为 openSync(uri) 拿只读 fd 再 copyFile 到沙箱路径，失败带错误码便于诊断
+      const src = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      try {
+        fs.copyFile(src.fd, dest);
+        fs.closeSync(src.fd);
         this.draft = this.draft + (this.draft.length > 0 ? '\n' : '') + '![](images/' + name + ')';
         this.onDraft(this.draft);
         this.toast('图片已插入');
-      }).catch((err: BusinessError) => {
-        this.toast('插入失败：' + err.message);
-      });
+      } catch (copyErr) {
+        try {
+          fs.closeSync(src.fd);
+        } catch (closeErr) {
+          // 忽略
+        }
+        this.toast('插入失败：' + (copyErr as BusinessError).code);
+      }
     }).catch((err: BusinessError) => {
       // 用户取消选择
     });
