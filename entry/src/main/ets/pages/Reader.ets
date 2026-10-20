@@ -9149,8 +9149,6 @@ export struct Reader {
           this.onPinchUpdate(event.scale);
         })
     )
-    // **目录跳转的加载提示**（重文档专用）：居中浮层，期间挡住点击
-    .overlay(this.jumpLoadingOverlay, { align: Alignment.Center })
   }
 
   /** 重文档跳转时的加载提示浮层 */
