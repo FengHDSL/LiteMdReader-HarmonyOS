@@ -85,23 +85,16 @@ export struct NotePanel {
       const ctx = getContext(this) as common.UIAbilityContext;
       DocStore.init(ctx);
       const dest: string = DocStore.imagesDirPath() + '/' + name;
-      // **fd 直读**：picker uri 用 fs.copy 在部分系统上不落盘（用户反馈"没显示"），
-      // 改为 openSync(uri) 拿只读 fd 再 copyFile 到沙箱路径，失败带错误码便于诊断
-      const src = fs.openSync(uri, fs.OpenMode.READ_ONLY);
+      // **uri 直传 copyFile**（fd 版在部分系统上失败）：src=picker uri、dest=沙箱路径，
+      // 官方支持 uri→path 的拷贝；失败 toast 带错误码便于诊断
       try {
-        fs.copyFile(src.fd, dest);
-        fs.closeSync(src.fd);
+        fs.copyFile(uri, dest);
         // **只入图片列表，不动文本框**（用户要求：文本框里不要一串引用）
         this.pickedImages.push(name);
         this.onDraft(this.composeDraft());
-        this.toast('图片已插入');
+        this.toast('图片已插入：' + name);
       } catch (copyErr) {
-        try {
-          fs.closeSync(src.fd);
-        } catch (closeErr) {
-          // 忽略
-        }
-        this.toast('插入失败：' + (copyErr as BusinessError).code);
+        this.toast('插入失败：' + (copyErr as BusinessError).code + ' ' + (copyErr as BusinessError).message);
       }
     }).catch((err: BusinessError) => {
       // 用户取消选择

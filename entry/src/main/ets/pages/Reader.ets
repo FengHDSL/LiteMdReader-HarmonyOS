@@ -9546,6 +9546,9 @@ export struct Reader {
           .borderRadius(HwRadius.card)
           .backgroundColor(withAlpha(this.palette().surface, 'FF'))
           .border({ width: 1, color: this.palette().divider })
+          // **空 onClick 消费点击**：点卡片/间隙不再穿透到遮罩关闭（用户反馈"点击直接关"）
+          .onClick(() => {
+          })
           .transition(TransitionEffect.OPACITY
             .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
         }
