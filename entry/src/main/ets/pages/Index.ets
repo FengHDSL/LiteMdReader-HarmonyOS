@@ -3183,10 +3183,10 @@ struct Index {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(HwRadius.card)
-        // **光感关时纯色不透明**（用户反馈"卡片变透明"）：不再走半透明磨砂
-        .backgroundColor(this.materialOn() ? '#00000000' : withAlpha(this.palette().surface, 'FF'))
-        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE
-          : (AppearanceFx.immersive() ? BlurStyle.Thin : BlurStyle.NONE))
+        // **磨砂半透明**（用户要求）：90% 不透明 + 薄模糊——比 barFrostColor 实、
+        // 又保留"磨砂玻璃"的通透感，光感关时也是这个观感
+        .backgroundColor(this.materialOn() ? '#00000000' : withAlpha(this.palette().surface, 'E6'))
+        .backgroundBlurStyle(this.materialOn() ? BlurStyle.NONE : BlurStyle.Thin)
         .hitTestBehavior(HitTestMode.None)
 
       // ② 材质承载层：隐形 Toggle 画布。材质采样的是它**背后窗口里的内容**，
