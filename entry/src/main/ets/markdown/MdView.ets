@@ -1016,6 +1016,9 @@ export struct MdBlockView {
   highlightTapHandler: (blockId: string, text: string) => void = () => {
   };
 
+  /** **跳转闪烁**（用户要求）：点批注跳转后，本块高亮闪烁（颜色与批注区分，用 accentSoft） */
+  @Prop flashHighlight: boolean = false;
+
   /** 站内锚点跳转（`[文字](#标题)`）。同样只能用普通成员。 */
   anchorHandler: (href: string) => void = () => {
   };
@@ -3791,6 +3794,15 @@ export struct MdBlockView {
 
   build() {
     Column() {
+      // **跳转闪烁背景**（用户要求）：点批注跳转后本块高亮闪烁 5 次（accentSoft，与批注色区分）
+      if (this.flashHighlight) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .position({ x: 0, y: 0 })
+          .backgroundColor(this.palette.accentSoft)
+          .hitTestBehavior(HitTestMode.None)
+      }
       if (this.block.kind === MdBlockKind.Heading) {
         this.headingView()
       } else if (this.block.kind === MdBlockKind.Code) {

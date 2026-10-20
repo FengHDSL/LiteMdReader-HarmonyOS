@@ -4053,6 +4053,9 @@ export struct Reader {
   @State editingAnnId: string = '';
   /** **点批注弹出的浮条**对应的批注 id（空 = 关闭） */
   @State tapAnnId: string = '';
+  /** **跳转闪烁**：目标块 id 与闪烁开关（闪 5 次，accentSoft，与批注色区分） */
+  @State flashBlockId: string = '';
+  @State flashOn: boolean = false;
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
@@ -4215,10 +4218,56 @@ export struct Reader {
     return null;
   }
 
+  /**
+   * **删除批注二次确认**（用户要求）：侧边栏与浮条共用——确认后执行删除并收浮条。
+   */
+  private askDeleteAnn(ann: MdAnnotation): void {
+    AlertDialog.show({
+      message: L10n.t('确认删除这条批注？'),
+      autoCancel: true,
+      alignment: DialogAlignment.Center,
+      primaryButton: {
+        value: L10n.t('取消'),
+        action: () => {
+        }
+      },
+      secondaryButton: {
+        value: L10n.t('删除'),
+        fontColor: '#FFD32F2F',
+        action: () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
+            this.deleteAnnotation(ann);
+          });
+          this.closeTapBar();
+        }
+      }
+    });
+  }
+
   private closeTapBar(): void {
     this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
       this.tapAnnId = '';
     });
+  }
+
+  /**
+   * **跳转并闪烁**（用户要求）：跳到批注所在块后，该块高亮闪烁 5 次
+   * （accentSoft 底，与批注颜色区分）。闪烁由 interval 驱动 flashOn 翻转。
+   */
+  private flashBlock(blockId: string): void {
+    this.flashBlockId = blockId;
+    let flips: number = 0;
+    const timer: number = setInterval((): void => {
+      this.flashOn = !this.flashOn;
+      flips++;
+      if (flips >= 10 || this.flashBlockId !== blockId) {
+        clearInterval(timer);
+        this.flashOn = false;
+        if (flips >= 10) {
+          this.flashBlockId = '';
+        }
+      }
+    }, 280);
   }
 
   private editAnn(ann: MdAnnotation): void {
@@ -7991,15 +8040,13 @@ export struct Reader {
                       buttonMaterialShadow: false,
                       palette: this.palette(),
                       buttonOnTap: () => {
-                        // **包在 animateTo 里**：卡片淡出（transition），其余卡片滑动补位
-                        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
-                          this.deleteAnnotation(ann);
-                        });
+                        // **二次确认**（用户要求）：确认后才删除
+                        this.askDeleteAnn(ann);
                       }
                     }) {
                       SymbolGlyph($r('sys.symbol.trash'))
                         .fontSize(13)
-                        .fontColor([this.palette().accent])
+                        .fontColor(['#FFD32F2F'])
                     }
                   }
                   .width('100%')
@@ -8017,7 +8064,7 @@ export struct Reader {
                     generate: false
                   })
                   // **批注里的图片**（插入的插图直接显示——标记在备注 note 里）
-                  ForEach(this.noteImages(ann.note), (img: string) => {
+                  ForEach(this.noteImages(ann.text + '\n' + ann.note), (img: string) => {
                     // **默认缩略图**（用户要求）
                     Image('file://' + DocStore.imagesDirPath() + '/' + img)
                       .width('100%')
@@ -8026,7 +8073,7 @@ export struct Reader {
                       .borderRadius(HwRadius.inner)
                   }, (img: string) => img)
                   // **批注里的关联文档**（点击跳转——标记在备注 note 里）
-                  ForEach(this.noteDocs(ann.note), (docFile: string) => {
+                  ForEach(this.noteDocs(ann.text + '\n' + ann.note), (docFile: string) => {
                     Row({ space: HwSpace.xxs }) {
                       SymbolGlyph($r('sys.symbol.doc_text'))
                         .fontSize(13)
@@ -8078,7 +8125,7 @@ export struct Reader {
                         generate: false
                       })
                       // **备注里的插图**（批注时插入的图片直接显示）
-                      ForEach(this.noteImages(ann.note), (img: string) => {
+                      ForEach(this.noteImages(ann.text + '\n' + ann.note), (img: string) => {
                         Image('file://' + DocStore.imagesDirPath() + '/' + img)
                           .width('100%')
                           .constraintSize({ maxHeight: 96 })
@@ -8086,7 +8133,7 @@ export struct Reader {
                           .borderRadius(HwRadius.inner)
                       }, (img: string) => img)
                       // **备注里的关联文档**（点击跳转）
-                      ForEach(this.noteDocs(ann.note), (docFile: string) => {
+                      ForEach(this.noteDocs(ann.text + '\n' + ann.note), (docFile: string) => {
                         Row({ space: HwSpace.xxs }) {
                           SymbolGlyph($r('sys.symbol.doc_text'))
                             .fontSize(13)
@@ -8508,6 +8555,7 @@ export struct Reader {
               ListItem() {
                 MdBlockView({
                   block: block,
+                  flashHighlight: this.flashBlockId === block.id && this.flashOn,
                   palette: this.palette(),
                   bodySize: this.fontSize,
                   lineMul: this.lineMul,
@@ -9521,14 +9569,13 @@ export struct Reader {
                 buttonOnTap: () => {
                   const a: MdAnnotation | null = this.tapAnn();
                   if (a !== null) {
-                    this.closeTapBar();
-                    this.deleteAnnotation(a);
+                    this.askDeleteAnn(a);
                   }
                 }
               }) {
                 SymbolGlyph($r('sys.symbol.trash'))
                   .fontSize(16)
-                  .fontColor([this.palette().accent])
+                  .fontColor(['#FFD32F2F'])
               }
             }
             .width('100%')
