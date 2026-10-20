@@ -569,8 +569,10 @@ export struct ImmersiveIconButton {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(this.buttonRadius)
-        .backgroundColor(this.materialOn() ? '#00000000' : this.palette.surface)
+        .backgroundColor(this.materialOn() ? '#00000000' : withAlpha(this.palette.surface, 'FF'))
         .backgroundBlurStyle((this.fxLookOn && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
+        // **光感关时的"包边"替代**：材质承载层自带的高光边没有了，补一圈分隔线色细边
+        .border({ width: this.materialOn() ? 0 : 1, color: this.palette.divider })
         .hitTestBehavior(HitTestMode.None)
 
       ImmersiveCardLayer({ layerRadius: this.buttonRadius, layerShadow: this.buttonMaterialShadow })
@@ -788,8 +790,9 @@ export struct ImmersiveSheetPanel {
         .height(LayoutPolicy.matchParent)
         .borderRadius(this.panelRadius)
         .backgroundColor(this.materialOn() ? '#00000000'
-          : (this.panelPlainColor.length > 0 ? this.panelPlainColor : this.palette.surface))
+          : (this.panelPlainColor.length > 0 ? this.panelPlainColor : withAlpha(this.palette.surface, 'FF')))
         .backgroundBlurStyle((this.fxLookOn && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
+        .border({ width: this.materialOn() ? 0 : 1, color: this.palette.divider })
         .hitTestBehavior(HitTestMode.None)
 
       // 关闭沉浸光感时不挂材质承载层（纯色面板）

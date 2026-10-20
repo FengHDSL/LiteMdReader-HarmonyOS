@@ -2142,20 +2142,15 @@ export struct AiChat {
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
-          Row() {
-            Text(L10n.t('去配置'))
-              .fontSize(HwType.label)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFFFF')
-          }
-          .width(160)
-          .height(42)
-          .justifyContent(FlexAlign.Center)
-          .borderRadius(21)
-          .backgroundColor(this.palette().accent)
-          .margin({ top: 6 })
-          .onClick(() => {
-            this.openSettings();
+          // **换成沉浸光感组件**（用户要求）：与全应用按钮同一套材质/降级表现
+          ImmersiveChip({
+            palette: this.palette(),
+            chipTint: this.palette().accent,
+            chipActive: true,
+            chipLabel: L10n.t('去配置'),
+            chipOnTap: () => {
+              this.openSettings();
+            }
           })
         }
         .width('100%')
