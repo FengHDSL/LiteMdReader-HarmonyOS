@@ -877,6 +877,13 @@ export struct Reader {
   @State rootHeight: number = 800;
   /** List 的初始滚动位置（构造时定位，避免「先顶部再跳走」的闪动） */
   @State listInitialIndex: number = 0;
+  /**
+   * 正文是否可见。**首次打开时先置 false**：延迟加载让 List 先以 initialIndex=0 构造，
+   * 等 blocks 就位后再补一次「无动画定位」到上次阅读位置，定位完成才把正文显示出来。
+   * 这样用户看到的是"直接停在上次读的地方"，而不是"先出现信息卡、再闪回阅读位置"。
+   * 默认 true：切标签 / 重载等后续路径不受影响。
+   */
+  @State bodyVisible: boolean = true;
   /** 是否首次加载（首次用 initialIndex 定位；切标签才用 scrollToIndex） */
   private firstLoad: boolean = true;
 
@@ -973,6 +980,13 @@ export struct Reader {
   });
 
   aboutToAppear(): void {
+    // 首帧定位期间正文先透明（见 bodyVisible 说明）
+    this.bodyVisible = false;
+    // **兜底**：任何加载分支漏掉都必须在 900ms 内把正文放出来，
+    // 绝不允许"正文永远透明"这种不可用状态（正常情况下 snapToInitial 160ms 就显示了）。
+    setTimeout(() => {
+      this.bodyVisible = true;
+    }, 900);
     this.startBlobDrift();
     // Navigation 迁移后参数由 navPageBuilder 直接注入（不再走 router.getParams）
     const params: ReaderRoute = this.route;
@@ -1815,6 +1829,31 @@ export struct Reader {
     }, 600);
   }
 
+  /**
+   * **首帧定位**（2026-10-20）：延迟加载后 List 已用 initialIndex=0 构造，
+   * 这里补一次"无动画" scrollToIndex 把它定到上次阅读位置。
+   * 第一次立即（内容刚换完就跳）、40ms 再补一次（布局稳定后兜底纠正），
+   * 160ms 才把正文显示出来——中间态用户看不见，观感就是"直接打开在上次的位置"。
+   * 任何一步失败都不影响正文显示（最差退回"停在顶部"，与本改动前一致）。
+   */
+  private snapToInitial(): void {
+    const target: number = this.listInitialIndex;
+    const snap = (): void => {
+      try {
+        this.scroller.scrollToIndex(target, false, ScrollAlign.START);
+      } catch (err) {
+        // 滚动器未就绪：忽略
+      }
+    };
+    snap();
+    setTimeout(() => {
+      snap();
+    }, 40);
+    setTimeout(() => {
+      this.bodyVisible = true;
+    }, 160);
+  }
+
   private loadDoc(): void {
     // 换文档：先把上一篇的阅读时长结掉，再为下一篇起算
     this.settleReadTime(true);
@@ -1829,6 +1868,7 @@ export struct Reader {
         this.loadError = '文档不存在，可能已被删除。';
         this.blocks = [];
         this.toast(this.loadError);
+        this.bodyVisible = true;
         return;
       }
       // 书架「⋯ → 文档编码」可能给这篇设过编码（AppStorage 按文档存）→ 优先采用
@@ -1912,6 +1952,9 @@ export struct Reader {
         }
         this.listInitialIndex = initial;
         this.pendingJump = jump;
+        // 内容已就位（blocks 在上文设过）：做两次无动画定位，期间正文保持透明，
+        // 跳完再显示 —— 打开即在上次阅读位置，不出现"信息卡 → 闪回"
+        this.snapToInitial();
       } else {
         this.pendingJump = meta.progressIndex > 0 ? meta.progressIndex : 0;
       }
@@ -8105,6 +8148,9 @@ export struct Reader {
                 .padding({ top: HwSpace.xl, bottom: this.padBottom() + HwBar.pill + 72 })
             }
           }
+          // **首帧定位期间正文透明**（见 bodyVisible）：定位完成后淡/直接显示，
+          // 观感是"打开就在上次读的位置"，不会先露出顶部信息卡再闪回
+          .opacity(this.bodyVisible ? 1 : 0)
           // 有停靠列时占剩余宽度：目录/注释靠边，正文居中
           .layoutWeight(1)
           .height('100%')
