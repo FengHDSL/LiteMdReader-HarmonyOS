@@ -60,7 +60,6 @@ export struct ImmersiveCardLayer {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 深浅外观（材质深色罩的依赖）：切深浅模式时承载层重挂对应材质 */
   @StorageProp('readerThemeMode') themeModeForMaterial: number = 0;
   @StorageProp('systemDark') systemDarkForMaterial: boolean = false;
@@ -183,7 +182,6 @@ export struct ImmersiveCard {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 卡片沾色：卡片上再压一层 10% 主题色薄染（材质生效时降级层是透明的，靠这层才看得见沾色） */
   @StorageProp('cardTint') cardTintOn: boolean = true;
   /**
@@ -215,7 +213,7 @@ export struct ImmersiveCard {
 
   /** 材质是否真的会渲染。用于决定降级层是否可见。 */
   private materialOn(): boolean {
-    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+    return this.fxLookOn && this.fxGrade !== 'eco'
       && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
@@ -450,7 +448,6 @@ export struct ImmersiveIconButton {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -487,7 +484,7 @@ export struct ImmersiveIconButton {
   @BuilderParam buttonIcon: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+    return this.fxLookOn && this.fxGrade !== 'eco'
       && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
@@ -644,7 +641,6 @@ export struct ImmersiveChip {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -668,7 +664,7 @@ export struct ImmersiveChip {
   @BuilderParam chipPrefix: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+    return this.fxLookOn && this.fxGrade !== 'eco'
       && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
@@ -768,7 +764,6 @@ export struct ImmersiveSheetPanel {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
 
@@ -779,7 +774,7 @@ export struct ImmersiveSheetPanel {
   @BuilderParam panelContent: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+    return this.fxLookOn && this.fxGrade !== 'eco'
       && this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
@@ -870,7 +865,6 @@ export struct ImmersiveBar {
    * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
    * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
    */
-  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -893,7 +887,7 @@ export struct ImmersiveBar {
 
   /** 材质真的可用吗（开关开 + 构造成功）。只有不可用时才需要磨砂兜底。 */
   private materialOn(): boolean {
-    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+    return this.fxLookOn && this.fxGrade !== 'eco'
       && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 

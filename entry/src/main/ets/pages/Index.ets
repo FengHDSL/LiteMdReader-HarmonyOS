@@ -1385,9 +1385,6 @@ struct Index {
     // 先挂载（高度 0），下一拍再撑高——同一拍里改两个状态就没有「推开下面图标」的过程
     // 面板文档列表先算好（滑动期间不再逐帧过滤，见 panelDocs 说明）
     this.panelDocs = this.folderDocs(name);
-    // **面板打开期间材质整体降级**（见 material/ImmersiveCard 里 shelfFolderOpen 的说明）：
-    // 格子已经被压暗 + 模糊，再叠系统材质就是双重背景采样，上下滑动掉帧。
-    AppStorage.setOrCreate('shelfFolderOpen', true);
     this.getUIContext().animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }), () => {
       this.openFolderName = name;
       // 与 openFolderName 同一拍挂载：下面的格子一次动画被推开，不会二次跳
@@ -1600,8 +1597,6 @@ struct Index {
       if (!this.folderPanelOpen) {
         this.openFolderName = '';
         this.panelDocs = [];
-        // 与"恢复清晰"同一拍解除材质降级（太早恢复会让格子还没清晰就挂材质，闪一下）
-        AppStorage.setOrCreate('shelfFolderOpen', false);
       }
     }, 340);
   }
@@ -2156,6 +2151,13 @@ struct Index {
     // **批量管理模式**：点封面 = 勾选 / 取消勾选，不打开文档（用户要求批量操作）
     if (this.multiSelect) {
       this.toggleMulti(meta.name);
+      return;
+    }
+    // **文件夹面板内打开**：面板格不在主网格的坐标表里，hero 的起跳矩形
+    // 只能靠点击点估算，会从错误的位置展开（用户反馈"打开效果异常"）——
+    // 这种进入方式直接普通打开，不播一镜到底。
+    if (this.openFolderName.length > 0) {
+      this.pushPage('pages/Reader', { name: meta.name });
       return;
     }
     // 一镜到底·出发（官方 BookFlip 方案）：拿到这一格封面的窗口矩形并预算展开几何。
