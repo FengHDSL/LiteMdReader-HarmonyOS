@@ -5312,6 +5312,7 @@ export struct Reader {
       // 预览、批注/学习卡切换、聚焦抬高都要在面板开着时刷新，状态只能住组件里。
       // 这里传的 init* 只在"打开面板那一刻"被读一次，结果由回调交回本页面落库。
       NotePanel({
+        currentDoc: this.docName,
         initQuote: this.noteQuote,
         initMathQuote: this.noteMathQuote,
         initDraft: this.noteDraft,

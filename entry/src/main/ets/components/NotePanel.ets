@@ -60,6 +60,10 @@ export struct NotePanel {
   @State docPickerOpen: boolean = false;
   /** 关联文档候选（书架全部文档） */
   @State docCandidates: DocMeta[] = [];
+  /** **已关联的文档**（独立于草稿文本，提交时拼回，界面上只显示图标行） */
+  @State linkedDocs: DocMeta[] = [];
+  /** 当前文档名（关联文档列表里自动忽略自己） */
+  @Prop currentDoc: string = '';
 
   /**
    * **插入图片**（用户要求）：相册选图 → 拷贝进 docs/images →
@@ -96,7 +100,15 @@ export struct NotePanel {
       const ctx = getContext(this) as common.UIAbilityContext;
       try {
         DocStore.init(ctx);
-        this.docCandidates = DocStore.list(ctx);
+        const all: DocMeta[] = DocStore.list(ctx);
+        const kept: DocMeta[] = [];
+        for (let k = 0; k < all.length; k++) {
+          // **自动忽略当前文档**（用户要求）：不能关联自己
+          if (all[k].name !== this.currentDoc && all[k].fileName !== this.currentDoc) {
+            kept.push(all[k]);
+          }
+        }
+        this.docCandidates = kept;
       } catch (err) {
         this.docCandidates = [];
       }
@@ -107,12 +119,34 @@ export struct NotePanel {
   }
 
   private pickDoc(meta: DocMeta): void {
-    this.draft = this.draft + (this.draft.length > 0 ? '\n' : '')
-      + '[' + meta.name + '](doc://' + meta.fileName + ')';
-    this.onDraft(this.draft);
+    // **用 meta.name（显示名）做查找键**——fileName 会让跳转时报"文档不存在"
+    this.linkedDocs.push(meta);
+    this.onDraft(this.composeDraft());
     this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.docPickerOpen = false;
     });
+  }
+
+  /** 草稿正文 + 关联文档标记合并成最终提交内容 */
+  private composeDraft(): string {
+    let full: string = this.draft;
+    for (let k = 0; k < this.linkedDocs.length; k++) {
+      const d: DocMeta = this.linkedDocs[k];
+      full = full + '\n[' + d.name + '](doc://' + d.name + ')';
+    }
+    return full;
+  }
+
+  /** 移除已关联的文档（图标行上的 × ） */
+  private removeLinkedDoc(meta: DocMeta): void {
+    const next: DocMeta[] = [];
+    for (let k = 0; k < this.linkedDocs.length; k++) {
+      if (this.linkedDocs[k].fileName !== meta.fileName) {
+        next.push(this.linkedDocs[k]);
+      }
+    }
+    this.linkedDocs = next;
+    this.onDraft(this.composeDraft());
   }
 
   /** 解析草稿里的插图引用（插入后立即可见预览） */
@@ -229,7 +263,7 @@ export struct NotePanel {
 
   /** 源码框选中一段 → 只批那一段；提交时把选中段交给宿主去定位。 */
   private submitNow(): void {
-    this.onSubmit(this.draft, this.style, this.selMaps() ? this.selected() : '');
+    this.onSubmit(this.composeDraft(), this.style, this.selMaps() ? this.selected() : '');
   }
 
   build() {
@@ -366,7 +400,7 @@ export struct NotePanel {
                 SymbolGlyph($r('sys.symbol.doc_text'))
                   .fontSize(13)
                   .fontColor([this.palette.textPrimary])
-                Text(d.name)
+                Text(L10n.t(d.name))
                   .fontSize(HwType.label)
                   .fontColor(this.palette.textPrimary)
                   .maxLines(1)
@@ -388,6 +422,31 @@ export struct NotePanel {
         .backgroundColor(this.palette.quoteBg)
         .width('100%')
       }
+
+      // **已关联文档**（图标行，用户要求：不要一长串文本）
+      ForEach(this.linkedDocs, (d: DocMeta) => {
+        Row({ space: HwSpace.xxs }) {
+          SymbolGlyph($r('sys.symbol.doc_text'))
+            .fontSize(13)
+            .fontColor([this.palette.accent])
+          Text(d.name)
+            .fontSize(HwType.caption)
+            .fontColor(this.palette.textPrimary)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+          Text('×')
+            .fontSize(14)
+            .fontColor(this.palette.textTertiary)
+            .onClick(() => {
+              this.removeLinkedDoc(d);
+            })
+        }
+        .width('100%')
+        .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
+        .borderRadius(HwRadius.inner)
+        .backgroundColor(this.palette.quoteBg)
+      }, (d: DocMeta) => d.fileName)
 
       // **图片预览**（插入图片后立即显示缩略图，用户反馈"文本框上没有"）
       ForEach(this.previewImages(), (img: string) => {
