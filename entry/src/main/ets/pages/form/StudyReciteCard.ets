@@ -88,7 +88,9 @@ struct StudyReciteCard {
         // ⚠️ position 没有 right 键——之前写 right 被忽略，按钮跑到左边（用户截图实锤）。
         // 改用 x='100%'（贴右缘）+ markAnchor 反向偏移按钮自身宽度
         .position({ x: '100%', y: '46%' })
-        .markAnchor({ x: 64, y: 10 })
+        // markAnchor 在部分形态上表现不一致（用户实测按钮仍在左）——
+        // 改用 translate 显式左移按钮宽 + 边距（62 + 14 = 76）
+        .translate({ x: -76, y: 0 })
         .onClick(() => {
           // **「具体」→ 展示这张卡的批注内容**（卡片内切换，不再跳应用）
           this.showBack = !this.showBack;

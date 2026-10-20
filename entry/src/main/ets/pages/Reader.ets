@@ -8016,8 +8016,8 @@ export struct Reader {
                     maxLines: this.isExpanded('a' + annIndex) ? 0 : 4,
                     generate: false
                   })
-                  // **批注里的图片**（插入的插图直接显示）
-                  ForEach(this.noteImages(ann.text), (img: string) => {
+                  // **批注里的图片**（插入的插图直接显示——标记在备注 note 里）
+                  ForEach(this.noteImages(ann.note), (img: string) => {
                     // **默认缩略图**（用户要求）
                     Image('file://' + DocStore.imagesDirPath() + '/' + img)
                       .width('100%')
@@ -8025,8 +8025,8 @@ export struct Reader {
                       .objectFit(ImageFit.Cover)
                       .borderRadius(HwRadius.inner)
                   }, (img: string) => img)
-                  // **批注里的关联文档**（点击跳转）
-                  ForEach(this.noteDocs(ann.text), (docFile: string) => {
+                  // **批注里的关联文档**（点击跳转——标记在备注 note 里）
+                  ForEach(this.noteDocs(ann.note), (docFile: string) => {
                     Row({ space: HwSpace.xxs }) {
                       SymbolGlyph($r('sys.symbol.doc_text'))
                         .fontSize(13)
@@ -8068,14 +8068,48 @@ export struct Reader {
                         .width('100%')
                     } else {
                       // **备注渲染公式**（用户在备注里写的 $…$ 由抽屉共用池出图）
+                      // 文本先清洗（剥图片/文档标记，标记单独渲染成图和跳转 chip）
                       MathFormulaText({
-                        src: ann.note,
+                        src: this.stripNoteMeta(this.inlineClean(ann.note)),
                         dark: this.isDark(),
                         fontSize: this.fontSize,
                         color: this.palette().textSecondary,
                         lineMul: 1.6,
                         generate: false
                       })
+                      // **备注里的插图**（批注时插入的图片直接显示）
+                      ForEach(this.noteImages(ann.note), (img: string) => {
+                        Image('file://' + DocStore.imagesDirPath() + '/' + img)
+                          .width('100%')
+                          .constraintSize({ maxHeight: 96 })
+                          .objectFit(ImageFit.Cover)
+                          .borderRadius(HwRadius.inner)
+                      }, (img: string) => img)
+                      // **备注里的关联文档**（点击跳转）
+                      ForEach(this.noteDocs(ann.note), (docFile: string) => {
+                        Row({ space: HwSpace.xxs }) {
+                          SymbolGlyph($r('sys.symbol.doc_text'))
+                            .fontSize(13)
+                            .fontColor([this.palette().accent])
+                          Text(docFile.replace(/\.md$|\.txt$/, ''))
+                            .fontSize(HwType.caption)
+                            .fontColor(this.palette().accent)
+                        }
+                        .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
+                        .borderRadius(HwRadius.pill)
+                        .backgroundColor(this.palette().accentSoft)
+                        .onClick(() => {
+                          if (this.stack !== null) {
+                            try {
+                              const r: ReaderRoute = { name: docFile };
+                              this.stack.pushPath({ name: 'pages/Reader', param: r },
+                                AppearanceFx.navAnimated());
+                            } catch (err) {
+                              this.toast(L10n.t('打不开文档'));
+                            }
+                          }
+                        })
+                      }, (docFile: string) => docFile)
                     }
                   }
                 }
@@ -9507,6 +9541,7 @@ export struct Reader {
               .textOverflow({ overflow: TextOverflow.Ellipsis })
               .width('100%')
           }
+          .width('88%')
           .padding(HwSpace.sm)
           .borderRadius(HwRadius.card)
           .backgroundColor(withAlpha(this.palette().surface, 'FF'))
@@ -9517,7 +9552,7 @@ export struct Reader {
         .width('100%')
         .height('100%')
         .alignItems(HorizontalAlign.Center)
-        .justifyContent(FlexAlign.Start)
+        .justifyContent(FlexAlign.Center)
         .hitTestBehavior(HitTestMode.Block)
         .onClick(() => {
           this.closeTapBar();
