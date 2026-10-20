@@ -23,11 +23,19 @@ import { InlineFormulaPool } from './InlineFormulaPool';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import { ChartCache } from '../service/ChartCache';
 import { MathLite } from '../markdown/MathLite';
+import { withAlpha } from '../theme/DesignTokens';
 
 /** 切段（FormulaTasks.splitInline 的产物，组件内部再用一次以便 key 稳定） */
 interface Seg {
   text: string;
   math: boolean;
+}
+
+/** 非 math 段的行内标记段：`code` 底色 / **bold** / 纯文字 */
+interface InlineSeg {
+  text: string;
+  code: boolean;
+  bold: boolean;
 }
 
 @Component
@@ -70,6 +78,33 @@ export struct MathFormulaText {
 
   private segs(): Seg[] {
     return FormulaTasks.splitInline(this.src);
+  }
+
+  /** 非 math 段的行内标记解析：`code` 与 **bold**（不嵌套，够用） */
+  private inlineSpans(text: string): InlineSeg[] {
+    const out: InlineSeg[] = [];
+    const re: RegExp = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+    let last: number = 0;
+    let m: RegExpExecArray | null = re.exec(text);
+    while (m !== null) {
+      if (m.index > last) {
+        out.push({ text: text.substring(last, m.index), code: false, bold: false });
+      }
+      if (m[1] !== undefined) {
+        out.push({ text: m[1], code: true, bold: false });
+      } else {
+        out.push({ text: m[2], code: false, bold: true });
+      }
+      last = m.index + m[0].length;
+      m = re.exec(text);
+    }
+    if (last < text.length) {
+      out.push({ text: text.substring(last), code: false, bold: false });
+    }
+    if (out.length === 0) {
+      out.push({ text: text, code: false, bold: false });
+    }
+    return out;
   }
 
   /**
@@ -118,10 +153,24 @@ export struct MathFormulaText {
                 .fontColor(this.color)
             }
           } else {
-            Span(s.text)
-              .fontSize(this.fontSize)
-              .fontColor(this.color)
-              .fontWeight(this.bold ? FontWeight.Bold : FontWeight.Normal)
+            ForEach(this.inlineSpans(s.text), (sp: InlineSeg) => {
+              if (sp.code) {
+                Span(sp.text)
+                  .fontSize(this.fontSize - 1)
+                  .fontColor(this.color)
+                  .backgroundColor(withAlpha(this.color, '1F'))
+              } else if (sp.bold) {
+                Span(sp.text)
+                  .fontSize(this.fontSize)
+                  .fontColor(this.color)
+                  .fontWeight(FontWeight.Medium)
+              } else {
+                Span(sp.text)
+                  .fontSize(this.fontSize)
+                  .fontColor(this.color)
+                  .fontWeight(this.bold ? FontWeight.Bold : FontWeight.Normal)
+              }
+            }, (sp: InlineSeg) => (sp.code ? 'c' : 'b') + '_' + sp.text)
           }
         }, (s: Seg) => (s.math ? 'm' : 't') + this.tick + '_' + s.text)
       }

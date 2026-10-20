@@ -912,14 +912,22 @@ struct Index {
 
   /** 面板里的一行：图标 + 文案 + 分隔线（样式照参考图的系统长按菜单）。 */
   @Builder
-  floatRow(label: string, icon: Resource, divider: boolean, onGo: () => void) {
+  floatRow(label: string, icon: Resource, divider: boolean, onGo: () => void, useImage: boolean = false) {
     if (divider) {
       Divider().strokeWidth(1).color(this.palette().divider).margin({ left: 4, right: 4 })
     }
     Row({ space: HwSpace.md }) {
-      SymbolGlyph(icon)
-        .fontSize(17)
-        .fontColor([this.palette().textPrimary])
+      // sys.symbol 走 SymbolGlyph；app.media 自定义 svg 走 Image + fillColor（主题色）
+      if (useImage) {
+        Image(icon)
+          .width(18)
+          .height(18)
+          .fillColor(this.palette().textPrimary)
+      } else {
+        SymbolGlyph(icon)
+          .fontSize(17)
+          .fontColor([this.palette().textPrimary])
+      }
       Text(L10n.t(label))
         .fontSize(HwType.label + 1)
         .fontColor(this.palette().textPrimary)
@@ -1007,16 +1015,16 @@ struct Index {
               this.closeFloatMenu();
               this.askDeleteDoc(n);
             })
-            this.floatRow('批量管理', $r('sys.symbol.checkmark_square_fill'), true, () => {
-              const n: string = this.floatName;
-              this.closeFloatMenu();
-              this.openMultiSelect(n);
-            })
             this.floatRow('重命名', $r('sys.symbol.square_and_pencil'), true, () => {
               const n: string = this.floatName;
               this.closeFloatMenu();
               this.openRename('doc', n);
             })
+            this.floatRow('批量管理', $r('app.media.ic_checkmark_square'), false, () => {
+              const n: string = this.floatName;
+              this.closeFloatMenu();
+              this.openMultiSelect(n);
+            }, true)
             this.floatRow('导出', $r('sys.symbol.arrow_up_right'), true, () => {
               const n: string = this.floatName;
               this.closeFloatMenu();

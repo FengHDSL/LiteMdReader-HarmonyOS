@@ -21,6 +21,10 @@ import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { fileIo as fs, picker as sysPicker } from '@kit.CoreFileKit';
+import { DocMeta, DocStore } from '../service/DocStore';
+import { common } from '@kit.AbilityKit';
 
 @Component
 export struct NotePanel {
@@ -52,6 +56,68 @@ export struct NotePanel {
   };
 
   @State draft: string = '';
+  /** **关联文档**选择列表开关（用户要求：批注可关联其他文档） */
+  @State docPickerOpen: boolean = false;
+  /** 关联文档候选（书架全部文档） */
+  @State docCandidates: DocMeta[] = [];
+
+  /**
+   * **插入图片**（用户要求）：相册选图 → 拷贝进 docs/images →
+   * 在草稿末尾追加一条 markdown 图片引用（正文/批注/学习卡都会渲染出来）。
+   */
+  private insertImage(): void {
+    const picker = new photoAccessHelper.PhotoViewPicker();
+    picker.select({
+      MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+      maxSelectNumber: 1
+    }).then((result: photoAccessHelper.PhotoSelectResult) => {
+      if (result.photoUris.length === 0) {
+        return;
+      }
+      const uri: string = result.photoUris[0];
+      const name: string = 'note_' + Date.now() + '.png';
+      const ctx = getContext(this) as common.UIAbilityContext;
+      DocStore.init(ctx);
+      const dest: string = DocStore.imagesDirPath() + '/' + name;
+      fs.copy(uri, dest).then(() => {
+        this.draft = this.draft + (this.draft.length > 0 ? '\n' : '') + '![](images/' + name + ')';
+        this.onDraft(this.draft);
+        this.toast('图片已插入');
+      }).catch((err: BusinessError) => {
+        this.toast('插入失败：' + err.message);
+      });
+    }).catch((err: BusinessError) => {
+      // 用户取消选择
+    });
+  }
+
+  private toggleDocPicker(): void {
+    if (!this.docPickerOpen) {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      try {
+        DocStore.init(ctx);
+        this.docCandidates = DocStore.list(ctx);
+      } catch (err) {
+        this.docCandidates = [];
+      }
+    }
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+      this.docPickerOpen = !this.docPickerOpen;
+    });
+  }
+
+  private pickDoc(meta: DocMeta): void {
+    this.draft = this.draft + (this.draft.length > 0 ? '\n' : '')
+      + '[' + meta.name + '](doc://' + meta.fileName + ')';
+    this.onDraft(this.draft);
+    this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+      this.docPickerOpen = false;
+    });
+  }
+
+  private toast(msg: string): void {
+    this.getUIContext().getPromptAction().showToast({ message: msg, duration: 1800 });
+  }
   /** 文档里现存的公式源码（收窄定位的基准，**不随编辑变动**，写完回才更新） */
   @State mathQuote: string = '';
   /** 编辑框里的副本（可能已改、尚未写回） */
@@ -256,6 +322,59 @@ export struct NotePanel {
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
+      }
+
+      // **插图 / 关联文档**工具排（用户要求：批注和学习卡支持插入图片、关联文档）
+      Row({ space: HwSpace.xs }) {
+        ImmersiveChip({
+          palette: this.palette,
+          chipActive: true,
+          chipLabel: L10n.t('插入图片'),
+          chipOnTap: () => {
+            this.insertImage();
+          }
+        })
+        ImmersiveChip({
+          palette: this.palette,
+          chipActive: true,
+          chipLabel: L10n.t('关联文档'),
+          chipOnTap: () => {
+            this.toggleDocPicker();
+          }
+        })
+      }
+      .width('100%')
+
+      // **关联文档选择列表**（展开态，带过渡）
+      if (this.docPickerOpen) {
+        Scroll() {
+          Column() {
+            ForEach(this.docCandidates, (d: DocMeta) => {
+              Row({ space: HwSpace.xs }) {
+                SymbolGlyph($r('sys.symbol.doc_text'))
+                  .fontSize(13)
+                  .fontColor([this.palette.textPrimary])
+                Text(d.name)
+                  .fontSize(HwType.label)
+                  .fontColor(this.palette.textPrimary)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .layoutWeight(1)
+              }
+              .width('100%')
+              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 7, bottom: 7 })
+              .onClick(() => {
+                this.pickDoc(d);
+              })
+            }, (d: DocMeta) => d.fileName)
+          }
+          .width('100%')
+        }
+        .constraintSize({ maxHeight: 160 })
+        .scrollBar(BarState.Off)
+        .borderRadius(HwRadius.inner)
+        .backgroundColor(this.palette.quoteBg)
+        .width('100%')
       }
 
       TextArea({ text: this.draft, placeholder: this.style === 'card'

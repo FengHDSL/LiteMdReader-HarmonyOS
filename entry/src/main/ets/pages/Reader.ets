@@ -978,6 +978,8 @@ export struct Reader {
   });
 
   aboutToAppear(): void {
+    // 目录书签随文档加载
+    this.loadBookmarks();
     this.startBlobDrift();
     // Navigation 迁移后参数由 navPageBuilder 直接注入（不再走 router.getParams）
     const params: ReaderRoute = this.route;
@@ -3401,6 +3403,10 @@ export struct Reader {
     let hideDeeperThan: number = 0;
     for (let k = 0; k < this.docOutline.length; k++) {
       const h: MdHeading = this.docOutline[k];
+      // **只看书签**模式：非书签节隐藏（顶部书签按钮切换）
+      if (this.bookmarkOnly && this.tocBookmarks.indexOf(h.text) < 0) {
+        continue;
+      }
       if (hideDeeperThan > 0) {
         if (h.level > hideDeeperThan) {
           continue;
@@ -4023,9 +4029,130 @@ export struct Reader {
 
   /** 批注 / 脚注条目的「展开」状态（key = 'n'+脚注序号 / 'a'+批注序号） */
   @State expandedKeys: string[] = [];
+  /** 目录书签（按文档持久化在 filesDir/toc_bookmarks.txt，行格式：docName\t标题1,标题2） */
+  @State tocBookmarks: string[] = [];
+  /** 目录「只看书签」过滤态（顶部书签按钮切换） */
+  @State bookmarkOnly: boolean = false;
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
+  }
+
+  /** 读目录书签（filesDir/toc_bookmarks.txt；当前文档无记录 = 空表） */
+  private loadBookmarks(): void {
+    try {
+      const ctx = this.ctx();
+      if (ctx === null) {
+        this.tocBookmarks = [];
+        return;
+      }
+      const path: string = ctx.filesDir + '/toc_bookmarks.txt';
+      if (!fs.accessSync(path)) {
+        this.tocBookmarks = [];
+        return;
+      }
+      const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
+      const rows: string[] = text.split('\n');
+      for (let k = 0; k < rows.length; k++) {
+        const tab: number = rows[k].indexOf('\t');
+        if (tab <= 0 || rows[k].substring(0, tab) !== this.docName) {
+          continue;
+        }
+        const list: string = rows[k].substring(tab + 1);
+        this.tocBookmarks = list.length > 0 ? list.split(',') : [];
+        return;
+      }
+      this.tocBookmarks = [];
+    } catch (err) {
+      this.tocBookmarks = [];
+    }
+  }
+
+  /** 写回当前文档的书签（其余文档的行保持不动） */
+  private saveBookmarks(): void {
+    try {
+      const ctx = this.ctx();
+      if (ctx === null) {
+        return;
+      }
+      const path: string = ctx.filesDir + '/toc_bookmarks.txt';
+      let rows: string[] = [];
+      if (fs.accessSync(path)) {
+        const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
+        rows = text.split('\n').filter((r: string) => r.length > 0
+          && r.indexOf('\t') > 0 && r.substring(0, r.indexOf('\t')) !== this.docName);
+      }
+      if (this.tocBookmarks.length > 0) {
+        rows.push(this.docName + '\t' + this.tocBookmarks.join(','));
+      }
+      const file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      const encoder: util.TextEncoder = util.TextEncoder.create('utf-8');
+      const encoded = encoder.encodeInto(rows.join('\n'));
+      fs.writeSync(file.fd, encoded.buffer);
+      fs.closeSync(file.fd);
+    } catch (err) {
+      // 写失败只影响书签持久化，不致命
+    }
+  }
+
+  /** 长按目录条目：添加 / 移除书签（带过渡） */
+  private toggleBookmark(text: string): void {
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
+      const idx: number = this.tocBookmarks.indexOf(text);
+      if (idx >= 0) {
+        const next: string[] = [];
+        for (let k = 0; k < this.tocBookmarks.length; k++) {
+          if (this.tocBookmarks[k] !== text) {
+            next.push(this.tocBookmarks[k]);
+          }
+        }
+        this.tocBookmarks = next;
+      } else {
+        this.tocBookmarks.push(text);
+      }
+    });
+    this.saveBookmarks();
+    this.toast(this.tocBookmarks.indexOf(text) >= 0 ? L10n.t('已加书签') : L10n.t('已移除书签'));
+  }
+
+  /** 批注 / 脚注内容复制到剪贴板 */
+  private copyNoteText(text: string): void {
+    const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+    pasteboard.getSystemPasteboard().setData(data).then(() => {
+      this.toast(L10n.t('已复制'));
+    }).catch(() => {
+      this.toast(L10n.t('复制失败'));
+    });
+  }
+
+  /** 批注 note 里的图片引用（![](images/x)）→ 条目里直接显示 */
+  private noteImages(text: string): string[] {
+    const out: string[] = [];
+    const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)/g;
+    let m: RegExpExecArray | null = re.exec(text);
+    while (m !== null) {
+      out.push(m[1]);
+      m = re.exec(text);
+    }
+    return out;
+  }
+
+  /** 批注 note 里的关联文档链接（[名称](doc://fileName)）→ 条目里出跳转 chip */
+  private noteDocs(text: string): string[] {
+    const out: string[] = [];
+    const re: RegExp = /\[([^\]]+)\]\(doc:\/\/([^)]+)\)/g;
+    let m: RegExpExecArray | null = re.exec(text);
+    while (m !== null) {
+      out.push(m[2]);
+      m = re.exec(text);
+    }
+    return out;
+  }
+
+  /** 批注 note 去掉图片 / 文档行后的正文（交给 MathFormulaText） */
+  private stripNoteMeta(text: string): string {
+    return text.replace(/!\[[^\]]*\]\(images\/[^)]+\)/g, '')
+      .replace(/\[[^\]]+\]\(doc:\/\/([^)]+)\)/g, '').trim();
   }
 
   private toggleExpand(key: string): void {
@@ -7400,6 +7527,10 @@ export struct Reader {
               SymbolGlyph($r('sys.symbol.doc_plaintext'))
                 .fontSize(15)
                 .fontColor([this.palette().textSecondary])
+                // **长按浮出用途提示**（用户要求）
+                .gesture(LongPressGesture({ duration: 500 }).onAction(() => {
+                  this.toast(L10n.t('导出这篇文档为 HTML 文件'));
+                }))
             }
 
             // 编辑入口：**只读才不给**（用户要求：可写＝能编辑，内置教程切成可写后同样能编辑）。
@@ -7416,6 +7547,10 @@ export struct Reader {
                 SymbolGlyph($r('sys.symbol.highlighter_line'))
                   .fontSize(15)
                   .fontColor([this.palette().accent])
+                  // **长按浮出用途提示**（用户要求）
+                  .gesture(LongPressGesture({ duration: 500 }).onAction(() => {
+                    this.toast(L10n.t('进入编辑器修改这篇文档'));
+                  }))
               }
             }
           }
@@ -7424,20 +7559,30 @@ export struct Reader {
 
           // 大纲折叠控制（移植自参考项目的「分级展开折叠 + 全部展开/折叠」）
           Row({ space: HwSpace.xs }) {
+            // **整合成一个「折叠/展开」按钮**（用户要求）：按当前状态切换文案
             ImmersiveChip({
               palette: this.palette(),
-              chipLabel: L10n.t('展开全部'),
+              chipLabel: this.collapsedSeqs.length > 0 ? L10n.t('展开') : L10n.t('折叠'),
               chipOnTap: () => {
-                this.setAllCollapsed(false);
+                this.setAllCollapsed(this.collapsedSeqs.length === 0);
               }
             })
-            ImmersiveChip({
+            // **只看书签**过滤开关（用户要求：加在折叠按钮右边）
+            ImmersiveIconButton({
+              buttonSize: 28,
+              buttonMaterialShadow: false,
               palette: this.palette(),
-              chipLabel: L10n.t('折叠到二级'),
-              chipOnTap: () => {
-                this.setAllCollapsed(true);
+              buttonOnTap: () => {
+                this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
+                  this.bookmarkOnly = !this.bookmarkOnly;
+                });
               }
-            })
+            }) {
+              Image(this.bookmarkOnly ? $r('app.media.ic_bookmark_filled') : $r('app.media.ic_bookmark'))
+                .width(15)
+                .height(15)
+                .fillColor(this.bookmarkOnly ? this.palette().accent : this.palette().textSecondary)
+            }
           }
           .width('100%')
 
@@ -7455,11 +7600,13 @@ export struct Reader {
                 ForEach(this.visibleOutline(), (item: MdHeading) => {
                   Row({ space: HwSpace.xs }) {
                     if (this.hasChildren(item.seq)) {
-                      SymbolGlyph(this.isCollapsed(item.seq)
-                        ? $r('sys.symbol.chevron_right')
-                        : $r('sys.symbol.chevron_down'))
-                        .fontSize(12)
-                        .fontColor([this.palette().textTertiary])
+                      // **自定义箭头**（用户指定图标）：收起时逆时针旋转 90°（朝下→朝右），
+                      // 旋转插值由 toggleCollapse 的 animateTo 驱动
+                      Image($r('app.media.ic_toc_chevron'))
+                        .width(14)
+                        .height(14)
+                        .fillColor(this.palette().textTertiary)
+                        .rotate({ angle: this.isCollapsed(item.seq) ? -90 : 0 })
                         .onClick(() => {
                           this.toggleCollapse(item.seq);
                         })
@@ -7474,6 +7621,13 @@ export struct Reader {
                       .backgroundColor(this.activeHeading === item.text
                         ? this.palette().accent
                         : this.palette().divider)
+                    // **书签图标**（加过书签的节才显示，用户要求放标题左边）
+                    if (this.tocBookmarks.indexOf(item.text) >= 0) {
+                      Image($r('app.media.ic_bookmark'))
+                        .width(13)
+                        .height(13)
+                        .fillColor(this.palette().accent)
+                    }
                     Text(item.text)
                       .fontSize(item.level <= 2 ? HwType.label + 1 : HwType.label)
                       .fontWeight(item.level <= 2 ? FontWeight.Medium : FontWeight.Normal)
@@ -7504,6 +7658,10 @@ export struct Reader {
                   .onAreaChange((oldValue: Area, newValue: Area) => {
                     this.rememberTocRow(item.text, newValue);
                   })
+                  // **长按任意一节 → 添加/移除书签**（用户要求）
+                  .gesture(LongPressGesture({ duration: 500 }).onAction(() => {
+                    this.toggleBookmark(item.text);
+                  }))
                   // 稳定 key（seq 唯一）+ transition：展开时新行淡入、收起时被移除行淡出，
                   // 存活行的位移由 animateTo 带动，整体呈现折叠动画
                   .transition({ opacity: 0, translate: { y: -6 } })
@@ -7723,6 +7881,15 @@ export struct Reader {
                         }
                       })
                     }
+                    // **复制批注**（用户要求）
+                    ImmersiveChip({
+                      palette: this.palette(),
+                      chipActive: true,
+                      chipLabel: L10n.t('复制'),
+                      chipOnTap: () => {
+                        this.copyNoteText(this.stripNoteMeta(this.inlineClean(ann.text)));
+                      }
+                    })
                     ImmersiveChip({
                       palette: this.palette(),
                       chipTint: '#FFD32F2F',
@@ -7743,13 +7910,47 @@ export struct Reader {
                   // 公式学习卡 / 公式批注的原文与正文公式同键（同字号同深浅）→ 缓存直出；
                   // generate=false 只吃缓存，由抽屉的共用池统一出图（不逐条挂 Web）
                   MathFormulaText({
-                    src: this.inlineClean(this.trimmed(ann.text, 'a' + annIndex)),
+                    src: this.stripNoteMeta(this.inlineClean(ann.text)),
                     dark: this.isDark(),
                     fontSize: this.fontSize,
                     color: this.palette().textPrimary,
+                    maxLines: this.isExpanded('a' + annIndex) ? 0 : 4,
                     generate: false
                   })
-                  if (ann.text.length > 120) {
+                  // **批注里的图片**（插入的插图直接显示）
+                  ForEach(this.noteImages(ann.text), (img: string) => {
+                    Image('file://' + DocStore.imagesDirPath() + '/' + img)
+                      .width('100%')
+                      .constraintSize({ maxHeight: 96 })
+                      .objectFit(ImageFit.Cover)
+                      .borderRadius(HwRadius.inner)
+                  }, (img: string) => img)
+                  // **批注里的关联文档**（点击跳转）
+                  ForEach(this.noteDocs(ann.text), (docFile: string) => {
+                    Row({ space: HwSpace.xxs }) {
+                      SymbolGlyph($r('sys.symbol.doc_text'))
+                        .fontSize(13)
+                        .fontColor([this.palette().accent])
+                      Text(docFile.replace(/\.md$|\.txt$/, ''))
+                        .fontSize(HwType.caption)
+                        .fontColor(this.palette().accent)
+                    }
+                    .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
+                    .borderRadius(HwRadius.pill)
+                    .backgroundColor(this.palette().accentSoft)
+                    .onClick(() => {
+                        if (this.stack !== null) {
+                          try {
+                            const route: ReaderRoute = { name: docFile };
+                            this.stack.pushPath({ name: 'pages/Reader', param: route },
+                              AppearanceFx.navAnimated());
+                          } catch (err) {
+                            this.toast(L10n.t('打不开文档'));
+                          }
+                        }
+                    })
+                  }, (docFile: string) => docFile)
+                  if (ann.text.length > 160) {
                     Text(this.isExpanded('a' + annIndex) ? L10n.t('收起') : L10n.t('展开全部'))
                       .fontSize(HwType.caption)
                       .fontColor(this.palette().accent)
@@ -7825,21 +8026,68 @@ export struct Reader {
                         .fontSize(HwType.caption)
                         .fontColor(this.palette().textTertiary)
                         .layoutWeight(1)
-                    }
-                    .width('100%')
-                    .alignItems(VerticalAlign.Center)
+                      // **复制按钮**（用户要求：内容卡片加复制图标）
+                      ImmersiveIconButton({
+                        buttonSize: 24,
+                        buttonMaterialShadow: false,
+                        palette: this.palette(),
+                        buttonOnTap: () => {
+                          this.copyNoteText(this.stripNoteMeta(this.inlineClean(note.text)));
+                        }
+                      }) {
+                        SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                          .fontSize(12)
+                          .fontColor([this.palette().textTertiary])
+                      }
+                      }
+                      .width('100%')
+                      .alignItems(VerticalAlign.Center)
 
                     // **脚注内容渲染公式**（同批注：吃全局缓存，共用池出图）
                     // 文本先做内联清洗（去转义/标记，用户反馈显示原始语法）+ 超长截断
                     MathFormulaText({
-                      src: this.inlineClean(this.trimmed(note.text, 'n' + note.no)),
+                      src: this.stripNoteMeta(this.inlineClean(note.text)),
                       dark: this.isDark(),
                       fontSize: this.fontSize,
                       color: this.palette().textSecondary,
                       lineMul: 1.7,
+                      maxLines: this.isExpanded('n' + note.no) ? 0 : 4,
                       generate: false
                     })
-                    if (note.text.length > 120) {
+                    // **脚注里的图片**（批注时插入的插图直接显示）
+                    ForEach(this.noteImages(note.text), (img: string) => {
+                      Image('file://' + DocStore.imagesDirPath() + '/' + img)
+                        .width('100%')
+                        .constraintSize({ maxHeight: 96 })
+                        .objectFit(ImageFit.Cover)
+                        .borderRadius(HwRadius.inner)
+                    }, (img: string) => img)
+                    // **脚注里的关联文档**（点击跳转）
+                    ForEach(this.noteDocs(note.text), (docFile: string) => {
+                      Row({ space: HwSpace.xxs }) {
+                        SymbolGlyph($r('sys.symbol.doc_text'))
+                          .fontSize(13)
+                          .fontColor([this.palette().accent])
+                        Text(docFile.replace(/\.md$|\.txt$/, ''))
+                          .fontSize(HwType.caption)
+                          .fontColor(this.palette().accent)
+                      }
+                      .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
+                      .borderRadius(HwRadius.pill)
+                      .backgroundColor(this.palette().accentSoft)
+                      .onClick(() => {
+                        if (this.stack !== null) {
+                          try {
+                            const route: ReaderRoute = { name: docFile };
+                            this.stack.pushPath({ name: 'pages/Reader', param: route },
+                              AppearanceFx.navAnimated());
+                          } catch (err) {
+                            this.toast(L10n.t('打不开文档'));
+                          }
+                        }
+                      })
+                    }, (docFile: string) => docFile)
+                    if (note.text.length > 160) {
                       Text(this.isExpanded('n' + note.no) ? L10n.t('收起') : L10n.t('展开全部'))
                         .fontSize(HwType.caption)
                         .fontColor(this.palette().accent)
