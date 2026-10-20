@@ -115,6 +115,18 @@ export struct NotePanel {
     });
   }
 
+  /** 解析草稿里的插图引用（插入后立即可见预览） */
+  private previewImages(): string[] {
+    const out: string[] = [];
+    const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)/g;
+    let m: RegExpExecArray | null = re.exec(this.draft);
+    while (m !== null) {
+      out.push(m[1]);
+      m = re.exec(this.draft);
+    }
+    return out;
+  }
+
   private toast(msg: string): void {
     this.getUIContext().getPromptAction().showToast({ message: msg, duration: 1800 });
   }
@@ -376,6 +388,27 @@ export struct NotePanel {
         .backgroundColor(this.palette.quoteBg)
         .width('100%')
       }
+
+      // **图片预览**（插入图片后立即显示缩略图，用户反馈"文本框上没有"）
+      ForEach(this.previewImages(), (img: string) => {
+        Row({ space: HwSpace.xs }) {
+          Image('file://' + DocStore.imagesDirPath() + '/' + img)
+            .width(56)
+            .height(56)
+            .objectFit(ImageFit.Cover)
+            .borderRadius(HwRadius.inner)
+          Text(img)
+            .fontSize(HwType.caption)
+            .fontColor(this.palette.textTertiary)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .width('100%')
+        .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
+        .borderRadius(HwRadius.inner)
+        .backgroundColor(this.palette.quoteBg)
+      }, (img: string) => img)
 
       TextArea({ text: this.draft, placeholder: this.style === 'card'
         ? L10n.t('要记的内容（学习卡必填题干）……') : L10n.t('写下你的批注……') })

@@ -8,14 +8,17 @@ struct StudyReciteCard {
   @LocalStorageProp('studyHas') studyHas: string = '0';
   @LocalStorageProp('studyRemain') studyRemain: string = '0';
   @LocalStorageProp('studyFront') studyFront: string = '';
+  @LocalStorageProp('studyBack') studyBack: string = '';
+  /** **「具体」切换**：true = 显示该卡的批注内容（back），false = 显示题面 */
+  @State showBack: boolean = false;
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
         Row({ space: 6 }) {
           Image($r('app.media.foreground'))
-            .width(16)
-            .height(16)
+            .width(22)
+            .height(22)
           Text(L10n.t('学习卡 · 背诵'))
             .fontSize(12)
             .fontWeight(FontWeight.Bold)
@@ -28,14 +31,27 @@ struct StudyReciteCard {
         .width('100%')
         Blank()
         if (this.studyHas === '1') {
-          Text(this.studyFront)
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor('#FF1F2933')
-            .textAlign(TextAlign.Center)
-            .maxLines(6)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-            .width('100%')
+          if (this.showBack) {
+            // **「具体」态**：显示这张卡的批注内容（用户要求）
+            Text(this.studyBack)
+              .fontSize(14)
+              .fontColor('#FF5B6470')
+              .textAlign(TextAlign.Center)
+              .maxLines(8)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          } else {
+            Text(this.studyFront)
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#FF1F2933')
+              .textAlign(TextAlign.Center)
+              .maxLines(6)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .width('100%')
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+          }
         } else {
           Text(L10n.t('今天没有待背的学习卡'))
             .fontSize(12)
@@ -63,7 +79,7 @@ struct StudyReciteCard {
       .height('100%')
       .padding(14)
       // **「具体」右边中间**（用户要求）：router 进应用看该卡的批注详情
-      Text(L10n.t('具体'))
+      Text(this.showBack ? L10n.t('返回') : L10n.t('具体'))
         .fontSize(11)
         .fontColor('#FF1565C0')
         .padding({ left: 10, right: 10, top: 5, bottom: 5 })
@@ -71,11 +87,8 @@ struct StudyReciteCard {
         .border({ width: 1, color: '#FF1565C0' })
         .position({ right: 12, y: '46%' })
         .onClick(() => {
-          postCardAction(this, {
-            'action': 'router',
-            'abilityName': 'EntryAbility',
-            'params': { 'target': 'study' }
-          });
+          // **「具体」→ 展示这张卡的批注内容**（卡片内切换，不再跳应用）
+          this.showBack = !this.showBack;
         })
     }
     .width('100%')

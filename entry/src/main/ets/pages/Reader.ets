@@ -2772,6 +2772,19 @@ export struct Reader {
    * @param sub    面板中选中的公式子串；'' = 整条公式
    */
   private saveNoteDraft(draft0: string, style: string, sub: string): void {
+    // **快速修改已有批注**（用户要求）：只替换正文，选区 / 颜色 / 关联保持不动
+    if (this.editingAnnId.length > 0) {
+      for (let k = 0; k < this.annotations.length; k++) {
+        if (this.annotations[k].id === this.editingAnnId) {
+          this.annotations[k].text = draft0;
+        }
+      }
+      this.commitAnnotations(this.annotations.slice());
+      this.editingAnnId = '';
+      this.sheetVisible = false;
+      this.toast(L10n.t('已修改批注'));
+      return;
+    }
     if (this.pendingStart < 0) {
       this.sheetVisible = false;
       return;
@@ -4033,6 +4046,8 @@ export struct Reader {
   @State tocBookmarks: string[] = [];
   /** 目录「只看书签」过滤态（顶部书签按钮切换） */
   @State bookmarkOnly: boolean = false;
+  /** **快速修改**的批注 id（非空 = NotePanel 提交时替换该条正文） */
+  @State editingAnnId: string = '';
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
@@ -4153,6 +4168,23 @@ export struct Reader {
   private stripNoteMeta(text: string): string {
     return text.replace(/!\[[^\]]*\]\(images\/[^)]+\)/g, '')
       .replace(/\[[^\]]+\]\(doc:\/\/([^)]+)\)/g, '').trim();
+  }
+
+  /**
+   * **快速修改**（用户要求）：把批注原文预填进 NotePanel，
+   * 提交时（saveNoteDraft 的 editingAnnId 分支）只替换这条批注的正文，
+   * 选区 / 颜色 / 学习卡关联保持不动。
+   */
+  private editAnn(ann: MdAnnotation): void {
+    this.editingAnnId = ann.id;
+    this.noteDraft = ann.text;
+    AppStorage.setOrCreate(NOTE_DRAFT_KEY, ann.text);
+    AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.sheetEpoch++;
+      this.activeSheet = 'note';
+      this.sheetVisible = true;
+    });
   }
 
   private toggleExpand(key: string): void {
@@ -7881,27 +7913,47 @@ export struct Reader {
                         }
                       })
                     }
-                    // **复制批注**（用户要求）
-                    ImmersiveChip({
+                    // **复制 / 修改 / 删除 → 图标按钮**（用户要求：不要文本）
+                    ImmersiveIconButton({
+                      buttonSize: 26,
+                      buttonMaterialShadow: false,
                       palette: this.palette(),
-                      chipActive: true,
-                      chipLabel: L10n.t('复制'),
-                      chipOnTap: () => {
+                      buttonOnTap: () => {
                         this.copyNoteText(this.stripNoteMeta(this.inlineClean(ann.text)));
                       }
-                    })
-                    ImmersiveChip({
+                    }) {
+                      SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                        .fontSize(13)
+                        .fontColor([this.palette().textTertiary])
+                    }
+                    ImmersiveIconButton({
+                      buttonSize: 26,
+                      buttonMaterialShadow: false,
                       palette: this.palette(),
-                      chipTint: '#FFD32F2F',
-                      chipActive: true,
-                      chipLabel: L10n.t('删除'),
-                      chipOnTap: () => {
+                      // **快速修改**：原文预填进 NotePanel，保存时只替换这条正文
+                      buttonOnTap: () => {
+                        this.editAnn(ann);
+                      }
+                    }) {
+                      SymbolGlyph($r('sys.symbol.square_and_pencil'))
+                        .fontSize(13)
+                        .fontColor([this.palette().accent])
+                    }
+                    ImmersiveIconButton({
+                      buttonSize: 26,
+                      buttonMaterialShadow: false,
+                      palette: this.palette(),
+                      buttonOnTap: () => {
                         // **包在 animateTo 里**：卡片淡出（transition），其余卡片滑动补位
                         this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
                           this.deleteAnnotation(ann);
                         });
                       }
-                    })
+                    }) {
+                      SymbolGlyph($r('sys.symbol.trash'))
+                        .fontSize(13)
+                        .fontColor([this.palette().accent])
+                    }
                   }
                   .width('100%')
                   .alignItems(VerticalAlign.Center)
@@ -7919,9 +7971,10 @@ export struct Reader {
                   })
                   // **批注里的图片**（插入的插图直接显示）
                   ForEach(this.noteImages(ann.text), (img: string) => {
+                    // **默认缩略图**（用户要求）
                     Image('file://' + DocStore.imagesDirPath() + '/' + img)
                       .width('100%')
-                      .constraintSize({ maxHeight: 96 })
+                      .constraintSize({ maxHeight: 64 })
                       .objectFit(ImageFit.Cover)
                       .borderRadius(HwRadius.inner)
                   }, (img: string) => img)
