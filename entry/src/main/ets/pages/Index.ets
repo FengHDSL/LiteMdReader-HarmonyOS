@@ -1385,6 +1385,9 @@ struct Index {
     // 先挂载（高度 0），下一拍再撑高——同一拍里改两个状态就没有「推开下面图标」的过程
     // 面板文档列表先算好（滑动期间不再逐帧过滤，见 panelDocs 说明）
     this.panelDocs = this.folderDocs(name);
+    // **面板打开期间材质整体降级**（见 material/ImmersiveCard 里 shelfFolderOpen 的说明）：
+    // 格子已经被压暗 + 模糊，再叠系统材质就是双重背景采样，上下滑动掉帧。
+    AppStorage.setOrCreate('shelfFolderOpen', true);
     this.getUIContext().animateTo(AppearanceFx.param({ curve: FOLDER_SPRING }), () => {
       this.openFolderName = name;
       // 与 openFolderName 同一拍挂载：下面的格子一次动画被推开，不会二次跳
@@ -1597,6 +1600,8 @@ struct Index {
       if (!this.folderPanelOpen) {
         this.openFolderName = '';
         this.panelDocs = [];
+        // 与"恢复清晰"同一拍解除材质降级（太早恢复会让格子还没清晰就挂材质，闪一下）
+        AppStorage.setOrCreate('shelfFolderOpen', false);
       }
     }, 340);
   }
@@ -7661,9 +7666,10 @@ struct Index {
           .columnsTemplate(this.columnsTemplateStr())
           .columnsGap(HwSpace.md)
           .rowsGap(HwSpace.lg)
-          // **预渲染屏幕外两屏**（2026-10-20 性能）：书架格子含封面 Image 解码，
-          // 不预取时每次滑动都在"边滚边建"，用户实测打开文件夹后滑动明显掉帧。
-          .cachedCount(8)
+          // **预渲染屏幕外一屏半**（2026-10-20 性能）：书架格子含封面 Image 解码，
+          // 不预取时每次滑动都在"边滚边建"；但也别预太多——开着光感时**屏外卡片
+          // 也要渲染材质**，预取量过大反而增加每帧的材质合成开销（用户实测掉帧）。
+          .cachedCount(5)
           // Grid 自己吃 layoutWeight（与 1.0.2 一致：面板在网格流内，外层无 Stack）
           .width('100%')
           .layoutWeight(1)

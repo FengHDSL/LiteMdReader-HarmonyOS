@@ -50,6 +50,8 @@ export struct ImmersiveInput {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
 
   /** 输入回调（普通成员：函数类型禁止加 V1 装饰器） */
   onInput: (value: string) => void = () => {
@@ -57,7 +59,9 @@ export struct ImmersiveInput {
 
   /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）。 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    // 与卡片 / 条栏同一套判定：用户总开关 × 档位（节能不挂材质）× 文件夹打开降级 × 内层开关
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {

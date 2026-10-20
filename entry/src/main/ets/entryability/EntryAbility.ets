@@ -133,6 +133,8 @@ export default class EntryAbility extends UIAbility {
     // **默认关闭**（关掉后卡片纯色不透明，更省电、帧率更稳）。
     // 这里不再强制置 true——否则用户关了光感、下次启动又被打开。
     PersistentStorage.persistProp('immersiveLook', false);
+    // 光感档位：default 完整材质 / eco 节能（磨砂降级）
+    PersistentStorage.persistProp('immersiveGrade', 'default');
     // 过渡动画总开关，**默认关闭**（关掉后所有动效瞬时完成、页面硬切）
     PersistentStorage.persistProp('motionFx', false);
     // 「页面组件预热」beta 开关，默认关闭（关闭后不预热、不占内存）

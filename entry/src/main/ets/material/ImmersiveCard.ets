@@ -50,6 +50,17 @@ export struct ImmersiveCardLayer {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 深浅外观（材质深色罩的依赖）：切深浅模式时承载层重挂对应材质 */
   @StorageProp('readerThemeMode') themeModeForMaterial: number = 0;
   @StorageProp('systemDark') systemDarkForMaterial: boolean = false;
@@ -162,6 +173,17 @@ export struct ImmersiveCard {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 卡片沾色：卡片上再压一层 10% 主题色薄染（材质生效时降级层是透明的，靠这层才看得见沾色） */
   @StorageProp('cardTint') cardTintOn: boolean = true;
   /**
@@ -193,7 +215,8 @@ export struct ImmersiveCard {
 
   /** 材质是否真的会渲染。用于决定降级层是否可见。 */
   private materialOn(): boolean {
-    return this.fxLookOn && this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   private fallbackColor(): string {
@@ -417,6 +440,17 @@ export struct ImmersiveIconButton {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -453,7 +487,8 @@ export struct ImmersiveIconButton {
   @BuilderParam buttonIcon: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   // ── 按压跟手流光：开关与坐标字段的声明放在组件顶部，见 struct 开头 ──
@@ -599,6 +634,17 @@ export struct ImmersiveChip {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -622,7 +668,8 @@ export struct ImmersiveChip {
   @BuilderParam chipPrefix: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   private tintSoft(): string {
@@ -711,6 +758,17 @@ export struct ImmersiveSheetPanel {
    * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
 
@@ -721,7 +779,8 @@ export struct ImmersiveSheetPanel {
   @BuilderParam panelContent: () => void = this.doNothing;
 
   private materialOn(): boolean {
-    return this.fxLookOn && this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.drawerImmersive && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {
@@ -801,6 +860,17 @@ export struct ImmersiveBar {
   @Prop barHeight: number = 0;
   @StorageProp("immersiveLightEnabled") immersiveOn: boolean = true;
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /**
+   * 光感档位（'default' 完整系统材质 / 'eco' 节能：不挂材质、走磨砂降级）。
+   * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
+   */
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /**
+   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
+   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
+   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
+   */
+  @StorageProp('shelfFolderOpen') folderOpen: boolean = false;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -823,7 +893,8 @@ export struct ImmersiveBar {
 
   /** 材质真的可用吗（开关开 + 构造成功）。只有不可用时才需要磨砂兜底。 */
   private materialOn(): boolean {
-    return this.fxLookOn && this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && !this.folderOpen && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   build() {

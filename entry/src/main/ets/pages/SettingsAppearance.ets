@@ -55,6 +55,16 @@ const THEME_PRESETS: NamedColor[] = [
 ];
 
 /** 灰体文本显示增强的模式（移植自 xjau 的灰字覆盖） */
+/**
+ * 沉浸光感两档（只在总开关打开后可选）：
+ *   · 默认 = 完整系统材质（ImmersiveMaterial，通透玻璃）；
+ *   · 节能 = 不挂系统材质，走既有的磨砂降级（省 GPU，观感就是"弱光感"那一版）。
+ */
+const GRADE_MODES: NamedColor[] = [
+  { name: L10n.t('默认'), value: 'default' },
+  { name: L10n.t('节能'), value: 'eco' }
+];
+
 const GRAY_MODES: NamedColor[] = [
   { name: L10n.t('自动'), value: 'auto' },
   { name: L10n.t('灰'), value: 'gray' },
@@ -116,6 +126,8 @@ export struct SettingsAppearance {
   @StorageLink('shelfResumeBanner') @Watch('onAppearanceChanged') resumeBanner: boolean = true;
   /** 沉浸光感总开关（2026-10-20 新增，**默认关**）：关 → 所有卡片纯色不透明 */
   @StorageLink('immersiveLook') @Watch('onAppearanceChanged') immersiveLook: boolean = false;
+  /** 光感档位：'default' 完整材质 / 'eco' 节能（磨砂降级），仅总开关打开时可选 */
+  @StorageLink('immersiveGrade') immersiveGrade: string = 'default';
   /** 过渡动画总开关（**默认关**）：关 → 所有动效瞬时完成、页面切换硬切 */
   @StorageLink('motionFx') @Watch('onAppearanceChanged') motionFx: boolean = false;
   /** 页面组件预热（beta，默认关）：结合「页面加载逻辑」使用，关掉即不占内存 */
@@ -340,6 +352,7 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('themeColor', '');
     // 性能与动效三项回到默认（都关）
     AppStorage.setOrCreate('immersiveLook', false);
+    AppStorage.setOrCreate('immersiveGrade', 'default');
     AppStorage.setOrCreate('motionFx', false);
     AppStorage.setOrCreate('preloadPages', false);
     AppStorage.setOrCreate('cardTint', true);
@@ -1048,6 +1061,43 @@ export struct SettingsAppearance {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
+
+          // 光感档位（只在开启后出现）：默认 = 完整玻璃材质；节能 = 磨砂降级、明显省电
+          if (this.immersiveLook) {
+            Row() {
+              Text(this.s('光感强度'))
+                .fontSize(HwType.label)
+                .fontColor(this.palette().textPrimary)
+                .layoutWeight(1)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(GRADE_MODES, (item: NamedColor) => {
+                Row() {
+                  ImmersiveChip({
+                    palette: this.palette(),
+                    chipLabel: this.s(item.name),
+                    chipActive: this.immersiveGrade === item.value,
+                    chipOnTap: () => {
+                      this.immersiveGrade = item.value;
+                      this.toast(item.value === 'eco'
+                        ? this.s('已切到节能：不挂系统材质，更省电')
+                        : this.s('已切到默认：完整沉浸光感'));
+                    }
+                  })
+                }
+                .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+              }, (item: NamedColor) => 'grade_' + item.value)
+            }
+            .width('100%')
+
+            Text(this.s('节能档走磨砂、几乎不耗 GPU；默认档是完整玻璃光感（耗电、可能掉帧）'))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+          }
 
           // 过渡动画：关 → 所有 animateTo / transition / 页面转场瞬时完成（硬切）
           Row() {

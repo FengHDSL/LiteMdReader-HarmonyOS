@@ -64,7 +64,7 @@ export class SettingsMirror {
     'grayTextModeLight', 'grayTextModeDark', 'grayTextColorLight', 'grayTextColorDark',
     'glassStrength', 'cardFallback', 'particleDissolve',
     // 外观高级开关（2026-10-20）：沉浸光感 / 过渡动画 / 页面预热（beta）
-    'immersiveLook', 'motionFx', 'preloadPages',
+    'immersiveLook', 'immersiveGrade', 'motionFx', 'preloadPages',
     // 书架显示：顶部「继续阅读」卡片 / 「回头看看」卡片是否显示
     'shelfResumeBanner', 'shelfMemoryCard',
     // 版本历史（自动保存与间隔）
