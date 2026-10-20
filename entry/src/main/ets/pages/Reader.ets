@@ -7969,6 +7969,8 @@ export struct Reader {
               ListItem() {
                 this.docMetaCard()
               }
+              // **信息卡 80% 不透明度**（用户要求）：微微透出底下的壁纸/背景
+              .opacity(0.8)
             }
 
             // **只渲染已加载的块**：`.slice` 返回新数组，key 不变时已渲染的块被复用，
