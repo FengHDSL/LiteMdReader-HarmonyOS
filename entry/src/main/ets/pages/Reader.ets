@@ -8213,31 +8213,6 @@ export struct Reader {
 
           // ── 对照列（分屏对照，批 5）：右半屏渲染第二篇文档（只读）──
           // 与正文 List 平级的 layoutWeight 兄弟 → 五五开；退出 = 屏幕侧缘中部浮钮（随握姿）。
-          // **目录跳转的加载提示**（重文档专用）：正文区内居中浮层。
-          // ⚠️ 内嵌在 Column 里（.overlay() 会拦截整页手势），position 脱离布局流不挤占 List。
-          if (this.jumpLoading) {
-            Column() {
-              Column({ space: 10 }) {
-                LoadingProgress()
-                  .width(38)
-                  .height(38)
-                  .color(this.palette().accent)
-                Text(L10n.t('图表较多，正在跳转…'))
-                  .fontSize(HwType.caption)
-                  .fontColor(this.palette().textSecondary)
-              }
-              .padding({ left: 22, right: 22, top: 18, bottom: 18 })
-              .borderRadius(HwRadius.card)
-              .backgroundColor(this.palette().surface)
-            }
-            .width('100%')
-            .height('100%')
-            .position({ x: 0, y: 0 })
-            .justifyContent(FlexAlign.Center)
-            .alignItems(HorizontalAlign.Center)
-            .hitTestBehavior(HitTestMode.Block)
-          }
-
           if (this.compareSplit) {
             Column({ space: HwSpace.xs }) {
               Row({ space: HwSpace.xs }) {
@@ -9021,6 +8996,31 @@ export struct Reader {
 
 
 
+
+      // **目录跳转的加载提示**（重文档专用）：全应用最顶层浮层（盖过目录抽屉/顶栏）。
+      // ⚠️ 内嵌在根 Stack 里——.overlay() 会拦截整页手势（2026-10-20 实测），禁用。
+      if (this.jumpLoading) {
+        Column() {
+          Column({ space: 10 }) {
+            LoadingProgress()
+              .width(38)
+              .height(38)
+              .color(this.palette().accent)
+            Text(L10n.t('图表较多，正在跳转…'))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textSecondary)
+          }
+          .padding({ left: 22, right: 22, top: 18, bottom: 18 })
+          .borderRadius(HwRadius.card)
+          .backgroundColor(this.palette().surface)
+        }
+        .width('100%')
+        .height('100%')
+        .position({ x: 0, y: 0 })
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .hitTestBehavior(HitTestMode.Block)
+      }
 
     }
     .width('100%')
