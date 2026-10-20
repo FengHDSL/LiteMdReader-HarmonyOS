@@ -4001,12 +4001,19 @@ export struct Reader {
   }
 
   private jumpTo(blockIndex: number): void {
-    // **重文档跳转提示**（用户要求）：目录跳转会现场渲染目标区域的图表，
-    // 显示加载提示框（**Stack 内嵌层**；.overlay 实测会拦截整页手势，禁用）。
+    // **重文档跳转提示**（用户要求）：先收起目录（露出正文），再弹加载框；
+    // 出现 / 消失都带过渡（animateTo 包状态 + 节点显式 transition）。
     if (this.docIsHeavy && !this.jumpLoading) {
-      this.jumpLoading = true;
+      if (this.tocOpen) {
+        this.closeSide('toc');
+      }
+      this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
+        this.jumpLoading = true;
+      });
       setTimeout(() => {
-        this.jumpLoading = false;
+        this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+          this.jumpLoading = false;
+        });
       }, 1200);
     }
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
@@ -9021,6 +9028,8 @@ export struct Reader {
         .justifyContent(FlexAlign.Center)
         .alignItems(HorizontalAlign.Center)
         .hitTestBehavior(HitTestMode.Block)
+        // 出现 / 消失的淡入淡出（与 animateTo 配合；动画参数统一走 AppearanceFx.anim）
+        .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
       }
 
     }
