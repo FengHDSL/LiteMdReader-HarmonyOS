@@ -742,12 +742,6 @@ export struct Reader {
   @State heroClipH: string = '100%';
   /** 页面底不透明度：展开时从 0 渐显，缩回时渐隐（露出下层书架） */
   @State heroBg: number = 1;
-  /**
-   * **封面色渐隐层**（2026-10-20）：一镜到底放大期间，一层"封面色"随页面展开
-   * 逐步变透明——观感是"封面放大的同时一步步消失"，不再有放大完成后
-   * "封面感突然没了"的断层。hero 起始置 1，heroEnter 的动画里归 0。
-   */
-  @State heroFade: number = 0;
   /** 当前文档是否属于"渲染负担重"（公式 + 图表 ≥ 20）：目录跳转时给加载提示 */
   @State docIsHeavy: boolean = false;
   /** 目录跳转的加载提示（重文档专用，见 jumpTo） */
@@ -984,20 +978,6 @@ export struct Reader {
   });
 
   aboutToAppear(): void {
-    // 预取封面色：hero 封面色渐隐层在 loadDoc 之前就要用（loadDoc 现在是延迟的）
-    try {
-      const ctx0 = this.ctx();
-      if (ctx0 !== null && this.docName.length > 0) {
-        DocStore.init(ctx0);
-        const m0: DocMeta | undefined = DocStore.find(ctx0, this.docName);
-        if (m0 !== undefined) {
-          const cc0: string | undefined = m0.coverColor;
-          this.docCoverColor = cc0 === undefined ? '' : cc0;
-        }
-      }
-    } catch (err) {
-      // 取不到就用主题底色兜底（heroFade 层的 backgroundColor 有默认分支）
-    }
     this.startBlobDrift();
     // Navigation 迁移后参数由 navPageBuilder 直接注入（不再走 router.getParams）
     const params: ReaderRoute = this.route;
@@ -1050,12 +1030,7 @@ export struct Reader {
       this.heroClipW = hero.clipW;
       this.heroClipH = hero.clipH;
       this.heroBg = 0;
-      // 封面色层先全显，heroEnter 放大的同时逐步透明（用户要求"一步步消失"）
-      this.heroFade = 1;
-      // **兜底**：任何路径都不允许封面色层卡在"全屏不透明"（正常 420ms 动画内归 0）
-      setTimeout(() => {
-        this.heroFade = 0;
-      }, 1000);
+
       // 转场降载：首帧只渲染 24 块，转场结束（onShownNow）补回 80
       this.visibleBlocks = 24;
     }
@@ -1293,8 +1268,7 @@ export struct Reader {
         this.heroClipW = '100%';
         this.heroClipH = '100%';
         this.heroBg = 1;
-        // 封面色随放大同步透明消失（见 heroFade）
-        this.heroFade = 0;
+
       });
     }, 32);
   }
@@ -7967,16 +7941,6 @@ export struct Reader {
       .height('100%')
       .opacity(this.heroBg)
       .hitTestBehavior(HitTestMode.None)
-
-      // **封面色渐隐层**：hero 放大的同时逐步透明（用户要求"一步步消失"，不要放大后突然消失）
-      if (this.heroFade > 0.01) {
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor(this.docCoverColor.length > 0 ? this.docCoverColor : this.palette().pageTop)
-          .opacity(this.heroFade)
-          .hitTestBehavior(HitTestMode.None)
-      }
 
       // 图表后台预渲染池：打开文件即把公式 / 图表逐个渲染成 PNG 写缓存
       //（完成后 renderEpoch++ 让正文把 DiagramWeb 占位换成缓存图）。
