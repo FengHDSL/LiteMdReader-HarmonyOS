@@ -66,8 +66,10 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerLineHeight', 1.75);
     PersistentStorage.persistProp('readerMeasure', 40);
     PersistentStorage.persistProp('readerThemeMode', 0);
-    // 旧「材质开关」（保留给旧设置页读取）：真正的用户开关是下面的 immersiveLook
-    PersistentStorage.persistProp('immersiveLightEnabled', false);
+    // 旧「材质开关」（内层开关，设置页已不暴露）：**必须恒为 true**。
+    // 用户真正控制的是 immersiveLook；1.1.5 曾把它默认成 false，
+    // 结果磁盘被写成 false，开光感也不挂材质（用户反馈「效果像开到了最低」）。
+    PersistentStorage.persistProp('immersiveLightEnabled', true);
     // 函数绘制壁纸（无位图）的选中款；空串 = 不用
     PersistentStorage.persistProp('wallpaperGenId', 'zhu'); // 默认竹影
     PersistentStorage.persistProp('readerBgId', 'zhu'); // 阅读背景默认竹影
@@ -135,8 +137,10 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('motionFx', false);
     // 「页面组件预热」beta 开关，默认关闭（关闭后不预热、不占内存）
     PersistentStorage.persistProp('preloadPages', false);
-    if (AppStorage.get<boolean>('immersiveLightEnabled') === undefined) {
-      AppStorage.setOrCreate('immersiveLightEnabled', false);
+    // 纠正：磁盘上若已被写成 false（1.1.5 首次启动的默认值），这里拉回 true。
+    // persistProp 建立的是双向同步，这一步会同时覆盖磁盘。
+    if (AppStorage.get<boolean>('immersiveLightEnabled') !== true) {
+      AppStorage.setOrCreate('immersiveLightEnabled', true);
     }
 
     // 材质类型 / 等级（外观设置；口径与参考工程的 HDS systemMaterialEffect 一致）

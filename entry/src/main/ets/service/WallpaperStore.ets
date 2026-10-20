@@ -112,15 +112,24 @@ export class WallpaperStore {
   }
 
   /**
-   * 只查不烘：键对不上（换壁纸 / 改模糊度）一律返回 null。
-   * 页面 build 里用它，就不会在重新烘焙之前继续显示**上一张**壁纸。
+   * 只查不烘。两种「键对不上」要区别对待（2026-10-20 修闪烁）：
+   *   · **换了壁纸（path 变）**：绝不能显示上一张（会是别的壁纸）→ 返回 null；
+   *   · **只改了模糊度（path 相同）**：返回**同路径的上一张**——拖动滑杆时若每档都
+   *     回退成「原图 + 实时 blur」，Image 源会在 位图/原图 之间反复换、中间还有一帧
+   *     解码空窗，用户看到的就是**壁纸闪烁**。用上一张顶着显示，停手 400ms 后换新档。
    */
   static peekBaked(path: string, radiusVp: number): image.PixelMap | null {
     if (path.length === 0 || radiusVp <= 0) {
       return null;
     }
     const key: string = path + '|' + radiusVp.toFixed(1);
-    return WallpaperStore.bakedMapKey === key ? WallpaperStore.bakedMap : null;
+    if (WallpaperStore.bakedMapKey === key) {
+      return WallpaperStore.bakedMap;
+    }
+    if (WallpaperStore.bakedMap !== null && WallpaperStore.bakedMapKey.startsWith(path + '|')) {
+      return WallpaperStore.bakedMap;
+    }
+    return null;
   }
 
   private static async bake(key: string, path: string, radiusVp: number): Promise<void> {

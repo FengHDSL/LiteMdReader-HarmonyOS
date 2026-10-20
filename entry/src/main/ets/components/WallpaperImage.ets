@@ -72,18 +72,24 @@ export struct WallpaperImage {
     return WallpaperStore.peekBaked(this.path, this.radiusVp);
   }
 
+  /** 当前要显示的源：优先预烘位图，没有才回原图（string）。 */
+  private displaySrc(): image.PixelMap | string {
+    const b: image.PixelMap | null = this.baked();
+    return b !== null ? b : WallpaperStore.imageSourceOf(this.path);
+  }
+
   build() {
-    if (this.baked() !== null) {
-      Image(this.baked())
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-    } else {
-      Image(WallpaperStore.imageSourceOf(this.path))
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Cover)
-        .blur(this.radiusVp)
-    }
+    // **单一 Image 节点换源**（2026-10-20 修闪烁）：原来 if/else 是两个分支 = 两个节点，
+    // 拖动模糊滑杆时每换一档都会「销毁旧节点 → 新建节点 → 重新解码」，中间一帧空窗
+    // 就是用户看到的**壁纸闪烁**。现在节点固定不动，只换源与 blur：
+    //   · 有预烘位图 → 直接贴（已糊好，blur 0）；
+    //   · 没有 → 原图 + 实时 blur（观感与旧实现一致，只是短时兜底）。
+    Image(this.displaySrc())
+      .width('100%')
+      .height('100%')
+      .objectFit(ImageFit.Cover)
+      .blur(this.baked() !== null ? 0 : this.radiusVp)
+      // 换源那一帧不要淡入淡出（否则又是一次"闪"）
+      .animation(null)
   }
 }
