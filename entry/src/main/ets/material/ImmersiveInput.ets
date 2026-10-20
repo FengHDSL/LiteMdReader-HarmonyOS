@@ -44,6 +44,12 @@ export struct ImmersiveInput {
   /** 输入字号（vp），默认与设置页正文一致 */
   @Prop inputFontSize: number = HwType.label;
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /**
+   * 沉浸光感**总开关**（设置 → 外观）：必须用 @StorageProp 声明——
+   * 原来 materialOn() 直接读 `this.fxLookOn`（AppStorage.get）**不建立依赖**，
+   * 开关变化时组件不重绘、材质层 key 不变、材质也不重挂 → 用户看到「开了光感只有部分卡片有材质」。
+   */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
 
   /** 输入回调（普通成员：函数类型禁止加 V1 装饰器） */
   onInput: (value: string) => void = () => {
@@ -61,8 +67,8 @@ export struct ImmersiveInput {
         .width(LayoutPolicy.matchParent)
         .height(LayoutPolicy.matchParent)
         .borderRadius(HwRadius.inner)
-        .backgroundColor(this.materialOn() ? '#00000000' : (AppearanceFx.immersive() ? barFrostColor(this.palette.surface) : withAlpha(this.palette.surface, 'FF')))
-        .backgroundBlurStyle((AppearanceFx.immersive() && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
+        .backgroundColor(this.materialOn() ? '#00000000' : (this.fxLookOn ? barFrostColor(this.palette.surface) : withAlpha(this.palette.surface, 'FF')))
+        .backgroundBlurStyle((this.fxLookOn && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
         .hitTestBehavior(HitTestMode.None)
 
       // ② 沉浸光感承载层

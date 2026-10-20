@@ -2225,6 +2225,23 @@ struct Index {
     this.pushPage('pages/Settings');
   }
 
+  /**
+   * **返回键 / 侧滑的硬切兜底**（2026-10-20）：过渡动画关闭时，pushPath/pop 的
+   * `animated=false` 只管我们主动发起的跳转；**系统返回键与侧滑返回走的默认 pop
+   * 仍会播滑动动画**（用户实测"页面切换的动画还有部分在"）。这里在 onBackPressed
+   * 的兜底分支自己 pop(false)，返回 true 表示已消费这次返回。
+   */
+  private hardBack(): boolean {
+    if (AppearanceFx.motion()) {
+      return false;
+    }
+    if (this.pathStack.size() <= 1) {
+      return false;
+    }
+    this.pathStack.pop(false);
+    return true;
+  }
+
   private pushPage(url: string, params?: ReaderRoute): void {
     try {
       if (params !== undefined) {
@@ -8202,12 +8219,12 @@ struct Index {
     // ReviewPage 在 aboutToAppear 注册），返回 false 时才真正退出页面。
     .onBackPressed(() => {
       if (name !== 'pages/Review') {
-        return false;
+        return this.hardBack();
       }
       if (this.reviewBackCb !== null) {
         return this.reviewBackCb();
       }
-      return false;
+      return this.hardBack();
     })
     // **设置子页的旋转收栈**（用户要求）：竖屏打开的设置子页旋转到横屏时应回到
     // 设置主页的左右分栏，而不是被强行拉伸铺满。主页被本页盖住收不到尺寸回调，
@@ -8251,7 +8268,8 @@ struct Index {
         AppStorage.setOrCreate('readerOverlayCloseTick', Date.now());
         return true;
       }
-      return false;
+      // 过渡动画关 → 返回也硬切
+      return this.hardBack();
     })
     .onShown(() => {
       if (name === 'pages/Reader') {
