@@ -744,8 +744,6 @@ export struct Reader {
   @State heroBg: number = 1;
   /** 当前文档是否属于"渲染负担重"（公式 + 图表 ≥ 20）：目录跳转时给加载提示 */
   @State docIsHeavy: boolean = false;
-  /** 目录跳转的加载提示（重文档专用，见 jumpTo） */
-  @State jumpLoading: boolean = false;
   /** 正在播放缩回动画（避免重复触发返回） */
   private heroExiting: boolean = false;
   /** 本次来源几何（缩回时的目标） */
@@ -4001,13 +3999,10 @@ export struct Reader {
   }
 
   private jumpTo(blockIndex: number): void {
-    // **重文档跳转加载提示**（用户要求）：目录跳转会现场渲染目标区域的图表，
-    // 给一个明确的"正在加载"反馈（1.2 秒后自动收起）。
-    if (this.docIsHeavy && !this.jumpLoading) {
-      this.jumpLoading = true;
-      setTimeout(() => {
-        this.jumpLoading = false;
-      }, 1200);
+    // **重文档跳转提示**（用户要求）：目录跳转会现场渲染目标区域的图表，
+    // 用 toast 给"正在加载"反馈——不用浮层/overlay（实测 .overlay 挂载会拦截整页手势）。
+    if (this.docIsHeavy) {
+      this.toast(L10n.t('图表较多，正在跳转…'));
     }
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
     // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
@@ -9149,32 +9144,6 @@ export struct Reader {
           this.onPinchUpdate(event.scale);
         })
     )
-  }
-
-  /** 重文档跳转时的加载提示浮层 */
-  @Builder
-  jumpLoadingOverlay() {
-    if (this.jumpLoading) {
-      Column() {
-        Column({ space: 10 }) {
-          LoadingProgress()
-            .width(38)
-            .height(38)
-            .color(this.palette().accent)
-          Text(L10n.t('图表较多，正在跳转…'))
-            .fontSize(HwType.caption)
-            .fontColor(this.palette().textSecondary)
-        }
-        .padding({ left: 22, right: 22, top: 18, bottom: 18 })
-        .borderRadius(HwRadius.card)
-        .backgroundColor(this.palette().surface)
-      }
-      .width('100%')
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .hitTestBehavior(HitTestMode.Block)
-    }
   }
 
   /**
