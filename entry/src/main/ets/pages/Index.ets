@@ -4407,6 +4407,10 @@ struct Index {
 
   /** 沉浸光感开关（AppStorage 强制开启，见 EntryAbility） */
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /** 沉浸光感**用户总开关**（外观页）：materialOn() 必须判它——
+   * 原来只判内层开关 + 材质对象，光感关时仍返回 true，
+   * 搜索空态等自绘卡片走了"透明让材质透出"的分支 → 整卡看不见（用户截图实锤）。 */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
   /** 书架顶部「继续阅读」卡片是否显示（外观设置里的开关，默认显示） */
   @StorageProp('shelfResumeBanner') showResumeBanner: boolean = true;
   /**
@@ -4424,7 +4428,9 @@ struct Index {
   @StorageProp('readerOverlayOpen') readerOverlayOpen: boolean = false;
   /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）：新建卡外壳据此决定底色 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    // ⚠️ 必须带 fxLookOn（用户总开关）——光感关时材质对象仍在，少了这条
+    // 这里会返回 true，自绘卡片走"透明让材质透出"分支 → 整卡透明（2026-10-20 用户截图实锤）
+    return this.fxLookOn && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   /** 第一格「新建」卡（图一同款位置）——**沉浸光感**与其它封面一致 */
