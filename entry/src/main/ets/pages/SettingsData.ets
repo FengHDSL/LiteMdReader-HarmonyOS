@@ -22,6 +22,7 @@ import { ExportService } from '../service/ExportService';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { AppResetDialog } from '../components/AppResetDialog';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { AnnotationStore } from '../service/AnnotationStore';
@@ -632,6 +633,41 @@ export struct SettingsData {
     }
   }
 
+  /**
+   * **导出网络图片**（用户要求）：先按 URL 下载（超时 15/20 秒），再走系统另存为。
+   * 文件名取 URL 末段（去掉查询参数），没有扩展名时补 .png。
+   */
+  private exportNetImage(url: string): void {
+    const ctx = this.ctx();
+    if (ctx === null) {
+      return;
+    }
+    this.toast('正在下载网络图片…');
+    const req = http.createHttp();
+    req.request(url, {
+      method: http.RequestMethod.GET,
+      expectDataType: http.HttpDataType.ARRAY_BUFFER,
+      connectTimeout: 15000,
+      readTimeout: 20000
+    }).then((resp: http.HttpResponse) => {
+      req.destroy();
+      if (resp.responseCode >= 200 && resp.responseCode < 300) {
+        let name: string = url.split('?')[0].split('/').pop() ?? '';
+        if (name.length === 0 || name.indexOf('.') < 0) {
+          name = (name.length > 0 ? name : 'image') + '.png';
+        }
+        ExportService.saveBytes(ctx, name, resp.result as ArrayBuffer, (m: string) => {
+          this.toast(m);
+        });
+      } else {
+        this.toast('下载失败：HTTP ' + resp.responseCode);
+      }
+    }).catch((err: BusinessError) => {
+      req.destroy();
+      this.toast('下载失败：' + err.message);
+    });
+  }
+
   /** 恢复全部被移除的内置教程（正文一直都在，只是被隐藏了）。 */
   private restoreBuiltins(): void {
     const ctx = this.ctx();
@@ -961,12 +997,12 @@ export struct SettingsData {
       // ── ① 备份与恢复 ──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
-          Text(L10n.t('把整个应用的全部数据按类别打包成一个 zip：文档与图片、书架索引、批注与学习卡、手写笔迹、AI 会话与配置、草稿、版本快照、字体、壁纸与阅读背景、阅读与写作日志、阅读标签页、复习数据、全部设置、网盘账号配置、桌面卡片快照，以及图表与导出缓存。'))
+          Text(L10n.t('把全部数据按类别打包成一个 zip：文档、图片、批注、设置等十几类，包内附 manifest 清单。'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
-          Text(L10n.t('包内按文件夹分类，并附一份 manifest.json 清单（导出时间、每类的文件数与落点）；导入时认这份清单，把每个文件夹写回它本来的位置。'))
+          Text(L10n.t('导入时按清单逐类写回原位置。'))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1391,6 +1427,15 @@ export struct SettingsData {
                   });
               })
 
+              ImmersiveChip({
+                palette: this.palette(),
+                chipTint: '#FF2E7D32',
+                chipActive: true,
+                chipLabel: L10n.t('导出'),
+                chipOnTap: () => {
+                  this.exportNetImage(url);
+                }
+              })
               ImmersiveChip({
                 palette: this.palette(),
                 chipTint: '#FFD32F2F',
