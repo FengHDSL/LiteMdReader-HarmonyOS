@@ -37,8 +37,10 @@ import {
   normalizeHex8,
   paletteFor,
   themeModeLabel,
-  withAlpha
+  withAlpha,
+  HwFont
 } from '../theme/DesignTokens';
+import { FontPickerList } from '../components/FontPickerList';
 
 /**
  * 主题色预设：**5 款澄笺色**（与 5 款程序化壁纸同源同名，用户指定）。
@@ -150,6 +152,17 @@ export struct SettingsAppearance {
   @StorageLink('phoneLandscape') @Watch('onPhoneLandscapeChanged') phoneLandscape: boolean = false;
   /** 设备类型：手机端才渲染横屏开关（进程内不变，普通字段即可，不用进状态） */
   private phoneDevice: boolean = isPhoneDevice();
+  /**
+   * **界面字体**（空串 = 系统默认）：全应用文字都跟着换（正文是否也换由下面的开关决定）。
+   * 必须像这样用 @StorageLink 持有——真机上子组件自读 AppStorage 不保证回刷。
+   */
+  @StorageLink('appFontFamily') @Watch('onUiFontChanged') uiFontKey: string = '';
+  /** 界面字体是否**同步应用到阅读正文**（关闭时正文仍用「阅读调整 → 字体」的选择） */
+  @StorageLink('appFontSyncReader') @Watch('onUiFontChanged') uiFontSyncReader: boolean = false;
+  /** 界面字体列表是否展开 */
+  @State uiFontListOpen: boolean = false;
+  /** 列表重取信号（导入 / 删除字体后自增） */
+  @State uiFontRev: number = 0;
   /** 灰体文本显示增强：**深浅两套独立配置**（各自默认 auto）。
    *  取值 auto / gray / black / white / custom + 对应模式的自定义色。 */
   @StorageLink('grayTextModeLight') @Watch('onAppearanceChanged') grayModeLight: string = 'auto';
@@ -314,6 +327,14 @@ export struct SettingsAppearance {
     SettingsMirror.save(this.hostCtx());
   }
 
+  /**
+   * 换界面字体 / 拨同步开关：广播一次外观刷新（appearanceTick 让全应用的卡片、
+   * 芯片、面板都重渲染，字体属性才能真的落到每一行文字上），再落一次设置镜像。
+   */
+  onUiFontChanged(): void {
+    this.broadcastAppearance();
+  }
+
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
   private broadcastAppearance(): void {
     try {
@@ -373,6 +394,9 @@ export struct SettingsAppearance {
     AppStorage.setOrCreate('pageBgTint', true);
     // 横屏开关走 @StorageLink 赋值：@Watch 里负责把方向真正作用到主窗口
     this.phoneLandscape = false;
+    // 界面字体与「同步到阅读页」也一起恢复默认（空 = 系统默认字形）
+    this.uiFontKey = '';
+    this.uiFontSyncReader = false;
     AppStorage.setOrCreate('grayTextMode', 'auto');
     AppStorage.setOrCreate('grayTextColor', '');
     AppStorage.setOrCreate('grayTextModeLight', 'auto');
@@ -656,6 +680,85 @@ export struct SettingsAppearance {
             .width('100%')
             .alignItems(VerticalAlign.Center)
           }
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── 界面字体（用户要求：外观设置也能选字体，调整应用内所有文本；并可决定是否同步到阅读页）
+      // ArkUI 没有应用级字体钩子（Theme 只有 colors，fontFamily 也不是通用属性），
+      // 所以这份字体是**逐处 Text 挂 fontFamily** 生效的（见 HwFont.resolve / 各页 uiFontKey）。
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.sm }) {
+          Text(this.s('界面字体'))
+            .fontSize(HwType.label + 1)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.palette().textSecondary)
+            .width('100%')
+
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('全应用文字'))
+              .fontSize(HwType.label)
+              .fontColor(this.palette().textSecondary)
+            Text(HwFont.label(this.uiFontKey))
+              .fontSize(HwType.label)
+              .fontWeight(FontWeight.Medium)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontColor(this.palette().textPrimary)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            // ⚠️ $r() 的参数必须是**字面量**：展开 / 收起两个箭头各写一份
+            if (this.uiFontListOpen) {
+              SymbolGlyph($r('sys.symbol.chevron_up'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            } else {
+              SymbolGlyph($r('sys.symbol.chevron_down'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            }
+          }
+          .width('100%')
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().surface)
+          .border({ width: 1, color: this.palette().surfaceBorder })
+          .onClick(() => {
+            this.uiFontListOpen = !this.uiFontListOpen;
+          })
+
+          if (this.uiFontListOpen) {
+            FontPickerList({
+              palette: this.palette(),
+              chosen: this.uiFontKey,
+              rev: this.uiFontRev,
+              allowRemove: false,
+              onPick: (k: string) => {
+                this.uiFontKey = k;
+                this.toast('界面字体：' + HwFont.label(k));
+              }
+            })
+          }
+
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('同步应用到阅读页'))
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('开启后阅读正文也用它；关闭则正文仍用「阅读调整 → 字体」里选的那款'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            Toggle({ type: ToggleType.Switch, isOn: this.uiFontSyncReader })
+              .onChange((isOn: boolean) => {
+                this.uiFontSyncReader = isOn;
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

@@ -86,6 +86,9 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerNotesPanelW', 300);
     // 第五轮新增的排版 / 显示设置。键名与默认值必须和 ReadingSettings 里的 @StorageLink 一致
     PersistentStorage.persistProp('readerFontFamily', '');
+    // **界面字体**（外观设置）：空串 = 系统默认；syncReader = 是否把这款字体也用到阅读正文
+    PersistentStorage.persistProp('appFontFamily', '');
+    PersistentStorage.persistProp('appFontSyncReader', false);
     PersistentStorage.persistProp('readerParaSpace', 1.0);
     PersistentStorage.persistProp('readerIndent', false);
     // 网页开放（阅读页「更多」面板开关）：开启后点正文 http(s) 链接半模态打开

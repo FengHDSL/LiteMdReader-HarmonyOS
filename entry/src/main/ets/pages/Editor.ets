@@ -318,6 +318,9 @@ export struct Editor {
   @StorageLink('readerLineHeight') lineMul: number = HwType.lineDefault;
   /** 正文预览用的字体族（MdBlockView 现在靠 @Prop 收下发的值，子组件自读 AppStorage 不回刷） */
   @StorageLink('readerFontFamily') @Watch('onVisualChanged') bodyFontKey: string = '';
+  /** 界面字体与同步开关：值由 HwFont.bodyFamily 现读，这里挂上只为改动能触发重建 */
+  @StorageLink('appFontFamily') @Watch('onVisualChanged') appFontKey: string = '';
+  @StorageLink('appFontSyncReader') @Watch('onVisualChanged') appFontSync: boolean = false;
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */

@@ -1914,7 +1914,7 @@ export struct MdBlockView {
                   ? atom.sample.highlight : baseColor)
                 .fontWeight(atom.sample !== null && atom.sample.bold
                   ? FontWeight.Bold : FontWeight.Normal)
-                .fontFamily(HwFont.resolve(this.fontKey))
+                .fontFamily(HwFont.bodyFamily(this.fontKey))
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
             }
@@ -1929,7 +1929,7 @@ export struct MdBlockView {
               }
               .fontSize(size)
               .fontColor(baseColor)
-              .fontFamily(HwFont.resolve(this.fontKey))
+              .fontFamily(HwFont.bodyFamily(this.fontKey))
               .copyOption(CopyOptions.LocalDevice)
             }
             .alignItems(HorizontalAlign.Start)
@@ -1949,7 +1949,7 @@ export struct MdBlockView {
       .fontColor(baseColor)
       .lineHeight(size * this.lineMulFor(lineMul))
       .textAlign(align)
-      .fontFamily(HwFont.resolve(this.fontKey))
+      .fontFamily(HwFont.bodyFamily(this.fontKey))
       .textIndent(firstIndent ? Math.round(size * 2) : 0)
       .width('100%')
       .copyOption(CopyOptions.LocalDevice)
@@ -1961,7 +1961,7 @@ export struct MdBlockView {
     .fontColor(baseColor)
     .lineHeight(size * this.lineMulFor(lineMul))
     .textAlign(align)
-    .fontFamily(HwFont.resolve(this.fontKey))
+    .fontFamily(HwFont.bodyFamily(this.fontKey))
     // 首行缩进按正文尺寸取两个字宽；0 表示不缩进
     .textIndent(firstIndent ? Math.round(size * 2) : 0)
     .width('100%')
@@ -2051,7 +2051,7 @@ export struct MdBlockView {
                 .fontColor(baseColor)
                 .fontWeight(atom.sample !== null && atom.sample.bold
                   ? FontWeight.Bold : FontWeight.Normal)
-                .fontFamily(HwFont.resolve(this.fontKey))
+                .fontFamily(HwFont.bodyFamily(this.fontKey))
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
             }
@@ -2066,7 +2066,7 @@ export struct MdBlockView {
               }
               .fontSize(size)
               .fontColor(baseColor)
-              .fontFamily(HwFont.resolve(this.fontKey))
+              .fontFamily(HwFont.bodyFamily(this.fontKey))
               .copyOption(CopyOptions.LocalDevice)
             }
             .alignItems(HorizontalAlign.Start)
@@ -2083,7 +2083,7 @@ export struct MdBlockView {
       .fontColor(baseColor)
       .lineHeight(size * this.lineMulFor(lineMul))
       .textAlign(align)
-      .fontFamily(HwFont.resolve(this.fontKey))
+      .fontFamily(HwFont.bodyFamily(this.fontKey))
       .width('100%')
     }
   }

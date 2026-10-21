@@ -34,7 +34,8 @@ import {
   themeModeLabel
 } from '../theme/DesignTokens';
 import { materialDiagnostics } from '../material/SystemMaterial';
-import { UserFont, SystemFont, FontStore } from '../service/FontStore';
+import { FontStore } from '../service/FontStore';
+import { FontPickerList } from '../components/FontPickerList';
 import { setKeepScreenOn, setWindowBrightnessLevel } from '../service/AppWindow';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -85,12 +86,10 @@ export struct ReadingSettingsPanel {
   /** 阅读背景自定义色（亮 / 暗主题分别记忆）；空串 = 主题默认 */
   @StorageLink('readerCustomBgLight') customBgLight: string = '';
   @StorageLink('readerCustomBgDark') customBgDark: string = '';
-  /** 用户导入的自定义字体（familyName 即设置键） */
-  @State userFonts: UserFont[] = [];
-  /** 系统已安装字体（系统字体管理器 INSTALLED 类型） */
-  @State systemFonts: SystemFont[] = [];
   /** 字体列表选择器是否展开（默认收起，只显示当前字体那一行） */
   @State fontListOpen: boolean = false;
+  /** 导入 / 删除字体后自增，交给 FontPickerList 重取列表（@Watch） */
+  @State fontListRev: number = 0;
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
   @StorageLink('readerBgPath') readerBgPath: string = '';
   @StorageLink('readerBgId') readerBgId: string = '';
@@ -122,16 +121,11 @@ export struct ReadingSettingsPanel {
   @State sliderH: number = 0;
 
   aboutToAppear(): void {
-    const c = this.getUIContext().getHostContext();
-    if (c !== undefined && c !== null) {
-      const ctx = c as common.UIAbilityContext;
+    // 列表由 FontPickerList 自己取；这里只保证已导入的字体注册进字体管理器（正文要用）
+    const ctx = this.hostCtx();
+    if (ctx !== null) {
       FontStore.registerAll(ctx);
-      this.userFonts = FontStore.list(ctx);
     }
-    // **系统已安装字体**（用户要求：调用系统字体管理器，无需自建导入工具）
-    FontStore.loadInstalled().then((list: SystemFont[]) => {
-      this.systemFonts = list;
-    });
   }
 
   /**
@@ -172,7 +166,7 @@ export struct ReadingSettingsPanel {
           this.toast(L10n.t('字体导入失败：仅支持 .ttf / .otf，且不超过 30MB'));
           return;
         }
-        this.userFonts = FontStore.list(ctx);
+        this.fontListRev++;
         this.fontKey = family;
         this.toast('已导入并启用字体「' + family + '」');
       }).catch((err: BusinessError) => {
@@ -205,7 +199,7 @@ export struct ReadingSettingsPanel {
         if (this.fontKey === family) {
           this.fontKey = '';
         }
-        this.userFonts = FontStore.list(ctx);
+        this.fontListRev++;
         this.toast(L10n.t('已删除（正在运行的应用里可能仍可见，重启后彻底消失）'));
       } else {
         this.toast(L10n.t('删除失败'));
@@ -487,103 +481,6 @@ export struct ReadingSettingsPanel {
       })
   }
 
-  /**
-   * 字体列表里的一行：名字与副行都**用该字体自己画**（所见即所得），
-   * 选中那行右侧打勾并高亮。点一下即选中，正文当帧换字；导入的字体仍可长按删除。
-   */
-  @Builder
-  fontRow(key: string, name: string, sub: string, removable: boolean) {
-    Row({ space: HwSpace.sm }) {
-      Column({ space: 1 }) {
-        Text(name)
-          .fontSize(HwType.label + 3)
-          .fontFamily(HwFont.resolve(key))
-          .fontColor(this.palette().textPrimary)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-        Text(sub)
-          .fontSize(HwType.caption)
-          .fontFamily(HwFont.resolve(key))
-          .fontColor(this.palette().textTertiary)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start)
-
-      if (this.fontKey === key) {
-        SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
-          .fontSize(18)
-          .fontColor([this.palette().accent])
-      }
-    }
-    .width('100%')
-    .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 7, bottom: 7 })
-    .borderRadius(HwRadius.inner)
-    .backgroundColor(this.fontKey === key ? this.palette().accentSoft : '#00000000')
-    .onClick(() => {
-      this.fontKey = key;
-      this.toast('字体：' + HwFont.label(key));
-    })
-    // 手势**总要挂**（条件挂手势要写两套分支）：不可删除的行在回调里直接忽略
-    .gesture(
-      LongPressGesture()
-        .onAction(() => {
-          if (removable) {
-            this.askRemoveFont(key);
-          }
-        })
-    )
-  }
-
-  /** 字体列表里的分组小标题 */
-  @Builder
-  fontGroupTitle(label: string) {
-    Text(label)
-      .fontSize(HwType.caption)
-      .fontColor(this.palette().textTertiary)
-      .width('100%')
-      .padding({ left: HwSpace.sm, top: 6, bottom: 2 })
-  }
-
-  /**
-   * **字体列表选择器**：默认 → 导入的字体 → 系统已安装，三段一行一项。
-   * 整块限高 260vp 可上下滑（用户装的字体可能几十款，不能把面板撑出屏幕）；
-   * 四角按批注卡片同款圆角裁切。
-   */
-  @Builder
-  fontPicker() {
-    Scroll() {
-      Column({ space: 2 }) {
-        this.fontRow('', L10n.t('默认'), L10n.t('澄笺 Aa 123 · 系统默认字形'), false)
-        if (this.userFonts.length > 0) {
-          this.fontGroupTitle(L10n.t('导入的字体（长按可删除）'))
-          ForEach(this.userFonts, (f: UserFont) => {
-            this.fontRow(f.family, f.family, L10n.t('澄笺 Aa 123 · 本机导入'), true)
-          }, (f: UserFont) => f.family)
-        }
-        if (this.systemFonts.length > 0) {
-          this.fontGroupTitle(L10n.t('系统已安装'))
-          ForEach(this.systemFonts, (f: SystemFont) => {
-            this.fontRow(f.family, f.family.length > 0 ? f.family : f.fullName,
-              L10n.t('澄笺 Aa 123 · ') + f.fullName, false)
-          }, (f: SystemFont) => f.family)
-        }
-      }
-      .width('100%')
-      .padding(4)
-      .alignItems(HorizontalAlign.Start)
-    }
-    .scrollable(ScrollDirection.Vertical)
-    .scrollBar(BarState.Auto)
-    .width('100%')
-    .constraintSize({ maxHeight: 260 })
-    .borderRadius(HwRadius.inner)
-    .clip(true)
-    .backgroundColor(this.palette().surface)
-    .border({ width: 1, color: this.palette().surfaceBorder })
-  }
-
   /** 背景色板：预设色圆点 + 一键恢复默认（默认项就是色板里 value 为空的那个）。 */
   @Builder
   bgSwatchRow(label: string, dark: boolean) {
@@ -683,7 +580,18 @@ export struct ReadingSettingsPanel {
           })
 
           if (this.fontListOpen) {
-            this.fontPicker()
+            FontPickerList({
+              palette: this.palette(),
+              chosen: this.fontKey,
+              rev: this.fontListRev,
+              onPick: (k: string) => {
+                this.fontKey = k;
+                this.toast('字体：' + HwFont.label(k));
+              },
+              onRemove: (family: string) => {
+                this.askRemoveFont(family);
+              }
+            })
           }
 
           ImmersiveChip({

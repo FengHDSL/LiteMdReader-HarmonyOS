@@ -308,6 +308,13 @@ export struct Reader {
    * 内部的 `@StorageProp('readerFontFamily')` 不保证回刷，选完字体正文不动就是这个坑。
    */
   @StorageLink('readerFontFamily') @Watch('onBodyFontChanged') bodyFontKey: string = '';
+  /**
+   * 界面字体 + 「同步应用到阅读页」：正文实际用哪款由 `HwFont.bodyFamily` 现读这两个键，
+   * 这里挂 @StorageLink 只为**让它们的变化能触发正文重建**（否则改了界面字体，
+   * 正文还按老值画）。appFontKey / appFontSync 本身不在正文里直接引用。
+   */
+  @StorageLink('appFontFamily') @Watch('onBodyFontChanged') appFontKey: string = '';
+  @StorageLink('appFontSyncReader') @Watch('onBodyFontChanged') appFontSync: boolean = false;
   /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
   @StorageLink('drawerImmersive') drawerImmersive: boolean = true;
   /** 信息卡：创建 / 修改时间（毫秒，0 = 未知）与收藏状态 */

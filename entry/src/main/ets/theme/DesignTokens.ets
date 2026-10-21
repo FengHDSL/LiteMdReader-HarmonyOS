@@ -958,6 +958,20 @@ export class HwFont {
     }
     return key;
   }
+
+  /**
+   * 正文 / 预览**实际**用的 fontFamily：调用方只传「正文字体键」（readerFontFamily），
+   * 这里现读 AppStorage 里的界面字体（appFontFamily）与「同步应用到阅读页」开关
+   * （appFontSyncReader）——同步开着且界面字体非空时，正文跟随界面字体。
+   * ⚠️ 现读值要靠**宿主重渲染**才跟得上：阅读页与编辑页都为这两个键挂了
+   * @StorageLink + renderEpoch（子组件自读 AppStorage 不回刷，正文字体那条就栽过一次）。
+   */
+  static bodyFamily(readerKey: string): string {
+    const appRaw: string | undefined = AppStorage.get<string>('appFontFamily');
+    const app: string = appRaw === undefined || appRaw === null ? '' : appRaw;
+    const sync: boolean | undefined = AppStorage.get<boolean>('appFontSyncReader');
+    return HwFont.resolve(sync === true && app.length > 0 ? app : readerKey);
+  }
 }
 
 /**
