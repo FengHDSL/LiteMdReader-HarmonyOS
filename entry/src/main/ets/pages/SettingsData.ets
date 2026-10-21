@@ -1019,25 +1019,25 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
           Text(L10n.t('导入时按清单逐类写回原位置。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
           Text(L10n.t('导入会覆盖同名文件，但不会删除本机多出来的数据；回到书架即刻生效，不必重启应用。导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
           Text(L10n.t('三篇内置演示文档的正文始终从应用包内读取，沙箱里那几份副本应用永远不读、也能随安装复原，所以不进包——包里只会是你自己产生的数据。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           // 换行布局：三颗芯片在窄屏上放不下时折到下一行，不再被右边缘截断
@@ -1113,7 +1113,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           ImmersiveChip({
@@ -1205,7 +1205,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           ForEach(this.builtinList, (meta: DocMeta) => {
@@ -1321,7 +1321,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
           ImmersiveChip({
             palette: this.palette(),
@@ -1339,7 +1339,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           // ── 图片管理（用户要求）：展示手写笔记 / 插入的本地图片 / 网络图片，
@@ -1556,7 +1556,7 @@ export struct SettingsData {
                 .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
-                .lineHeight(HwType.caption * 1.6)
+                .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
             }
             .layoutWeight(1)
             .alignItems(HorizontalAlign.Start)
@@ -1590,7 +1590,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           this.fieldRow('服务器地址', 'https://dav.example.com/dav', this.webdavServer, 'server')
@@ -1679,7 +1679,7 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
           ImmersiveChip({
             palette: this.palette(),

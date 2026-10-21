@@ -722,7 +722,7 @@ export struct SettingsAppearance {
           Text(this.s('界面字体'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
-            .fontWeight(FontWeight.Medium)
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
@@ -921,7 +921,7 @@ export struct SettingsAppearance {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.6)
+            .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
             .width('100%')
         }
         .width('100%')

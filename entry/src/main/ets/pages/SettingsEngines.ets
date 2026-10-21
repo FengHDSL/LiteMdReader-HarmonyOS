@@ -132,7 +132,7 @@ export struct SettingsEngines {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textSecondary)
-          .lineHeight(HwType.caption * 1.5)
+          .lineHeight(HwFont.sx(HwType.caption * 1.5, this.uiFontScale))
           .width('100%')
 
         Row({ space: 6 }) {
@@ -195,7 +195,7 @@ export struct SettingsEngines {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
         }
 

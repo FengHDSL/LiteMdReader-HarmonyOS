@@ -473,7 +473,8 @@ export struct ReadingSettingsPanel {
     Text(label)
       .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-      .fontWeight(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal)
+      .fontWeight(HwFont.bump(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal,
+        this.uiFontWeightDelta))
       .fontColor(this.themeMode === mode ? this.palette().accent : this.palette().textPrimary)
       .textAlign(TextAlign.Center)
       .layoutWeight(1)
@@ -847,7 +848,7 @@ export struct ReadingSettingsPanel {
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
-              .lineHeight(HwType.caption * 1.6)
+              .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
           }
           .width('100%')
           .alignItems(HorizontalAlign.Start)
