@@ -198,6 +198,9 @@ export struct FlowChartView {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置）：只用于图下方那行界面说明，节点与连线标签仍跟正文尺寸走 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private graph: FlowGraph = { direction: 'TD', nodes: [], edges: [], ok: false };
   private parsed: boolean = false;
@@ -288,7 +291,7 @@ export struct FlowChartView {
     Row({ space: HwSpace.xs }) {
       Text(this.nodeAt(name).label)
         .fontSize(this.bodySize * 0.9)
-        .fontWeight(FontWeight.Medium)
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette.textPrimary)
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -321,7 +324,7 @@ export struct FlowChartView {
     Row({ space: HwSpace.lg }) {
       ForEach(this.edgeLabelsBetween(levelIndex), (text: string, i: number) => {
         Text(text)
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }, (text: string, i: number) => 'c' + levelIndex + '_' + i + '_' + text)
     }
@@ -370,7 +373,7 @@ export struct FlowChartView {
 
       Text(L10n.t('Mermaid 流程图子集 · graph TD/LR'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption - 1)
+        .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
         .fontColor(this.palette.textTertiary)
         .width('100%')
         .textAlign(TextAlign.End)

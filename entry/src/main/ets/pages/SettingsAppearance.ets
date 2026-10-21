@@ -490,13 +490,13 @@ export struct SettingsAppearance {
     Row() {
       Text(this.s(title))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label)
+        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
       Text(this.grayModeOf(light) === 'auto' ? this.s('自动')
         : (this.grayColorOf(light).length > 0 ? this.grayColorOf(light) : ''))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
     }
     .width('100%')
@@ -621,8 +621,8 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('主题模式'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
@@ -630,11 +630,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('深色模式'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('开启后全应用改用深色配色；羊皮纸 / 护眼绿在「阅读调整」里'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -679,7 +679,7 @@ export struct SettingsAppearance {
             })
             Text(this.s1('当前：%1', this.s(themeModeLabel(this.themeMode))))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
           }
@@ -692,11 +692,11 @@ export struct SettingsAppearance {
               Column({ space: 2 }) {
                 Text(this.s('支持横屏模式'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 1)
+                  .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                 Text(this.s('开启后手机可随系统横竖屏切换；关闭则锁定竖屏'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
               }
               .layoutWeight(1)
@@ -721,7 +721,7 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.sm }) {
           Text(this.s('界面字体'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textSecondary)
             .width('100%')
@@ -729,10 +729,10 @@ export struct SettingsAppearance {
           Row({ space: HwSpace.xs }) {
             Text(this.s('全应用文字'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
             Text(HwFont.label(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontWeight(FontWeight.Medium)
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontColor(this.palette().textPrimary)
@@ -776,11 +776,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('同步应用到阅读页'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('开启后阅读正文也用它；关闭则正文仍用「阅读调整 → 字体」里选的那款'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -796,7 +796,7 @@ export struct SettingsAppearance {
           // ── 界面字号：85%~130%，步进 5%（逐点生效，见 HwFont.sx）──
           Row({ space: HwSpace.xs }) {
             Text(this.s('界面字号'))
-              .fontSize(HwType.label + 1)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
             Blank()
             Text(Math.round(this.uiFontScale * 100) + '%')
@@ -815,7 +815,7 @@ export struct SettingsAppearance {
             })
 
           Text(this.s('标题、正文与数字会按同一系数放大；系统的「字体与样式」缩放是叠加生效的'))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -824,12 +824,12 @@ export struct SettingsAppearance {
           // 所以 FontStore.supportsBold 用 400 与 700 各量一次宽度，几乎不变就算不支持。
           Row({ space: HwSpace.xs }) {
             Text(this.s('界面字重'))
-              .fontSize(HwType.label + 1)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
             Blank()
             if (!FontStore.supportsBold(this.uiFontKey)) {
               Text(this.s('这款字体没有粗体字重'))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
           }
@@ -882,14 +882,14 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('应用语言'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
           Text(this.s('只改澄笺里的文字，不动系统语言；澄笺这个名字和拼音都不翻译。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -912,14 +912,14 @@ export struct SettingsAppearance {
 
           Text(this.langDescribe())
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
           Text(this.s('系统语言不在内置列表里时，按简体中文显示。')
             + ' ' + this.s('应用内文字立刻生效；日期格式这类系统级文字在下次启动时同步。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.6)
             .width('100%')
@@ -934,7 +934,7 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('主题色'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
           Row({ space: HwSpace.sm }) {
             ForEach(THEME_PRESETS, (item: NamedColor) => {
@@ -972,7 +972,7 @@ export struct SettingsAppearance {
             })
             Text(this.s1('当前：%1', ThemeStore.label()))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
           }
@@ -1014,11 +1014,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('背景跟随主题色'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('页面底色轻微染上主题色，整体更统一'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1036,11 +1036,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('自定义色也染背景'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('关闭时，只有澄笺 5 色会染页面背景'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1063,8 +1063,8 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('应用壁纸'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
@@ -1127,12 +1127,12 @@ export struct SettingsAppearance {
 
           Text(this.s('澄笺壁纸（程序化绘制）'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .width('100%')
           Text(this.s('按「澄·笺」意境生成的渐变纸墨底，无位图资源，任意分辨率都清晰'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -1175,7 +1175,7 @@ export struct SettingsAppearance {
             Row() {
               Text(this.s('壁纸模糊'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Blank()
               Text('' + Math.round(this.wallpaperBlur))
@@ -1201,7 +1201,7 @@ export struct SettingsAppearance {
           Row() {
             Text(this.s('文字可读性遮罩'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
             Blank()
             Text('' + Math.round(this.wallpaperScrim))
@@ -1228,11 +1228,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('取消蒙版'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('关闭后不叠加可读性遮罩，壁纸按原样显示'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1248,7 +1248,7 @@ export struct SettingsAppearance {
 
           Text(this.s('壁纸越花，遮罩就要越浓，否则正文会看不清；确实不需要时可「取消蒙版」'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
         }
         .width('100%')
@@ -1261,14 +1261,14 @@ export struct SettingsAppearance {
           Row({ space: HwSpace.xs }) {
             Text(this.s('性能与动效'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 1)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().textSecondary)
             // BETA 徽章（用户要求）
             Text('BETA')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(10)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(10, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().accent)
               .padding({ left: 6, right: 6, top: 1, bottom: 1 })
               .borderRadius(5)
@@ -1280,7 +1280,7 @@ export struct SettingsAppearance {
 
           Text(this.s('实验性质，酌情开启'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -1289,11 +1289,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('沉浸光感'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('关闭后所有卡片为纯色不透明；开启会掉帧、发热'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1343,7 +1343,7 @@ export struct SettingsAppearance {
               Row() {
                 Text(this.s('光感强度'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
                 .layoutWeight(1)
             }
@@ -1372,7 +1372,7 @@ export struct SettingsAppearance {
 
               Text(this.s('节能档走磨砂、几乎不耗 GPU；默认档是完整玻璃光感（耗电、可能掉帧）'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
                 .width('100%')
             }
@@ -1388,11 +1388,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('过渡动画'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('只停用页面切换动画：进出直接显示/消失；打开文档的展开动画与其它动效保留'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1411,11 +1411,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('页面组件预热（Beta）'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('提前把页面与组件加载进内存（不含文档内容），退出应用或超时后自动清除'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1442,8 +1442,8 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('卡片与流光'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
@@ -1452,11 +1452,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('卡片沾色'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('卡片染上一成主题色，整体更协调（需先选主题色）'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1474,11 +1474,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('主题色流光'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('按压卡片时的流光改用主题色（关闭为白光）'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1496,11 +1496,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('卡片流光触感'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('按压卡片时出现流光；关闭后按压没有任何光效'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1518,11 +1518,11 @@ export struct SettingsAppearance {
             Column({ space: 2 }) {
               Text(this.s('继续阅读卡片'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
               Text(this.s('在书架顶部显示「继续阅读」提示卡片，关闭后书架更清爽'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -1547,14 +1547,14 @@ export struct SettingsAppearance {
         Column({ space: HwSpace.md }) {
           Text(this.s('灰体文本显示增强'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
           Text(this.s('把说明文字、时间、占位提示这类灰字统一改成选定颜色'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -1566,13 +1566,13 @@ export struct SettingsAppearance {
 
           Text(this.s('默认「自动」＝有背景亮度信息时按对比度选色、否则跟随主题原本的灰字；深浅两套各设各的，互不影响。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
           Text(this.s('改完立即生效（走 appearanceTick 全应用重算，无需重进页面）'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
         }
@@ -1593,7 +1593,7 @@ export struct SettingsAppearance {
 
         Text(this.s('恢复默认外观'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor('#FFFFFFFF')
       }
       .width('100%')
