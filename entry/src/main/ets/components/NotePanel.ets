@@ -206,7 +206,7 @@ export struct NotePanel {
 
   /** 批注输入框的上限：约占可视带 45%，最低 160（再小就不能好好打字）、最高 420。 */
   private draftMax(): number {
-    return Math.max(160, Math.min(420, Math.round(this.visibleBand() * 0.45)));
+    return Math.max(140, Math.min(280, Math.round(this.visibleBand() * 0.35)));
   }
 
   /** LaTeX 源码框的上限：它只是辅助编辑，给到可视带 20%，夹在 64~220。 */

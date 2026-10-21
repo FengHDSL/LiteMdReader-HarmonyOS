@@ -668,6 +668,8 @@ export struct Reader {
     this.imgDx = 0;
     this.imgDy = 0;
     this.rotated = false;
+    // **先收批注抽屉再开浮层**（用户反馈图层错误）：抽屉永远盖住页面内浮层
+    this.closePinned('notes');
     this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
       this.enlargeMode = 'image';
       this.enlargePayload = uri;
@@ -4271,6 +4273,9 @@ export struct Reader {
     this.imgDx = 0;
     this.imgDy = 0;
     this.rotated = false;
+    // **先收浮条与批注抽屉再开浮层**（用户反馈图层错误）：抽屉/浮条永远盖住页面内浮层
+    this.closeTapBar();
+    this.closePinned('notes');
     this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
       this.enlargeMode = 'image';
       this.enlargePayload = uri;
@@ -8102,42 +8107,6 @@ export struct Reader {
                     maxLines: this.isExpanded('a' + annIndex) ? 0 : 4,
                     generate: false
                   })
-                  // **批注里的图片**（照手写批注模式：resolve 解析 + 点击放大浮层）
-                  ForEach(this.noteImages(ann.text + '\n' + ann.note), (img: string) => {
-                    Image(this.resolvedNoteImg(img))
-                      .width('100%')
-                      .constraintSize({ maxHeight: 64 })
-                      .objectFit(ImageFit.Cover)
-                      .borderRadius(HwRadius.inner)
-                      .onClick(() => {
-                        this.openNoteImage(img, L10n.t('批注插图'));
-                      })
-                  }, (img: string) => img)
-                  // **批注里的关联文档**（点击跳转——标记在备注 note 里）
-                  ForEach(this.noteDocs(ann.text + '\n' + ann.note), (docFile: string) => {
-                    Row({ space: HwSpace.xxs }) {
-                      SymbolGlyph($r('sys.symbol.doc_text'))
-                        .fontSize(13)
-                        .fontColor([this.palette().accent])
-                      Text(docFile.replace(/\.md$|\.txt$/, ''))
-                        .fontSize(HwType.caption)
-                        .fontColor(this.palette().accent)
-                    }
-                    .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
-                    .borderRadius(HwRadius.pill)
-                    .backgroundColor(this.palette().accentSoft)
-                    .onClick(() => {
-                        if (this.stack !== null) {
-                          try {
-                            const route: ReaderRoute = { name: docFile };
-                            this.stack.pushPath({ name: 'pages/Reader', param: route },
-                              AppearanceFx.navAnimated());
-                          } catch (err) {
-                            this.toast(L10n.t('打不开文档'));
-                          }
-                        }
-                    })
-                  }, (docFile: string) => docFile)
                   if (ann.text.length > 160) {
                     Text(this.isExpanded('a' + annIndex) ? L10n.t('收起') : L10n.t('展开全部'))
                       .fontSize(HwType.caption)
