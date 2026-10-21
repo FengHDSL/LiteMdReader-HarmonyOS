@@ -62,8 +62,8 @@ export struct NotePanel {
   @State docCandidates: DocMeta[] = [];
   /** **已插入的图片**（独立于草稿文本，提交时拼回；文本框不再显示长串） */
   @State pickedImages: string[] = [];
-  /** **已关联的文档**（独立于草稿文本，提交时拼回，界面上只显示图标行） */
-  @State linkedDocs: DocMeta[] = [];
+  /** **已关联的文档**（独立于草稿文本，提交时拼回；存 doc:// 名） */
+  @State linkedDocs: string[] = [];
   /** **荧光笔颜色**（用户要求：添加批注可选色）；默认黄（索引 3） */
   @State pickColor: number = 3;
   /** 当前文档名（关联文档列表里自动忽略自己） */
@@ -134,7 +134,7 @@ export struct NotePanel {
 
   private pickDoc(meta: DocMeta): void {
     // **用 meta.name（显示名）做查找键**——fileName 会让跳转时报"文档不存在"
-    this.linkedDocs.push(meta);
+    this.linkedDocs.push(meta.name);
     this.onDraft(this.composeDraft());
     this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.docPickerOpen = false;
@@ -148,8 +148,7 @@ export struct NotePanel {
       full = full + '\n![](images/' + this.pickedImages[k] + ')';
     }
     for (let k = 0; k < this.linkedDocs.length; k++) {
-      const d: DocMeta = this.linkedDocs[k];
-      full = full + '\n[' + d.name + '](doc://' + d.name + ')';
+      full = full + '\n[' + this.linkedDocs[k] + '](doc://' + this.linkedDocs[k] + ')';
     }
     return full;
   }
@@ -167,10 +166,10 @@ export struct NotePanel {
   }
 
   /** 移除已关联的文档（图标行上的 × ） */
-  private removeLinkedDoc(meta: DocMeta): void {
-    const next: DocMeta[] = [];
+  private removeLinkedDoc(name: string): void {
+    const next: string[] = [];
     for (let k = 0; k < this.linkedDocs.length; k++) {
-      if (this.linkedDocs[k].fileName !== meta.fileName) {
+      if (this.linkedDocs[k] !== name) {
         next.push(this.linkedDocs[k]);
       }
     }
@@ -219,15 +218,30 @@ export struct NotePanel {
   aboutToAppear(): void {
     this.mathQuote = this.initMathQuote;
     this.mathSrc = this.initMathQuote;
-    // **编辑已有批注**：把图片引用从文本抽到 pickedImages（文本框保持干净）
-    const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)\n?/g;
+    // **编辑已有批注**：把图片 / 关联文档标记从文本抽到独立列表（文本框保持干净）
+    const reImg: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)\n?/g;
     this.pickedImages = [];
-    let m: RegExpExecArray | null = re.exec(this.initDraft);
+    let m: RegExpExecArray | null = reImg.exec(this.initDraft);
     while (m !== null) {
       this.pickedImages.push(m[1]);
-      m = re.exec(this.initDraft);
+      m = reImg.exec(this.initDraft);
     }
-    this.draft = this.initDraft.replace(re, '').trim();
+    let text: string = this.initDraft.replace(reImg, '');
+    const reDoc: RegExp = /\[[^\]]+\]\(doc://////[^)]+//)//n?/g;
+    this.linkedDocs = [];
+    const names: string[] = [];
+    let md: RegExpExecArray | null = reDoc.exec(this.initDraft);
+    while (md !== null) {
+      // 提取 doc:// 后的名字（跳转按 meta.name 查找）
+      const openAt: number = md[0].indexOf('](doc://');
+      const name: string = md[0].substring(openAt + 8, md[0].length - 2);
+      if (names.indexOf(name) < 0) {
+        names.push(name);
+        this.linkedDocs.push(name);
+      }
+      md = reDoc.exec(this.initDraft);
+    }
+    this.draft = text.replace(reDoc, '').trim();
     this.style = this.initStyle;
   }
 
@@ -449,12 +463,12 @@ export struct NotePanel {
       }
 
       // **已关联文档**（图标行，用户要求：不要一长串文本）
-      ForEach(this.linkedDocs, (d: DocMeta) => {
+      ForEach(this.linkedDocs, (d: string) => {
         Row({ space: HwSpace.xxs }) {
           SymbolGlyph($r('sys.symbol.doc_text'))
             .fontSize(13)
             .fontColor([this.palette.accent])
-          Text(d.name)
+          Text(d)
             .fontSize(HwType.caption)
             .fontColor(this.palette.textPrimary)
             .maxLines(1)
@@ -471,7 +485,7 @@ export struct NotePanel {
         .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 4, bottom: 4 })
         .borderRadius(HwRadius.inner)
         .backgroundColor(this.palette.quoteBg)
-      }, (d: DocMeta) => d.fileName)
+      }, (d: string) => d)
 
       // **荧光笔颜色选择**（用户要求：添加批注可选色）
       Row({ space: HwSpace.xs }) {

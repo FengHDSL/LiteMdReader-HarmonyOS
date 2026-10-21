@@ -4062,6 +4062,8 @@ export struct Reader {
 
   private closeNoteSheet(): void {
     this.pendingStart = -1;
+    // **取消编辑时清掉编辑标记**（防残留到下一次新建批注）
+    this.editingAnnId = '';
     this.clearMathNoteContext();
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
@@ -4397,11 +4399,11 @@ export struct Reader {
 
   private editAnn(ann: MdAnnotation): void {
     this.editingAnnId = ann.id;
-    // **预填批注原文**（用户反馈：修改时标题条显示「」）——NotePanel 原文条用它
+    // **原文条显示选区文本**；**编辑框预填批注内容（note）**——
+    // 之前预填 ann.text 导致"内容变选区、图片/关联丢失"（用户反馈）
     this.noteQuote = ann.text;
-    this.noteDraft = ann.text;
-    AppStorage.setOrCreate(NOTE_DRAFT_KEY, ann.text);
-    AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
+    this.noteDraft = ann.note;
+    // 编辑**不写草稿键**（防取消后新建串内容）；面板内改动只影响本条
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetEpoch++;
       this.activeSheet = 'note';
