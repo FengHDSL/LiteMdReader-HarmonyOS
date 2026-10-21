@@ -1040,7 +1040,11 @@ export class HwFont {
     if (mode === 'medium') {
       return 500;
     }
-    return 700;
+    if (mode === 'bold') {
+      return 700;
+    }
+    // 认不出的档位（旧备份包 / 手改镜像文件里的垃圾值）保持原样，绝不默认成"粗"
+    return HwFont.num(base);
   }
 }
 

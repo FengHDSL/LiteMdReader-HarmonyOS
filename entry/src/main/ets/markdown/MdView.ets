@@ -2470,7 +2470,7 @@ export struct MdBlockView {
         }
         Text(MdViewUtil.calloutSpec(this.block.callout).title)
           .fontSize(HwType.label)
-          .fontWeight(FontWeight.Medium)
+          .fontWeight(HwFont.bodyWeight(this.bodyWeightMode, FontWeight.Medium))
           .fontColor(MdViewUtil.calloutSpec(this.block.callout).color)
       }
       .width('100%')
@@ -2512,7 +2512,7 @@ export struct MdBlockView {
         Text(MdViewUtil.listMarkerText(this.block))
           .fontSize(this.bodySize * 0.9)
           .fontColor(this.palette.accent)
-          .fontWeight(FontWeight.Medium)
+          .fontWeight(HwFont.bodyWeight(this.bodyWeightMode, FontWeight.Medium))
           .margin({ top: this.bodySize * 0.1 })
       } else if (this.block.marker.length === 0) {
         // **定义列表的定义行**：解析器给的 marker 是空串（真列表项一定带 '-' / '*' / '1.'）。
@@ -2552,7 +2552,7 @@ export struct MdBlockView {
       Text(this.block.marker)
         .fontSize(HwType.caption)
         .fontColor(this.palette.accent)
-        .fontWeight(FontWeight.Medium)
+        .fontWeight(HwFont.bodyWeight(this.bodyWeightMode, FontWeight.Medium))
         .margin({ top: 2 })
       Column() {
         this.richTextSel(this.bodySize * HwType.footnoteScale,
@@ -3806,7 +3806,7 @@ export struct MdBlockView {
           ForEach(MdViewUtil.toPieces(this.block.inlines, this.dark), (piece: MdPiece) => {
             Span(piece.text)
               .fontSize(this.bodySize)
-              .fontWeight(FontWeight.Medium)
+              .fontWeight(HwFont.bodyWeight(this.bodyWeightMode, FontWeight.Medium))
               .fontColor(this.palette.textPrimary)
           }, (piece: MdPiece, index: number) => 'd' + index + '_' + piece.text.length)
         }

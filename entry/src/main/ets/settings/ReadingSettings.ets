@@ -88,6 +88,13 @@ export struct ReadingSettingsPanel {
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   // 沉浸光感已强制开启（见 EntryAbility），这里不再持有开关状态
   @StorageLink('readerFontFamily') fontKey: string = '';
+  /**
+   * 外观设置「同步应用到阅读页」：开着且界面字体非空时，正文用的其实是界面字体，
+   * 「中等 / 粗」能不能选要按那款判（见 bodyFontRawKey）。
+   * **必须落成 @StorageProp**：在方法里直接 AppStorage.get 不登记依赖，开关一拨
+   * 置灰状态不会重算（与 paletteFor 那条同一个坑）。
+   */
+  @StorageProp('appFontSyncReader') syncUiFont: boolean = false;
   @StorageLink('readerParaSpace') paraSpace: number = 1.0;
   @StorageLink('readerIndent') indentOn: boolean = false;
   @StorageLink('readerShowMeta') showMeta: boolean = true;
@@ -526,7 +533,7 @@ export struct ReadingSettingsPanel {
    * 只说明怎么办——判据与界面字重那条同一套（同一串字在 400 与 700 下各量一次宽度）。
    */
   private pickBodyWeight(mode: string): void {
-    if ((mode === 'medium' || mode === 'bold') && !FontStore.supportsBold(this.fontKey)) {
+    if ((mode === 'medium' || mode === 'bold') && !this.bodyBoldOk()) {
       this.toast('这款字体没有粗体字重；换一款字体或选「跟随」');
       return;
     }
@@ -534,9 +541,19 @@ export struct ReadingSettingsPanel {
     this.toast('正文字重：' + this.bodyWeightLabel(mode));
   }
 
-  /** 正文体的粗细档位是否可用（'follow' 三档不需要真粗体） */
+  /** 正文粗细档位是否可用（'follow' 之外三档需要真粗体） */
   private bodyBoldOk(): boolean {
-    return FontStore.supportsBold(this.fontKey);
+    return FontStore.supportsBold(this.bodyFontRawKey());
+  }
+
+  /**
+   * 正文**实际**用哪款字体：外观设置里「同步应用到阅读页」开着且界面字体非空时是界面字体，
+   * 否则才是这里的正文字体。判"有没有真粗体"必须用这一款，不然置灰会置错档
+   * ——拒掉一个本来有效的档位，或放行一个没粗体的字体。
+   * （与 HwFont.bodyFamily 同一套优先级，那里返回的是带回退的族名串，不能直接拿去实测。）
+   */
+  private bodyFontRawKey(): string {
+    return this.syncUiFont && this.uiFontKey.length > 0 ? this.uiFontKey : this.fontKey;
   }
 
   /**
