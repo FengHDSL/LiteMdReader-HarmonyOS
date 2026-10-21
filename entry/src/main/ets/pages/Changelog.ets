@@ -164,7 +164,7 @@ export struct Changelog {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.itemColor(item))
-                  .lineHeight(HwType.label * 1.7)
+                  .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
                   .layoutWeight(1)
               }
               .width('100%')

@@ -363,7 +363,7 @@ export struct NotePanel {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette.textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
             // 引用过长时收进 4 行（fitContent 面板高度跟内容走，不收会顶爆面板）
             .maxLines(4)
@@ -428,7 +428,7 @@ export struct NotePanel {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
-            .lineHeight(HwType.caption * 1.6)
+            .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
             .width('100%')
 
           // 公式既可以标成普通批注，也可以进背诵系统（用户要求：卡片上能选）
@@ -436,7 +436,7 @@ export struct NotePanel {
             Text(L10n.t('普通批注'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption + 1, this.uiFontScale))
-              .fontWeight(this.kindWeight(''))
+              .fontWeight(HwFont.bump(this.kindWeight(''), this.uiFontWeightDelta))
               .fontColor(this.kindForeground(''))
               .padding({ left: 12, right: 12, top: 6, bottom: 6 })
               .borderRadius(HwRadius.pill)
@@ -447,7 +447,7 @@ export struct NotePanel {
             Text(L10n.t('学习卡'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption + 1, this.uiFontScale))
-              .fontWeight(this.kindWeight('card'))
+              .fontWeight(HwFont.bump(this.kindWeight('card'), this.uiFontWeightDelta))
               .fontColor(this.kindForeground('card'))
               .padding({ left: 12, right: 12, top: 6, bottom: 6 })
               .borderRadius(HwRadius.pill)

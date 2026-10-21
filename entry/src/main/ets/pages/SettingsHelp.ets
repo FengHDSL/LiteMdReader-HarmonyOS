@@ -878,7 +878,7 @@ export struct SettingsHelp {
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
-                    .lineHeight((HwType.label + 1) * 1.75)
+                    .lineHeight(HwFont.sx((HwType.label + 1) * 1.75, this.uiFontScale))
                     .width('100%')
                 }
                 .width('100%')
@@ -931,7 +931,7 @@ export struct SettingsHelp {
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
-                    .lineHeight((HwType.label + 1) * 1.75)
+                    .lineHeight(HwFont.sx((HwType.label + 1) * 1.75, this.uiFontScale))
                     .width('100%')
                 }
                 .width('100%')
@@ -987,7 +987,7 @@ export struct SettingsHelp {
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
-                    .lineHeight((HwType.label + 1) * 1.75)
+                    .lineHeight(HwFont.sx((HwType.label + 1) * 1.75, this.uiFontScale))
                     .width('100%')
                 }
                 .width('100%')

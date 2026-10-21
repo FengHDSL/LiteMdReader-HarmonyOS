@@ -453,7 +453,8 @@ export struct Editor {
             Text(item.label)
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(15, this.uiFontScale))
-              .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
+              .fontWeight(HwFont.bump(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal,
+                this.uiFontWeightDelta))
               .fontColor(this.palette().textPrimary)
             Text(item.desc)
               .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -2722,7 +2723,7 @@ export struct Editor {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
-          .lineHeight(HwType.caption * 1.6)
+          .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
           .width('100%')
 
         // 语法口径与示例说明的参考来源（用户要求注明）
@@ -2731,7 +2732,7 @@ export struct Editor {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption - 0.5, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
-          .lineHeight(HwType.caption * 1.6)
+          .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
           .width('100%')
           .padding(HwSpace.xs)
           .borderRadius(HwRadius.inner)
@@ -2747,7 +2748,7 @@ export struct Editor {
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
-              .lineHeight(HwType.caption * 1.6)
+              .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
               .width('100%')
 
             // **效果预览**：用应用自己的解析器 + 渲染器把该行语法真实渲染出来
@@ -4466,7 +4467,8 @@ export struct Editor {
                   Text(item.label)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(15, this.uiFontScale))
-                    .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
+                    .fontWeight(HwFont.bump(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal,
+                      this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                   Text(item.desc)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -4925,7 +4927,7 @@ export struct Editor {
                         .width(20)
                       Text(h.text)
                         .fontFamily(HwFont.resolve(this.uiFontKey))
-                        .fontSize(h.level <= 2 ? HwType.label + 1 : HwType.label)
+                        .fontSize(HwFont.sx(h.level <= 2 ? HwType.label + 1 : HwType.label, this.uiFontScale))
                         .fontColor(this.palette().textPrimary)
                         .layoutWeight(1)
                         .maxLines(1)

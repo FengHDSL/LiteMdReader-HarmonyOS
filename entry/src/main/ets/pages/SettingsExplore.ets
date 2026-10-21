@@ -407,14 +407,14 @@ export struct SettingsExplore {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
 
           Text(L10n.t('「澄」是澄澈透光——磨砂与光感玻璃；「笺」是文人读写的纸笺。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
 
           Row({ space: HwSpace.xs }) {
@@ -510,7 +510,7 @@ export struct SettingsExplore {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
 
           Row({ space: HwSpace.xs }) {
@@ -543,7 +543,7 @@ export struct SettingsExplore {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.caption * 1.7)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
           // 只写参考项目的名称（用户要求）

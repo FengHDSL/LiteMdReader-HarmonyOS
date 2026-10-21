@@ -115,7 +115,7 @@ export struct ReadAloudTile {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette.textTertiary)
-        .lineHeight(HwType.caption * 1.6)
+        .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
         .width('100%')
     }
     .width('100%')

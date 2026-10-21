@@ -1347,7 +1347,7 @@ export struct ReviewPage {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
         } else {
           // **书籍封面横排**（用户要求：展示有学习卡的书的封面），点封面选中 / 取消
@@ -1644,7 +1644,7 @@ export struct ReviewPage {
       ForEach(['一', '二', '三', '四', '五', '六', '日'], (w: string) => {
         Text(w)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption - 2)
+          .fontSize(HwFont.sx(HwType.caption - 2, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
@@ -2061,7 +2061,7 @@ export struct ReviewPage {
                 .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
                 .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
-                .lineHeight((HwType.label + 5) * 1.6)
+                .lineHeight(HwFont.sx((HwType.label + 5) * 1.6, this.uiFontScale))
                 .width('100%')
             }
 
@@ -2129,7 +2129,7 @@ export struct ReviewPage {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
                   .fontColor(this.palette().accent)
-                  .lineHeight((HwType.label + 3) * 1.7)
+                  .lineHeight(HwFont.sx((HwType.label + 3) * 1.7, this.uiFontScale))
                   .width('100%')
                   .transition(TransitionEffect.OPACITY
                     .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
