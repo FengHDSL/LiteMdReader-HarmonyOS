@@ -171,51 +171,6 @@ export interface MathSeg {
   rows: string[][];
 }
 
-/**
- * **主线程卡死防护**（THREAD_BLOCK_6S 真机崩溃修复）：
- * MathLite 的公式分段 / 线性化是纯函数，但病态输入（深层嵌套环境、超长公式）
- * 会让递归解析指数级回溯，把主线程卡死 6 秒。两道防线：
- *   ① memo 缓存：同一输入只算一次（MdView 每次重建都调 segments）；
- *   ② 规模熔断：输入超过阈值直接降级返回，绝不进递归。
- * 上限：segments/inlineText 各缓存 512 条（FIFO 淘汰），输入上限 20000 字符。
- */
-const MATHLITE_MAX_INPUT: number = 20000;
-/**
- * **递归深度 / 时间预算双熔断**（THREAD_BLOCK_6S 二次修复）：
- * segments → command → envInline → inlineText → command … 会互相递归，
- * 嵌套环境（\begin{aligned} 套 \begin{aligned}）让每层拆分重组相乘，
- * 单次调用即可指数级爆炸——缓存只防重复计算，防不了这个。
- *   · mathDepth：环境嵌套深度上限（超深直接返回原文，不再下钻）；
- *   · mathDeadline：顶层入口设 2500ms 预算，command 入口检查，
- *     超预算把剩余原文一次性吐出结束解析（宁可不完美，绝不死机）。
- */
-const MATH_DEPTH_MAX: number = 24;
-const MATH_BUDGET_MS: number = 2500;
-let mathDepth: number = 0;
-let mathDeadline: number = 0;
-const MATHLITE_CACHE_MAX: number = 512;
-const segCache: Map<string, MathSeg[]> = new Map<string, MathSeg[]>();
-const inlineCache: Map<string, string> = new Map<string, string>();
-
-function cacheGet<T>(c: Map<string, T>, key: string): T | undefined {
-  const v: T | undefined = c.get(key);
-  if (v !== undefined) {
-    // LRU：命中后重新插入，移到队尾
-    c.delete(key);
-    c.set(key, v);
-  }
-  return v;
-}
-
-function cachePut<T>(c: Map<string, T>, key: string, v: T): void {
-  if (c.size >= MATHLITE_CACHE_MAX) {
-    // FIFO：删最早插入的
-    const first: string = c.keys().next().value as string;
-    c.delete(first);
-  }
-  c.set(key, v);
-}
-
 export class MathLite {
   /** 字母或数字（无花括号参数的单记号判定用）。 */
   private static isWordChar(ch: string): boolean {
@@ -418,12 +373,6 @@ export class MathLite {
   /** 处理一个 \命令（含其参数），把线性化结果追加到 out，返回新的 i。 */
   private static command(src: string, i: number, out: string[]): number {
     const n: number = src.length;
-    // **时间预算熔断**：超预算把剩余原文一次性吐出、结束解析
-    // （宁可不完美线性化，也绝不让主线程卡死触发系统强杀）
-    if (Date.now() > mathDeadline) {
-      out.push(src.substring(i));
-      return n;
-    }
     const cmdInfo: StrPos = MathLite.readCommand(src, i + 1);
     const cmd: string = cmdInfo.text;
     const next: number = cmdInfo.next;
@@ -627,37 +576,6 @@ export class MathLite {
 
   /** 行内线性化：把 LaTeX 折叠成单行 Unicode 文本。 */
   static inlineText(latex: string): string {
-    if (latex.length === 0) {
-      return '';
-    }
-    if (latex.length > MATHLITE_MAX_INPUT) {
-      // **规模熔断**：超长公式不进递归（线性化兜底见调用方）
-      return latex.substring(0, MATHLITE_MAX_INPUT);
-    }
-    if (mathDepth === 0) {
-      mathDeadline = Date.now() + MATH_BUDGET_MS;
-    }
-    const hit: string | undefined = cacheGet(inlineCache, latex);
-    if (hit !== undefined) {
-      return hit;
-    }
-    // **深度熔断（兜所有递归路径）**：\frac{\frac{…}} 这类纯括号嵌套
-    // 同样会指数爆炸，envInline 的 depth 保护拦不住——在 inlineText 本身拦
-    if (mathDepth >= MATH_DEPTH_MAX) {
-      return latex.length > 200 ? latex.substring(0, 200) + '…' : latex;
-    }
-    mathDepth++;
-    let r: string;
-    try {
-      r = MathLite.computeInline(latex);
-    } finally {
-      mathDepth--;
-    }
-    cachePut(inlineCache, latex, r);
-    return r;
-  }
-
-  private static computeInline(latex: string): string {
     const out: string[] = [];
     let i: number = 0;
     const n: number = latex.length;
@@ -699,19 +617,6 @@ export class MathLite {
     if (body.length === 0) {
       return '';
     }
-    // **深度熔断**：嵌套环境超过上限直接返回原文，不再下钻
-    if (mathDepth >= MATH_DEPTH_MAX) {
-      return body.length > 200 ? body.substring(0, 200) + '…' : body;
-    }
-    mathDepth++;
-    try {
-      return MathLite.envInlineInner(body);
-    } finally {
-      mathDepth--;
-    }
-  }
-
-  private static envInlineInner(body: string): string {
     const rows: string[] = body.split('\\\\');
     const parts: string[] = [];
     for (let r = 0; r < rows.length; r++) {
@@ -730,25 +635,6 @@ export class MathLite {
    * 文本段线性化；\frac / ^ / _ / \sqrt / \begin{矩阵} 产出结构段。
    */
   static segments(latex: string): MathSeg[] {
-    if (latex.length === 0) {
-      return [];
-    }
-    if (latex.length > MATHLITE_MAX_INPUT) {
-      // **规模熔断**：超长公式只按纯文本段返回，不进入解析
-      return [{ kind: 't', text: latex.substring(0, MATHLITE_MAX_INPUT), num: '', den: '', rows: [] }];
-    }
-    mathDeadline = Date.now() + MATH_BUDGET_MS;
-    mathDepth = 0;
-    const hit: MathSeg[] | undefined = cacheGet(segCache, latex);
-    if (hit !== undefined) {
-      return hit;
-    }
-    const r: MathSeg[] = MathLite.computeSegments(latex);
-    cachePut(segCache, latex, r);
-    return r;
-  }
-
-  private static computeSegments(latex: string): MathSeg[] {
     const out: MathSeg[] = [];
     let buf: string = '';
     let i: number = 0;
