@@ -39,7 +39,8 @@ import {
   ReaderThemeMode,
   isDarkTheme,
   paletteFor,
-  withAlpha
+  withAlpha,
+  HwFont
 } from '../theme/DesignTokens';
 
 /** 热力图列数（周）：GitHub 同款一整年 53 周，横向滑动查看 */
@@ -113,6 +114,8 @@ export struct SettingsWriting {
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 本页实测宽度（热力图格子尺寸按可用宽度算） */
   /** 书架总量（自建） */
   @State totalDocs: number = 0;
@@ -412,6 +415,7 @@ export struct SettingsWriting {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(label)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
     }
@@ -506,6 +510,7 @@ export struct SettingsWriting {
       // 底部标识行：左统计口径说明 + 右图例（图例收紧：格 8vp、间距 3）
       Row({ space: 3 }) {
         Text(L10n.t('按每日写作增量统计'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
         Blank()
@@ -530,6 +535,7 @@ export struct SettingsWriting {
        // 行宽时，Select 会被挤出卡片内边距、直接贴到卡片边缘（真机实锤）。
        Row({ space: HwSpace.sm }) {
          Text(L10n.t('切换年份，查看不同时段的写作热力'))
+           .fontFamily(HwFont.resolve(this.uiFontKey))
            .fontSize(HwType.caption)
            .fontColor(this.palette().textTertiary)
            .layoutWeight(1)
@@ -722,6 +728,7 @@ export struct SettingsWriting {
     Column({ space: HwSpace.sm }) {
       if (this.latestDocs.length === 0) {
         Text(L10n.t('还没有自建笔记，去书架新建一篇吧'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -734,6 +741,7 @@ export struct SettingsWriting {
             // 月份分隔行：粗体月份 + 横线（GitHub "October 2026 ——" 式）
             Row({ space: HwSpace.sm }) {
               Text(g.monthLabel)
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
@@ -763,12 +771,14 @@ export struct SettingsWriting {
 
                 Column({ space: 2 }) {
                   Text(item.name)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.label)
                     .fontWeight(FontWeight.Medium)
                     .fontColor(this.palette().accent)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(this.fmt(item.words) + ' 字 · ' + item.date)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -792,6 +802,7 @@ export struct SettingsWriting {
 
         // 比例条说明（用户问"那个进度条是什么意思"）
         Text(L10n.t('右侧横条表示该文档的字数多少：越长字数越多（按这一批里字数最多的一篇归一化）。'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -892,6 +903,7 @@ export struct SettingsWriting {
         // 数据加载失败的可见提示（排障：不再静默吞掉）
         if (this.loadError.length > 0) {
           Text(this.loadError)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor('#FFD93B3B')
             .width('100%')
@@ -900,6 +912,7 @@ export struct SettingsWriting {
         // ② 总结行（GitHub "202 contributions in the last year" 式：
         //    **卡外区块标题**，大号字直接压在背景上，热力图卡紧随其下）
         Text(this.halfYearSummary())
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label + 4)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -916,6 +929,7 @@ export struct SettingsWriting {
 
         // ④ "最近动态"区块标题（GitHub "Contribution activity" 式：卡外标题）
         Text(L10n.t('最近动态'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label + 4)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -934,6 +948,7 @@ export struct SettingsWriting {
         // ⚠️ 1.1.0 起卡片从书架搬到书架分页的「写作日志」页顶部，开关不再有意义，
         // 设置页一并移除（卡片常驻展示）。
         Text(L10n.t('数据来自本机写作记录，卸载应用或清除数据后不可恢复。'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')

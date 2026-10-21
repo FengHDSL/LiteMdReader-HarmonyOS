@@ -74,6 +74,8 @@ export struct ReadingSettingsPanel {
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   /** 外观刷新计数（见 SettingsMirror）：派生色改完后靠它重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本面板的界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   // 沉浸光感已强制开启（见 EntryAbility），这里不再持有开关状态
   @StorageLink('readerFontFamily') fontKey: string = '';
   @StorageLink('readerParaSpace') paraSpace: number = 1.0;
@@ -353,9 +355,11 @@ export struct ReadingSettingsPanel {
     Column({ space: HwSpace.xs }) {
       Row() {
         Text(label)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label)
           .fontColor(this.palette().textSecondary)
         Text(this.sliderTextOf(kind))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label)
           .fontColor(this.palette().accent)
       }
@@ -402,6 +406,7 @@ export struct ReadingSettingsPanel {
 
       if (hint.length > 0) {
         Text(hint)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       }
@@ -416,9 +421,11 @@ export struct ReadingSettingsPanel {
     Row() {
       Column({ space: 2 }) {
         Text(label)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label)
           .fontColor(this.palette().textPrimary)
         Text(desc)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
       }
@@ -445,6 +452,7 @@ export struct ReadingSettingsPanel {
   @Builder
   sectionTitle(text: string) {
     Text(text)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwType.label)
       .fontWeight(FontWeight.Medium)
       .fontColor(this.palette().textSecondary)
@@ -460,6 +468,7 @@ export struct ReadingSettingsPanel {
   @Builder
   themeChip(mode: number, label: string) {
     Text(label)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwType.label)
       .fontWeight(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal)
       .fontColor(this.themeMode === mode ? this.palette().accent : this.palette().textPrimary)
@@ -486,6 +495,7 @@ export struct ReadingSettingsPanel {
   bgSwatchRow(label: string, dark: boolean) {
     Row({ space: HwSpace.xs }) {
       Text(label)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label)
         .fontColor(this.palette().textSecondary)
         .width(38)
@@ -529,10 +539,12 @@ export struct ReadingSettingsPanel {
         if (this.showHeader) {
           Column({ space: 2 }) {
             Text(L10n.t('阅读设置'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(this.fontSize + 3)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
             Text(L10n.t('设置会随应用记忆，切换文档同样生效'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -549,6 +561,7 @@ export struct ReadingSettingsPanel {
         Column({ space: HwSpace.xs }) {
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('字体'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.label)
               .fontColor(this.palette().textSecondary)
             Text(HwFont.label(this.fontKey))
@@ -607,6 +620,7 @@ export struct ReadingSettingsPanel {
           }
 
           Text(L10n.t('列表里的字体名与预览都由该字体本身绘制；字体被卸载后自动回退 HarmonyOS Sans'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -617,6 +631,7 @@ export struct ReadingSettingsPanel {
         // ── 排版氛围预设（批 5 之氛围排版）：一键组合 行距 × 段间距 ──
         Row({ space: HwSpace.xs }) {
           Text(L10n.t('排版氛围'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label)
             .fontColor(this.palette().textSecondary)
             .width(64)
@@ -653,6 +668,7 @@ export struct ReadingSettingsPanel {
         .alignItems(VerticalAlign.Center)
 
         Text(L10n.t('一键切捧行距与段落间距的组合，下面的滑块仍可单独微调'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -698,6 +714,7 @@ export struct ReadingSettingsPanel {
           this.bgSwatchRow('浅色', false)
           this.bgSwatchRow('深色', true)
           Text(L10n.t('色板第一格是「默认」（纸白 / 碳黑固定色，不随主题变）；选中后所有页面的背景换成所选纯色，光斑保留'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
         }
@@ -707,9 +724,11 @@ export struct ReadingSettingsPanel {
         // ── 阅读背景壁纸：与「设置 → 外观」的应用壁纸**互相独立**，只影响阅读页 ──
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('阅读背景壁纸'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
           Text(L10n.t('只作用于阅读页正文背后；与「设置 → 外观」里的应用壁纸互不影响'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
 
@@ -794,6 +813,7 @@ export struct ReadingSettingsPanel {
             '只调低本应用窗口的亮度，不影响系统设置；夜间阅读不刺眼')
           if (this.brightLevel > 0) {
             Text(L10n.t('正在使用固定亮度，系统亮度条暂被接管'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveChip({
@@ -814,12 +834,14 @@ export struct ReadingSettingsPanel {
         if (this.showReadingHints) {
           Column({ space: HwSpace.xs }) {
             Text(L10n.t('手势'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.label)
               // 用本组件的 palette()（走 paletteFor，含纸色主题的深浅孪生款），
               // 不要 paletteOf(this.isDark())：后者只给纯深/浅色板，
               // 羊皮纸/护眼绿下会拿到不匹配的灰字（截图里这两行说明发灰看不清）
               .fontColor(this.palette().textSecondary)
             Text(L10n.t('阅读页右滑呼出目录，左滑呼出注释；点卡片或划一下另一半屏可收起。'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .lineHeight(HwType.caption * 1.6)

@@ -22,7 +22,8 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 
 @Component
@@ -36,6 +37,8 @@ export struct SettingsEngines {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 关闭的引擎列表（逗号分隔；本页是写入方，@StorageLink 双向） */
   @StorageLink('disabledEngines') disabled: string = '';
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   private palette(): ReaderPalette {
     return paletteFor(this.themeMode, this.systemDark);
@@ -99,10 +102,12 @@ export struct SettingsEngines {
       Column({ space: 4 }) {
         Row({ space: 6 }) {
           Text(info.name)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textPrimary)
           Text('v' + info.version)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().accent)
             .padding({ left: 6, right: 6, top: 1, bottom: 1 })
@@ -113,6 +118,7 @@ export struct SettingsEngines {
 
         // **离线库体积**（用户要求：放到名称下方独立一行）：随包内联进模板的实际占用
         Text(L10n.t('离线库 ') + info.size)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption - 1)
           .fontColor(this.palette().textSecondary)
           .padding({ left: 6, right: 6, top: 1, bottom: 1 })
@@ -120,6 +126,7 @@ export struct SettingsEngines {
           .backgroundColor(this.palette().quoteBg)
 
         Text(info.desc)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textSecondary)
           .lineHeight(HwType.caption * 1.5)
@@ -127,11 +134,13 @@ export struct SettingsEngines {
 
         Row({ space: 6 }) {
           Text(L10n.t('发布于 ') + info.date)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette().textTertiary)
           // **GitHub 胶囊按钮**（用户要求：只显示 GitHub 字样，不再带长地址）；
           // 点击跳浏览器，长按仍复制地址（地址本身照旧记在 info.repo）
           Text('GitHub')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().accent)
@@ -180,6 +189,7 @@ export struct SettingsEngines {
         }) {
           Text(L10n.t('关闭某个引擎后，对应功能将无法渲染：图表与块级公式退化为源码显示，') + '行内公式不再生成图片（回落为文字），编辑器「所见即所得 / 即时渲染」入口停用。'
             + '随时可以重新开启。引擎信息为本机常量，不联网检查更新。')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.caption * 1.7)

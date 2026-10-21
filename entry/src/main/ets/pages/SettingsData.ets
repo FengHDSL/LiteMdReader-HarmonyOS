@@ -35,7 +35,8 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 
 /** 批注数据管理：跨文档批注预览条目 */
@@ -69,6 +70,8 @@ export struct SettingsData {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** zip 备份/恢复的进行中标记与结果文案 */
   @State zipBusy: boolean = false;
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
@@ -929,6 +932,7 @@ export struct SettingsData {
   fieldRow(label: string, hint: string, value: string, kind: string) {
     Column({ space: 4 }) {
       Text(label)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
       ImmersiveInput({
@@ -978,6 +982,7 @@ export struct SettingsData {
         )
 
       Text(L10n.t('点此关闭'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor('#FFFFFFFF')
         .padding({ left: HwSpace.md, right: HwSpace.md, top: 6, bottom: 6 })
@@ -1008,21 +1013,25 @@ export struct SettingsData {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('把全部数据按类别打包成一个 zip：文档、图片、批注、设置等十几类，包内附 manifest 清单。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
           Text(L10n.t('导入时按清单逐类写回原位置。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
           Text(L10n.t('导入会覆盖同名文件，但不会删除本机多出来的数据；回到书架即刻生效，不必重启应用。导入前请先退出正在编辑的文档，否则编辑器里的旧内容可能盖回恢复结果。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
           Text(L10n.t('三篇内置演示文档的正文始终从应用包内读取，沙箱里那几份副本应用永远不读、也能随安装复原，所以不进包——包里只会是你自己产生的数据。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1072,6 +1081,7 @@ export struct SettingsData {
 
           if (this.zipStatus.length > 0) {
             Text(this.zipStatus)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().accent)
               .width('100%')
@@ -1079,6 +1089,7 @@ export struct SettingsData {
 
           // **当前缓存大小**（用户要求：清除缓存要能看到大小）
           Text(L10n.f1('当前缓存大小：%1（缓存也进备份包，可随时清除，不影响文档 / 批注等用户数据）', this.cacheSizeText))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1091,10 +1102,12 @@ export struct SettingsData {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('批注数据管理'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
           Text(L10n.t('全部批注共 ') + this.annoTotal + ' 条，覆盖 ' + this.annoDocs + ' 篇文档。'
             + '批注随「导出备份」一并打包（annotations 目录），预览最多列出 100 条。')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1122,12 +1135,14 @@ export struct SettingsData {
                   Column({ space: 2 }) {
                     Row({ space: HwSpace.xs }) {
                       Text(it.kind)
+                        .fontFamily(HwFont.resolve(this.uiFontKey))
                         .fontSize(HwType.caption - 1)
                         .fontColor(this.palette().accent)
                         .padding({ left: 6, right: 6, top: 1, bottom: 1 })
                         .borderRadius(HwRadius.pill)
                         .backgroundColor(this.palette().quoteBg)
                       Text(it.docName)
+                        .fontFamily(HwFont.resolve(this.uiFontKey))
                         .fontSize(HwType.caption - 1)
                         .fontColor(this.palette().textTertiary)
                         .maxLines(1)
@@ -1138,6 +1153,7 @@ export struct SettingsData {
                     .alignItems(VerticalAlign.Center)
 
                     Text(it.text)
+                      .fontFamily(HwFont.resolve(this.uiFontKey))
                       .fontSize(HwType.label)
                       .fontColor(this.palette().textPrimary)
                       .maxLines(2)
@@ -1164,6 +1180,7 @@ export struct SettingsData {
 
           if (this.annoTotal > 100 && this.annoOpen) {
             Text(L10n.t('共 ') + this.annoTotal + ' 条，仅显示前 100 条 —— 全部内容以备份文件为准。')
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption - 1)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1177,10 +1194,12 @@ export struct SettingsData {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('书架数据'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
           Text(L10n.t('内置文档共 ') + this.builtinList.length + ' 篇 —— **内置文档不能删除**，'
             + '只能从书架上移除显示（移除后可在本页恢复）。下方「我的文档」是你的自建内容。')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1191,11 +1210,13 @@ export struct SettingsData {
               Row({ space: HwSpace.sm }) {
                 Column({ space: 2 }) {
                   Text(meta.name)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.label)
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(meta.wordCount + ' 字 · ' + DocStore.formatTime(meta.mtime))
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -1204,6 +1225,7 @@ export struct SettingsData {
 
                 // 内置文档**不提供删除按钮**（用户要求：不支持删除）
                 Text(L10n.t('内置'))
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
                   .padding({ left: HwSpace.xs, right: HwSpace.xs, top: 3, bottom: 3 })
@@ -1233,12 +1255,14 @@ export struct SettingsData {
           Divider().strokeWidth(1).color(this.palette().divider)
 
           Text(L10n.t('我的文档（') + this.myDocs.length + ' 篇）')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label)
             .fontColor(this.palette().textPrimary)
             .width('100%')
 
           if (this.myDocs.length === 0) {
             Text(L10n.t('还没有自建文档，去书架新建一篇试试'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1247,11 +1271,13 @@ export struct SettingsData {
               Row({ space: HwSpace.sm }) {
                 Column({ space: 2 }) {
                   Text(meta.name)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.label)
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(meta.wordCount + ' 字 · ' + DocStore.formatTime(meta.mtime))
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.caption)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -1289,6 +1315,7 @@ export struct SettingsData {
           Divider().strokeWidth(1).color(this.palette().divider)
 
           Text(L10n.t('书架按索引显示、不扫描目录：索引里没登记的文档，即使文件还在 docs 目录里也看不见（却会被备份打包，看起来就像"包里多出一堆没有的文件"）。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1306,6 +1333,7 @@ export struct SettingsData {
               .fontColor([this.palette().accent])
           }
           Text(L10n.t('按目录重新登记一遍：只加不删、不改文件名，内置演示文档的残留副本不会被登记。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1316,11 +1344,13 @@ export struct SettingsData {
           Divider().strokeWidth(1).color(this.palette().divider)
 
           Text(L10n.t('图片管理'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
             .width('100%')
           Text(L10n.t('本地图片 ') + this.localImages.length + ' 张 · 网络图片 ' + this.netImages
             + ' 张。删除只从列表移除，**不会删除本地文件**。')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1338,11 +1368,13 @@ export struct SettingsData {
                 })
               Column({ space: 2 }) {
                 Text(name)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label)
                   .fontColor(this.palette().textPrimary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Text(L10n.t('本地图片（手写笔记 / 插图）· 点击可查看'))
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
               }
@@ -1427,11 +1459,13 @@ export struct SettingsData {
             Row({ space: HwSpace.sm }) {
               Column({ space: 2 }) {
                 Text(url)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label)
                   .fontColor(this.palette().textPrimary)
                   .maxLines(2)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                 Text(L10n.t('网络图片 · 点击可查看'))
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
               }
@@ -1509,11 +1543,13 @@ export struct SettingsData {
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
               Text(L10n.t('已移除的内置教程'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textPrimary)
               Text(this.hiddenBuiltins.length > 0
                 ? L10n.t('书架上看不到：') + this.hiddenBuiltins.join('、')
                 : L10n.t('没有移除过内置教程'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
@@ -1544,9 +1580,11 @@ export struct SettingsData {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('WebDAV 备份'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette().textPrimary)
           Text(L10n.t('上传全部文档与完整备份包（含 AI 对话记录、批注、手写、设置）到你的 WebDAV 服务器；凭据只存在本机。恢复时下载完整备份包整包还原'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
@@ -1589,6 +1627,7 @@ export struct SettingsData {
 
           // ── 自动备份间隔（用户要求：支持设定多久上传一次）──
           Text(this.webdavAutoLine())
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -1607,6 +1646,7 @@ export struct SettingsData {
 
           if (this.webdavAutoStatus.length > 0) {
             Text(L10n.t('上次自动任务：') + this.webdavAutoStatus)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
@@ -1614,6 +1654,7 @@ export struct SettingsData {
 
           if (this.backupStatus.length > 0) {
             Text(this.backupStatus)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().accent)
               .width('100%')
@@ -1627,10 +1668,12 @@ export struct SettingsData {
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('应用初始化'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor('#FFD93B3B')
             .fontWeight(FontWeight.Medium)
           Text(L10n.t('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)

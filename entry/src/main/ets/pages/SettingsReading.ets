@@ -15,7 +15,7 @@ import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveCard, ImmersiveCardLayer } from '../material/ImmersiveCard';
 import { ReadingSettingsPanel, restoreReadingDefaults } from '../settings/ReadingSettings';
 import { common } from '@kit.AbilityKit';
-import { HwRadius, HwSpace, HwType, ReaderPalette, ReaderThemeMode, paletteFor } from '../theme/DesignTokens';
+import { HwRadius, HwSpace, HwType, ReaderPalette, ReaderThemeMode, paletteFor, HwFont } from '../theme/DesignTokens';
 import { SettingsShell } from './SettingsShell';
 import { L10n } from '../service/L10n';
 
@@ -33,6 +33,8 @@ export struct SettingsReading {
   @StorageLink('readerFontSize') fontSize: number = 17;
   @StorageLink('readerLineHeight') lineMul: number = 1.6;
   @StorageLink('readerParaSpace') paraSpace: number = 1;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、不登记依赖，
@@ -64,11 +66,13 @@ export struct SettingsReading {
               .fontSize(16)
               .fontColor([this.palette().accent])
             Text(L10n.t('实时预览'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.label + 1)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
             Blank()
             Text(L10n.t('跟随下方设置'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -134,6 +138,7 @@ export struct SettingsReading {
         ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: true })
 
         Text(L10n.t('恢复默认阅读设置'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label + 1)
           .fontColor('#FFFFFFFF')
       }

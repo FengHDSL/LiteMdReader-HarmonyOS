@@ -37,13 +37,14 @@ function walk(dir) {
       if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) {
         continue;
       }
-      // Text( 起始节点（含 Text() { 带子节点的写法）
-      if (/^Text\s*\(/.test(t)) {
+      // Text( 起始节点（含 Text() { 带子节点的写法）；带文字的组件不止 Text：
+      // Button / TextInput / TextArea / Marquee 也各自有 fontFamily，一并算进清单
+      if (/^(Text|Button|TextInput|TextArea|Marquee)\s*\(/.test(t)) {
         textNodes++;
         // 往后扫属性链（最多 12 行），见到 fontFamily 就算已挂
         for (let k = i; k < Math.min(i + 12, lines.length); k++) {
           const l = lines[k];
-          if (k > i && /^\s*(Text|Button|Row|Column|Stack|List|Scroll|if |ForEach)\b/.test(l)) {
+          if (k > i && /^\s*(Text|TextInput|TextArea|Button|Marquee|Row|Column|Stack|List|Scroll|Grid|if |ForEach)\b/.test(l)) {
             break;
           }
           if (l.indexOf('fontFamily') >= 0) {
