@@ -37,6 +37,8 @@ export struct LiveBlockEditor {
   @Prop bodySize: number = 16;
   /** 行高倍数 */
   @Prop lineMul: number = 1.6;
+  /** 正文预览字体族：宿主（编辑页）以 @Prop 下发，实时预览与正文保持同一款字 */
+  @Prop fontKey: string = '';
   /** 渲染纪元（字号 / 主题变化后强制重建，拼进 ForEach key） */
   @Prop renderEpoch: number = 0;
   /** 公式图就绪信号（宿主递增）：迷你预览里输入的 $公式$ 出图后换掉线性化文本 */
@@ -216,7 +218,8 @@ export struct LiveBlockEditor {
               block: pb,
               palette: this.palette,
               bodySize: this.bodySize,
-              lineMul: this.lineMul
+              lineMul: this.lineMul,
+              fontKey: this.fontKey
             })
           }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch + '_ft' + this.formulaTick
             + '_r' + this.previewTick)

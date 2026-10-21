@@ -307,6 +307,8 @@ export struct AiChat {
   stack: NavPathStack | null = null;
   /** 主题档位 / 系统深浅都直接挂本页重建（与阅读页同一套：不依赖别页先应用） */
   @StorageLink('readerThemeMode') @Watch('onThemeTick') themeMode: number = ReaderThemeMode.System;
+  /** 回答正文的字体族（MdBlockView 靠 @Prop 收，子组件自读 AppStorage 不回刷） */
+  @StorageLink('readerFontFamily') bodyFontKey: string = '';
   @StorageProp('systemDark') @Watch('onThemeTick') systemDark: boolean = false;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
@@ -3130,6 +3132,7 @@ export struct AiChat {
         block: b,
         palette: this.palette(),
         bodySize: HwType.bodyDefault,
+        fontKey: this.bodyFontKey,
         dark: this.isDark(),
         alwaysSystemSelect: true,
         // 代码块 / 图表「放大查看」：**统一走全屏放大浮层**（与阅读页同一套界面）——

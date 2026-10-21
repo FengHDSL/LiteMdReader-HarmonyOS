@@ -977,8 +977,12 @@ export struct MdBlockView {
   @State selEnd: number = -1;
   /** 图片是否加载失败。失败后渲染占位卡而不是留白 */
   @State imgFailed: boolean = false;
-  // ── 排版设置（AppStorage 全局键，编辑页预览同样生效） ──
-  @StorageProp('readerFontFamily') fontKey: string = '';
+  /**
+   * 正文字体族（由**宿主以 @Prop 传入**，空 = 默认）。
+   * 之前这里也是 `@StorageProp('readerFontFamily')`——与缩进同一个坑：真机上宿主改了
+   * AppStorage，子组件不保证回刷，表现就是「选了字体，正文一点变化没有」。
+   */
+  @Prop fontKey: string = '';
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。

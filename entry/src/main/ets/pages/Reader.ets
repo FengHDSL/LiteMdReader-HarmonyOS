@@ -303,6 +303,11 @@ export struct Reader {
    * 才能保证当帧重建。
    */
   @StorageLink('readerIndent') @Watch('onIndentChanged') indentOn: boolean = false;
+  /**
+   * 正文字体族（空 = 默认）。**必须像 indentOn 这样用属性管道下发**：真机上子组件
+   * 内部的 `@StorageProp('readerFontFamily')` 不保证回刷，选完字体正文不动就是这个坑。
+   */
+  @StorageLink('readerFontFamily') @Watch('onBodyFontChanged') bodyFontKey: string = '';
   /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
   @StorageLink('drawerImmersive') drawerImmersive: boolean = true;
   /** 信息卡：创建 / 修改时间（毫秒，0 = 未知）与收藏状态 */
@@ -1300,6 +1305,11 @@ export struct Reader {
    * 真机上仅靠 @Prop 下发时，List 里已挂载的条目会被复用、缩进要退出重进才生效。
    */
   onIndentChanged(): void {
+    this.renderEpoch++;
+  }
+
+  /** 换字体：同样靠 renderEpoch 换条目 key，让正文整树按新字体重建一遍。 */
+  onBodyFontChanged(): void {
     this.renderEpoch++;
   }
 
@@ -5337,6 +5347,7 @@ export struct Reader {
                 palette: this.palette(),
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
+                fontKey: this.bodyFontKey,
                 dark: this.isDark(),
                 // 对照是只读视图：批注 / 勾选 / 锚点等回调不传（默认空实现）；
                 // 放大有反应（铁律），但 **geoKey 传空**——对照块与正文块共享同一套
@@ -8744,6 +8755,7 @@ export struct Reader {
                   palette: this.palette(),
                   bodySize: this.fontSize,
                   lineMul: this.lineMul,
+                  fontKey: this.bodyFontKey,
                   // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
                   indentOn: this.indentOn,
                   dark: this.isDark(),
@@ -8941,6 +8953,7 @@ export struct Reader {
                       // 分屏列窄，正文用小一号字
                       bodySize: Math.max(HwType.bodyMin, this.fontSize - 2),
                       lineMul: this.lineMul,
+                      fontKey: this.bodyFontKey,
                       dark: this.isDark(),
                       // 分屏列的放大同样 **geoKey 传空**（与正文同 id 元素共存会让
                       // 一镜到底错乱，见对照面板同名注释）

@@ -316,6 +316,8 @@ export struct Editor {
   stack: NavPathStack | null = null;
   @StorageLink('readerFontSize') @Watch('onVisualChanged') fontSize: number = HwType.bodyDefault;
   @StorageLink('readerLineHeight') lineMul: number = HwType.lineDefault;
+  /** 正文预览用的字体族（MdBlockView 现在靠 @Prop 收下发的值，子组件自读 AppStorage 不回刷） */
+  @StorageLink('readerFontFamily') @Watch('onVisualChanged') bodyFontKey: string = '';
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
@@ -2733,6 +2735,7 @@ export struct Editor {
                   palette: this.palette(),
                   bodySize: HwType.label,
                   lineMul: 1.4,
+                  fontKey: this.bodyFontKey,
                   dark: this.isDark(),
                   // **必须传放大回调**（用户反馈：流程图那行的放大按钮点了没反应）——
                   // MdBlockView 的 enlargeHandler / imageTapHandler 不传就是默认空实现，
@@ -2886,6 +2889,7 @@ export struct Editor {
             palette: this.palette(),
             bodySize: this.fontSize,
             lineMul: this.lineMul,
+            fontKey: this.bodyFontKey,
             // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
             // 勾选直接改对应源码行的 [ ]↔[x]，与就地编辑同一套数据。
             taskToggleHandler: (blockId: string): void => {
@@ -3013,6 +3017,7 @@ export struct Editor {
                 palette: this.palette(),
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
+                fontKey: this.bodyFontKey,
                 renderEpoch: this.renderEpoch,
                 formulaTick: this.formulaTick,
                 previewTick: this.livePreviewTick,
@@ -3052,6 +3057,7 @@ export struct Editor {
                 palette: this.palette(),
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
+                fontKey: this.bodyFontKey,
                 // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
                 // 勾选直接翻转对应源码行的 [ ]↔[x]；同时置 liveChildTap，
                 // 防止这次点击冒泡到外层、误触"整块进入编辑态"。
@@ -3157,6 +3163,7 @@ export struct Editor {
               palette: this.palette(),
               bodySize: this.fontSize,
               lineMul: this.lineMul,
+              fontKey: this.bodyFontKey,
               renderEpoch: this.renderEpoch,
               previewBlocks: this.livePreviewBlocks,
               draft: $liveDraft,
