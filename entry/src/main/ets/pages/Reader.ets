@@ -4063,6 +4063,17 @@ export struct Reader {
   private closeNoteSheet(): void {
     this.pendingStart = -1;
     this.clearMathNoteContext();
+    // **编辑到一半关掉 = 放弃这次编辑**：不清 editingAnnId 的话，下一次点「添加批注」
+    // 会命中保存里的编辑分支，把上一条批注直接覆盖掉（而不是新建一条）。
+    // 同时清掉草稿键 —— editAnn 会把原文塞进草稿键当预填，留着它，三分钟内
+    // 给别的文本开「添加批注」就会把上一条的内容带进文本框（用户反馈的"串了"）。
+    // 新建路径的草稿恢复（不小心退出没保存）不受影响：那条路只在没编辑时留草稿。
+    if (this.editingAnnId.length > 0) {
+      this.editingAnnId = '';
+      this.noteDraft = '';
+      AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
+      AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+    }
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
@@ -9038,6 +9049,20 @@ export struct Reader {
             .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)),
           TransitionEffect.scale({ x: 0.6, y: 0.6 }).combine(TransitionEffect.OPACITY)
             .animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))))
+      }
+
+      // **状态栏那一条垫一层模糊**（用户要求：书架页打开搜索时的同款模糊）。
+      // 根 Stack 开了 expandSafeArea，正文一路铺到屏幕顶端，胶囊顶栏上方的状态栏区域
+      // 等于直接压在文字上。backdropBlur 只吃状态栏这一段高度 ——
+      // 与书架 cellBlur / 长按面板遮罩同一档（6），不是整屏实时模糊，
+      // 后者是《模糊场景性能优化》点名导致转场卡顿的写法（见 components/WallpaperImage.ets）。
+      if (!this.immersiveRead) {
+        Column()
+          .width('100%')
+          .height(this.padTop())
+          .position({ x: 0, y: 0 })
+          .backdropBlur(6)
+          .hitTestBehavior(HitTestMode.None)
       }
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
