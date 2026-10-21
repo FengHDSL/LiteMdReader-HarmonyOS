@@ -54,8 +54,8 @@ export struct LiveBlockEditor {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
-  /** **正文字重**（阅读设置 → 字体粗细）：就地预览那几块也走同一档 */
-  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
+  /** **正文字重**（阅读设置 → 字体粗细）：就地预览那几块也走同一档，0 = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: number = 0;
   /** 源码草稿：与宿主的 @State 双向绑定（@Link 同一引用） */
   @Link draft: string;
   /** 删除这一块 */

@@ -166,9 +166,11 @@ export struct SettingsAppearance {
   /** 界面字体是否**同步应用到阅读正文**（关闭时正文仍用「阅读调整 → 字体」的选择） */
   @StorageLink('appFontSyncReader') @Watch('onUiFontChanged') uiFontSyncReader: boolean = false;
   /**
-   * **界面字号**（0.85~1.30，步进 0.05）与**界面字重**（0 跟随 / 100 略粗 / 200 加粗）。
+   * **界面字号**（0.85~1.30，步进 0.05）与**界面字重**（0 跟随原样式 / 100~900 绝对覆盖）。
    * 与界面字体一样是逐点生效：各页把 fontSize 走 HwFont.sx、fontWeight 走 HwFont.bump；
    * 改完广播 appearanceTick。
+   * ⚠️ 键名里的 Delta 是历史包袱（早期是"相对加粗"的增量），现在存的是**绝对档位**，
+   * 语义见 HwFont.bump / HwFont.weight。
    * 注意 ArkUI 数字字号单位是 fp，本来也跟随系统「字体与样式」缩放，两者是叠乘关系。
    */
   @StorageLink('appFontScale') @Watch('onUiFontChanged') uiFontScale: number = 1;
@@ -349,15 +351,6 @@ export struct SettingsAppearance {
    */
   onUiFontChanged(): void {
     this.broadcastAppearance();
-  }
-
-  /** 选字重档位：这款字体没有真粗体时不给切（档位同时置灰），只说明怎么办 */
-  private pickUiWeight(delta: number): void {
-    if (!FontStore.supportsBold(this.uiFontKey)) {
-      this.toast(this.s('这款字体没有粗体字重；换一款字体或选「跟随」'));
-      return;
-    }
-    this.uiFontWeightDelta = delta;
   }
 
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
@@ -873,55 +866,38 @@ export struct SettingsAppearance {
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
-          // ── 界面字重：三档；**不支持真粗体的字体，两档加粗置灰** ──
-          // 判据只能是实测：SDK 查不到字重信息（FontInfo 只有 path / family / fullName），
+          // ── 界面字重：一根滑条 0~900（0 = 跟随原样式，其余绝对覆盖所有界面文字）──
+          // "有没有真粗体"只能实测：SDK 查不到字重信息（FontInfo 只有 path/family/fullName），
           // 所以 FontStore.supportsBold 用 400 与 700 各量一次宽度，几乎不变就算不支持。
           Row({ space: HwSpace.xs }) {
             Text(this.s('界面字重'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
             Blank()
-            if (!FontStore.supportsBold(this.uiFontKey)) {
-              Text(this.s('这款字体没有粗体字重'))
-                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                .fontColor(this.palette().textTertiary)
-            }
+            Text(HwFont.weightName(this.uiFontWeightDelta))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+              .fontColor(this.palette().accent)
           }
           .width('100%')
 
-          Row({ space: HwSpace.xs }) {
-            ImmersiveChip({
-              palette: this.palette(),
-              chipActive: this.uiFontWeightDelta === 0,
-              chipLabel: this.s('跟随'),
-              chipOnTap: () => {
-                this.uiFontWeightDelta = 0;
-              }
+          Slider({ value: this.uiFontWeightDelta, min: 0, max: 900, step: 100, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.uiFontWeightDelta = Math.round(v);
             })
-            Column() {
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.uiFontWeightDelta === 100,
-                chipLabel: this.s('略粗'),
-                chipOnTap: () => {
-                  this.pickUiWeight(100);
-                }
-              })
-            }
-            .opacity(FontStore.supportsBold(this.uiFontKey) ? 1 : 0.4)
-            Column() {
-              ImmersiveChip({
-                palette: this.palette(),
-                chipActive: this.uiFontWeightDelta === 200,
-                chipLabel: this.s('加粗'),
-                chipOnTap: () => {
-                  this.pickUiWeight(200);
-                }
-              })
-            }
-            .opacity(FontStore.supportsBold(this.uiFontKey) ? 1 : 0.4)
-          }
-          .width('100%')
+
+          Text(FontStore.supportsBold(this.uiFontKey)
+            ? this.s('最左「跟随原样式」保住标题比正文粗；往右所有界面文字统一到该档。')
+            : this.s('最左「跟随原样式」保住标题比正文粗；往右所有界面文字统一到该档。'
+              + '当前这款字体没有粗体字面，500 以上可能看不出变化，换一款字体即可。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

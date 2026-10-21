@@ -1044,44 +1044,67 @@ export class HwFont {
   }
 
   /**
-   * 界面字重"相对加粗"：在原来那档的基础上 +delta（上限 900）。
-   * 做成相对而不是绝对覆盖，是为了保住「标题比正文粗」这一层关系——
-   * 绝对覆盖会把所有文字压成同一个字重，界面反而糊成一片。
+   * 界面字重（外观设置 → 界面字重滑条）。第二参是**绝对档位**：0 = 跟随各档原样
+   * （标题仍比正文粗），100~900 = 所有界面文字统一到这一档。
+   *
+   * ⚠️ 名字里的 bump / Delta 是历史包袱：这一档最早做"相对加粗"，后来按用户要求改成
+   * 绝对覆盖，而全应用已有 131 处调用点，改名等于再来一轮逐点改写 —— 留着名字、只换语义。
+   * **新写的代码请直接用 HwFont.weight。**
    */
   static bump(w: FontWeight, delta: number): number {
-    const n: number = HwFont.num(w);
-    return delta === 0 ? n : Math.min(900, n + delta);
+    return HwFont.weight(delta, w);
+  }
+
+  /** 字重换算的唯一实现：mode 0 = 保持原档，否则绝对覆盖成 mode 那一档（上限 900）。 */
+  static weight(mode: number, base: FontWeight): number {
+    if (mode <= 0) {
+      return HwFont.num(base);
+    }
+    return Math.min(900, mode);
   }
 
   /**
-   * **正文字重**（阅读设置 → 字体粗细）：'follow'（空串同义）保持各档原样，
-   * 其余按档位**绝对覆盖**。
-   *
-   * 这里刻意与界面字重那条相反：界面要的是"标题仍比正文粗"，所以走相对加粗；
-   * 正文用户要的是"整篇一起变粗/变细"，相对加粗在正文里等于每层同步抬升、
-   * 肉眼几乎看不出调过。绝对覆盖的代价是标题与粗体词的层级被压平，这是明示过的取舍。
+   * 数值档位 → 界面读数（外观设置与阅读设置共用一根滑条的文案，别各写一份）。
+   * 数值和档名一起给，免得用户不知道"中等"到底是多重。0 = 最左的「跟随原样式」。
    */
-  static bodyWeight(mode: string, base: FontWeight): number {
-    if (mode === 'follow' || mode.length === 0) {
-      return HwFont.num(base);
+  static weightName(mode: number): string {
+    if (mode <= 0) {
+      return '跟随原样式';
     }
-    if (mode === 'thin') {
-      return 200;
+    if (mode <= 100) {
+      return '100 · 极细';
     }
-    if (mode === 'light') {
-      return 300;
+    if (mode <= 200) {
+      return '200 · 细';
     }
-    if (mode === 'regular') {
-      return 400;
+    if (mode <= 300) {
+      return '300 · 较轻';
     }
-    if (mode === 'medium') {
-      return 500;
+    if (mode <= 400) {
+      return '400 · 常规';
     }
-    if (mode === 'bold') {
-      return 700;
+    if (mode <= 500) {
+      return '500 · 中等';
     }
-    // 认不出的档位（旧备份包 / 手改镜像文件里的垃圾值）保持原样，绝不默认成"粗"
-    return HwFont.num(base);
+    if (mode <= 600) {
+      return '600 · 半粗';
+    }
+    if (mode <= 700) {
+      return '700 · 粗';
+    }
+    if (mode <= 800) {
+      return '800 · 较粗';
+    }
+    return '900 · 特粗';
+  }
+
+  /**
+   * **正文字重**（阅读设置 → 字体粗细滑条）：与界面字重同一套绝对覆盖语义，
+   * 只是键独立（readerFontWeight），两边互不影响。
+   * 绝对覆盖会把标题与粗体词压到同一档，这是用户看过形态对比后点名要的效果。
+   */
+  static bodyWeight(mode: number, base: FontWeight): number {
+    return HwFont.weight(mode, base);
   }
 }
 

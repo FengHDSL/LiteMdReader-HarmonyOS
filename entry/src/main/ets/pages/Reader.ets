@@ -323,8 +323,8 @@ export struct Reader {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
-  /** **正文字重**（阅读设置 → 字体粗细）：以 @Prop 下发给正文块组件，'follow' = 不覆盖 */
-  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
+  /** **正文字重**（阅读设置 → 字体粗细）：以 @Prop 下发给正文块组件，0 = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: number = 0;
   /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
   @StorageLink('drawerImmersive') drawerImmersive: boolean = true;
   /** 信息卡：创建 / 修改时间（毫秒，0 = 未知）与收藏状态 */

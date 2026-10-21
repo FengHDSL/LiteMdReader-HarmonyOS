@@ -329,8 +329,8 @@ export struct Editor {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
-  /** **正文字重**（阅读设置 → 字体粗细）：预览与就地编辑都用它，'follow' = 不覆盖 */
-  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
+  /** **正文字重**（阅读设置 → 字体粗细）：预览与就地编辑都用它，0 = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: number = 0;
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */

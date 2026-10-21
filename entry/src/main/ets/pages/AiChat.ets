@@ -323,8 +323,8 @@ export struct AiChat {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
-  /** **正文字重**（阅读设置 → 字体粗细）：AI 回答正文与阅读页同一套 */
-  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
+  /** **正文字重**（阅读设置 → 字体粗细）：AI 回答正文与阅读页同一套，0 = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   @StorageProp('appearanceTick') @Watch('onThemeTick') appearanceTick: number = 0;

@@ -22,6 +22,19 @@ import GlobalUIAbilityContext from '../util/ContextConfig';
 const DOMAIN = 0x0000;
 
 /**
+ * 正文字重键的旧值归零。这一档最早存的是**档位字符串**（'follow' / 'medium' …），
+ * 现在两把字重键统一是**绝对数值**（0 = 跟随，100~900）。老设备上残留的字符串会让
+ * 整棵正文树拿非数值去算字重，所以镜像恢复之后立刻洗一次。
+ * 只洗类型，不猜语义：数值 100 / 200 在新旧两套语义里都合法，不能当"旧值"清掉。
+ */
+function normalizeBodyWeight(): void {
+  const raw: number | undefined = AppStorage.get<number>('readerFontWeight');
+  if (raw !== undefined && typeof raw !== 'number') {
+    AppStorage.setOrCreate('readerFontWeight', 0);
+  }
+}
+
+/**
  * 应用级能力入口。
  *
  * 有两件事必须在页面加载前做完：
@@ -65,8 +78,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('ratingPrompted', false);
 
     PersistentStorage.persistProp('readerFontSize', 16);
-    // 正文字重档位：'follow' = 各档原样，其余为绝对覆盖（见 HwFont.bodyWeight）
-    PersistentStorage.persistProp('readerFontWeight', 'follow');
+    // 正文字重：0 = 跟随原样式，100~900 = 整篇绝对覆盖（见 HwFont.bodyWeight）
+    PersistentStorage.persistProp('readerFontWeight', 0);
     PersistentStorage.persistProp('readerLineHeight', 1.75);
     PersistentStorage.persistProp('readerMeasure', 40);
     PersistentStorage.persistProp('readerThemeMode', 0);
@@ -209,6 +222,9 @@ export default class EntryAbility extends UIAbility {
     if (AppStorage.get<string>('wallpaperGenId') === 'custom') {
       AppStorage.setOrCreate('wallpaperGenId', '');
     }
+    // **正文字重键的旧值归零**：这一档最早存的是档位字符串（'follow' / 'medium' …），
+    // 现在改成绝对数值（0 = 跟随）。老设备上留着一个字符串会让整棵正文树拿到非数值去算字重。
+    normalizeBodyWeight();
     // 收藏名单的第二腿：按镜像把收藏标记补回 shelf.json（真机上出现过重启丢收藏）
     DocStore.applyStarredMirror(this.context);
     // 应用语言：把持久化的选择同步给平台（setAppPreferredLanguage 是冷启动生效，

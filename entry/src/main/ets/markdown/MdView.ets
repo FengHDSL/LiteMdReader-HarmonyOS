@@ -996,11 +996,10 @@ export struct MdBlockView {
   @Prop uiFontScale: number = 1;
   @Prop uiFontWeightDelta: number = 0;
   /**
-   * **正文字重**（阅读设置 → 字体粗细）：'follow' / thin / light / regular / medium / bold。
-   * 同样**必须 @Prop 由宿主下发**（正文 span 也在这份被 ForEach 复用的组件里）；
-   * 'follow' 之外的档位是**绝对覆盖**，见 HwFont.bodyWeight。
+   * **正文字重**（阅读设置 → 字体粗细滑条）：0 = 跟随各档原样，100~900 = 整篇绝对覆盖到这一档。
+   * 同样**必须 @Prop 由宿主下发**（正文 span 也在这份被 ForEach 复用的组件里）。
    */
-  @Prop bodyWeightMode: string = 'follow';
+  @Prop bodyWeightMode: number = 0;
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。
