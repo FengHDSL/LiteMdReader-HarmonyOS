@@ -29,7 +29,8 @@ import {
   ReaderPalette,
   ReaderThemeMode,
   isDarkTheme,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 
 /**
@@ -73,6 +74,8 @@ export struct SettingsShell {
 
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
+  /** **界面字体**（外观设置）：各设置页的标题与副标题都从这里走 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 主题纪元：拼进根容器 key，明暗变了整树重建（一次刷新到位） */
   @State themeEpoch: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
@@ -315,6 +318,7 @@ export struct SettingsShell {
                 .fontSize(HwType.label + 3)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .onClick(() => {
@@ -324,6 +328,7 @@ export struct SettingsShell {
                 Text(this.shellSubtitle)
                   .fontSize(HwType.caption - 1)
                   .fontColor(this.palette().textTertiary)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .maxLines(1)
               }
             }
@@ -355,6 +360,7 @@ export struct SettingsShell {
       Text(this.s('这一板块的内容正在迁入…'))
         .fontSize(HwType.label)
         .fontColor(this.palette().textSecondary)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .width('100%')
     }
   }

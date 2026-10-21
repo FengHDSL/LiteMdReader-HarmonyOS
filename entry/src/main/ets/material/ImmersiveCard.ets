@@ -21,7 +21,7 @@
 import { LengthMetrics } from '@kit.ArkUI';
 import { getImmersiveMaterial, carrierModifier, appAppearanceDark } from './SystemMaterial';
 import { appearanceMaterialType } from './SystemMaterial';
-import { HwRadius, HwSpace, LIGHT_PALETTE, ReaderPalette, barFrostColor, withAlpha } from '../theme/DesignTokens';
+import { HwRadius, HwSpace, LIGHT_PALETTE, ReaderPalette, barFrostColor, withAlpha, HwFont } from '../theme/DesignTokens';
 import { AppearanceFx } from '../service/AppearanceFx';
 
 /**
@@ -641,11 +641,8 @@ export struct ImmersiveChip {
    * 节能档 = materialOn() 直接 false，与「内层开关关闭」时那条路径完全一致。
    */
   @StorageProp('immersiveGrade') fxGrade: string = 'default';
-  /**
-   * 书架文件夹面板是否打开。打开时**整屏格子都被压暗 + 模糊**，此时再给每张卡挂
-   * 系统材质就是「材质采样 + 格子模糊」双重背景采样，上下滑动明显掉帧（用户实测）。
-   * 这段时间统一走磨砂降级（观感几乎一致，因为卡片本来就被压到 32% 透明）。
-   */
+  /** **界面字体**（外观设置）：全应用所有芯片文案都从这一处走 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -718,6 +715,7 @@ export struct ImmersiveChip {
           .fontSize(this.chipFontSize > 0 ? this.chipFontSize : 13)
           .fontColor(this.chipTextColor())
           .fontWeight(this.chipActive ? FontWeight.Medium : FontWeight.Normal)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .maxLines(1)
       }
       .padding({ left: this.chipPaddingH, right: this.chipPaddingH, top: this.chipPaddingV, bottom: this.chipPaddingV })
