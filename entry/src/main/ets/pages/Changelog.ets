@@ -74,6 +74,32 @@ export struct Changelog {
     } catch (_) {}
   }
 
+  /** 条目类型着色（用户要求）：新增=深绿、优化=蓝、修复=深黄、移除=深红；深浅色各自保证对比度 */
+  private itemColor(item: string): string {
+    const dark: boolean = this.isDark();
+    if (item.startsWith('新增')) {
+      return dark ? '#FF7ED957' : '#FF1B7A3D';
+    }
+    if (item.startsWith('优化')) {
+      return dark ? '#FF6FB7FF' : '#FF1565C0';
+    }
+    if (item.startsWith('修复')) {
+      return dark ? '#FFFFD54F' : '#FF9A6B00';
+    }
+    if (item.startsWith('移除')) {
+      return dark ? '#FFFF8A80' : '#FFB3261E';
+    }
+    return this.palette().textSecondary;
+  }
+
+  private isDark(): boolean {
+    // 深色判定：跟随主题设置与系统深色（与 paletteFor 同口径）
+    if (this.themeMode === ReaderThemeMode.System) {
+      return this.systemDark;
+    }
+    return this.themeMode === ReaderThemeMode.Dark;
+  }
+
   build() {
     SettingsShell({
       shellTitle: '更新日志',
@@ -124,11 +150,11 @@ export struct Changelog {
                   .width(4)
                   .height(4)
                   .borderRadius(2)
-                  .backgroundColor(this.palette().accent)
+                  .backgroundColor(this.itemColor(item))
                   .margin({ top: 7 })
                 Text(item)
                   .fontSize(HwType.label)
-                  .fontColor(this.palette().textSecondary)
+                  .fontColor(this.itemColor(item))
                   .lineHeight(HwType.label * 1.7)
                   .layoutWeight(1)
               }

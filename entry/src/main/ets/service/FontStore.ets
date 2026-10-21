@@ -139,7 +139,7 @@ export class FontStore {
         try {
           const descriptor: text.FontDescriptor =
             await text.getFontDescriptorByFullName(fullNames[k], text.SystemFontType.INSTALLED);
-          const family: string = descriptor.fontFamily;
+          const family: string = descriptor.fontFamily ?? '';
           if (family.length > 0 && seen.indexOf(family) < 0) {
             seen.push(family);
             out.push({ family: family, fullName: fullNames[k] });
