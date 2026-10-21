@@ -7929,6 +7929,10 @@ export struct Reader {
           .edgeEffect(EdgeEffect.Spring)
           .layoutWeight(1)
           .align(Alignment.Top)
+          // **上下滑动时四角圆角裁切**（用户要求，弧度取批注卡片的 HwRadius.inner）：
+          // clip 必须写在 borderRadius 之后，否则按方角裁
+          .borderRadius(HwRadius.inner)
+          .clip(true)
         }
         .width('100%')
         .height('100%')
@@ -8398,6 +8402,9 @@ export struct Reader {
           .align(Alignment.Top)
           .scrollBar(BarState.Off)
           .edgeEffect(EdgeEffect.Spring)
+          // **上下滑动时四角圆角裁切**（用户要求，弧度取批注卡片的 HwRadius.inner）
+          .borderRadius(HwRadius.inner)
+          .clip(true)
         }
         .width('100%')
         .height('100%')
