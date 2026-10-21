@@ -104,6 +104,14 @@ export struct FontPickerList {
     .backgroundColor(this.chosen === key ? this.palette.accentSoft : '#00000000')
     .onClick(() => {
       this.onPick(key);
+      // 系统字体注册不上（沙箱读不到那个字体文件）时，选了也不会有效果 —— 直说，
+      // 并给出可行的路：把同一个字体文件用「导入字体」导进来（那条已验证生效）
+      if (!FontStore.installedUsable(key)) {
+        this.getUIContext().getPromptAction().showToast({
+          message: L10n.t('这款系统字体读不到文件，暂时用不了；可以把字体文件用「导入字体」导进来'),
+          duration: 2200
+        });
+      }
     })
     // 手势总要挂（条件挂要写两套分支）：不可删除的行在回调里直接忽略
     .gesture(

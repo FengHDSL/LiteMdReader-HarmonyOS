@@ -126,6 +126,17 @@ export class FontStore {
   private static sysReady: boolean = false;
 
   /**
+   * **注册失败**的系统字体家族名（沙箱读不到那个路径时就是这样）。
+   * 选这些款不会有任何视觉效果，界面要如实提示，而不是让用户以为"点了没反应"。
+   */
+  static installFailed: string[] = [];
+
+  /** 这款已安装字体是否可用（没进失败名单就算可用；名单在注册阶段填） */
+  static installedUsable(family: string): boolean {
+    return FontStore.installFailed.indexOf(family) < 0;
+  }
+
+  /**
    * **查询系统已安装字体**（用户要求：调用系统字体管理器，应用无需自建导入工具）。
    * API 14+：getSystemFontFullNamesByType(INSTALLED) → getFontDescriptorByFullName
    * 取 fontFamily（这才是 fontFamily 属性匹配用的家族名）。同家族多个全名去重。
@@ -194,11 +205,25 @@ export class FontStore {
         };
         font.registerFont(info);
         FontStore.registered.push(s.family);
+        // 再把**全名**也当别名注册一遍：个别机型匹配用的是全名而不是家族名，
+        // 这一步失败无所谓（静默），成功就多一条能解析到的路
+        if (s.fullName !== s.family && FontStore.registered.indexOf(s.fullName) < 0) {
+          try {
+            const alias: font.FontOptions = { familyName: s.fullName, familySrc: 'file://' + s.path };
+            font.registerFont(alias);
+            FontStore.registered.push(s.fullName);
+          } catch (err2) {
+            // 别名注册失败不影响主名
+          }
+        }
         ok++;
       } catch (err) {
         const code: number = err === null || err === undefined ? 0 : (err as BusinessError).code;
         hilog.warn(0x0000, 'FontStore', 'register installed font failed: %{public}s code=%{public}d',
           s.family, code);
+        if (FontStore.installFailed.indexOf(s.family) < 0) {
+          FontStore.installFailed.push(s.family);
+        }
       }
     }
     hilog.info(0x0000, 'FontStore', 'installed fonts registered %{public}d/%{public}d', ok, list.length);
