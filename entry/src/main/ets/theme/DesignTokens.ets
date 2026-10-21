@@ -972,6 +972,49 @@ export class HwFont {
     const sync: boolean | undefined = AppStorage.get<boolean>('appFontSyncReader');
     return HwFont.resolve(sync === true && app.length > 0 ? app : readerKey);
   }
+
+  /**
+   * 界面字号缩放：把 fp 数值按系数放大。取整是因为半像素字号（15.3fp 这种）
+   * 会让行高与图标对不齐；下限 6 防把某处压成看不见。
+   */
+  static sx(base: number, scale: number): number {
+    if (scale === 1) {
+      return base;
+    }
+    return Math.max(6, Math.round(base * scale));
+  }
+
+  /**
+   * FontWeight 枚举转数值。
+   * ⚠️ 这版 SDK 的 FontWeight 只有 Lighter / Normal / Regular / Medium / Bold / Bolder
+   * 六个成员，且**没有显式赋值**（运行时是 lighter/bolder 这类字符串），
+   * 所以不能拿枚举直接做算术 —— 一律走这张表换成 100~900 的数值。
+   */
+  static num(w: FontWeight): number {
+    if (w === FontWeight.Bold) {
+      return 700;
+    }
+    if (w === FontWeight.Medium) {
+      return 500;
+    }
+    if (w === FontWeight.Bolder) {
+      return 800;
+    }
+    if (w === FontWeight.Lighter) {
+      return 300;
+    }
+    return 400;
+  }
+
+  /**
+   * 界面字重"相对加粗"：在原来那档的基础上 +delta（上限 900）。
+   * 做成相对而不是绝对覆盖，是为了保住「标题比正文粗」这一层关系——
+   * 绝对覆盖会把所有文字压成同一个字重，界面反而糊成一片。
+   */
+  static bump(w: FontWeight, delta: number): number {
+    const n: number = HwFont.num(w);
+    return delta === 0 ? n : Math.min(900, n + delta);
+  }
 }
 
 /**

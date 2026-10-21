@@ -89,6 +89,9 @@ export default class EntryAbility extends UIAbility {
     // **界面字体**（外观设置）：空串 = 系统默认；syncReader = 是否把这款字体也用到阅读正文
     PersistentStorage.persistProp('appFontFamily', '');
     PersistentStorage.persistProp('appFontSyncReader', false);
+    // 界面字号缩放系数（1 = 不调）与字重相对加粗量（0 = 不调，100 / 200 两档）
+    PersistentStorage.persistProp('appFontScale', 1);
+    PersistentStorage.persistProp('appFontWeightDelta', 0);
     PersistentStorage.persistProp('readerParaSpace', 1.0);
     PersistentStorage.persistProp('readerIndent', false);
     // 网页开放（阅读页「更多」面板开关）：开启后点正文 http(s) 链接半模态打开

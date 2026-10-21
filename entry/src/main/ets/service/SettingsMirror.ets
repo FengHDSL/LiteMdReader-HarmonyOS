@@ -44,8 +44,8 @@ export class SettingsMirror {
     // 阅读排版 / 显示
     'readerThemeMode', 'readerFontSize', 'readerLineHeight', 'readerMeasure',
     'readerFontFamily', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
-    // 界面字体（外观设置）与「同步到阅读页」开关
-    'appFontFamily', 'appFontSyncReader',
+    // 界面字体（外观设置）与「同步到阅读页」开关、界面字号缩放与字重加粗
+    'appFontFamily', 'appFontSyncReader', 'appFontScale', 'appFontWeightDelta',
     'readerKeepScreenOn', 'readerBrightness', 'readerCustomBgLight', 'readerCustomBgDark',
     'readerTabBarAtBottom',
     // 网页开放（阅读页「更多」面板开关）

@@ -41,6 +41,7 @@ import {
   HwFont
 } from '../theme/DesignTokens';
 import { FontPickerList } from '../components/FontPickerList';
+import { FontStore } from '../service/FontStore';
 
 /**
  * 主题色预设：**5 款澄笺色**（与 5 款程序化壁纸同源同名，用户指定）。
@@ -159,6 +160,14 @@ export struct SettingsAppearance {
   @StorageLink('appFontFamily') @Watch('onUiFontChanged') uiFontKey: string = '';
   /** 界面字体是否**同步应用到阅读正文**（关闭时正文仍用「阅读调整 → 字体」的选择） */
   @StorageLink('appFontSyncReader') @Watch('onUiFontChanged') uiFontSyncReader: boolean = false;
+  /**
+   * **界面字号**（0.85~1.30，步进 0.05）与**界面字重**（0 跟随 / 100 略粗 / 200 加粗）。
+   * 与界面字体一样是逐点生效：各页 `.fontSize(HwFont.sx(基准, this.uiFontScale))`、
+   * `.fontWeight(HwFont.bump(原字重, this.uiFontWeightDelta))`；改完广播 appearanceTick。
+   * 注意 ArkUI 数字字号单位是 fp，本来也跟随系统「字体与样式」缩放，两者是叠乘关系。
+   */
+  @StorageLink('appFontScale') @Watch('onUiFontChanged') uiScale: number = 1;
+  @StorageLink('appFontWeightDelta') @Watch('onUiFontChanged') uiWeightDelta: number = 0;
   /** 界面字体列表是否展开 */
   @State uiFontListOpen: boolean = false;
   /** 列表重取信号（导入 / 删除字体后自增） */
@@ -335,6 +344,15 @@ export struct SettingsAppearance {
     this.broadcastAppearance();
   }
 
+  /** 选字重档位：这款字体没有真粗体时不给切（档位同时置灰），只说明怎么办 */
+  private pickUiWeight(delta: number): void {
+    if (!FontStore.supportsBold(this.uiFontKey)) {
+      this.toast(this.s('这款字体没有粗体字重；换一款字体或选「跟随」'));
+      return;
+    }
+    this.uiWeightDelta = delta;
+  }
+
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
   private broadcastAppearance(): void {
     try {
@@ -397,6 +415,9 @@ export struct SettingsAppearance {
     // 界面字体与「同步到阅读页」也一起恢复默认（空 = 系统默认字形）
     this.uiFontKey = '';
     this.uiFontSyncReader = false;
+    // 界面字号与字重也回到"不调"
+    this.uiScale = 1;
+    this.uiWeightDelta = 0;
     AppStorage.setOrCreate('grayTextMode', 'auto');
     AppStorage.setOrCreate('grayTextColor', '');
     AppStorage.setOrCreate('grayTextModeLight', 'auto');
@@ -771,6 +792,82 @@ export struct SettingsAppearance {
           }
           .width('100%')
           .alignItems(VerticalAlign.Center)
+
+          // ── 界面字号：85%~130%，步进 5%（逐点生效，见 HwFont.sx）──
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('界面字号'))
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            Text(Math.round(this.uiScale * 100) + '%')
+              .fontSize(HwType.label)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.palette().accent)
+          }
+          .width('100%')
+
+          Slider({ value: this.uiScale * 100, min: 85, max: 130, step: 5, style: SliderStyle.OutSet })
+            .width('100%')
+            .selectedColor(this.palette().accent)
+            .blockColor(this.palette().accent)
+            .onChange((v: number, mode: SliderChangeMode) => {
+              this.uiScale = Math.round(v) / 100;
+            })
+
+          Text(this.s('标题、正文与数字会按同一系数放大；系统的「字体与样式」缩放是叠加生效的'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+
+          // ── 界面字重：三档；**不支持真粗体的字体，两档加粗置灰** ──
+          // 判据只能是实测：SDK 查不到字重信息（FontInfo 只有 path / family / fullName），
+          // 所以 FontStore.supportsBold 用 400 与 700 各量一次宽度，几乎不变就算不支持。
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('界面字重'))
+              .fontSize(HwType.label + 1)
+              .fontColor(this.palette().textPrimary)
+            Blank()
+            if (!FontStore.supportsBold(this.uiFontKey)) {
+              Text(this.s('这款字体没有粗体字重'))
+                .fontSize(HwType.caption)
+                .fontColor(this.palette().textTertiary)
+            }
+          }
+          .width('100%')
+
+          Row({ space: HwSpace.xs }) {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipActive: this.uiWeightDelta === 0,
+              chipLabel: this.s('跟随'),
+              chipOnTap: () => {
+                this.uiWeightDelta = 0;
+              }
+            })
+            Column() {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipActive: this.uiWeightDelta === 100,
+                chipLabel: this.s('略粗'),
+                chipOnTap: () => {
+                  this.pickUiWeight(100);
+                }
+              })
+            }
+            .opacity(FontStore.supportsBold(this.uiFontKey) ? 1 : 0.4)
+            Column() {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipActive: this.uiWeightDelta === 200,
+                chipLabel: this.s('加粗'),
+                chipOnTap: () => {
+                  this.pickUiWeight(200);
+                }
+              })
+            }
+            .opacity(FontStore.supportsBold(this.uiFontKey) ? 1 : 0.4)
+          }
+          .width('100%')
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

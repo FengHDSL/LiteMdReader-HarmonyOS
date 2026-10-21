@@ -9,7 +9,7 @@
  */
 
 import { common } from '@kit.AbilityKit';
-import { font } from '@kit.ArkUI';
+import { font, MeasureText } from '@kit.ArkUI';
 import { text } from '@kit.ArkGraphics2D';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -134,6 +134,41 @@ export class FontStore {
   /** 这款已安装字体是否可用（没进失败名单就算可用；名单在注册阶段填） */
   static installedUsable(family: string): boolean {
     return FontStore.installFailed.indexOf(family) < 0;
+  }
+
+  /** 字重探测结果缓存（key = 家族名；true = 有真粗体） */
+  private static boldCache: Record<string, boolean> = {};
+
+  /**
+   * **这款字体有没有真粗体**（外观设置的「字重」档位用它决定置灰）。
+   * SDK 里没有查字重的接口（`FontInfo` / `FontDescriptor` 只给 path / family / fullName /
+   * postScriptName），所以只能实测：同一串字分别按 400 与 700 量宽度，
+   * 宽度几乎不变就说明这款字体没有粗体字重（引擎要么合成假粗、要么直接忽略）。
+   * 用拉丁与数字测量：中文在很多字体里本身就缺字形，会污染结果。
+   */
+  static supportsBold(family: string): boolean {
+    const key: string = family.length === 0 ? '__default__' : family;
+    const cached: boolean | undefined = FontStore.boldCache[key];
+    if (cached !== undefined && cached !== null) {
+      return cached;
+    }
+    const fam: string = family.length === 0 ? 'HarmonyOS Sans' : family;
+    let ok: boolean = false;
+    try {
+      const regular: number = MeasureText.measureText({
+        textContent: 'Handgloves 0123456789', fontSize: 20, fontFamily: fam, fontWeight: 400
+      });
+      const bold: number = MeasureText.measureText({
+        textContent: 'Handgloves 0123456789', fontSize: 20, fontFamily: fam, fontWeight: 700
+      });
+      // 5% 以上的宽度差才算"真的换了字重"
+      ok = regular > 0 && Math.abs(bold - regular) / regular > 0.05;
+    } catch (err) {
+      // 量不了就当不支持（宁可不给加粗档位）
+      ok = false;
+    }
+    FontStore.boldCache[key] = ok;
+    return ok;
   }
 
   /**
