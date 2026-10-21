@@ -82,19 +82,21 @@ export class RecycleStore {
         const text: string = fs.readTextSync(path, { encoding: 'utf-8' });
         if (text.length > 0) {
           const parsed: RecycleFile = JSON.parse(text) as RecycleFile;
-          purgeDays = parsed.purgeDays > 0 ? parsed.purgeDays : 7;
+          // 0 是**合法档位**（= 不自动清空），只有读不到 / 非法值才回落 7 天
+          purgeDays = parsed.purgeDays >= 0 ? parsed.purgeDays : 7;
           items = parsed.items ?? [];
         }
       }
     } catch (err) {
       return [];
     }
-    // **自动清空**：按删除时间过滤，超期项连同文件一起删除
+    // **自动清空**：按删除时间过滤，超期项连同文件一起删除。
+    // purgeDays = 0 是用户选的「不自动清空」，这一轮什么都不删。
     const keep: RecycleItem[] = [];
     const deadline: number = purgeDays * 24 * 3600 * 1000;
     const now: number = Date.now();
     for (let k = 0; k < items.length; k++) {
-      if (now - items[k].deletedAt > deadline) {
+      if (purgeDays > 0 && now - items[k].deletedAt > deadline) {
         try {
           if (items[k].fileName.length > 0) {
             fs.unlinkSync(RecycleStore.filesDir(ctx) + '/' + items[k].fileName);
@@ -136,7 +138,8 @@ export class RecycleStore {
     try {
       const parsed: RecycleFile = JSON.parse(fs.readTextSync(RecycleStore.metaPath(ctx),
         { encoding: 'utf-8' })) as RecycleFile;
-      return parsed.purgeDays > 0 ? parsed.purgeDays : 7;
+      // 0 = 「不自动清空」，是用户选的合法档位
+      return parsed.purgeDays >= 0 ? parsed.purgeDays : 7;
     } catch (err) {
       return 7;
     }

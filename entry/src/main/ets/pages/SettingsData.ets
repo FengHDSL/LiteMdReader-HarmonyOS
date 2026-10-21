@@ -18,7 +18,7 @@ import { BackupStore } from '../service/BackupStore';
 import { WebDavConfig, WebDavResult, WebDavStore } from '../service/WebDavStore';
 import { UpdateService } from '../service/UpdateService';
 import { DocMeta, DocStore } from '../service/DocStore';
-import { RecycleStore } from '../service/RecycleStore';
+import { RecycleItem, RecycleStore } from '../service/RecycleStore';
 import { ExportService } from '../service/ExportService';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { AppResetDialog } from '../components/AppResetDialog';
@@ -121,6 +121,10 @@ export struct SettingsData {
   @State annoDocs: number = 0;
   /** 图片管理：**原位下拉展开**的那一项（本地图=文件名；网络图=URL）；空 = 全部收起 */
   @State expandedImg: string = '';
+  /** **回收站**：条目列表（按删除时间倒序，读的时候服务层已惰性清掉过期项） */
+  @State recycleItems: RecycleItem[] = [];
+  /** 回收站自动清空档位（天）：0 = 不自动清空 */
+  @State recycleDays: number = 0;
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：主题色 / 灰字 / 沾色改完**当帧**就能重算；
@@ -146,6 +150,201 @@ export struct SettingsData {
       return null;
     }
     return c as common.UIAbilityContext;
+  }
+
+  // ══════════════════════ ⑤ 回收站 ══════════════════════
+
+  /** 时间戳 → 'YYYY-MM-DD HH:MM'（ArkTS 里 toLocaleString 行为不稳，手工拼）。 */
+  private recycleStamp(ms: number): string {
+    const d: Date = new Date(ms);
+    const pad = (v: number): string => {
+      return v < 10 ? '0' + v : '' + v;
+    };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+      + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /** 进页面时读回收站（档位 + 条目；list 内部已按档位惰性清掉过期项）。 */
+  private reloadRecycle(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    // 注意：服务层 getPurgeDays 把 0 归一成 7（RecycleStore.ets:139），
+    // 所以进页面时「不自动清空」这一档读回来是 7——只能靠下面 setRecycleDays 记住用户刚点的。
+    this.recycleDays = RecycleStore.getPurgeDays(c);
+    this.recycleItems = RecycleStore.list(c);
+  }
+
+  /** 只重取条目、不动档位：恢复 / 彻底删除 / 清空后用，避免把用户刚选的档位刷回归一值。 */
+  private refreshRecycleItems(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    this.recycleItems = RecycleStore.list(c);
+  }
+
+  /** 自动清空档位（2 / 5 / 7 / 30 天，0 = 不自动清空）。 */
+  private setRecycleDays(days: number): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    RecycleStore.setPurgeDays(c, days);
+    // 档位直接按刚点的回填，不再回读一次（省一次 IO；0 = 不自动清空已是合法档位）
+    this.recycleDays = days;
+    this.recycleItems = RecycleStore.list(c);
+    if (days <= 0) {
+      this.toast(L10n.t('回收站不再自动清空'));
+    } else {
+      this.toast('自动清空：删除后保留 ' + days + ' 天（当前 ' + this.recycleItems.length + ' 项）');
+    }
+  }
+
+  /** 回收条目的类型名（副标题为空时兜底用它）。 */
+  private recycleKindName(kind: string): string {
+    if (kind === 'doc') {
+      return L10n.t('文档');
+    }
+    if (kind === 'image') {
+      return L10n.t('图片');
+    }
+    return L10n.t('批注');
+  }
+
+  /** **恢复**：restore 只负责把文件移回原位，文档重建 / 批注写回在这里分流。 */
+  /** 从当前列表里按 id 找条目（恢复前判类型与同名用；找不到返回 null） */
+  private recyclePending(id: string): RecycleItem | null {
+    for (let k = 0; k < this.recycleItems.length; k++) {
+      if (this.recycleItems[k].id === id) {
+        return this.recycleItems[k];
+      }
+    }
+    return null;
+  }
+
+  private restoreRecycleItem(id: string): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    // **恢复前先探同名**：RecycleStore.restore 第一步就把条目从列表里摘掉，
+    // 若随后 DocStore.create 因同名失败，正文就两头落空（回收站没了、书架也没回来）。
+    const pending: RecycleItem | null = this.recyclePending(id);
+    if (pending !== null && pending.kind === 'doc' && DocStore.find(c, pending.docName) !== undefined) {
+      this.toast(L10n.t('已有一篇同名文档，先改个名或删掉它再恢复'));
+      return;
+    }
+    const it: RecycleItem | null = RecycleStore.restore(c, id);
+    if (it === null) {
+      this.toast(L10n.t('这条已经不在了'));
+      this.refreshRecycleItems();
+      return;
+    }
+    if (it.kind === 'doc') {
+      const meta: DocMeta | null = DocStore.create(c, it.docName, it.content);
+      if (meta === null) {
+        this.toast(L10n.t('恢复失败：同名文档已存在'));
+      } else {
+        this.toast(L10n.t('已恢复到书架'));
+      }
+    } else if (it.kind === 'anno') {
+      if (RecycleStore.restoreAnno(c, it)) {
+        this.toast(L10n.t('批注已恢复'));
+      } else {
+        this.toast(L10n.t('原文档不在了，批注无法恢复'));
+      }
+    } else {
+      this.toast(L10n.t('图片已移回'));
+    }
+    this.refreshRecycleItems();
+    // 恢复的东西要立刻出现在书架 / 图片列表里（loadBuiltins 是本页的书架刷新入口）
+    this.loadBuiltins();
+  }
+
+  /** **彻底删除单个**：不可恢复，必须弹窗二次确认。 */
+  private askPurgeRecycleItem(item: RecycleItem): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: L10n.t('彻底删除'),
+      message: L10n.t('将永久删除「') + item.title + L10n.t('」，删掉之后**不可恢复**，回收站里的沙箱副本会一并删除。'),
+      buttons: [
+        { text: L10n.t('取消'), color: this.palette().textSecondary },
+        { text: L10n.t('彻底删除'), color: '#FFD93B3B' }
+      ]
+    }).then((result) => {
+      if (result.index !== 1) {
+        return;
+      }
+      RecycleStore.purgeOne(c, item.id);
+      // 彻底删除只动回收站，书架 / 图片列表不受影响 → 只需重取条目
+      this.refreshRecycleItems();
+      this.toast(L10n.t('已彻底删除'));
+    }).catch((err: BusinessError) => {
+      this.toast('操作失败：' + err.message);
+    });
+  }
+
+  /** **一键清空**：同样弹窗确认，文案里带上要删掉多少项。 */
+  private askPurgeRecycleAll(): void {
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const count: number = this.recycleItems.length;
+    this.getUIContext().getPromptAction().showDialog({
+      title: L10n.t('清空回收站'),
+      message: L10n.t('将彻底删除回收站里的 ') + count + L10n.t(' 项内容（文档、图片、批注与手写笔迹），不可恢复。'),
+      buttons: [
+        { text: L10n.t('取消'), color: this.palette().textSecondary },
+        { text: L10n.t('清空'), color: '#FFD93B3B' }
+      ]
+    }).then((result) => {
+      if (result.index !== 1) {
+        return;
+      }
+      RecycleStore.purgeAll(c);
+      // 清空同样不动书架；档位保持用户刚选的，不回读归一值
+      this.refreshRecycleItems();
+      this.toast(L10n.t('已清空回收站'));
+    }).catch((err: BusinessError) => {
+      this.toast('操作失败：' + err.message);
+    });
+  }
+
+  /** 自动清空档位芯片（选中高亮）。 */
+  @Builder
+  recycleDaysChip(label: string, days: number) {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipActive: this.recycleDays === days,
+      chipLabel: label,
+      chipOnTap: () => {
+        this.setRecycleDays(days);
+      }
+    })
+  }
+
+  /** 类型图标：$r() 的参数必须是字面量，所以按 kind 三个分支各写一份。 */
+  @Builder
+  recycleKindIcon(kind: string) {
+    if (kind === 'doc') {
+      SymbolGlyph($r('sys.symbol.doc_text'))
+        .fontSize(16)
+        .fontColor([this.palette().accent])
+    } else if (kind === 'image') {
+      SymbolGlyph($r('sys.symbol.picture'))
+        .fontSize(16)
+        .fontColor([this.palette().accent])
+    } else {
+      SymbolGlyph($r('sys.symbol.highlighter_line'))
+        .fontSize(16)
+        .fontColor([this.palette().accent])
+    }
   }
 
   // ══════════════════════ ② WebDAV 备份 ══════════════════════
@@ -389,6 +588,7 @@ export struct SettingsData {
     this.loadWebDavConfig();
     this.refreshCacheSize();
     this.refreshAnnoData();
+    this.reloadRecycle();
     this.life.onShow = () => {
       // 第一次 onShown 紧跟 aboutToAppear（四项刚算过），跳过；之后回到本页
       // 才重算，而且**等转场落定**：loadBuiltins 逐内置文档探测文件系统，
@@ -401,6 +601,7 @@ export struct SettingsData {
         this.loadBuiltins();
         this.refreshCacheSize();
         this.refreshAnnoData();
+        this.reloadRecycle();
       }, 300);
     };
   }
@@ -1570,6 +1771,135 @@ export struct SettingsData {
                   this.restoreBuiltins();
                 }
               })
+            }
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
+
+      // ── ⑤ 回收站（删除的文档 / 图片 / 批注 / 手写笔迹先进这里，可找回）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.sm }) {
+          Text(L10n.t('回收站'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontColor(this.palette().textPrimary)
+          Text(L10n.t('删除的文档、图片、批注与手写笔迹会先进这里，可找回；外部导入的文档应用从不触碰你目录里的源文件，只有应用内新建的文档，彻底删除时才会真的删掉沙箱副本。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+            .fontColor(this.palette().textTertiary)
+            .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
+            .width('100%')
+
+          // ── 自动清空档位 ──
+          Text(L10n.t('自动清空'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+            .fontColor(this.palette().textPrimary)
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+            .width('100%')
+          Flex({
+            wrap: FlexWrap.Wrap,
+            space: { main: LengthMetrics.vp(HwSpace.xs), cross: LengthMetrics.vp(HwSpace.xs) }
+          }) {
+            this.recycleDaysChip('2 天', 2)
+            this.recycleDaysChip('5 天', 5)
+            this.recycleDaysChip('7 天', 7)
+            this.recycleDaysChip('30 天', 30)
+            this.recycleDaysChip('不自动清空', 0)
+          }
+          .width('100%')
+          // 档位切换的提示出现 / 消失带过渡（凡事带动画）
+          .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
+
+          Divider().strokeWidth(1).color(this.palette().divider)
+
+          // ── 条目列表 ──
+          if (this.recycleItems.length === 0) {
+            Text(L10n.t('回收站是空的'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+          } else {
+            ForEach(this.recycleItems, (item: RecycleItem) => {
+              Row({ space: HwSpace.sm }) {
+                this.recycleKindIcon(item.kind)
+                Column({ space: 2 }) {
+                  Text(item.title)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
+                    .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                    .fontColor(this.palette().textPrimary)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  if (item.sub.length > 0) {
+                    Text(item.sub)
+                      .fontFamily(HwFont.resolve(this.uiFontKey))
+                      .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                      .fontColor(this.palette().textTertiary)
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  } else {
+                    Text(this.recycleKindName(item.kind))
+                      .fontFamily(HwFont.resolve(this.uiFontKey))
+                      .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                      .fontColor(this.palette().textTertiary)
+                  }
+                  Text(L10n.t('删除于 ') + this.recycleStamp(item.deletedAt))
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
+                    .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
+                    .fontColor(this.palette().textTertiary)
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipActive: true,
+                  chipLabel: L10n.t('恢复'),
+                  chipOnTap: () => {
+                    this.restoreRecycleItem(item.id);
+                  }
+                })
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipTint: '#FFD32F2F',
+                  chipActive: true,
+                  chipLabel: L10n.t('彻底删除'),
+                  chipOnTap: () => {
+                    this.askPurgeRecycleItem(item);
+                  }
+                })
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+            }, (item: RecycleItem) => item.id + '_' + this.recycleItems.length)
+          }
+
+          // ── 底部：总数 + 一键清空（空列表不出现清空入口）──
+          Row({ space: HwSpace.sm }) {
+            Text(L10n.t('共 ') + this.recycleItems.length + L10n.t(' 项'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+              .fontColor(this.palette().textTertiary)
+              .layoutWeight(1)
+            if (this.recycleItems.length > 0) {
+              ImmersiveChip({
+                palette: this.palette(),
+                chipTint: '#FFD32F2F',
+                chipActive: true,
+                chipLabel: L10n.t('清空回收站'),
+                chipOnTap: () => {
+                  this.askPurgeRecycleAll();
+                }
+              }) {
+                SymbolGlyph($r('sys.symbol.trash'))
+                  .fontSize(13)
+                  .fontColor(['#FFD32F2F'])
+              }
             }
           }
           .width('100%')
