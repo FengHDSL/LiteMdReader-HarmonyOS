@@ -223,6 +223,12 @@ const DL_PNG_MAX_SIDE: number = 6000;
 const NOTE_DRAFT_KEY: string = 'readerNoteDraft';
 const NOTE_DRAFT_AT_KEY: string = 'readerNoteDraftAt';
 const NOTE_DRAFT_TTL: number = 3 * 60 * 1000;
+/**
+ * **草稿属于哪一条批注**（用户强调：每条批注各自独立，临时保留只针对那一条）。
+ * '' = 新建中的草稿，其它值 = 正在编辑的那条批注 id。恢复草稿时必须对得上号，
+ * 否则就是"给别的文本添加批注，文本框里冒出上一条的内容"。
+ */
+const NOTE_DRAFT_OWNER_KEY: string = 'readerNoteDraftOwner';
 
 /** 文档编码选项（识别错误时手动指定；auto 为自动识别）。 */
 interface EncodingChoice {
@@ -2462,12 +2468,17 @@ export struct Reader {
         this.clearMathNoteContext();
       }
       // **恢复未过期的草稿**：不小心退出后再点「添加批注」，之前写的内容还在；
-      // 超过 3 分钟视为已放弃（避免很久以后突然冒出旧草稿）。
+      // 超过 3 分钟视为已放弃。**而且只认"新建中的那一份"**——草稿槽里记着归属，
+      // 上一条批注（或正在编辑的那条）的草稿不会串到这里（用户强调每条批注独立）。
       const draftAt: number = AppStorage.get<number>(NOTE_DRAFT_AT_KEY) ?? 0;
-      if (draftAt > 0 && Date.now() - draftAt <= NOTE_DRAFT_TTL) {
+      const draftOwner: string = AppStorage.get<string>(NOTE_DRAFT_OWNER_KEY) ?? '';
+      if (draftAt > 0 && Date.now() - draftAt <= NOTE_DRAFT_TTL && draftOwner.length === 0) {
         this.noteDraft = AppStorage.get<string>(NOTE_DRAFT_KEY) ?? '';
       } else {
         this.noteDraft = '';
+        AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
+        AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+        AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, '');
       }
       this.getUIContext().animateTo(this.animateParam(), () => {
         // **换纪元重建面板**：NotePanel 的 init* 只在组件创建那一刻读一次，
@@ -2498,6 +2509,7 @@ export struct Reader {
       this.noteDraft = '';
       AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
       AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+      AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, '');
       this.getUIContext().animateTo(this.animateParam(), () => {
         // **换纪元重建面板**：NotePanel 的 init* 只在组件创建那一刻读一次，
         // 而 bindSheet 的内容实例可能被复用；不换纪元就会把上一条批注的草稿/原文
@@ -2832,12 +2844,16 @@ export struct Reader {
       // **清草稿**（用户反馈：编辑后新建会串上一条内容——3 分钟草稿窗口里残留）
       AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
       AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+      AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, '');
       this.sheetVisible = false;
       this.toast(L10n.t('已修改批注'));
       return;
     }
     if (this.pendingStart < 0) {
+      // **原来这里静默关闭**：用户点了保存、什么也没写进去，也没任何提示
+      // —— 就是"添加完一个批注，再添加别的，保存后不显示"最难查的那一段。
       this.sheetVisible = false;
+      this.toast(L10n.t('没找到这段文字的选区，批注没有保存，请重新选中后再试'));
       return;
     }
     const draft: string = draft0.trim();
@@ -2870,6 +2886,7 @@ export struct Reader {
     // 提交成功 → 清掉草稿（3 分钟窗口结束，避免下次打开又冒出旧内容）
     AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
     AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+    AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, '');
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
     });
@@ -4075,6 +4092,7 @@ export struct Reader {
       this.noteDraft = '';
       AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
       AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
+      AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, '');
     }
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetVisible = false;
@@ -4415,11 +4433,17 @@ export struct Reader {
     this.clearMathNoteContext();
     // **带上这条批注原来的荧光笔颜色**（原来恒从黄色起步，编辑一次就刷成黄色）
     this.noteColorSeed = ann.color;
-    // **预填批注原文**（用户反馈：修改时标题条显示「」）——NotePanel 原文条用它
+    // **原文进标题条，正文进文本框** —— 两个字段各归各的：
+    //   ann.text = 选区原文（正文高亮定位靠它，只读展示）
+    //   ann.note = 用户写下的批注内容（文本框要预填的是这个）
+    // 之前这里把 ann.text 同时塞给了草稿，于是"保存后批注内容变成选择的文字"，
+    // 而且正文里原有的图片引用与关联文档标记被整段顶掉（用户反馈的三连击）。
     this.noteQuote = ann.text;
-    this.noteDraft = ann.text;
-    AppStorage.setOrCreate(NOTE_DRAFT_KEY, ann.text);
+    this.noteDraft = ann.note;
+    AppStorage.setOrCreate(NOTE_DRAFT_KEY, ann.note);
     AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
+    // 这份草稿只属于这一条批注
+    AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, ann.id);
     this.getUIContext().animateTo(this.animateParam(), () => {
       this.sheetEpoch++;
       this.activeSheet = 'note';
@@ -5560,9 +5584,11 @@ export struct Reader {
         palette: this.palette(),
         onDraft: (value: string) => {
           this.noteDraft = value;
-          // 边输入边记草稿（带时间戳）—— 误退出后 3 分钟内可恢复
+          // 边输入边记草稿（带时间戳）—— 误退出后 3 分钟内可恢复；
+          // owner = 正在编辑的那条的 id（新建时是空串），恢复时按它对号
           AppStorage.setOrCreate(NOTE_DRAFT_KEY, value);
           AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
+          AppStorage.setOrCreate(NOTE_DRAFT_OWNER_KEY, this.editingAnnId);
         },
         onSaveMath: (latex: string): boolean => {
           return this.saveMathEdit(latex);
