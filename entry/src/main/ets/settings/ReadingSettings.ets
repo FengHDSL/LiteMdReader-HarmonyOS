@@ -55,6 +55,7 @@ export function restoreReadingDefaults(ctx: common.UIAbilityContext | null): voi
   AppStorage.setOrCreate('readerKeepScreenOn', false);
   AppStorage.setOrCreate('readerBrightness', 0);
   AppStorage.setOrCreate('readerFontFamily', '');
+  AppStorage.setOrCreate('readerFontFamilyEn', '');
   AppStorage.setOrCreate('hlOpacity', 1);
   AppStorage.setOrCreate('waveThickness', 1);
   AppStorage.setOrCreate('readerCustomBgLight', '');
@@ -88,6 +89,8 @@ export struct ReadingSettingsPanel {
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   // 沉浸光感已强制开启（见 EntryAbility），这里不再持有开关状态
   @StorageLink('readerFontFamily') fontKey: string = '';
+  /** **英数字体**：拉丁与数字走这一款，CJK 回退到上面那款中文字体（见 HwFont.family） */
+  @StorageLink('readerFontFamilyEn') fontEnKey: string = '';
   /**
    * 外观设置「同步应用到阅读页」：开着且界面字体非空时，正文用的其实是界面字体，
    * 「中等 / 粗」能不能选要按那款判（见 bodyFontRawKey）。
@@ -107,6 +110,8 @@ export struct ReadingSettingsPanel {
   @StorageLink('readerCustomBgDark') customBgDark: string = '';
   /** 字体列表选择器是否展开（默认收起，只显示当前字体那一行） */
   @State fontListOpen: boolean = false;
+  /** 英数字体列表是否展开（与中文字体那一行各自独立收放） */
+  @State fontEnListOpen: boolean = false;
   /** 导入 / 删除字体后自增，交给 FontPickerList 重取列表（@Watch） */
   @State fontListRev: number = 0;
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
@@ -217,6 +222,10 @@ export struct ReadingSettingsPanel {
       if (FontStore.remove(ctx, family)) {
         if (this.fontKey === family) {
           this.fontKey = '';
+        }
+        // 英数字体用的是同一份导入清单，删掉的正好是它时也要归零，否则正文会引用一个不存在的族
+        if (this.fontEnKey === family) {
+          this.fontEnKey = '';
         }
         this.fontListRev++;
         this.toast(L10n.t('已删除（正在运行的应用里可能仍可见，重启后彻底消失）'));
@@ -653,14 +662,14 @@ export struct ReadingSettingsPanel {
         // 标题行显示当前字体并用它自己渲染，点一下展开 / 收起；列表里一项一个字体。
         Column({ space: HwSpace.xs }) {
           Row({ space: HwSpace.xs }) {
-            Text(L10n.t('字体'))
+            Text(L10n.t('中文字体'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
             Text(HwFont.label(this.fontKey))
               .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-              .fontFamily(HwFont.resolve(this.fontKey))
+              .fontFamily(HwFont.bodyFamily(this.fontKey))
               .fontColor(this.palette().textPrimary)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -692,7 +701,56 @@ export struct ReadingSettingsPanel {
               rev: this.fontListRev,
               onPick: (k: string) => {
                 this.fontKey = k;
-                this.toast('字体：' + HwFont.label(k));
+                this.toast('正文字体：' + HwFont.label(k));
+              },
+              onRemove: (family: string) => {
+                this.askRemoveFont(family);
+              }
+            })
+          }
+
+          // ── 英数字体：拉丁与数字用这一款，CJK 仍走上面那款中文字体 ──
+          Row({ space: HwSpace.xs }) {
+            Text(L10n.t('英数字体'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+              .fontColor(this.palette().textSecondary)
+            Text(HwFont.label(this.fontEnKey))
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+              .fontFamily(HwFont.family('', this.fontEnKey))
+              .fontColor(this.palette().textPrimary)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            // ⚠️ $r() 的参数必须是**字面量**：展开 / 收起两个箭头各写一份
+            if (this.fontEnListOpen) {
+              SymbolGlyph($r('sys.symbol.chevron_up'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            } else {
+              SymbolGlyph($r('sys.symbol.chevron_down'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            }
+          }
+          .width('100%')
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().surface)
+          .border({ width: 1, color: this.palette().surfaceBorder })
+          .onClick(() => {
+            this.fontEnListOpen = !this.fontEnListOpen;
+          })
+
+          if (this.fontEnListOpen) {
+            FontPickerList({
+              palette: this.palette(),
+              chosen: this.fontEnKey,
+              rev: this.fontListRev,
+              onPick: (k: string) => {
+                this.fontEnKey = k;
+                this.toast('英数字体：' + HwFont.label(k));
               },
               onRemove: (family: string) => {
                 this.askRemoveFont(family);

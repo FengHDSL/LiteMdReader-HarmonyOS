@@ -309,6 +309,8 @@ export struct Reader {
    * 内部的 `@StorageProp('readerFontFamily')` 不保证回刷，选完字体正文不动就是这个坑。
    */
   @StorageLink('readerFontFamily') @Watch('onBodyFontChanged') bodyFontKey: string = '';
+  /** **英数字体**（阅读设置）：与正文字体同一套刷新链路（改完 renderEpoch++ 重建正文树） */
+  @StorageLink('readerFontFamilyEn') @Watch('onBodyFontChanged') bodyFontEnKey: string = '';
   /**
    * 界面字体 + 「同步应用到阅读页」：正文实际用哪款由 `HwFont.bodyFamily` 现读这两个键，
    * 这里挂 @StorageLink 只为**让它们的变化能触发正文重建**（否则改了界面字体，

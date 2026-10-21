@@ -943,13 +943,47 @@ export function isDarkTheme(mode: number, systemDark: boolean): boolean {
 export class HwFont {
   static readonly DEFAULT: string = '';
 
-  /** 按设置键取 fontFamily：空串 = 系统默认；非空 = 字体家族名 + HarmonyOS Sans 回退
-   *  （官方建议：字体被卸载后回退默认，避免显示异常）。 */
-  static resolve(key: string): string {
-    if (key.length === 0) {
-      return key;
+  /**
+   * 组合成一条 fontFamily：**按字符逐个回退**是这套能做中英分开的根据——拉丁字符先命中
+   * 排在前面的英数字体（纯英数字体没有汉字），CJK 字符落不到它身上，才回退到中文字体。
+   * 所以顺序必须是「英数, 中文, HarmonyOS Sans」，反过来中文字体（多数自带拉丁字形）会吃掉英文。
+   * 两个键都为空 → 返回空串 = 完全跟随系统。
+   */
+  static family(zh: string, en: string): string {
+    const parts: string[] = [];
+    if (en.length > 0) {
+      parts.push(en);
     }
-    return key + ',HarmonyOS Sans';
+    if (zh.length > 0) {
+      parts.push(zh);
+    }
+    if (parts.length === 0) {
+      return '';
+    }
+    parts.push('HarmonyOS Sans');
+    return parts.join(',');
+  }
+
+  /** 读一个 AppStorage 字符串键（不存在 / 被清成 null 都归一为空串 = 跟随系统）。 */
+  private static str(key: string): string {
+    const v: string | undefined = AppStorage.get<string>(key);
+    return v === undefined || v === null ? '' : v;
+  }
+
+  /**
+   * 按设置键取 fontFamily：空串 = 系统默认；非空 = 字体家族名 + HarmonyOS Sans 回退
+   * （官方建议：字体被卸载后回退默认，避免显示异常）。
+   *
+   * 传进来的**正好是「界面字体」那一路**（全应用 600 多处都写 `resolve(this.uiFontKey)`）时，
+   * 顺带把「界面英数字体」排到前面 —— 中英分开因此不必逐点改挂点。
+   * 其余调用（字体选择器的预览行、显式指定某一款）仍是单族，预览所见即该族本身。
+   */
+  static resolve(key: string): string {
+    const uiZh: string = HwFont.str('appFontFamily');
+    if (key === uiZh) {
+      return HwFont.family(uiZh, HwFont.str('appFontFamilyEn'));
+    }
+    return HwFont.family(key, '');
   }
 
   static label(key: string): string {
@@ -967,10 +1001,13 @@ export class HwFont {
    * @StorageLink + renderEpoch（子组件自读 AppStorage 不回刷，正文字体那条就栽过一次）。
    */
   static bodyFamily(readerKey: string): string {
-    const appRaw: string | undefined = AppStorage.get<string>('appFontFamily');
-    const app: string = appRaw === undefined || appRaw === null ? '' : appRaw;
+    const app: string = HwFont.str('appFontFamily');
     const sync: boolean | undefined = AppStorage.get<boolean>('appFontSyncReader');
-    return HwFont.resolve(sync === true && app.length > 0 ? app : readerKey);
+    const followUi: boolean = sync === true && app.length > 0;
+    // 跟随界面字体时，英数那一半也一起跟界面的，否则用阅读设置里那款英数字体
+    return followUi
+      ? HwFont.family(app, HwFont.str('appFontFamilyEn'))
+      : HwFont.family(readerKey, HwFont.str('readerFontFamilyEn'));
   }
 
   /**

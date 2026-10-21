@@ -88,8 +88,11 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerNotesPanelW', 300);
     // 第五轮新增的排版 / 显示设置。键名与默认值必须和 ReadingSettings 里的 @StorageLink 一致
     PersistentStorage.persistProp('readerFontFamily', '');
+    // 英数字体：与中文字体分开设置，靠 fontFamily 列表按字符回退（见 HwFont.family）
+    PersistentStorage.persistProp('readerFontFamilyEn', '');
     // **界面字体**（外观设置）：空串 = 系统默认；syncReader = 是否把这款字体也用到阅读正文
     PersistentStorage.persistProp('appFontFamily', '');
+    PersistentStorage.persistProp('appFontFamilyEn', '');
     PersistentStorage.persistProp('appFontSyncReader', false);
     // 界面字号缩放系数（1 = 不调）与字重相对加粗量（0 = 不调，100 / 200 两档）
     PersistentStorage.persistProp('appFontScale', 1);

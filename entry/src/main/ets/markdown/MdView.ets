@@ -1836,7 +1836,7 @@ export struct MdBlockView {
             // 图未就绪（或渲染失败）时的兜底：线性化文本——点开**公式操作菜单**
             //（内含放大查看 / 批注 / 发送AI 等，与图态一致；此前只能点开浮层看大图）
             Span(MathLite.inlineText(piece.text))
-              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
+              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.bodyFamily(this.fontKey)))
               .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
               .onClick(() => {
                 this.openMathMenu(piece);
@@ -1844,7 +1844,7 @@ export struct MdBlockView {
           }
         } else {
         Span(piece.text)
-          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
+          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.bodyFamily(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
             piece.bold ? FontWeight.Bold : FontWeight.Normal))
@@ -1852,9 +1852,9 @@ export struct MdBlockView {
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(this.flashBgFor(piece) ??
             MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
-          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
+          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.bodyFamily(this.fontKey)))
           // 注音：基准字与读音两段互相抵消推进量，读音才落得在字**正上方**
-          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
+          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.bodyFamily(this.fontKey)))
           .onClick(() => {
             this.pieceTapped(piece);
           })
@@ -2022,12 +2022,12 @@ export struct MdBlockView {
               })
           } else {
             Span(MathLite.inlineText(piece.text))
-              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
+              .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.bodyFamily(this.fontKey)))
               .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           }
         } else {
         Span(piece.text)
-          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
+          .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.bodyFamily(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
           .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
             piece.bold ? FontWeight.Bold : FontWeight.Normal))
@@ -2035,10 +2035,10 @@ export struct MdBlockView {
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(this.flashBgFor(piece) ??
             MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
-          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
+          .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.bodyFamily(this.fontKey)))
           // 注音在表格单元格里也要压在字**正上方**（此前这条路没有 letterSpacing，
           // 同一份注音在正文里居中、在表格里跑到右边）
-          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
+          .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.bodyFamily(this.fontKey)))
           // 表格单元格里的链接要能点（与正文同一套跳转）。非链接片段在这条路上是空操作。
           .onClick(() => {
             if (piece.kind === MdInlineKind.Link) {

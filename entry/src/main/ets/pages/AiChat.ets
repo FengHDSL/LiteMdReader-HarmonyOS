@@ -308,7 +308,15 @@ export struct AiChat {
   /** 主题档位 / 系统深浅都直接挂本页重建（与阅读页同一套：不依赖别页先应用） */
   @StorageLink('readerThemeMode') @Watch('onThemeTick') themeMode: number = ReaderThemeMode.System;
   /** 回答正文的字体族（MdBlockView 靠 @Prop 收，子组件自读 AppStorage 不回刷） */
-  @StorageLink('readerFontFamily') bodyFontKey: string = '';
+  @StorageLink('readerFontFamily') @Watch('onBodyFontChanged') bodyFontKey: string = '';
+  /**
+   * **英数字体**（阅读设置）。这两个键都得挂 @Watch 并自增 bodyFontTick：
+   * MdBlockView 是被 ForEach 复用的子组件，字体族是它内部现算的，宿主不重建它就还是旧字
+   * （与阅读页 renderEpoch 同一条教训）。
+   */
+  @StorageLink('readerFontFamilyEn') @Watch('onBodyFontChanged') bodyFontEnKey: string = '';
+  /** 字体变化重建信号：拼进气泡 ForEach 的 key */
+  @State bodyFontTick: number = 0;
   @StorageProp('systemDark') @Watch('onThemeTick') systemDark: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
@@ -861,6 +869,11 @@ export struct AiChat {
    * 保证气泡内文字颜色跟随新主题（不换 key 会被复用而停在旧色）。
    * 深浅没变（只是其它外观项）时跳过，避免无谓重建导致切换变慢。
    */
+  /** 正文 / 英数字体变化：自增重建信号，让被复用的 MdBlockView 按新字体族重画 */
+  private onBodyFontChanged(): void {
+    this.bodyFontTick++;
+  }
+
   private onThemeTick(): void {
     const dark: boolean = this.isDark();
     if (this.lastThemeValid && this.lastThemeDark === dark) {
@@ -3188,7 +3201,7 @@ export struct AiChat {
       const ft: number = this.formulaTick;
       // 引擎开关（设置 → 引擎管理）变化也要重建：公式回落文字 / 恢复出图
       return 'aib' + b.id + '_t' + this.themeEpoch + (ft >= 0 ? this.formulaSuffix(b) : '')
-        + '_e' + this.disabledEngineList;
+        + '_e' + this.disabledEngineList + '_f' + this.bodyFontTick;
     })
   }
 

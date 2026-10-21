@@ -158,6 +158,11 @@ export struct SettingsAppearance {
    * 必须像这样用 @StorageLink 持有——真机上子组件自读 AppStorage 不保证回刷。
    */
   @StorageLink('appFontFamily') @Watch('onUiFontChanged') uiFontKey: string = '';
+  /**
+   * **界面英数字体**：与界面中文字体分开，靠 fontFamily 列表按字符回退生效
+   * （拉丁走这一款，CJK 落不到它身上才回退到中文字体）。见 HwFont.family / HwFont.resolve。
+   */
+  @StorageLink('appFontFamilyEn') @Watch('onUiFontChanged') uiFontEnKey: string = '';
   /** 界面字体是否**同步应用到阅读正文**（关闭时正文仍用「阅读调整 → 字体」的选择） */
   @StorageLink('appFontSyncReader') @Watch('onUiFontChanged') uiFontSyncReader: boolean = false;
   /**
@@ -170,6 +175,8 @@ export struct SettingsAppearance {
   @StorageLink('appFontWeightDelta') @Watch('onUiFontChanged') uiFontWeightDelta: number = 0;
   /** 界面字体列表是否展开 */
   @State uiFontListOpen: boolean = false;
+  /** 界面英数字体列表是否展开（与中文那一行各自独立收放） */
+  @State uiFontEnListOpen: boolean = false;
   /** 列表重取信号（导入 / 删除字体后自增） */
   @State uiFontRev: number = 0;
   /** 灰体文本显示增强：**深浅两套独立配置**（各自默认 auto）。
@@ -414,6 +421,7 @@ export struct SettingsAppearance {
     this.phoneLandscape = false;
     // 界面字体与「同步到阅读页」也一起恢复默认（空 = 系统默认字形）
     this.uiFontKey = '';
+    this.uiFontEnKey = '';
     this.uiFontSyncReader = false;
     // 界面字号与字重也回到"不调"
     this.uiFontScale = 1;
@@ -727,7 +735,7 @@ export struct SettingsAppearance {
             .width('100%')
 
           Row({ space: HwSpace.xs }) {
-            Text(this.s('全应用文字'))
+            Text(this.s('中文字体'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
@@ -767,7 +775,53 @@ export struct SettingsAppearance {
               allowRemove: false,
               onPick: (k: string) => {
                 this.uiFontKey = k;
-                this.toast('界面字体：' + HwFont.label(k));
+                this.toast('界面中文字体：' + HwFont.label(k));
+              }
+            })
+          }
+
+          // ── 界面英数字体：拉丁与数字走这一款，CJK 回退到上面那款中文字体 ──
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('英数字体'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+              .fontColor(this.palette().textSecondary)
+            Text(HwFont.label(this.uiFontEnKey))
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+              .fontFamily(HwFont.family('', this.uiFontEnKey))
+              .fontColor(this.palette().textPrimary)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
+              .layoutWeight(1)
+            // ⚠️ $r() 的参数必须是**字面量**：展开 / 收起两个箭头各写一份
+            if (this.uiFontEnListOpen) {
+              SymbolGlyph($r('sys.symbol.chevron_up'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            } else {
+              SymbolGlyph($r('sys.symbol.chevron_down'))
+                .fontSize(16)
+                .fontColor([this.palette().textTertiary])
+            }
+          }
+          .width('100%')
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().surface)
+          .border({ width: 1, color: this.palette().surfaceBorder })
+          .onClick(() => {
+            this.uiFontEnListOpen = !this.uiFontEnListOpen;
+          })
+
+          if (this.uiFontEnListOpen) {
+            FontPickerList({
+              palette: this.palette(),
+              chosen: this.uiFontEnKey,
+              rev: this.uiFontRev,
+              allowRemove: false,
+              onPick: (k: string) => {
+                this.uiFontEnKey = k;
+                this.toast('界面英数字体：' + HwFont.label(k));
               }
             })
           }
