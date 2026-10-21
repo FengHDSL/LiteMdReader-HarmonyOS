@@ -16,6 +16,8 @@ struct StudyReciteCard {
   @LocalStorageProp('studyRemain') studyRemain: string = '0';
   @LocalStorageProp('studyFront') studyFront: string = '';
   @LocalStorageProp('studyBack') studyBack: string = '';
+  /** 界面字体（外观设置）：由 FormSync 随 bindingData 推来（卡片进程读不到 AppStorage） */
+  @LocalStorageProp('cardFont') cardFont: string = '';
   /** **「具体」切换**：true = 显示该卡的批注内容（back），false = 显示题面 */
   @State showBack: boolean = false;
 
@@ -27,11 +29,13 @@ struct StudyReciteCard {
             .width(22)
             .height(22)
           Text(L10n.t('学习卡 · 背诵'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontWeight(FontWeight.Bold)
             .fontColor('#FF1F2933')
           Blank()
           Text(L10n.t('剩 ') + this.studyRemain)
+            .fontFamily(this.cardFont)
             .fontSize(10)
             .fontColor('#FF8A93A0')
         }
@@ -61,6 +65,7 @@ struct StudyReciteCard {
           }
         } else {
           Text(L10n.t('今天没有待背的学习卡'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontColor('#FF8A93A0')
             .width('100%')
@@ -70,6 +75,7 @@ struct StudyReciteCard {
         Row() {
           Blank()
           Text(L10n.t('下一个'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFFFF')
@@ -89,6 +95,7 @@ struct StudyReciteCard {
       .padding(14)
       // **「具体」右边中间**（用户要求）：router 进应用看该卡的批注详情
       Text(this.showBack ? L10n.t('返回') : L10n.t('具体'))
+        .fontFamily(this.cardFont)
         .fontSize(12)
         .fontWeight(FontWeight.Medium)
         .fontColor('#FFFFFFFF')

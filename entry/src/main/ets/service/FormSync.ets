@@ -31,6 +31,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { DocMeta, DocStore } from './DocStore';
 import { L10n } from './L10n';
+import { HwFont } from '../theme/DesignTokens';
 
 const TAG: string = 'FormSync';
 
@@ -252,7 +253,11 @@ export class FormSync {
     }
     // 2×2 卡片（最近阅读一篇 + 新建文档按钮）：与 2×4 共用一次 recentDocs
     const hasRecent: string = recents.length > 0 ? '1' : '0';
+    // **界面字体要随数据推过去**：桌面卡片跑在 FormExtension 独立进程里，
+    // 读不到主应用的 AppStorage，只能靠 bindingData 带值（空串 = 系统默认字形）。
+    const cardFont: string = HwFont.resolve(AppStorage.get<string>('appFontFamily') ?? '');
     const data: Record<string, string> = {
+      'cardFont': cardFont,
       'recent1': names[0],
       'recent2': names[1],
       'recent3': names[2],

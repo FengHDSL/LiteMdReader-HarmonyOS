@@ -10,6 +10,8 @@ struct StudyMemoryCard {
   @LocalStorageProp('studyFront') studyFront: string = '';
 
   @LocalStorageProp('studyBack') studyBack: string = '';
+  /** 界面字体（外观设置）：由 FormSync 随 bindingData 推来（卡片进程读不到 AppStorage） */
+  @LocalStorageProp('cardFont') cardFont: string = '';
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
@@ -18,11 +20,13 @@ struct StudyMemoryCard {
             .width(16)
             .height(16)
           Text(L10n.t('学习卡 · 记忆'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontWeight(FontWeight.Bold)
             .fontColor('#FF1F2933')
           Blank()
           Text(L10n.t('剩 ') + this.studyRemain)
+            .fontFamily(this.cardFont)
             .fontSize(10)
             .fontColor('#FF8A93A0')
         }
@@ -48,6 +52,7 @@ struct StudyMemoryCard {
             .width('100%')
         } else {
           Text(L10n.t('今天没有待背的学习卡'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontColor('#FF8A93A0')
             .width('100%')
@@ -57,6 +62,7 @@ struct StudyMemoryCard {
         Row() {
           Blank()
           Text(L10n.t('下一个'))
+            .fontFamily(this.cardFont)
             .fontSize(12)
             .fontWeight(FontWeight.Medium)
             .fontColor('#FFFFFFFF')

@@ -27,17 +27,25 @@ struct RecentCard {
   @LocalStorageProp('hasRecent') hasRecent: string = '0';
   /** 点击卡片要打开的文档名（原始名，传回应用做查找键） */
   @LocalStorageProp('docName') docName: string = '';
+  /**
+   * **界面字体**（外观设置 → 界面字体）。卡片跑在 FormExtension 独立进程，
+   * 读不到主应用的 AppStorage，只能由 FormSync 随 bindingData 推过来；
+   * 值已经是解析好的 fontFamily 串（空 = 系统默认），卡片直接给 .fontFamily()。
+   */
+  @LocalStorageProp('cardFont') cardFont: string = '';
 
   build() {
     Column() {
       // 标题行
       Row() {
         Text(L10n.t('澄笺'))
+          .fontFamily(this.cardFont)
           .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor('#FF1F2933')
         Blank()
         Text(L10n.t('最近阅读'))
+          .fontFamily(this.cardFont)
           .fontSize(10)
           .fontColor('#FF8A93A0')
         // 刷新按钮：数据偶尔没刷出来时点一下，message 动作 → EntryFormAbility.onFormEvent
@@ -68,6 +76,7 @@ struct RecentCard {
       // 最近阅读文档区（点击进阅读页）
       Column({ space: 3 }) {
         Text(this.hasRecent === '1' ? this.recentName : L10n.t('还没有阅读记录'))
+          .fontFamily(this.cardFont)
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.hasRecent === '1' ? '#FF1F2933' : '#FFA6ADB5')
@@ -78,6 +87,7 @@ struct RecentCard {
         Text(this.hasRecent === '1'
           ? (this.recentPercent.length > 0 ? this.recentPercent : L10n.t('刚开始读'))
           : L10n.t('去书架挑一篇吧'))
+          .fontFamily(this.cardFont)
           .fontSize(10)
           .fontColor('#FF8A93A0')
           .maxLines(1)
@@ -111,6 +121,7 @@ struct RecentCard {
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')
         Text(L10n.t('新建文档'))
+          .fontFamily(this.cardFont)
           .fontSize(13)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')
