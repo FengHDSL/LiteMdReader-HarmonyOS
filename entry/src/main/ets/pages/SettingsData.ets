@@ -18,6 +18,7 @@ import { BackupStore } from '../service/BackupStore';
 import { WebDavConfig, WebDavResult, WebDavStore } from '../service/WebDavStore';
 import { UpdateService } from '../service/UpdateService';
 import { DocMeta, DocStore } from '../service/DocStore';
+import { RecycleStore } from '../service/RecycleStore';
 import { ExportService } from '../service/ExportService';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { AppResetDialog } from '../components/AppResetDialog';
@@ -715,6 +716,15 @@ export struct SettingsData {
     if (ctx === null) {
       return;
     }
+    // **入回收站**（用户要求：删除可找回；外部导入的用户目录源文件从未被触碰）
+    try {
+      const meta: DocMeta | undefined = DocStore.find(ctx, name);
+      const content: string = meta !== undefined ? DocStore.readText(ctx, meta) : '';
+      RecycleStore.addDoc(ctx, name, content, name,
+        JSON.stringify({ lastOpen: meta !== undefined ? meta.lastOpen : 0 }));
+    } catch (err) {
+      // 快照失败不阻塞删除
+    }
     try {
       if (DocStore.remove(ctx, name)) {
         this.pendingDeleteDoc = '';
@@ -1360,7 +1370,14 @@ export struct SettingsData {
                 chipActive: true,
                 chipLabel: L10n.t('删除'),
                 chipOnTap: () => {
-                  this.hideImage('local', name);
+                  // **删除入回收站**（用户要求：可找回）——文件移入回收站，不再只是隐藏
+                  const rctx = this.ctx();
+                  if (rctx !== null && RecycleStore.addImage(rctx, name)) {
+                    this.loadImageItems();
+                    this.toast(L10n.t('已移入回收站'));
+                  } else {
+                    this.hideImage('local', name);
+                  }
                 }
               })
             }

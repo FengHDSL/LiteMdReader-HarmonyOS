@@ -51,6 +51,7 @@ import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
+import { RecycleStore } from '../service/RecycleStore';
 import { DocLint, LintIssue, LintReport } from '../service/DocLint';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { MdAnnotation } from '../markdown/MdTypes';
@@ -916,25 +917,26 @@ struct Index {
 
   /** 面板里的一行：图标 + 文案 + 分隔线（样式照参考图的系统长按菜单）。 */
   @Builder
-  floatRow(label: string, icon: Resource, divider: boolean, onGo: () => void, useImage: boolean = false) {
+  floatRow(label: string, icon: Resource, divider: boolean, onGo: () => void, useImage: boolean = false,
+               red: boolean = false) {
     if (divider) {
       Divider().strokeWidth(1).color(this.palette().divider).margin({ left: 4, right: 4 })
     }
     Row({ space: HwSpace.md }) {
-      // sys.symbol 走 SymbolGlyph；app.media 自定义 svg 走 Image + fillColor（主题色）
+      // sys.symbol 走 SymbolGlyph；app.media 自定义 svg 走 Image + fillColor（主题色/红色）
       if (useImage) {
         Image(icon)
           .width(18)
           .height(18)
-          .fillColor(this.palette().textPrimary)
+          .fillColor(red ? '#FFD93B3B' : this.palette().textPrimary)
       } else {
         SymbolGlyph(icon)
           .fontSize(17)
-          .fontColor([this.palette().textPrimary])
+          .fontColor([red ? '#FFD93B3B' : this.palette().textPrimary])
       }
       Text(L10n.t(label))
         .fontSize(HwType.label + 1)
-        .fontColor(this.palette().textPrimary)
+        .fontColor(red ? '#FFD93B3B' : this.palette().textPrimary)
         .layoutWeight(1)
     }
     .width('100%')
@@ -1018,7 +1020,7 @@ struct Index {
               const n: string = this.floatName;
               this.closeFloatMenu();
               this.askDeleteDoc(n);
-            })
+            }, false, true)
             this.floatRow('重命名', $r('sys.symbol.square_and_pencil'), true, () => {
               const n: string = this.floatName;
               this.closeFloatMenu();
@@ -1041,13 +1043,28 @@ struct Index {
             this.floatRow('解散', $r('sys.symbol.folder'), false, () => {
               const n: string = this.floatName;
               this.closeFloatMenu();
-              this.playAbsorbAnim(n, () => {
-                if (DocStore.dissolveFolder(n)) {
-                  this.animatedRefresh();
-                  this.toast(L10n.t('文件夹已解散，文档回到书架'));
+              // **二次确认**（用户要求）
+              this.getUIContext().getPromptAction().showDialog({
+                title: L10n.t('解散文件夹'),
+                message: L10n.t('将解散「') + n + L10n.t('」，其中文档回到书架。'),
+                buttons: [
+                  { text: L10n.t('取消'), color: this.palette().textSecondary },
+                  { text: L10n.t('解散'), color: '#FFD93B3B' }
+                ]
+              }).then((result) => {
+                if (result.index !== 1) {
+                  return;
                 }
+                this.playAbsorbAnim(n, () => {
+                  if (DocStore.dissolveFolder(n)) {
+                    this.animatedRefresh();
+                    this.toast(L10n.t('文件夹已解散，文档回到书架'));
+                  }
+                });
+              }).catch((err: BusinessError) => {
+                this.toast('操作失败：' + err.message);
               });
-            })
+            }, false, true)
             this.floatRow('重命名', $r('sys.symbol.square_and_pencil'), true, () => {
               const n: string = this.floatName;
               this.closeFloatMenu();
@@ -2398,11 +2415,20 @@ struct Index {
       if (result.index !== 1) {
         return;
       }
+      // **入回收站**（用户要求：删除可找回；外部导入的用户目录源文件从未被触碰）
+      try {
+        const meta: DocMeta | undefined = DocStore.find(ctx, name);
+        const content: string = meta !== undefined ? DocStore.readText(ctx, meta) : '';
+        RecycleStore.addDoc(ctx, name, content, name,
+          JSON.stringify({ lastOpen: meta !== undefined ? meta.lastOpen : 0 }));
+      } catch (err) {
+        // 快照失败不阻塞删除
+      }
       if (DocStore.remove(ctx, name)) {
         // 带"吸入"动画再刷新（删除也走统一动画路径）
         this.playAbsorbAnim(name, () => {
           this.animatedRefresh();
-          this.toast('已删除《' + name + '》');
+          this.toast('已删除《' + name + '》，可在数据管理回收站找回');
         });
       } else {
         this.toast(L10n.t('删除失败'));

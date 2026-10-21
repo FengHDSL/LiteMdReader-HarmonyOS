@@ -54,6 +54,7 @@ import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
+import { RecycleStore } from '../service/RecycleStore';
 import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrightnessLevel,
   syncSystemDarkFromContext, markThemeApplied, themeChangedSince,
   startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
@@ -3005,6 +3006,13 @@ export struct Reader {
   }
 
   private deleteAnnotation(ann: MdAnnotation): void {
+    // **入回收站**（用户要求：删除可找回；手写图一并移入）
+    const ctx = this.ctx();
+    if (ctx !== null) {
+      const hwRel: string = ann.note.startsWith('hw:') ? ann.note.substring(3) : '';
+      RecycleStore.addAnno(ctx, JSON.stringify(ann),
+        ann.text.length > 0 ? ann.text : ann.note, this.docName, hwRel);
+    }
     const kept: MdAnnotation[] = [];
     for (let k = 0; k < this.annotations.length; k++) {
       if (this.annotations[k].id !== ann.id) {
