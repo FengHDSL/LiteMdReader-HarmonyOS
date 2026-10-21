@@ -225,10 +225,16 @@ export class RecycleStore {
   /** **文档入回收站**（title=显示名；content=正文；metaJson=原 meta 片段）。 */
   static addDoc(ctx: common.UIAbilityContext, title: string, content: string,
                 originName: string, metaJson: string): boolean {
-    const recycleName: string = RecycleStore.moveIn(ctx, DocStorePath(ctx, originName), originName);
-    if (recycleName.length === 0) {
-      return false;
+    // 沙箱里的正文文件是「名称.md」（DocStore.create 就是这么落盘的），
+    // 调用方传进来的多是**不带后缀的显示名** —— 直接拼 docs/<name> 打不开，
+    // moveIn 返回空串，于是所有文档都静默没进回收站（真机反馈）。
+    const src: string = RecycleStore.findDocFile(ctx, originName);
+    let recycleName: string = '';
+    if (src.length > 0) {
+      recycleName = RecycleStore.moveIn(ctx, src, originName);
     }
+    // 文件移不动也照样入站：正文在 content 里，恢复走 DocStore.create 重建即可。
+    // 绝不能因为 moveIn 失败就 return false —— 调用方紧接着就把原文档删了，那才是真丢了。
     return RecycleStore.push(ctx, {
       id: 'd' + Date.now() + '_' + Math.floor(Math.random() * 1000),
       kind: 'doc', title: title, sub: '', fileName: recycleName,
@@ -239,15 +245,57 @@ export class RecycleStore {
 
   /** **图片入回收站**（images 目录内的文件移入）。 */
   static addImage(ctx: common.UIAbilityContext, fileName: string): boolean {
-    const recycleName: string = RecycleStore.moveIn(ctx, DocStorePath(ctx, fileName), fileName);
+    const src: string = RecycleStore.findImageFile(ctx, fileName);
+    if (src.length === 0) {
+      // 图片没有"正文"可兜底，找不到文件就真没法恢复
+      return false;
+    }
+    const recycleName: string = RecycleStore.moveIn(ctx, src, fileName);
     if (recycleName.length === 0) {
       return false;
     }
     return RecycleStore.push(ctx, {
       id: 'i' + Date.now() + '_' + Math.floor(Math.random() * 1000),
       kind: 'image', title: fileName, sub: '', fileName: recycleName,
-      originName: fileName, payload: '', content: '', docName: '', deletedAt: Date.now()
+      originName: fileName.replace(/^images\//, ''), payload: '', content: '',
+      docName: '', deletedAt: Date.now()
     });
+  }
+
+  /** 路径是否存在（拿不准就按不存在处理，交给上层兜底）。 */
+  private static fileExists(path: string): boolean {
+    try {
+      return fs.accessSync(path);
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /** 文档正文文件：先按原样找，再补 `.md` 找（两种命名历史上都出现过）。 */
+  private static findDocFile(ctx: common.UIAbilityContext, name: string): string {
+    const direct: string = DocStorePath(ctx, name);
+    if (RecycleStore.fileExists(direct)) {
+      return direct;
+    }
+    const withMd: string = direct + '.md';
+    if (RecycleStore.fileExists(withMd)) {
+      return withMd;
+    }
+    return '';
+  }
+
+  /** 图片文件：正常在 `docs/images/` 下（也试过直接躺在 `docs/` 里的老数据）。 */
+  private static findImageFile(ctx: common.UIAbilityContext, name: string): string {
+    const bare: string = name.replace(/^images\//, '');
+    const inImages: string = ImagesPath(ctx) + '/' + bare;
+    if (RecycleStore.fileExists(inImages)) {
+      return inImages;
+    }
+    const flat: string = DocStorePath(ctx, bare);
+    if (RecycleStore.fileExists(flat)) {
+      return flat;
+    }
+    return '';
   }
 
   /** **批注入回收站**（payload=完整批注 JSON；hw 手写图一并移入）。 */

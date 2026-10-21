@@ -298,7 +298,7 @@ export struct SettingsData {
     const count: number = this.recycleItems.length;
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('清空回收站'),
-      message: L10n.t('将彻底删除回收站里的 ') + count + L10n.t(' 项内容（文档、图片、批注与手写笔迹），不可恢复。'),
+      message: L10n.t('将彻底删除回收站里的 ') + count + L10n.t(' 项内容（文档、图片、批注与手写笔记），不可恢复。'),
       buttons: [
         { text: L10n.t('取消'), color: this.palette().textSecondary },
         { text: L10n.t('清空'), color: '#FFD93B3B' }
@@ -1780,14 +1780,14 @@ export struct SettingsData {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── ⑤ 回收站（删除的文档 / 图片 / 批注 / 手写笔迹先进这里，可找回）──
+      // ── ⑤ 回收站（删除的文档 / 图片 / 批注 / 手写笔记先进这里，可找回）──
       ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('回收站'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
-          Text(L10n.t('删除的文档、图片、批注与手写笔迹会先进这里，可找回；外部导入的文档应用从不触碰你目录里的源文件，只有应用内新建的文档，彻底删除时才会真的删掉沙箱副本。'))
+          Text(L10n.t('删除的文档、图片、批注与手写笔记会先进这里，可找回；外部导入的文档应用从不触碰你目录里的源文件，只有应用内新建的文档，彻底删除时才会真的删掉沙箱副本。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
