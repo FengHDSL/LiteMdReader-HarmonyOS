@@ -559,9 +559,13 @@ export struct ReadingSettingsPanel {
   /**
    * 正文字重芯片（**等宽平铺**）：六档一行放不下会顶出卡片，按主题芯片那条同一教训拆成
    * 3 + 3 两行；置灰只作用于需要真粗体的两档。
+   *
+   * ⚠️ 置灰**必须挂在芯片自己身上**（dim 参数）：为了 opacity 在外面套一层 Column，
+   * 芯片的 layoutWeight(1) 就落到 Column 的竖向主轴上了——宽度只按内容算、高度被撑开，
+   * 两行之间出现一大片空白且「中等 粗」挤成一团（真机截图实测）。
    */
   @Builder
-  bodyWeightChip(mode: string, label: string) {
+  bodyWeightChip(mode: string, label: string, dim: boolean) {
     Text(label)
       .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
@@ -573,6 +577,7 @@ export struct ReadingSettingsPanel {
       .height(34)
       .borderRadius(HwRadius.inner)
       .backgroundColor(this.bodyWeight === mode ? this.palette().accentSoft : this.palette().quoteBg)
+      .opacity(dim ? 0.4 : 1)
       .onClick(() => {
         this.pickBodyWeight(mode);
       })
@@ -766,22 +771,16 @@ export struct ReadingSettingsPanel {
         // ── 正文字重：六档**绝对覆盖**（跟随 = 不覆盖）──
         this.sectionTitle('字体粗细')
         Row({ space: HwSpace.xs }) {
-          this.bodyWeightChip('follow', '跟随')
-          this.bodyWeightChip('thin', '细')
-          this.bodyWeightChip('light', '轻')
+          this.bodyWeightChip('follow', '跟随', false)
+          this.bodyWeightChip('thin', '细', false)
+          this.bodyWeightChip('light', '轻', false)
         }
         .width('100%')
 
         Row({ space: HwSpace.xs }) {
-          this.bodyWeightChip('regular', '常规')
-          Column() {
-            this.bodyWeightChip('medium', '中等')
-          }
-          .opacity(this.bodyBoldOk() ? 1 : 0.4)
-          Column() {
-            this.bodyWeightChip('bold', '粗')
-          }
-          .opacity(this.bodyBoldOk() ? 1 : 0.4)
+          this.bodyWeightChip('regular', '常规', false)
+          this.bodyWeightChip('medium', '中等', !this.bodyBoldOk())
+          this.bodyWeightChip('bold', '粗', !this.bodyBoldOk())
         }
         .width('100%')
 
