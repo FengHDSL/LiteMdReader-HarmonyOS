@@ -171,6 +171,38 @@ export interface MathSeg {
   rows: string[][];
 }
 
+/**
+ * **主线程卡死防护**（THREAD_BLOCK_6S 真机崩溃修复）：
+ * MathLite 的公式分段 / 线性化是纯函数，但病态输入（深层嵌套环境、超长公式）
+ * 会让递归解析指数级回溯，把主线程卡死 6 秒。两道防线：
+ *   ① memo 缓存：同一输入只算一次（MdView 每次重建都调 segments）；
+ *   ② 规模熔断：输入超过阈值直接降级返回，绝不进递归。
+ * 上限：segments/inlineText 各缓存 512 条（FIFO 淘汰），输入上限 20000 字符。
+ */
+const MATHLITE_MAX_INPUT: number = 20000;
+const MATHLITE_CACHE_MAX: number = 512;
+const segCache: Map<string, MathSeg[]> = new Map<string, MathSeg[]>();
+const inlineCache: Map<string, string> = new Map<string, string>();
+
+function cacheGet<T>(c: Map<string, T>, key: string): T | undefined {
+  const v: T | undefined = c.get(key);
+  if (v !== undefined) {
+    // LRU：命中后重新插入，移到队尾
+    c.delete(key);
+    c.set(key, v);
+  }
+  return v;
+}
+
+function cachePut<T>(c: Map<string, T>, key: string, v: T): void {
+  if (c.size >= MATHLITE_CACHE_MAX) {
+    // FIFO：删最早插入的
+    const first: string = c.keys().next().value as string;
+    c.delete(first);
+  }
+  c.set(key, v);
+}
+
 export class MathLite {
   /** 字母或数字（无花括号参数的单记号判定用）。 */
   private static isWordChar(ch: string): boolean {
@@ -576,6 +608,23 @@ export class MathLite {
 
   /** 行内线性化：把 LaTeX 折叠成单行 Unicode 文本。 */
   static inlineText(latex: string): string {
+    if (latex.length === 0) {
+      return '';
+    }
+    if (latex.length > MATHLITE_MAX_INPUT) {
+      // **规模熔断**：超长公式不进递归（线性化兜底见调用方）
+      return latex.substring(0, MATHLITE_MAX_INPUT);
+    }
+    const hit: string | undefined = cacheGet(inlineCache, latex);
+    if (hit !== undefined) {
+      return hit;
+    }
+    const r: string = MathLite.computeInline(latex);
+    cachePut(inlineCache, latex, r);
+    return r;
+  }
+
+  private static computeInline(latex: string): string {
     const out: string[] = [];
     let i: number = 0;
     const n: number = latex.length;
@@ -635,6 +684,23 @@ export class MathLite {
    * 文本段线性化；\frac / ^ / _ / \sqrt / \begin{矩阵} 产出结构段。
    */
   static segments(latex: string): MathSeg[] {
+    if (latex.length === 0) {
+      return [];
+    }
+    if (latex.length > MATHLITE_MAX_INPUT) {
+      // **规模熔断**：超长公式只按纯文本段返回，不进入解析
+      return [{ kind: 't', text: latex.substring(0, MATHLITE_MAX_INPUT), num: '', den: '', rows: [] }];
+    }
+    const hit: MathSeg[] | undefined = cacheGet(segCache, latex);
+    if (hit !== undefined) {
+      return hit;
+    }
+    const r: MathSeg[] = MathLite.computeSegments(latex);
+    cachePut(segCache, latex, r);
+    return r;
+  }
+
+  private static computeSegments(latex: string): MathSeg[] {
     const out: MathSeg[] = [];
     let buf: string = '';
     let i: number = 0;
