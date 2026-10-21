@@ -17,6 +17,7 @@ import { LegalDoc } from './LegalDoc';
 import { UpdateService, APP_MODE_OFFLINE } from '../service/UpdateService';
 import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
+import { Rating } from '../service/Rating';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
 import { promptAction } from '@kit.ArkUI';
@@ -180,6 +181,22 @@ export struct SettingsExplore {
     } catch (err) {
       // 读不到就沿用默认值
     }
+  }
+
+  /**
+   * 好评鼓励：调 AppGallery Kit 在**应用内**弹官方评分框（不跳市场详情页）。
+   * 只有真机 + 已登录华为账号才有反应；错误码在 Rating.ask 里映射成中文提示，
+   * 这里只负责把提示 toast 出去。
+   */
+  private rateApp(): void {
+    const ctx = this.hostCtx();
+    if (ctx === null) {
+      this.toast(L10n.t('评分弹窗暂时不可用，请稍后再试'));
+      return;
+    }
+    Rating.ask(ctx, (message: string) => {
+      this.toast(message);
+    });
   }
 
   private palette(): ReaderPalette {
@@ -450,6 +467,25 @@ export struct SettingsExplore {
                 this.stack.pushPath({ name: 'pages/Changelog' }, AppearanceFx.navAnimated());
               }
             })
+          }
+          .width('100%')
+
+          // ── 好评鼓励（用户要求）：单独一行，不与上面三枚芯片挤在一起 ──
+          // 点它**在应用内**弹应用市场的官方评分框（commentManager），不跳市场详情页
+          Row() {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FFB26A00',
+              chipActive: true,
+              chipLabel: L10n.t('好评鼓励'),
+              chipOnTap: () => {
+                this.rateApp();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.heart_fill'))
+                .fontSize(14)
+                .fontColor(['#FFB26A00'])
+            }
           }
           .width('100%')
         }

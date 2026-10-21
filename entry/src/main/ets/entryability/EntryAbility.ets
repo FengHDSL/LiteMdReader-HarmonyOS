@@ -61,6 +61,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('lastSeenVersion', '');
     // 上次自动检查更新的时间戳（固定 48 小时一次）
     PersistentStorage.persistProp('lastAutoCheckAt', 0);
+    // 好评鼓励：本机是否已经自动弹过一次应用内评分框（满 24 小时只弹一次，弹过不再打扰）
+    PersistentStorage.persistProp('ratingPrompted', false);
 
     PersistentStorage.persistProp('readerFontSize', 16);
     PersistentStorage.persistProp('readerLineHeight', 1.75);

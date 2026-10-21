@@ -83,8 +83,8 @@ export class SettingsMirror {
     // 材质档位（EntryAbility 每次启动会强制开材质，但等级/引擎选择仍应随备份走）
     'appearanceMaterialLevel', 'appearanceMaterialEngine',
     // **一次性标记与收藏名单**（第一腿 PersistentStorage 在真机强杀后不一定落盘，
-    // 这三项必须有第二腿：设置页首启弹窗 / 更新弹窗 / 48h 自动检查 / 收藏恢复）
-    'appMode', 'lastSeenVersion', 'lastAutoCheckAt',
+    // 这几项必须有第二腿：设置页首启弹窗 / 更新弹窗 / 48h 自动检查 / 好评只弹一次 / 收藏恢复）
+    'appMode', 'lastSeenVersion', 'lastAutoCheckAt', 'ratingPrompted',
     'starredDocsJson', 'starredTimesJson'
   ];
 

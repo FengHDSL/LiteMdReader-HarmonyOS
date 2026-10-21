@@ -82,6 +82,7 @@ import { HtmlViewer } from './HtmlViewer';
 import { GripAware } from '../service/GripAware';
 import { LegalDoc, LegalDocRoute } from './LegalDoc';
 import { UpdateService, APP_MODE_FULL, APP_MODE_OFFLINE } from '../service/UpdateService';
+import { Rating } from '../service/Rating';
 import { ChangelogEntry, latestChangelog } from '../service/Changelog';
 import { UpdateContentDialog } from '../components/UpdateContentDialog';
 import { AppModeDialog } from '../components/AppModeDialog';
@@ -448,6 +449,11 @@ struct Index {
     this.maybeShowUpdateDialog();
     // ── 自动检查更新：固定 48 小时一次，有更新用 toast 即时反馈 ──
     UpdateService.maybeAutoCheck(ctx, (message: string) => {
+      this.toast(message);
+    });
+    // ── 好评鼓励：安装满 24 小时后自动弹一次应用内评分框（只弹一次；
+    //    测试期立即弹，开关见 service/Rating.ets 顶部 RATE_TEST_IMMEDIATE）──
+    Rating.maybeAutoAsk(ctx, (message: string) => {
       this.toast(message);
     });
     // 启动页时序：首帧即显 → 1.2s 后开始淡出（420ms）→ 淡出结束移除
