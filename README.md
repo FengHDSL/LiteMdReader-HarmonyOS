@@ -306,6 +306,29 @@
   弹窗标题固定为「更新提示」由系统画。
 - 每 48 小时自动查一次（`lastAutoCheckAt`），任一渠道有更新用 toast 提醒，不弹窗打扰。
 
+### 界面字体
+
+- 「设置 → 外观 → 界面字体」选一款字体，**应用内界面文字**都跟着换；键是
+  `appFontFamily`（空串 = 系统默认）与开关 `appFontSyncReader`（是否同步到阅读正文），
+  两个键都进 `persistProp` + `SettingsMirror.KEYS`，「恢复默认」一起归零。
+- 实现方式：**逐组件挂 `fontFamily`**。这版 ArkUI 没有应用级字体钩子——`Theme` 只有
+  `colors`，`fontFamily` 也不是通用属性（只存在于 `Text` / `Span` / `Button` /
+  `TextInput` / `TextArea` / `Marquee`，挂在容器上不向子组件继承）。所以每个 struct 持有一个
+  `@StorageProp('appFontFamily') uiFontKey`，各组件写 `.fontFamily(HwFont.resolve(this.uiFontKey))`
+  （`HwFont.resolve` 自动附 `,HarmonyOS Sans` 回退）。进度可用只读脚本统计：
+  `node tools/check-ui-font.js`（列出每个文件带文字组件的总数与已挂数）。
+- **有意不跟着换的**：阅读正文与编辑预览（走 `readerFontFamily` + `HwFont.bodyFamily`，
+  由「同步应用到阅读页」开关决定是否跟随界面字体）、代码块与行号、公式与分子分母、
+  表格单元、字体选择器里的预览行（那些必须用正在预览的那款字画）、学习卡的题面与答案。
+- 桌面卡片跑在 FormExtension 独立进程，读不到主应用 AppStorage：`FormSync.buildData`
+  随 `bindingData` 多推一个 `cardFont` 键，卡片用 `@LocalStorageProp('cardFont')` 接。
+  因此卡片换字跟着**下一次卡片推送/刷新**生效。
+- 系统「字体安装和管理」里导入的字体（INSTALLED）**必须先注册**：真机实测直接取
+  `descriptor.fontFamily` 不生效，`FontStore.registerInstalledAll()` 会用
+  `descriptor.path` 走 `font.registerFont({familyName, familySrc:'file://'+path})`
+  （再把 fullName 也注册成别名）。读不到文件路径的款式进 `installFailed` 名单，
+  选择器里点它会直接说明"暂时用不了，可以把字体文件用导入字体导进来"。
+
 ### 好评鼓励
 
 - 「探索中心 → 好评鼓励」用隐式 Want **直达应用市场的「写评论」页**
