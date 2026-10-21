@@ -1016,8 +1016,22 @@ export struct MdBlockView {
   highlightTapHandler: (blockId: string, text: string) => void = () => {
   };
 
-  /** **跳转闪烁**（用户要求）：点批注跳转后，本块高亮闪烁（颜色与批注区分，用 accentSoft） */
-  @Prop flashHighlight: boolean = false;
+  /** **跳转闪烁**（用户要求）：闪 5 次，只闪批注选中的行（精确到荧光 span） */
+  @Prop flashOn: boolean = false;
+  /** 闪烁批注的原文（span 文本匹配） */
+  @Prop flashAnnText: string = '';
+
+  /** 闪烁时的荧光背景覆盖：闪烁批注的 span 用 accentSoft（与批注色区分），其余不闪 */
+  private flashBgFor(piece: MdPiece): TextBackgroundStyle | null {
+    if (!this.flashOn || this.flashAnnText.length === 0) {
+      return null;
+    }
+    if (piece.highlight.length > 0
+      && (piece.text === this.flashAnnText || this.flashAnnText.indexOf(piece.text) >= 0)) {
+      return { color: this.palette.accentSoft, radius: HwRadius.inline };
+    }
+    return null;
+  }
 
   /** 站内锚点跳转（`[文字](#标题)`）。同样只能用普通成员。 */
   anchorHandler: (href: string) => void = () => {
@@ -1806,7 +1820,8 @@ export struct MdBlockView {
           .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
-          .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
+          .textBackgroundStyle(this.flashBgFor(piece) ??
+            MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
           // 注音：基准字与读音两段互相抵消推进量，读音才落得在字**正上方**
           .letterSpacing(MdViewUtil.rubySpanShift(piece, size, HwFont.resolve(this.fontKey)))
@@ -1986,7 +2001,8 @@ export struct MdBlockView {
           .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
-          .textBackgroundStyle(MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
+          .textBackgroundStyle(this.flashBgFor(piece) ??
+            MdViewUtil.pieceBackground(piece, this.palette, this.hlOpacity))
           .baselineOffset(MdViewUtil.pieceBaseline(piece, size, HwFont.resolve(this.fontKey)))
           // 注音在表格单元格里也要压在字**正上方**（此前这条路没有 letterSpacing，
           // 同一份注音在正文里居中、在表格里跑到右边）
@@ -3794,15 +3810,6 @@ export struct MdBlockView {
 
   build() {
     Column() {
-      // **跳转闪烁背景**（用户要求）：点批注跳转后本块高亮闪烁 5 次（accentSoft，与批注色区分）
-      if (this.flashHighlight) {
-        Column()
-          .width('100%')
-          .height('100%')
-          .position({ x: 0, y: 0 })
-          .backgroundColor(this.palette.accentSoft)
-          .hitTestBehavior(HitTestMode.None)
-      }
       if (this.block.kind === MdBlockKind.Heading) {
         this.headingView()
       } else if (this.block.kind === MdBlockKind.Code) {

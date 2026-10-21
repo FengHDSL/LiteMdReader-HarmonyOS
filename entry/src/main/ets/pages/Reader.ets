@@ -4056,6 +4056,8 @@ export struct Reader {
   /** **跳转闪烁**：目标块 id 与闪烁开关（闪 5 次，accentSoft，与批注色区分） */
   @State flashBlockId: string = '';
   @State flashOn: boolean = false;
+  /** **跳转闪烁**：闪烁批注的原文（span 文本精确匹配用） */
+  @State flashAnnText: string = '';
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
@@ -4151,10 +4153,14 @@ export struct Reader {
   /** 批注 note 里的图片引用（![](images/x)）→ 条目里直接显示 */
   private noteImages(text: string): string[] {
     const out: string[] = [];
+    const seen: string[] = [];
     const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)/g;
     let m: RegExpExecArray | null = re.exec(text);
     while (m !== null) {
-      out.push(m[1]);
+      if (seen.indexOf(m[1]) < 0) {
+        seen.push(m[1]);
+        out.push(m[1]);
+      }
       m = re.exec(text);
     }
     return out;
@@ -4163,10 +4169,14 @@ export struct Reader {
   /** 批注 note 里的关联文档链接（[名称](doc://fileName)）→ 条目里出跳转 chip */
   private noteDocs(text: string): string[] {
     const out: string[] = [];
+    const seen: string[] = [];
     const re: RegExp = /\[([^\]]+)\]\(doc:\/\/([^)]+)\)/g;
     let m: RegExpExecArray | null = re.exec(text);
     while (m !== null) {
-      out.push(m[2]);
+      if (seen.indexOf(m[2]) < 0) {
+        seen.push(m[2]);
+        out.push(m[2]);
+      }
       m = re.exec(text);
     }
     return out;
@@ -4282,8 +4292,9 @@ export struct Reader {
    * **跳转并闪烁**（用户要求）：跳到批注所在块后，该块高亮闪烁 5 次
    * （accentSoft 底，与批注颜色区分）。闪烁由 interval 驱动 flashOn 翻转。
    */
-  private flashBlock(blockId: string): void {
+  private flashBlock(blockId: string, annText: string): void {
     this.flashBlockId = blockId;
+    this.flashAnnText = annText;
     let flips: number = 0;
     const timer: number = setInterval((): void => {
       this.flashOn = !this.flashOn;
@@ -8205,7 +8216,7 @@ export struct Reader {
                 .onClick(() => {
                   // **块居中显示**（用户要求：批注不出屏）+ 闪烁提示
                   this.jumpToBlockId(ann.blockId, true);
-                  this.flashBlock(ann.blockId);
+                  this.flashBlock(ann.blockId, ann.text);
                 })
                 // **删除 / 筛选淡出**（配 animateTo 的数组变更，其余卡片滑动补位）
                 .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
@@ -8590,7 +8601,8 @@ export struct Reader {
               ListItem() {
                 MdBlockView({
                   block: block,
-                  flashHighlight: this.flashBlockId === block.id && this.flashOn,
+                  flashOn: this.flashBlockId === block.id && this.flashOn,
+                  flashAnnText: this.flashAnnText,
                   palette: this.palette(),
                   bodySize: this.fontSize,
                   lineMul: this.lineMul,
@@ -9552,11 +9564,10 @@ export struct Reader {
 
 
 
-      // **点批注弹出的浮条**（重做：上下遮罩留中带——照 floatMask 洞模式，
-      // 洞内浮条完全不受遮罩 onClick 影响；按钮照 NotePanel 的 chip，已验证可点）
+      // **点批注弹出的浮条**（洞模式遮罩：上下遮罩留中带，洞内不受遮罩影响；
+      // 按钮用图标形式，浮条内显示批注里的插图缩略）
       if (this.tapAnnId.length > 0) {
         Column() {
-          // 上遮罩：点击关闭
           Column()
             .width('100%')
             .layoutWeight(1)
@@ -9564,7 +9575,6 @@ export struct Reader {
             .onClick(() => {
               this.closeTapBar();
             })
-          // 中带：浮条卡片（可交互区）
           Column() {
             Column({ space: HwSpace.xs }) {
               Row({ space: HwSpace.xs }) {
@@ -9575,41 +9585,52 @@ export struct Reader {
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
                   .layoutWeight(1)
-                ImmersiveChip({
+                ImmersiveIconButton({
+                  buttonSize: 30,
+                  buttonMaterialShadow: false,
                   palette: this.palette(),
-                  chipActive: true,
-                  chipLabel: L10n.t('修改'),
-                  chipOnTap: () => {
+                  buttonOnTap: () => {
                     const a: MdAnnotation | null = this.tapAnn();
                     if (a !== null) {
                       this.closeTapBar();
                       this.editAnn(a);
                     }
                   }
-                })
-                ImmersiveChip({
+                }) {
+                  SymbolGlyph($r('sys.symbol.square_and_pencil'))
+                    .fontSize(15)
+                    .fontColor([this.palette().accent])
+                }
+                ImmersiveIconButton({
+                  buttonSize: 30,
+                  buttonMaterialShadow: false,
                   palette: this.palette(),
-                  chipActive: true,
-                  chipLabel: L10n.t('复制'),
-                  chipOnTap: () => {
+                  buttonOnTap: () => {
                     const a: MdAnnotation | null = this.tapAnn();
                     if (a !== null) {
                       this.copyNoteText(this.stripNoteMeta(this.inlineClean(a.text)));
                     }
                   }
-                })
-                ImmersiveChip({
+                }) {
+                  SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                    .fontSize(15)
+                    .fontColor([this.palette().textSecondary])
+                }
+                ImmersiveIconButton({
+                  buttonSize: 30,
+                  buttonMaterialShadow: false,
                   palette: this.palette(),
-                  chipTint: '#FFD32F2F',
-                  chipActive: true,
-                  chipLabel: L10n.t('删除'),
-                  chipOnTap: () => {
+                  buttonOnTap: () => {
                     const a: MdAnnotation | null = this.tapAnn();
                     if (a !== null) {
                       this.askDeleteAnn(a);
                     }
                   }
-                })
+                }) {
+                  SymbolGlyph($r('sys.symbol.trash'))
+                    .fontSize(15)
+                    .fontColor(['#FFD32F2F'])
+                }
               }
               .width('100%')
               .alignItems(VerticalAlign.Center)
@@ -9619,6 +9640,17 @@ export struct Reader {
                 .maxLines(5)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
+              // **浮条内显示批注插图缩略**（点击放大）
+              ForEach(this.noteImages(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text + '\n' + ((this.tapAnn() as MdAnnotation).note) : ''), (img: string) => {
+                Image(this.resolvedNoteImg(img))
+                  .width('100%')
+                  .constraintSize({ maxHeight: 72 })
+                  .objectFit(ImageFit.Cover)
+                  .borderRadius(HwRadius.inner)
+                  .onClick(() => {
+                    this.openNoteImage(img, L10n.t('批注插图'));
+                  })
+              }, (img: string) => img)
             }
             .padding(HwSpace.md)
             .borderRadius(HwRadius.card)
@@ -9627,14 +9659,12 @@ export struct Reader {
             .transition(TransitionEffect.OPACITY
               .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
-          .width('100%')
-          .height('auto')
+          .width('76%')
           .onClick(() => {
           })
           .onTouch((e: TouchEvent) => {
             e.stopPropagation();
           })
-          // 下遮罩：点击关闭
           Column()
             .width('100%')
             .layoutWeight(1)
