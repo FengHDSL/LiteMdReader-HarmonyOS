@@ -718,6 +718,42 @@ export struct Reader {
     this.rotated = false;
     this.webZoom = 1;
     this.imgScale = 1;
+    // **批注插图恢复**（用户要求）：从侧边栏/浮条点开的插图，关闭后重新打开
+    // 侧边栏并滚回对应批注卡片；浮条则原位重新弹出
+    if (this.noteImgReturnDrawer || this.noteImgReturnTap) {
+      if (this.noteImgReturnDrawer) {
+        this.noteImgReturnDrawer = false;
+        this.openNotes();
+        const returnId: string = this.noteImgReturnAnnId;
+        const savedY: number = this.noteImgSavedY;
+        setTimeout((): void => {
+          // 先滚回记住的位置，再尽量对准那条批注卡片
+          try {
+            this.notesListScroller.scrollTo({ xOffset: 0, yOffset: savedY });
+          } catch (err) {
+            // 忽略
+          }
+          if (returnId.length > 0) {
+            const all: MdAnnotation[] = this.searchedAnnotations();
+            for (let k = 0; k < all.length; k++) {
+              if (all[k].id === returnId && k > 0) {
+                // 每张卡片上方还有分类筛选行与标题，粗略按卡片序补偿一屏的 1/6
+                try {
+                  this.notesListScroller.scrollTo({ xOffset: 0, yOffset: savedY + k * 120 });
+                } catch (err) {
+                  // 忽略
+                }
+                break;
+              }
+            }
+          }
+        }, 320);
+      }
+      if (this.noteImgReturnTap) {
+        this.noteImgReturnTap = false;
+        this.tapAnnId = this.noteImgReturnAnnId;
+      }
+    }
     // **对照面板恢复**（用户要求）：从对照面板里点开的浮层，关闭后自动把
     // 面板重新拉起（对照文档还选着，直接回到对照现场，不用重新选）
     if (this.compareSheetWasOpen) {
@@ -4060,6 +4096,12 @@ export struct Reader {
   @State flashOn: boolean = false;
   /** **跳转闪烁**：闪烁批注的原文（span 文本精确匹配用） */
   @State flashAnnText: string = '';
+  /** **查看插图时收起侧边栏/浮条**，关闭图片后恢复（用户要求） */
+  @State noteImgDrawerWasOpen: boolean = false;
+  @State noteImgReturnAnnId: string = '';
+  @State noteImgReturnTap: boolean = false;
+  @State noteImgSavedY: number = 0;
+  private notesListScroller: Scroller = new Scroller();
 
   private isExpanded(key: string): boolean {
     return this.expandedKeys.indexOf(key) >= 0;
@@ -4273,7 +4315,16 @@ export struct Reader {
     this.imgDx = 0;
     this.imgDy = 0;
     this.rotated = false;
-    // **先收浮条与批注抽屉再开浮层**（用户反馈图层错误）：抽屉/浮条永远盖住页面内浮层
+    // **先收浮条与批注抽屉再开浮层**（用户反馈图层错误）：抽屉/浮条永远盖住页面内浮层；
+    // **记录返回目标**（用户要求）：关闭图片后恢复抽屉（含滚动位置）与浮条
+    this.noteImgReturnAnnId = this.tapAnnId;
+    this.noteImgReturnTap = this.tapAnnId.length > 0;
+    this.noteImgDrawerWasOpen = this.notesOpen || this.notesPinned;
+    try {
+      this.noteImgSavedY = this.notesListScroller.currentOffset().yOffset;
+    } catch (err) {
+      this.noteImgSavedY = 0;
+    }
     this.closeTapBar();
     this.closePinned('notes');
     this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
@@ -8005,7 +8056,7 @@ export struct Reader {
           }
 
           // ── 滚动区：批注列表 + 脚注列表（只有这里随内容滚动）──
-          Scroll() {
+          Scroll(this.notesListScroller) {
             Column({ space: HwSpace.sm }) {
               if (this.searchedAnnotations().length === 0 && this.annotations.length > 0) {
                 Text(this.notesQuery.trim().length > 0
