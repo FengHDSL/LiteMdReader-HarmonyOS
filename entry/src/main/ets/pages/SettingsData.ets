@@ -238,14 +238,22 @@ export struct SettingsData {
     }
     const it: RecycleItem | null = RecycleStore.restore(c, id);
     if (it === null) {
-      this.toast(L10n.t('这条已经不在了'));
-      this.refreshRecycleItems();
+      // restore 返回 null 有两种：条目本来就不在，或**文件移不回去、已被放回列表**。
+      // 回读一次分辨清楚，别对着还在回收站里的东西说"已经不在了"。
+      this.recycleItems = RecycleStore.list(c);
+      if (this.recyclePending(id) !== null) {
+        this.toast(L10n.t('恢复失败：文件没能移回原位，内容还在回收站里'));
+      } else {
+        this.toast(L10n.t('这条已经不在了'));
+      }
       return;
     }
     if (it.kind === 'doc') {
       const meta: DocMeta | null = DocStore.create(c, it.docName, it.content);
       if (meta === null) {
-        this.toast(L10n.t('恢复失败：同名文档已存在'));
+        // 上面已探过同名，走到这里说明是别的原因失败：把条目送回回收站，正文不能凭空没了
+        RecycleStore.addDoc(c, it.title, it.content, it.originName, it.payload);
+        this.toast(L10n.t('恢复失败，文档已退回回收站'));
       } else {
         this.toast(L10n.t('已恢复到书架'));
       }
@@ -253,6 +261,8 @@ export struct SettingsData {
       if (RecycleStore.restoreAnno(c, it)) {
         this.toast(L10n.t('批注已恢复'));
       } else {
+        // 批注没写回去就把条目留下，否则用户以为恢复了其实两头空
+        RecycleStore.addAnno(c, it.payload, it.title, it.docName, it.originName);
         this.toast(L10n.t('原文档不在了，批注无法恢复'));
       }
     } else {
@@ -1876,7 +1886,14 @@ export struct SettingsData {
               }
               .width('100%')
               .alignItems(VerticalAlign.Center)
-            }, (item: RecycleItem) => item.id + '_' + this.recycleItems.length)
+              // **删除 / 恢复时的过渡**：淡出 + 向右滑走 + 轻微缩小。
+              // key 必须只用 item.id —— 原来还拼了列表长度，条数一变所有 key 全变，
+              // ArkUI 会把每一行都当成"新增 + 移除"，整列一起闪，看不出是删了一条。
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.translate({ x: 48 }))
+                .combine(TransitionEffect.scale({ x: 0.96, y: 0.9 }))
+                .animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
+            }, (item: RecycleItem) => item.id)
           }
 
           // ── 底部：总数 + 一键清空（空列表不出现清空入口）──

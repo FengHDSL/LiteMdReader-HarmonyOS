@@ -18,6 +18,9 @@
 
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import { AnnotationStore } from './AnnotationStore';
+import { DocStore } from './DocStore';
+import { MdAnnotation } from '../markdown/MdTypes';
 
 /** 回收站条目 */
 export interface RecycleItem {
@@ -338,13 +341,33 @@ export class RecycleStore {
     }
     RecycleStore.saveAll(ctx, RecycleStore.getPurgeDays(ctx), rest);
     if (target.kind === 'image' && target.fileName.length > 0) {
-      RecycleStore.moveOut(ctx, target.fileName, ImagesPath(ctx) + '/' + target.originName);
+      // 一篇从没插过图的文档，docs/images 目录可能压根不存在，openSync 不会自己建父目录
+      RecycleStore.ensureImagesDir(ctx);
+      const moved: boolean = RecycleStore.moveOut(ctx, target.fileName,
+        ImagesPath(ctx) + '/' + target.originName.replace(/^images\//, ''));
+      if (!moved) {
+        // 移不回去就不能把条目吞掉：放回列表让界面如实报"恢复失败"，东西还在回收站里
+        RecycleStore.push(ctx, target);
+        return null;
+      }
     }
     if (target.kind === 'anno' && target.fileName.length > 0) {
-      // 手写图移回 images
+      // 手写图移回 images（失败不拦批注本身：正文能回来，笔迹文件留在回收站里不丢）
+      RecycleStore.ensureImagesDir(ctx);
       RecycleStore.moveOut(ctx, target.fileName, ImagesPath(ctx) + '/' + target.originName.replace(/^images\//, ''));
     }
     return target;
+  }
+
+  /** 确保 `docs/images` 存在（恢复图片时用）。 */
+  private static ensureImagesDir(ctx: common.UIAbilityContext): void {
+    try {
+      if (!fs.accessSync(ImagesPath(ctx))) {
+        fs.mkdirSync(ImagesPath(ctx), true);
+      }
+    } catch (err) {
+      // 已存在或建不了（建不了会在 moveOut 里如实失败）
+    }
   }
 
   /** **彻底删除单个**（文件一并删除，不可恢复）。 */
@@ -382,21 +405,26 @@ export class RecycleStore {
     RecycleStore.saveAll(ctx, RecycleStore.getPurgeDays(ctx), []);
   }
 
-  /** 批注恢复：payload JSON 走 AnnotationStore 公共 API 写回（id 加后缀防冲突）。 */
+  /**
+   * 批注恢复：**必须走 AnnotationStore 的公开 API**。
+   * 之前这里自己拼路径、自己读写 JSON，错两处：① 批注文件名是 `sanitizeName(文档名)`，
+   * 拿原始文档名去拼根本找不到那个文件；② 批注文件的结构是 `{ items: [...] }`，
+   * 却被当成裸数组解析，push 直接抛异常 —— 两条叠加，**批注永远恢复不了**。
+   */
   static restoreAnno(ctx: common.UIAbilityContext, item: RecycleItem): boolean {
+    if (item.payload.length === 0 || item.docName.length === 0) {
+      return false;
+    }
+    // 原文档还在才写得回去：批注按文档名分片，文档没了就只剩一个没人会读的孤儿文件
+    if (DocStore.find(ctx, item.docName) === undefined) {
+      return false;
+    }
     try {
-      const ann = JSON.parse(item.payload) as Record<string, Object>;
-      ann['id'] = ann['id'] + '_r' + Date.now();
-      const list: Array<Record<string, Object>> =
-        JSON.parse(fs.readTextSync(AnnoPath(ctx, item.docName), { encoding: 'utf-8' })) as Array<Record<string, Object>>;
+      const ann = JSON.parse(item.payload) as MdAnnotation;
+      ann.id = ann.id + '_r' + Date.now();
+      const list: MdAnnotation[] = AnnotationStore.load(ctx, item.docName);
       list.push(ann);
-      const f: fs.File = fs.openSync(AnnoPath(ctx, item.docName),
-        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
-      try {
-        fs.writeSync(f.fd, JSON.stringify(list));
-      } finally {
-        fs.closeSync(f);
-      }
+      AnnotationStore.save(ctx, item.docName, list);
       return true;
     } catch (err) {
       return false;
@@ -413,7 +441,4 @@ function ImagesPath(ctx: common.UIAbilityContext): string {
 }
 function HwImagePath(ctx: common.UIAbilityContext, rel: string): string {
   return ImagesPath(ctx) + '/' + rel.replace(/^images\//, '');
-}
-function AnnoPath(ctx: common.UIAbilityContext, docKey: string): string {
-  return ctx.filesDir + '/annotations/' + docKey + '.json';
 }
