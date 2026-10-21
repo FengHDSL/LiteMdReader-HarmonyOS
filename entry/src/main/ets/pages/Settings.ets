@@ -69,7 +69,7 @@ const SECTIONS: SectionItem[] = [
   {
     name: L10n.t('数据管理'),
     route: 'pages/SettingsData',
-    note: 'zip / WebDAV 备份恢复 · 书架数据 · 缓存'
+    note: L10n.t('zip / WebDAV 备份恢复 · 书架数据 · 缓存')
   },
   {
     name: L10n.t('助手设置'),

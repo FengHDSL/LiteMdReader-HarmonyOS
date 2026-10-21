@@ -88,7 +88,8 @@ export struct SettingsReading {
             .fontSize(this.fontSize + 3)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
-          Text(L10n.t('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——') + '阅读时所见即所得，不用来回试。')
+          Text(L10n.t('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——') +
+            L10n.t('阅读时所见即所得，不用来回试。'))
             .fontSize(this.fontSize)
             .lineHeight(this.fontSize * this.lineMul)
             .fontColor(this.palette().textSecondary)

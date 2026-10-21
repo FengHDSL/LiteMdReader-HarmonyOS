@@ -202,7 +202,7 @@ export struct SettingsWriting {
       this.todayWords = 0;
       this.monthWords = 0;
       const e = err as BusinessError;
-      this.loadError = '数据加载失败：' + (e.message && e.message.length > 0
+      this.loadError = L10n.t('数据加载失败：') + (e.message && e.message.length > 0
         ? e.message : (e.code !== undefined ? 'code ' + e.code : L10n.t('未知错误')));
     }
   }
@@ -291,7 +291,7 @@ export struct SettingsWriting {
         hideName: m.hideCoverName === true,
         date: t.length >= 10 ? t.substring(5) : t,
         monthKey: monthKey,
-        monthLabel: y + ' 年 ' + mo + ' 月',
+        monthLabel: y + L10n.t(' 年 ') + mo + L10n.t(' 月'),
         words: m.wordCount
       };
       out.push(item);
@@ -314,7 +314,7 @@ export struct SettingsWriting {
   private fmt(n: number): string {
     const v: number = Math.round(n);
     if (v >= 10000) {
-      return (v / 10000).toFixed(1) + ' 万';
+      return (v / 10000).toFixed(1) + L10n.t(' 万');
     }
     const s: string = v.toString();
     const parts: string[] = [];
@@ -398,10 +398,10 @@ export struct SettingsWriting {
   @Builder
   overviewRow() {
     Row({ space: HwSpace.sm }) {
-      this.statCell(this.totalDocs.toString(), '总笔记')
-      this.statCell(this.fmt(this.totalWords), '累计字数')
-      this.statCell(this.fmt(this.monthWords), '本月字数')
-      this.statCell(this.fmt(this.todayWords), '今日字数')
+      this.statCell(this.totalDocs.toString(), L10n.t('总笔记'))
+      this.statCell(this.fmt(this.totalWords), L10n.t('累计字数'))
+      this.statCell(this.fmt(this.monthWords), L10n.t('本月字数'))
+      this.statCell(this.fmt(this.todayWords), L10n.t('今日字数'))
     }
     .width('100%')
     .alignItems(VerticalAlign.Top)
@@ -546,7 +546,7 @@ export struct SettingsWriting {
            .textOverflow({ overflow: TextOverflow.Ellipsis })
          Select(this.yearSelectOptions())
            .selected(this.yearOptions().indexOf(this.viewYear))
-           .value(this.viewYear + ' 年')
+           .value(this.viewYear + L10n.t(' 年'))
            .font({ size: HwType.label })
            .fontColor(this.palette().textPrimary)
            .backgroundColor(withAlpha(this.palette().accent, '2E'))
@@ -572,12 +572,12 @@ export struct SettingsWriting {
 
   /** 总结行文案（按 viewYear 全年统计：月增量求和 + 有产出天数）。 */
   private halfYearSummary(): string {
-    const label: string = this.viewYear + ' 年';
+    const label: string = this.viewYear + L10n.t(' 年');
     const s: YearStats = this.yearStats(this.viewYear);
     if (s.words <= 0) {
-      return label + '还没有写作记录';
+      return label + L10n.t('还没有写作记录');
     }
-    return label + '写下 ' + this.fmt(s.words) + ' 字 · ' + s.activeDays + ' 天有产出';
+    return label + L10n.t('写下 ') + this.fmt(s.words) + L10n.t(' 字 · ') + s.activeDays + L10n.t(' 天有产出');
   }
 
   /** 某年的写作统计：每日累计值求差（prev 跨月跨年连续跟踪）。 */
@@ -615,7 +615,7 @@ export struct SettingsWriting {
     const out: SelectOption[] = [];
     const ys: number[] = this.yearOptions();
     for (let k = 0; k < ys.length; k++) {
-      const opt: SelectOption = { value: ys[k] + ' 年' };
+      const opt: SelectOption = { value: ys[k] + L10n.t(' 年') };
       out.push(opt);
     }
     return out;
@@ -623,7 +623,7 @@ export struct SettingsWriting {
 
   /** 星期标注文案：row 0=周日 → '日'。 */
   private weekLabel(row: number): string {
-    const names: string[] = ['日', '一', '二', '三', '四', '五', '六'];
+    const names: string[] = [L10n.t('日'), L10n.t('一'), L10n.t('二'), L10n.t('三'), L10n.t('四'), L10n.t('五'), L10n.t('六')];
     return names[row];
   }
 
@@ -691,7 +691,7 @@ export struct SettingsWriting {
     const words: number = this.dayWordsOf(day);
     try {
       this.getUIContext().getPromptAction().showToast({
-        message: day + (words > 0 ? L10n.t(' · 写了 ') + this.fmt(words) + ' 字' : L10n.t(' · 没有写作')),
+        message: day + (words > 0 ? L10n.t(' · 写了 ') + this.fmt(words) + L10n.t(' 字') : L10n.t(' · 没有写作')),
         duration: 1400
       });
     } catch (err) {
@@ -719,7 +719,7 @@ export struct SettingsWriting {
       if (col < 0 || col >= HEAT_WEEKS) {
         continue;
       }
-      const mark: MonthMark = { label: m + '月', col: col };
+      const mark: MonthMark = { label: m + L10n.t('月'), col: col };
       out.push(mark);
     }
     return out;
@@ -780,7 +780,7 @@ export struct SettingsWriting {
                     .fontColor(this.palette().accent)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(this.fmt(item.words) + ' 字 · ' + item.date)
+                  Text(this.fmt(item.words) + L10n.t(' 字 · ') + item.date)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)

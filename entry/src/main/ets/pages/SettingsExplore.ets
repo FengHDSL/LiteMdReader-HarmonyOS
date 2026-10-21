@@ -52,7 +52,7 @@ const CREDITS: CreditItem[] = [
   {
     name: 'MrCashmere / miha_hm',
     url: 'https://github.com/MrCashmere/miha_hm',
-    note: '沉浸光感承载层（Toggle + attributeModifier）方案参考'
+    note: L10n.t('沉浸光感承载层（Toggle + attributeModifier）方案参考')
   },
   {
     name: 'skadjhljhas / zhumo-reader',
@@ -62,12 +62,12 @@ const CREDITS: CreditItem[] = [
   {
     name: 'Vanessa219 / vditor',
     url: 'https://github.com/Vanessa219/vditor',
-    note: 'Markdown 编辑器三种模式（所见即所得 / 即时渲染 / 分屏预览）与编辑功能设计参考'
+    note: L10n.t('Markdown 编辑器三种模式（所见即所得 / 即时渲染 / 分屏预览）与编辑功能设计参考')
   },
   {
     name: 'luvi / lv-markdown-in',
     url: 'https://gitee.com/luvi/lv-markdown-in',
-    note: 'Markdown 渲染能力参考：代码块行号 / 折叠 / 操作区、HTML 常用标签与 font 快速样式、懒渲染与预渲染块数思路'
+    note: L10n.t('Markdown 渲染能力参考：代码块行号 / 折叠 / 操作区、HTML 常用标签与 font 快速样式、懒渲染与预渲染块数思路')
   }
 ];
 
@@ -111,7 +111,7 @@ export struct SettingsExplore {
    *  用 @StorageLink：弹窗选择后按钮文案与颜色**当帧**更新（@StorageProp 不保证回刷） */
   @StorageLink('appMode') appMode: string = '';
   /** 使用模式弹窗（可重新选择） */
-  @State modeTitle: string = '重新选择使用模式';
+  @State modeTitle: string = L10n.t('重新选择使用模式');
   @State modeCurrent: string = '';
   modeDialog: CustomDialogController = new CustomDialogController({
     builder: AppModeDialog({
@@ -260,7 +260,7 @@ export struct SettingsExplore {
   private openLink(url: string): void {
     const c = this.getUIContext().getHostContext();
     if (c === undefined || c === null) {
-      this.toast('打不开浏览器：' + url);
+      this.toast(L10n.t('打不开浏览器：') + url);
       return;
     }
     const want: Want = {
@@ -269,10 +269,10 @@ export struct SettingsExplore {
     };
     try {
       (c as common.UIAbilityContext).startAbility(want).catch(() => {
-        this.toast('打不开浏览器：' + url);
+        this.toast(L10n.t('打不开浏览器：') + url);
       });
     } catch (err) {
-      this.toast('打不开浏览器：' + url);
+      this.toast(L10n.t('打不开浏览器：') + url);
     }
   }
 
@@ -391,7 +391,7 @@ export struct SettingsExplore {
                 .fontSize(HwFont.sx(HwType.label + 6, this.uiFontScale))
                 .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
-              Text(L10n.t('版本 ') + this.versionName + ' · HarmonyOS 原生')
+              Text(L10n.t('版本 ') + this.versionName + L10n.t(' · HarmonyOS 原生'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
@@ -403,7 +403,7 @@ export struct SettingsExplore {
           .alignItems(VerticalAlign.Center)
 
           Text(L10n.t('一款沉浸光感 Markdown 阅读器：卡片化排版、荧光笔批注、多标签阅读、') +
-            '函数绘制壁纸，数据留在本机。')
+            L10n.t('函数绘制壁纸，数据留在本机。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
@@ -506,7 +506,8 @@ export struct SettingsExplore {
           .width('100%')
           .alignItems(VerticalAlign.Center)
 
-          Text(L10n.t('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、') + '「点了段落为什么改不了」这类。支持关键词搜索。')
+          Text(L10n.t('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、') +
+            L10n.t('「点了段落为什么改不了」这类。支持关键词搜索。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
@@ -539,7 +540,8 @@ export struct SettingsExplore {
             .width('100%')
 
           // **致谢**（用户要求）：标题下方一句，向参考项目致意
-          Text(L10n.t('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，') + '在此向这些付出致意。')
+          Text(L10n.t('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，') +
+            L10n.t('在此向这些付出致意。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
@@ -610,7 +612,7 @@ export struct SettingsExplore {
               chipActive: true,
               chipLabel: L10n.t('使用模式：') + (this.appMode === APP_MODE_OFFLINE ? L10n.t('基础（纯离线）') : L10n.t('全量')),
               chipOnTap: () => {
-                this.modeTitle = '重新选择使用模式';
+                this.modeTitle = L10n.t('重新选择使用模式');
                 this.modeCurrent = this.appMode;
                 this.modeDialog.open();
               }

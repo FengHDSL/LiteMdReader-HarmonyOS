@@ -113,7 +113,7 @@ export struct SettingsData {
   @State previewScale: number = 1;
   private previewPinchBase: number = 1;
   /** 缓存大小文案（storageStatistics 统计，清除后延迟重算） */
-  @State cacheSizeText: string = '计算中…';
+  @State cacheSizeText: string = L10n.t('计算中…');
   /** 批注数据管理：预览展开态 + 跨文档批注聚合 */
   @State annoOpen: boolean = false;
   @State annoPreview: AnnoPreviewItem[] = [];
@@ -198,7 +198,7 @@ export struct SettingsData {
     if (days <= 0) {
       this.toast(L10n.t('回收站不再自动清空'));
     } else {
-      this.toast('自动清空：删除后保留 ' + days + ' 天（当前 ' + this.recycleItems.length + ' 项）');
+      this.toast(L10n.t('自动清空：删除后保留 ') + days + L10n.t(' 天（当前 ') + this.recycleItems.length + L10n.t(' 项）'));
     }
   }
 
@@ -295,7 +295,7 @@ export struct SettingsData {
       this.refreshRecycleItems();
       this.toast(L10n.t('已彻底删除'));
     }).catch((err: BusinessError) => {
-      this.toast('操作失败：' + err.message);
+      this.toast(L10n.t('操作失败：') + err.message);
     });
   }
 
@@ -322,7 +322,7 @@ export struct SettingsData {
       this.refreshRecycleItems();
       this.toast(L10n.t('已清空回收站'));
     }).catch((err: BusinessError) => {
-      this.toast('操作失败：' + err.message);
+      this.toast(L10n.t('操作失败：') + err.message);
     });
   }
 
@@ -402,28 +402,28 @@ export struct SettingsData {
     if (days <= 0) {
       this.toast(L10n.t('已关闭自动备份'));
     } else {
-      this.toast('自动备份：每 ' + days + ' 天（应用启动时检查，到点自动上传）');
+      this.toast(L10n.t('自动备份：每 ') + days + L10n.t(' 天（应用启动时检查，到点自动上传）'));
     }
   }
 
   /** 自动备份状态行（间隔 / 上次 / 下次）。 */
   private webdavAutoLine(): string {
     if (this.webdavAutoDays <= 0) {
-      return '自动备份：关闭（选择间隔后，应用启动时到点自动上传）';
+      return L10n.t('自动备份：关闭（选择间隔后，应用启动时到点自动上传）');
     }
     const c = this.ctx();
-    const line: string = '自动备份：每 ' + this.webdavAutoDays + ' 天'
+    const line: string = L10n.t('自动备份：每 ') + this.webdavAutoDays + L10n.t(' 天')
       + (this.webdavLastAt > 0 ? L10n.t(' · 上次 ') + this.stampOf(this.webdavLastAt) : L10n.t(' · 尚未备份'));
     if (c === null) {
       return line;
     }
     const left: number = WebDavStore.msToNextAuto(c);
     if (left === 0) {
-      return line + ' · 已到期（下次启动应用时自动上传）';
+      return line + L10n.t(' · 已到期（下次启动应用时自动上传）');
     }
     if (left > 0) {
       const hours: number = Math.ceil(left / 3600000);
-      return line + ' · 约 ' + (hours >= 24 ? Math.round(hours / 24) + ' 天后' : hours + ' 小时后');
+      return line + L10n.t(' · 约 ') + (hours >= 24 ? Math.round(hours / 24) + L10n.t(' 天后') : hours + L10n.t(' 小时后'));
     }
     return line;
   }
@@ -467,7 +467,7 @@ export struct SettingsData {
     }
     // ② 沙箱数据（文档 / 批注 / AI / 备份 / 壁纸 / 草稿 …）与缓存、各类 Preferences
     BackupStore.wipeAll(c).then((msg: string) => {
-      this.toast(msg + '，应用即将退出');
+      this.toast(msg + L10n.t('，应用即将退出'));
       // ③ 退出应用：下次启动就是全新安装的初始状态
       setTimeout(() => {
         c.terminateSelf();
@@ -500,24 +500,24 @@ export struct SettingsData {
       return;
     }
     this.backing = true;
-    this.backupStatus = '开始备份…';
+    this.backupStatus = L10n.t('开始备份…');
     WebDavStore.backupAll(c, cfg, (done: number, total: number, label: string) => {
-      this.backupStatus = '备份中 ' + done + ' / ' + total + ' · ' + label;
+      this.backupStatus = L10n.t('备份中 ') + done + ' / ' + total + ' · ' + label;
     }).then((result: WebDavResult) => {
       this.backing = false;
       if (result.error.length === 0) {
-        this.backupStatus = '备份完成：' + result.uploaded + ' 个文件';
+        this.backupStatus = L10n.t('备份完成：') + result.uploaded + L10n.t(' 个文件');
         this.toast(L10n.t('备份完成'));
         // 记一次成功时间（自动备份的到期判定以它为基准）
         this.webdavLastAt = Date.now();
         WebDavStore.markBackedUp(c);
       } else {
-        this.backupStatus = '备份中断：' + result.error;
+        this.backupStatus = L10n.t('备份中断：') + result.error;
         this.toast(L10n.t('备份中断'));
       }
     }).catch((e: BusinessError) => {
       this.backing = false;
-      this.backupStatus = '备份失败：' + e.message;
+      this.backupStatus = L10n.t('备份失败：') + e.message;
     });
   }
 
@@ -544,7 +544,7 @@ export struct SettingsData {
       this.getUIContext().showAlertDialog({
         title: L10n.t('从 WebDAV 恢复备份？'),
         message: L10n.t('会用服务器上的完整备份包覆盖本机同名数据')
-          + '（文档、书架、AI 对话记录、批注、设置）。',
+          + L10n.t('（文档、书架、AI 对话记录、批注、设置）。'),
         primaryButton: {
           value: L10n.t('取消'),
           action: () => {
@@ -576,7 +576,7 @@ export struct SettingsData {
       return;
     }
     this.restoring = true;
-    this.backupStatus = '开始恢复…';
+    this.backupStatus = L10n.t('开始恢复…');
     WebDavStore.restoreFull(c, cfg, (label: string) => {
       this.backupStatus = label;
     }).then((msg: string) => {
@@ -585,7 +585,7 @@ export struct SettingsData {
       this.toast(msg.indexOf('失败') >= 0 || msg.indexOf('没有') >= 0 ? L10n.t('恢复未完成') : L10n.t('恢复完成'));
     }).catch((e: BusinessError) => {
       this.restoring = false;
-      this.backupStatus = '恢复失败：' + e.message;
+      this.backupStatus = L10n.t('恢复失败：') + e.message;
     });
   }
 
@@ -626,7 +626,7 @@ export struct SettingsData {
       return;
     }
     if (delayMs > 0) {
-      this.cacheSizeText = '计算中…';
+      this.cacheSizeText = L10n.t('计算中…');
       setTimeout(() => this.refreshCacheSize(0), delayMs);
       return;
     }
@@ -638,13 +638,13 @@ export struct SettingsData {
   /** 批注形态分类文字（与注释抽屉同一套口径）。 */
   private annoKindLabel(a: MdAnnotation): string {
     if (a.style === 'card') {
-      return '学习卡';
+      return L10n.t('学习卡');
     }
     if (a.style === 'wavy') {
-      return '波浪线';
+      return L10n.t('波浪线');
     }
     if (a.style === 'dbl') {
-      return '手写批注';
+      return L10n.t('手写批注');
     }
     return a.note.length > 0 ? L10n.t('文字批注') : L10n.t('荧光笔');
   }
@@ -847,7 +847,7 @@ export struct SettingsData {
         this.toast(m);
       });
     } catch (err) {
-      this.toast('导出失败：' + (err as BusinessError).message);
+      this.toast(L10n.t('导出失败：') + (err as BusinessError).message);
     }
   }
 
@@ -860,7 +860,7 @@ export struct SettingsData {
     if (ctx === null) {
       return;
     }
-    this.toast('正在下载网络图片…');
+    this.toast(L10n.t('正在下载网络图片…'));
     const req = http.createHttp();
     req.request(url, {
       method: http.RequestMethod.GET,
@@ -878,11 +878,11 @@ export struct SettingsData {
           this.toast(m);
         });
       } else {
-        this.toast('下载失败：HTTP ' + resp.responseCode);
+        this.toast(L10n.t('下载失败：HTTP ') + resp.responseCode);
       }
     }).catch((err: BusinessError) => {
       req.destroy();
-      this.toast('下载失败：' + err.message);
+      this.toast(L10n.t('下载失败：') + err.message);
     });
   }
 
@@ -895,7 +895,7 @@ export struct SettingsData {
     try {
       const n: number = DocStore.restoreBuiltins(ctx);
       this.loadBuiltins();
-      this.toast(n > 0 ? L10n.t('已恢复 ') + n + ' 篇内置教程' : L10n.t('没有需要恢复的内置教程'));
+      this.toast(n > 0 ? L10n.t('已恢复 ') + n + L10n.t(' 篇内置教程') : L10n.t('没有需要恢复的内置教程'));
     } catch (err) {
       this.toast(L10n.t('恢复失败'));
     }
@@ -920,10 +920,10 @@ export struct SettingsData {
         this.toast(L10n.t('没有需要找回的文档：目录里的文件都已在书架上'));
         return;
       }
-      this.toast('找回 ' + names.length + ' 篇：' + names.slice(0, 3).join('、')
+      this.toast(L10n.t('找回 ') + names.length + L10n.t(' 篇：') + names.slice(0, 3).join('、')
         + (names.length > 3 ? '…' : ''));
     } catch (err) {
-      this.toast('找回失败：' + DocStore.describeError(err as BusinessError));
+      this.toast(L10n.t('找回失败：') + DocStore.describeError(err as BusinessError));
     }
   }
 
@@ -946,12 +946,12 @@ export struct SettingsData {
       if (DocStore.remove(ctx, name)) {
         this.pendingDeleteDoc = '';
         this.loadBuiltins();
-        this.toast('已删除「' + name + '」及其本地文件');
+        this.toast(L10n.t('已删除「') + name + L10n.t('」及其本地文件'));
       } else {
         this.toast(L10n.t('删除失败'));
       }
     } catch (err) {
-      this.toast('删除失败：' + DocStore.describeError(err as BusinessError));
+      this.toast(L10n.t('删除失败：') + DocStore.describeError(err as BusinessError));
     }
   }
 
@@ -970,7 +970,7 @@ export struct SettingsData {
     try {
       content = DocStore.readText(ctx, meta);
     } catch (err) {
-      this.toast('读取失败：' + DocStore.describeError(err as BusinessError));
+      this.toast(L10n.t('读取失败：') + DocStore.describeError(err as BusinessError));
       return;
     }
     const docPicker = new picker.DocumentViewPicker(ctx);
@@ -986,12 +986,12 @@ export struct SettingsData {
           fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
         fs.writeSync(file.fd, content);
         fs.closeSync(file);
-        this.toast('已导出「' + meta.fileName + '」');
+        this.toast(L10n.t('已导出「') + meta.fileName + '」');
       } catch (writeErr) {
-        this.toast('写入失败：' + DocStore.describeError(writeErr as BusinessError));
+        this.toast(L10n.t('写入失败：') + DocStore.describeError(writeErr as BusinessError));
       }
     }).catch((e: BusinessError) => {
-      this.toast('导出失败：' + e.message);
+      this.toast(L10n.t('导出失败：') + e.message);
     });
   }
 
@@ -1031,8 +1031,8 @@ export struct SettingsData {
       this.getUIContext().showAlertDialog({
         title: L10n.t('从书架中移除内置文档？'),
         message: L10n.t('内置文档**不能删除**，只能从书架上移除显示。')
-          + '移除后书架上看不到它们，但正文仍在应用内，'
-          + '随时可以在本页「已移除的内置教程」里恢复回书架。',
+          + L10n.t('移除后书架上看不到它们，但正文仍在应用内，')
+          + L10n.t('随时可以在本页「已移除的内置教程」里恢复回书架。'),
         primaryButton: {
           value: L10n.t('取消'),
           action: () => {
@@ -1076,7 +1076,7 @@ export struct SettingsData {
     this.pendingDeleteDoc = '';
     this.loadBuiltins();
     this.toast(n > 0
-      ? L10n.t('已从书架移除 ') + n + ' 篇内置文档，可在本页恢复'
+      ? L10n.t('已从书架移除 ') + n + L10n.t(' 篇内置文档，可在本页恢复')
       : L10n.t('内置文档本来就已全部移除'));
   }
 
@@ -1088,7 +1088,7 @@ export struct SettingsData {
       return;
     }
     this.zipBusy = true;
-    this.zipStatus = '正在打包…';
+    this.zipStatus = L10n.t('正在打包…');
     BackupStore.exportZip(ctx).then((msg: string) => {
       this.zipBusy = false;
       this.zipStatus = msg;
@@ -1099,7 +1099,7 @@ export struct SettingsData {
       this.refreshCacheSize(500);
     }).catch((err: BusinessError) => {
       this.zipBusy = false;
-      this.zipStatus = '导出失败：' + err.message;
+      this.zipStatus = L10n.t('导出失败：') + err.message;
     });
   }
 
@@ -1109,7 +1109,7 @@ export struct SettingsData {
       return;
     }
     this.zipBusy = true;
-    this.zipStatus = '正在导入…';
+    this.zipStatus = L10n.t('正在导入…');
     BackupStore.importZip(ctx).then((msg: string) => {
       this.zipBusy = false;
       this.zipStatus = msg;
@@ -1122,7 +1122,7 @@ export struct SettingsData {
       }
     }).catch((err: BusinessError) => {
       this.zipBusy = false;
-      this.zipStatus = '导入失败：' + err.message;
+      this.zipStatus = L10n.t('导入失败：') + err.message;
     });
   }
 
@@ -1137,7 +1137,7 @@ export struct SettingsData {
       // 清完延迟重算缓存大小（等系统回收磁盘空间）
       this.refreshCacheSize(500);
     }).catch((err: BusinessError) => {
-      this.zipStatus = '清除失败：' + err.message;
+      this.zipStatus = L10n.t('清除失败：') + err.message;
     });
   }
 
@@ -1319,8 +1319,8 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
-          Text(L10n.t('全部批注共 ') + this.annoTotal + ' 条，覆盖 ' + this.annoDocs + ' 篇文档。'
-            + '批注随「导出备份」一并打包（annotations 目录），预览最多列出 100 条。')
+          Text(L10n.t('全部批注共 ') + this.annoTotal + L10n.t(' 条，覆盖 ') + this.annoDocs + L10n.t(' 篇文档。')
+            + L10n.t('批注随「导出备份」一并打包（annotations 目录），预览最多列出 100 条。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
@@ -1393,7 +1393,7 @@ export struct SettingsData {
           }
 
           if (this.annoTotal > 100 && this.annoOpen) {
-            Text(L10n.t('共 ') + this.annoTotal + ' 条，仅显示前 100 条 —— 全部内容以备份文件为准。')
+            Text(L10n.t('共 ') + this.annoTotal + L10n.t(' 条，仅显示前 100 条 —— 全部内容以备份文件为准。'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
@@ -1411,8 +1411,8 @@ export struct SettingsData {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
-          Text(L10n.t('内置文档共 ') + this.builtinList.length + ' 篇 —— **内置文档不能删除**，'
-            + '只能从书架上移除显示（移除后可在本页恢复）。下方「我的文档」是你的自建内容。')
+          Text(L10n.t('内置文档共 ') + this.builtinList.length + L10n.t(' 篇 —— **内置文档不能删除**，')
+            + L10n.t('只能从书架上移除显示（移除后可在本页恢复）。下方「我的文档」是你的自建内容。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
@@ -1429,7 +1429,7 @@ export struct SettingsData {
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(meta.wordCount + ' 字 · ' + DocStore.formatTime(meta.mtime))
+                  Text(meta.wordCount + L10n.t(' 字 · ') + DocStore.formatTime(meta.mtime))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
@@ -1468,7 +1468,7 @@ export struct SettingsData {
           // ── 我的文档（自建）──
           Divider().strokeWidth(1).color(this.palette().divider)
 
-          Text(L10n.t('我的文档（') + this.myDocs.length + ' 篇）')
+          Text(L10n.t('我的文档（') + this.myDocs.length + L10n.t(' 篇）'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
@@ -1490,7 +1490,7 @@ export struct SettingsData {
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(meta.wordCount + ' 字 · ' + DocStore.formatTime(meta.mtime))
+                  Text(meta.wordCount + L10n.t(' 字 · ') + DocStore.formatTime(meta.mtime))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
@@ -1562,8 +1562,8 @@ export struct SettingsData {
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .width('100%')
-          Text(L10n.t('本地图片 ') + this.localImages.length + ' 张 · 网络图片 ' + this.netImages
-            + ' 张。删除只从列表移除，**不会删除本地文件**。')
+          Text(L10n.t('本地图片 ') + this.localImages.length + L10n.t(' 张 · 网络图片 ') + this.netImages
+            + L10n.t(' 张。删除只从列表移除，**不会删除本地文件**。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
@@ -1815,11 +1815,11 @@ export struct SettingsData {
             wrap: FlexWrap.Wrap,
             space: { main: LengthMetrics.vp(HwSpace.xs), cross: LengthMetrics.vp(HwSpace.xs) }
           }) {
-            this.recycleDaysChip('2 天', 2)
-            this.recycleDaysChip('5 天', 5)
-            this.recycleDaysChip('7 天', 7)
-            this.recycleDaysChip('30 天', 30)
-            this.recycleDaysChip('不自动清空', 0)
+            this.recycleDaysChip(L10n.t('2 天'), 2)
+            this.recycleDaysChip(L10n.t('5 天'), 5)
+            this.recycleDaysChip(L10n.t('7 天'), 7)
+            this.recycleDaysChip(L10n.t('30 天'), 30)
+            this.recycleDaysChip(L10n.t('不自动清空'), 0)
           }
           .width('100%')
           // 档位切换的提示出现 / 消失带过渡（凡事带动画）
@@ -1940,10 +1940,10 @@ export struct SettingsData {
             .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
             .width('100%')
 
-          this.fieldRow('服务器地址', 'https://dav.example.com/dav', this.webdavServer, 'server')
-          this.fieldRow('账号', '用户名', this.webdavUser, 'user')
-          this.fieldRow('密码 / 应用密码', '密码', this.webdavPassword, 'pass')
-          this.fieldRow('远端目录', 'litemdreader', this.webdavDir, 'dir')
+          this.fieldRow(L10n.t('服务器地址'), 'https://dav.example.com/dav', this.webdavServer, 'server')
+          this.fieldRow(L10n.t('账号'), L10n.t('用户名'), this.webdavUser, 'user')
+          this.fieldRow(L10n.t('密码 / 应用密码'), L10n.t('密码'), this.webdavPassword, 'pass')
+          this.fieldRow(L10n.t('远端目录'), 'litemdreader', this.webdavDir, 'dir')
 
           Row({ space: HwSpace.sm }) {
             ImmersiveChip({
@@ -1985,10 +1985,10 @@ export struct SettingsData {
             wrap: FlexWrap.Wrap,
             space: { main: LengthMetrics.vp(HwSpace.xs), cross: LengthMetrics.vp(HwSpace.xs) }
           }) {
-            this.intervalChip('关闭', 0)
-            this.intervalChip('每天', 1)
-            this.intervalChip('每 3 天', 3)
-            this.intervalChip('每周', 7)
+            this.intervalChip(L10n.t('关闭'), 0)
+            this.intervalChip(L10n.t('每天'), 1)
+            this.intervalChip(L10n.t('每 3 天'), 3)
+            this.intervalChip(L10n.t('每周'), 7)
           }
           .width('100%')
           // 间隔切换的提示行出现 / 消失带过渡（凡事带动画）
@@ -2022,7 +2022,8 @@ export struct SettingsData {
             .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor('#FFD93B3B')
             .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-          Text(L10n.t('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。')
+          Text(L10n.t('清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') +
+            L10n.t('阅读设置与外观、版本历史与备份记录。效果等同于卸载后重装，且无法恢复。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
