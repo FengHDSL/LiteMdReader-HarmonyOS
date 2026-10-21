@@ -59,6 +59,10 @@ import { AppearanceFx } from '../service/AppearanceFx';
 @Component
 export struct SheetKeyboardLift {
   @StorageProp('keyboardPx') keyboardPx: number = 0;
+  /** 窗口高（px，AppWindow 广播）：用来给垫高设上限，没有就当未知、按整段键盘垫。 */
+  @StorageProp('windowHpx') windowHpx: number = 0;
+  /** 内容实测高（**vp**，Area 给的就是 vp）：垫高后整张面板不许顶出窗口。 */
+  @State private contentVp: number = 0;
 
   @Builder
   doNothing() {
@@ -66,17 +70,40 @@ export struct SheetKeyboardLift {
 
   @BuilderParam content: () => void = this.doNothing;
 
-  /** 键盘占位（px → vp）；键盘收起时为 0，不垫任何高度。 */
+  /**
+   * 键盘占位（px → vp）；键盘收起时为 0，不垫任何高度。
+   *
+   * ⚠️ **必须封顶**：fitContent 面板长高到「内容 + 整段键盘」时，
+   * 内容本身偏高一点（批注面板就是：原文条 + 选色行 + 输入框 + 按钮）整张面板
+   * 就顶到状态栏，输入框反而被推到屏幕最上边、下面空一大截（真机截图）。
+   * 所以只垫到"面板底边正好贴住窗口下沿"为止：`room = 窗口高 − 内容高 − 顶部留白`。
+   */
   private liftVp(): number {
     if (this.keyboardPx <= 0) {
       return 0;
     }
-    return Math.round(this.getUIContext().px2vp(this.keyboardPx));
+    const kb: number = Math.round(this.getUIContext().px2vp(this.keyboardPx));
+    if (this.windowHpx <= 0 || this.contentVp <= 0) {
+      return kb;
+    }
+    const screenVp: number = Math.round(this.getUIContext().px2vp(this.windowHpx));
+    const room: number = screenVp - 24 - this.contentVp;
+    return Math.max(0, Math.min(kb, room));
   }
 
   build() {
     Column() {
-      this.content()
+      Column() {
+        this.content()
+      }
+      .width('100%')
+      // 只量内容自己（不含外层 padding），所以改 padding 不会反过来改到这个值，不会来回抖
+      .onAreaChange((_oldArea: Area, newArea: Area): void => {
+        const h: Length = newArea.height;
+        if (typeof h === 'number' && h > 0) {
+          this.contentVp = Math.round(h);
+        }
+      })
     }
     .width('100%')
     .padding({ bottom: this.liftVp() })
