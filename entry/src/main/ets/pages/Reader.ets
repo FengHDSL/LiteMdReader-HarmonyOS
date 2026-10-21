@@ -5976,7 +5976,10 @@ export struct Reader {
       barPaddingV: HwSpace.xs,
       barHeight: HwBar.pill,
       barWidth: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : this.bottomBarMiniWidth(),
-      barWidthPx: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : this.bottomBarMiniWidth()
+      barWidthPx: this.bottomBarVisible ? this.bottomBarAdaptiveWidth() : this.bottomBarMiniWidth(),
+      // 悬浮底栏的模糊比原来的 Thin 档加强约一半（用户要求先看效果；数字就这一个，
+      // 觉得糊过头/不够直接改）
+      barBackdropBlur: 12
     }) {
       if (this.bottomBarVisible) {
         Row({ space: HwSpace.md }) {

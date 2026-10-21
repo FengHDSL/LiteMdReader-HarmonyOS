@@ -888,6 +888,12 @@ export struct ImmersiveBar {
    * 字符串 '100%' 算不出来——所以页面知道宽度时必须传这个，不知道就留 0（按 360 兜底）。
    */
   @Prop barWidthPx: number = 0;
+  /**
+   * **额外背景模糊半径**（vp，0 = 不加）。`backgroundBlurStyle` 只有枚举档位
+   * （Thin / Regular…），想「比 Thin 再强一半」这种量只能自己给数，所以这里走
+   * `backdropBlur`。目前只有阅读页的悬浮底栏用它，其它条栏保持默认 0、观感不变。
+   */
+  @Prop barBackdropBlur: number = 0;
 
   @Builder
   doNothing() {
@@ -912,6 +918,9 @@ export struct ImmersiveBar {
         .borderRadius(HwRadius.pill)
         .backgroundColor(this.materialOn() ? '#00000000' : (this.fxLookOn ? barFrostColor(this.palette.surface) : withAlpha(this.palette.surface, 'FF')))
         .backgroundBlurStyle((this.fxLookOn && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
+        // 页面想要比档位更细的强度时给的数字（0 = 不额外加）；
+        // 注意**关光感时这一层是纯色不透明**，模糊不会被看见——那是 v1.1.5 定下的规矩，不在这里破。
+        .backdropBlur(this.barBackdropBlur)
         .hitTestBehavior(HitTestMode.None)
 
       // ② 材质承载层：与卡片/芯片/按钮**同一个承载层组件**（鸿米家那套 Toggle 方案）。
