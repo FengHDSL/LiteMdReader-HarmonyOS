@@ -76,6 +76,9 @@ export struct SettingsShell {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** **界面字体**（外观设置）：各设置页的标题与副标题都从这里走 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 主题纪元：拼进根容器 key，明暗变了整树重建（一次刷新到位） */
   @State themeEpoch: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
@@ -315,8 +318,8 @@ export struct SettingsShell {
 
             Column({ space: 2 }) {
               Text(this.shellTitle)
-                .fontSize(HwType.label + 3)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .maxLines(1)
@@ -326,7 +329,7 @@ export struct SettingsShell {
                 })
               if (this.shellSubtitle.length > 0) {
                 Text(this.shellSubtitle)
-                  .fontSize(HwType.caption - 1)
+                  .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .maxLines(1)
@@ -358,7 +361,7 @@ export struct SettingsShell {
   placeholderContent() {
     ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
       Text(this.s('这一板块的内容正在迁入…'))
-        .fontSize(HwType.label)
+        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
         .fontColor(this.palette().textSecondary)
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .width('100%')

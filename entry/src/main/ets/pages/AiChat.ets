@@ -3055,8 +3055,8 @@ export struct AiChat {
       }
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(11.5)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(11.5, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
     }
     .layoutWeight(1)
@@ -3166,6 +3166,8 @@ export struct AiChat {
         bodySize: HwType.bodyDefault,
         fontKey: this.bodyFontKey,
         uiFontKey: this.uiFontKey,
+        uiFontScale: this.uiFontScale,
+        uiFontWeightDelta: this.uiFontWeightDelta,
         dark: this.isDark(),
         alwaysSystemSelect: true,
         // 代码块 / 图表「放大查看」：**统一走全屏放大浮层**（与阅读页同一套界面）——
@@ -3198,15 +3200,15 @@ export struct AiChat {
       Column({ space: 1 }) {
         Text(name)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .constraintSize({ maxWidth: this.bubbleContentMax() - 64 })
         Text(L10n.t('已保存到书架 · 点击打开'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(10)
+          .fontSize(HwFont.sx(10, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .alignItems(HorizontalAlign.Start)
@@ -3228,7 +3230,7 @@ export struct AiChat {
     Column({ space: 8 }) {
       TextArea({ text: this.editText })
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.bodyDefault)
+        .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .placeholderColor(this.palette().textTertiary)
         .backgroundColor(this.palette().quoteBg)
@@ -3241,7 +3243,7 @@ export struct AiChat {
       Row({ space: 8 }) {
         Text(L10n.t('取消'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().textSecondary)
           .padding({ left: 16, right: 16, top: 8, bottom: 8 })
           .borderRadius(18)
@@ -3260,8 +3262,8 @@ export struct AiChat {
             .fontColor(['#FFFFFFFF'])
           Text(L10n.t('发送'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor('#FFFFFFFF')
         }
         .alignItems(VerticalAlign.Center)
@@ -3306,15 +3308,15 @@ export struct AiChat {
           Column({ space: 2 }) {
             Text(L10n.t('历史对话'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 3)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().textPrimary)
             // 大屏横屏是固定侧栏，没有「右滑唤出」的概念
             Text(this.aiWide()
               ? this.sessionList.length + ' 个话题'
               : this.sessionList.length + ' 个话题 · 右滑可随时唤出')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .alignItems(HorizontalAlign.Start)
@@ -3364,8 +3366,8 @@ export struct AiChat {
                 .fontColor([this.palette().textPrimary])
               Text(L10n.t('新建对话'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(13)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(13, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .maxLines(1)
             }
@@ -3380,7 +3382,7 @@ export struct AiChat {
           Column({ space: HwSpace.sm }) {
             Text(L10n.t('还没有历史对话'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.bodyDefault)
+              .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .width('100%')
@@ -3393,7 +3395,7 @@ export struct AiChat {
               Column({ space: HwSpace.xs }) {
                 Text(g.label)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                   .width('100%')
                   .padding({ left: 4, top: 6, bottom: 2 })
@@ -3409,8 +3411,9 @@ export struct AiChat {
                     }
                     Text(b.title)
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(15)
-                      .fontWeight(this.session.id === b.id ? FontWeight.Medium : FontWeight.Normal)
+                      .fontSize(HwFont.sx(15, this.uiFontScale))
+                      .fontWeight(HwFont.bump(this.session.id === b.id ? FontWeight.Medium : FontWeight.Normal,
+                        this.uiFontWeightDelta))
                       .fontColor(this.session.id === b.id
                         ? this.palette().accent
                         : this.palette().textPrimary)
@@ -3426,7 +3429,7 @@ export struct AiChat {
                     }
                     Text(b.count + ' 条')
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(11)
+                      .fontSize(HwFont.sx(11, this.uiFontScale))
                       .fontColor(this.palette().textTertiary)
                     SymbolGlyph($r('sys.symbol.trash'))
                       .fontSize(14)

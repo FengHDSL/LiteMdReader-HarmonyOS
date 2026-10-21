@@ -35,6 +35,9 @@ export struct SettingsReading {
   @StorageLink('readerParaSpace') paraSpace: number = 1;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、不登记依赖，
@@ -67,13 +70,13 @@ export struct SettingsReading {
               .fontColor([this.palette().accent])
             Text(L10n.t('实时预览'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 1)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().textPrimary)
             Blank()
             Text(L10n.t('跟随下方设置'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .width('100%')
@@ -139,7 +142,7 @@ export struct SettingsReading {
 
         Text(L10n.t('恢复默认阅读设置'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor('#FFFFFFFF')
       }
       .width('100%')

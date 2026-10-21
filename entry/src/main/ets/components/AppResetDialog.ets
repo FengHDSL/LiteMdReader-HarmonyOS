@@ -102,7 +102,7 @@ export struct AppResetDialog {
         ? L10n.t('为防止误触，请等待 ') + this.left + ' 秒后再确认'
         : L10n.t('已可确认：此操作不可撤销'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwTypeLabel())
+        .fontSize(HwFont.sx(HwTypeLabel(), this.uiFontScale))
         .fontColor(this.left > 0 ? this.pal().textTertiary : '#FFD93B3B')
         .width('100%')
         .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))

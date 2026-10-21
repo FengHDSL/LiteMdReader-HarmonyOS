@@ -54,6 +54,8 @@ export struct ImmersiveInput {
   @StorageProp('immersiveGrade') fxGrade: string = 'default';
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数（外观设置）：输入框文字随界面字号一起放大 */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
 
   /** 输入回调（普通成员：函数类型禁止加 V1 装饰器） */
   onInput: (value: string) => void = () => {
@@ -84,7 +86,7 @@ export struct ImmersiveInput {
       TextInput({ text: this.text, placeholder: this.placeholder })
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .width('100%')
-        .fontSize(this.inputFontSize)
+        .fontSize(HwFont.sx(this.inputFontSize, this.uiFontScale))
         .fontColor(this.palette.textPrimary)
         .placeholderColor(this.palette.textTertiary)
         .backgroundColor('#00000000')

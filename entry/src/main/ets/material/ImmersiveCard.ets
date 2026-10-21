@@ -643,6 +643,9 @@ export struct ImmersiveChip {
   @StorageProp('immersiveGrade') fxGrade: string = 'default';
   /** **界面字体**（外观设置）：全应用所有芯片文案都从这一处走 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 调色板：**必须 @Prop**，否则父组件换主题后不更新（见 ImmersiveCard 里的说明） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /**
@@ -712,9 +715,10 @@ export struct ImmersiveChip {
       Row({ space: HwSpace.xs }) {
         this.chipPrefix()
         Text(this.chipLabel)
-          .fontSize(this.chipFontSize > 0 ? this.chipFontSize : 13)
+          .fontSize(HwFont.sx(this.chipFontSize > 0 ? this.chipFontSize : 13, this.uiFontScale))
           .fontColor(this.chipTextColor())
-          .fontWeight(this.chipActive ? FontWeight.Medium : FontWeight.Normal)
+          .fontWeight(HwFont.bump(this.chipActive ? FontWeight.Medium : FontWeight.Normal,
+            this.uiFontWeightDelta))
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .maxLines(1)
       }
