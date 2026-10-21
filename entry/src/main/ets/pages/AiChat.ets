@@ -312,6 +312,9 @@ export struct AiChat {
   @StorageProp('systemDark') @Watch('onThemeTick') systemDark: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   @StorageProp('appearanceTick') @Watch('onThemeTick') appearanceTick: number = 0;
@@ -1749,7 +1752,7 @@ export struct AiChat {
               if (this.chartTitle.length > 0) {
                 Text(this.chartTitle)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 1)
+                  .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                   .fontColor(this.isDark() ? '#FFFFFFFF' : '#E6222226')
                   .layoutWeight(1)
                   .maxLines(1)
@@ -1874,14 +1877,14 @@ export struct AiChat {
             Column({ space: 1 }) {
               Text(L10n.t('AI 助手'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .maxLines(1)
               if (this.currentModel().length > 0) {
                 Text(this.currentModel())
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(10)
+                  .fontSize(HwFont.sx(10, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2094,7 +2097,7 @@ export struct AiChat {
             .rotate({ angle: 180 })
           Text(L10n.t('右滑查看历史会话'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(11)
+            .fontSize(HwFont.sx(11, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
         }
         .justifyContent(FlexAlign.Center)
@@ -2120,8 +2123,8 @@ export struct AiChat {
 
         Text(greetWord())
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(19)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(19, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
       }
       .width('100%')
@@ -2129,8 +2132,8 @@ export struct AiChat {
 
       Text(greetSlogan())
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(24)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(24, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.palette().accent)
         .width('100%')
 
@@ -2138,7 +2141,7 @@ export struct AiChat {
         if (this.attachDocName.length > 0) {
           Text(L10n.t('已附加《') + this.attachDocName + '》，可直接提问、让它总结或润色')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
         }
@@ -2147,12 +2150,12 @@ export struct AiChat {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('还没有配置 AI 接口'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .width('100%')
           Text(L10n.t('填入 API 地址、Key 与模型名称即可开始对话'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
           // **换成沉浸光感组件**（用户要求）：与全应用按钮同一套材质/降级表现
@@ -2191,7 +2194,7 @@ export struct AiChat {
               .fontColor([this.palette().textTertiary])
             Text(L10n.t('文档《') + m.docName + '》')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(11)
+              .fontSize(HwFont.sx(11, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2257,7 +2260,7 @@ export struct AiChat {
                 .color(this.palette().accent)
               Text(L10n.t('正在思考…'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(13)
+                .fontSize(HwFont.sx(13, this.uiFontScale))
                 .fontColor(this.palette().textSecondary)
             }
             .alignItems(VerticalAlign.Center)
@@ -2293,7 +2296,7 @@ export struct AiChat {
           if (m.role === 'assistant' && m.err !== true && m.tokens !== undefined && m.tokens > 0) {
             Text(L10n.t('本条回复 ') + fmtTokens(m.tokens) + ' 词元')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(10)
+              .fontSize(HwFont.sx(10, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
         }
@@ -2328,7 +2331,7 @@ export struct AiChat {
         Row({ space: 8 }) {
           Blank()
           Text(fmtMsgTime(m.ts))
-            .fontSize(10)
+            .fontSize(HwFont.sx(10, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
           this.msgToolIcon($r('app.media.ic_public_copy'), false, (): void => {
             this.copyText(m.content);
@@ -2354,7 +2357,7 @@ export struct AiChat {
             this.deleteMessage(idx);
           }, false)
           Text(fmtMsgTime(m.ts))
-            .fontSize(10)
+            .fontSize(HwFont.sx(10, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
         }
         .width('100%')
@@ -2421,7 +2424,7 @@ export struct AiChat {
           .fillColor(this.palette().accent)
         Text(L10n.t('已深度思考 · ') + Math.max(1, Math.round((m.thinkMs === undefined ? 0 : m.thinkMs) / 1000)) + ' 秒')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(13)
+          .fontSize(HwFont.sx(13, this.uiFontScale))
           .fontColor(this.palette().textSecondary)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2552,7 +2555,7 @@ export struct AiChat {
         Row({ space: HwSpace.xs }) {
           TextArea({ text: this.input, placeholder: L10n.t('问问 AI…') })
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.bodyDefault)
+            .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .placeholderColor(this.palette().textTertiary)
             .placeholderFont({ size: HwType.bodyDefault })
@@ -2651,7 +2654,7 @@ export struct AiChat {
 
       Text(L10n.t('内容由 AI 生成，仅供参考') + (this.totalTokens() > 0 ? L10n.t(' · 共 ') + fmtTokens(this.totalTokens()) + ' 词元' : ''))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(10)
+        .fontSize(HwFont.sx(10, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .width('100%')
         .textAlign(TextAlign.Center)
@@ -2674,7 +2677,7 @@ export struct AiChat {
         .fontColor([this.palette().textSecondary])
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textSecondary)
         .maxLines(1)
         .constraintSize({ maxWidth: 150 })
@@ -2770,7 +2773,7 @@ export struct AiChat {
       Column({ space: HwSpace.sm }) {
         Text(L10n.t('还没有历史对话'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.bodyDefault)
+          .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .width('100%')
@@ -2805,7 +2808,7 @@ export struct AiChat {
           Column({ space: 2 }) {
             Text(b.title)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.bodyDefault)
+              .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2813,7 +2816,7 @@ export struct AiChat {
             Text(b.count + ' 条' + (b.tokens > 0 ? ' · ' + fmtTokens(b.tokens) + ' 词元' : '')
               + ' · ' + fmtTime(b.updated))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .alignItems(HorizontalAlign.Start)
@@ -2847,7 +2850,7 @@ export struct AiChat {
       if (this.totalModelCount() === 0) {
         Text(L10n.t('还没有配置模型，请先到「AI 设置」添加'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .padding({ top: 12, bottom: 24 })
       }
@@ -2856,7 +2859,7 @@ export struct AiChat {
         if (p.models.length > 0) {
           Text(p.name)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .padding({ top: 6, bottom: 2, left: 4 })
             .width('100%')
@@ -2885,7 +2888,7 @@ export struct AiChat {
               Row({ space: HwSpace.sm }) {
                 Text(m)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.bodyDefault)
+                  .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
                   .fontColor(this.currentModel() === m
                     ? this.palette().accent
                     : this.palette().textPrimary)
@@ -2947,13 +2950,13 @@ export struct AiChat {
           Column({ space: 2 }) {
             Text(label)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.bodyDefault)
+              .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
               .fontColor(this.cfg.reasoning === value
                 ? this.palette().accent
                 : this.palette().textPrimary)
             Text(desc)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .alignItems(HorizontalAlign.Start)
@@ -2980,7 +2983,7 @@ export struct AiChat {
       Column() {
         Text(L10n.t('书架还没有文档'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.bodyDefault)
+          .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .width('100%')
@@ -3014,7 +3017,7 @@ export struct AiChat {
               .fontColor([this.palette().accent])
             Text(meta.name)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.bodyDefault)
+              .fontSize(HwFont.sx(HwType.bodyDefault, this.uiFontScale))
               .fontColor(this.attachDocName === meta.name
                 ? this.palette().accent
                 : this.palette().textPrimary)

@@ -96,6 +96,9 @@ export struct ReviewPage {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   /**
@@ -596,7 +599,7 @@ export struct ReviewPage {
               .backgroundColor(this.palette().accent)
             Text(L10n.t('你的预测'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
           }
           .alignItems(VerticalAlign.Center)
@@ -606,12 +609,12 @@ export struct ReviewPage {
         .alignItems(VerticalAlign.Center)
         Text(L10n.t('横轴：天后') + ' · ' + L10n.t('纵轴：记忆保持率'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
         Text(L10n.t('预测基于当前卡片的间隔与难度系数聚合；复习会让曲线整体抬升。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }
@@ -1321,8 +1324,8 @@ export struct ReviewPage {
   sectionHead(title: string) {
     Text(title)
       .fontFamily(HwFont.resolve(this.uiFontKey))
-      .fontSize(HwType.label + 3)
-      .fontWeight(FontWeight.Bold)
+      .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+      .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
       .fontColor(this.palette().textPrimary)
       .width('100%')
       .margin({ top: HwSpace.xs })
@@ -1342,7 +1345,7 @@ export struct ReviewPage {
         if (this.docNames.length === 0) {
           Text(L10n.t('还没有复习卡片 —— 在文档里划选文字，选「学习卡」并写上内容，这里就会生成卡片。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
@@ -1395,7 +1398,7 @@ export struct ReviewPage {
                   // **书籍标题**（用户要求：要能滚动）—— 溢出自动跑马灯播放
                   Text(meta.name)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.MARQUEE })
@@ -1404,7 +1407,7 @@ export struct ReviewPage {
 
                   Text(this.docCounts[index] + ' 张')
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption - 1)
+                    .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                 }
                 .alignItems(HorizontalAlign.Center)
@@ -1430,7 +1433,7 @@ export struct ReviewPage {
                 .fontColor(['#FF1F9E66'])
               Text(L10n.t('当日计划已完成，明天继续！想加练可点下方开始复习'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor('#FF1F9E66')
             }
             .width('100%')
@@ -1443,7 +1446,7 @@ export struct ReviewPage {
               ? L10n.t('开始下一轮加练，或明天继续！')
               : L10n.t('未筛选：全部 ') + this.docNames.length + ' 篇 · ' + this.queue.length + ' 张到期'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
 
@@ -1451,7 +1454,7 @@ export struct ReviewPage {
           Row({ space: HwSpace.sm }) {
             Text(L10n.t('每日复习'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
             Blank()
             Row({ space: HwSpace.xs }) {
@@ -1469,8 +1472,8 @@ export struct ReviewPage {
               }
               Text(this.dailyGoal + ' 条')
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .width(52)
                 .textAlign(TextAlign.Center)
@@ -1495,7 +1498,7 @@ export struct ReviewPage {
           // 剩余计算：今日达标差额 + 按目标节奏的预计天数
           Text(this.remainingHint())
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
         }
@@ -1520,7 +1523,7 @@ export struct ReviewPage {
           })
           Text(L10n.t('拼写模式下输入与隐藏内容完全一致才通过'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .layoutWeight(1)
         }
@@ -1589,12 +1592,12 @@ export struct ReviewPage {
         Row({ space: HwSpace.sm }) {
           Text(L10n.t('连续签到 ') + this.streakSignDays() + ' 天')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().accent)
           Blank()
           Text(L10n.t('累计 ') + this.signDays.length + ' 天')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
         }
         .width('100%')
@@ -1619,14 +1622,14 @@ export struct ReviewPage {
           .backgroundColor(dotColor)
         Text(label)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .alignItems(VerticalAlign.Center)
       Text(value)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 5)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
     }
@@ -1718,14 +1721,14 @@ export struct ReviewPage {
       Column({ space: HwSpace.sm }) {
         Text(L10n.t('卡片按复习间隔分布（SM-2：忘了回 1 天，记得按难度系数拉长间隔）'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
         ForEach(this.bucketCounts(), (count: number, index: number) => {
           Row({ space: HwSpace.sm }) {
             Text(BUCKETS[index].label)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
               .width(52)
             Stack({ alignContent: Alignment.Start }) {
@@ -1746,7 +1749,7 @@ export struct ReviewPage {
             .height(10)
             Text(count + ' 张')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
               .width(44)
               .textAlign(TextAlign.End)
@@ -1781,12 +1784,12 @@ export struct ReviewPage {
                 // 固定宽 + 右对齐：两列文本上下对齐（用户反馈长短不齐）
                 Text(L10n.t('间隔 ') + card.interval + ' 天')
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                   .width(70)
                   .textAlign(TextAlign.End)
                 Text(this.fmtDue(card.due))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(card.due <= Date.now() ? '#FFD95B3B' : this.palette().accent)
                   .width(46)
                   .textAlign(TextAlign.End)
@@ -1829,8 +1832,8 @@ export struct ReviewPage {
           }
           Text(this.viewYear + ' 年 ' + (this.viewMonth + 1) + ' 月')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
           ImmersiveIconButton({
             buttonSize: 28,
@@ -1847,7 +1850,7 @@ export struct ReviewPage {
           Blank()
           Text(L10n.t('连续 ') + this.streakSignDays() + ' 天 · 累计 ' + this.signDays.length + ' 天')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
         }
         .width('100%')
@@ -1898,8 +1901,8 @@ export struct ReviewPage {
 
         Text(L10n.t('本轮复习完成'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 6)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(HwType.label + 6, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
 
         // 成果 2×2：直接排在背景上（不用卡片包裹，避免被拉伸）
@@ -1931,15 +1934,15 @@ export struct ReviewPage {
 
         Text(L10n.t('已背的卡片按遗忘曲线排期，到期的日子会再和你见面。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .textAlign(TextAlign.Center)
           .width('100%')
 
         Text(L10n.t('返回'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 2)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor('#FFFFFFFF')
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -1953,8 +1956,8 @@ export struct ReviewPage {
         // 继续学习：再来一遍，并**提前把明天的计划放到现在**（用户要求）
         Text(L10n.t('继续学习 · 提前明天的计划'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.palette().accent)
           .textAlign(TextAlign.Center)
           .width('100%')
@@ -2013,7 +2016,7 @@ export struct ReviewPage {
                 ? L10n.t('记忆确认 · 连续第 ') + this.confirmStreak + ' 次「记得」'
                 : (this.pendingKind === 1 ? L10n.t('模糊 · 再看一遍内容') : L10n.t('忘了 · 再学一遍内容')))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette().textSecondary)
               Blank()
               if (this.pendingKind === 2) {
@@ -2055,8 +2058,8 @@ export struct ReviewPage {
             } else {
               Text(L10n.t('（这条批注没有写文字批注）'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 5)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .lineHeight((HwType.label + 5) * 1.6)
                 .width('100%')
@@ -2067,7 +2070,7 @@ export struct ReviewPage {
                 ? L10n.t('✓ 3 灯全亮，已通过！之后按遗忘曲线排期')
                 : L10n.t('还差 ') + (3 - this.confirmStreak) + ' 次「记得」通过，先继续下一张')
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.pendingMastered ? '#FF1F9E66' : this.palette().textTertiary)
                 .width('100%')
             }
@@ -2084,7 +2087,7 @@ export struct ReviewPage {
           Column({ space: HwSpace.md }) {
             Text(this.queue[this.queueIndex].docName)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .width('100%')
             // ── 文档标签（学习卡左上角展示，数量不限自适应换行）──
@@ -2092,7 +2095,7 @@ export struct ReviewPage {
               ForEach(this.docTagsOf(this.queue[this.queueIndex].docName), (tag: string) => {
                 Text('#' + tag)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption - 1)
+                  .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
                   .fontColor(this.palette().accent)
                   .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                   .borderRadius(HwRadius.pill)
@@ -2124,7 +2127,7 @@ export struct ReviewPage {
               } else {
                 Text(L10n.t('（这条批注没有写文字批注 —— 回想一下当时为什么划它）'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 3)
+                  .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
                   .fontColor(this.palette().accent)
                   .lineHeight((HwType.label + 3) * 1.7)
                   .width('100%')
@@ -2135,7 +2138,7 @@ export struct ReviewPage {
             if (this.hintText.length > 0) {
               Text(this.hintText)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().accent)
                 .width('100%')
                 .transition(TransitionEffect.OPACITY
@@ -2173,7 +2176,7 @@ export struct ReviewPage {
           if (this.hintText.length > 0) {
             Text(this.hintText)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -2220,7 +2223,7 @@ export struct ReviewPage {
           if (this.hintText.length > 0) {
             Text(this.hintText)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -2229,7 +2232,7 @@ export struct ReviewPage {
           if (this.typeWrong) {
             Text(L10n.t('不对——正确内容已翻面显示，按「下一个」继续'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor('#FFD32F2F')
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -2239,7 +2242,7 @@ export struct ReviewPage {
             TextInput({ text: this.typeInput, placeholder: L10n.t('输入隐藏的内容…') })
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .layoutWeight(1)
-              .fontSize(HwType.label + 1)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
               .placeholderColor(this.palette().textTertiary)
               .backgroundColor(this.palette().codeBlockBg)
@@ -2303,7 +2306,7 @@ export struct ReviewPage {
           if (this.hintText.length > 0) {
             Text(this.hintText)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -2352,7 +2355,7 @@ export struct ReviewPage {
             }
             Text(L10n.t('剩余 ') + this.queue.length + ' 张 · 已掌握 ' + this.sessionMastered + ' 张')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textSecondary)
               .layoutWeight(1)
               .maxLines(1)
@@ -2411,8 +2414,8 @@ export struct ReviewPage {
     Column({ space: 4 }) {
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 6)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(HwType.label + 6, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(color)
       Column()
         .width(18)
