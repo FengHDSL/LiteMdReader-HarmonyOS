@@ -88,6 +88,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('readerIndent', false);
     // 网页开放（阅读页「更多」面板开关）：开启后点正文 http(s) 链接半模态打开
     PersistentStorage.persistProp('readerWebOpen', false);
+    // **卡片滑动忽略**（阅读页「更多」）：默认开 —— 滑到卡片上不被停住
+    PersistentStorage.persistProp('readerCardSwipeIgnore', true);
     // 目录 / 批注侧边栏是否使用沉浸光感（关闭后用阅读背景色）
     PersistentStorage.persistProp('drawerImmersive', true);
     PersistentStorage.persistProp('readerShowMeta', true);

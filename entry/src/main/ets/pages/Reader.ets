@@ -5137,6 +5137,12 @@ export struct Reader {
   // ── 网页开放（用户要求）：点击正文 http(s) 链接在半模态面板内打开 ──
   /** 开关（持久化键 readerWebOpen；关闭时点链接维持「复制地址」的旧行为） */
   @StorageLink('readerWebOpen') webOpen: boolean = false;
+  /**
+   * **卡片滑动忽略**（默认开）：滑到代码块 / 图片 / 公式 / 图表卡片上时，
+   * 卡片正文不参与命中，上下滑直接带动整页，不会被卡片"停住"。
+   * 关掉则恢复原样（卡片内可以双指缩放、点图内元素）。
+   */
+  @StorageLink('readerCardSwipeIgnore') cardSwipeIgnore: boolean = true;
   /** 当前面板要打开的网页地址 */
   @State webUrl: string = '';
   /** Web 重建纪元：每次打开面板自增，奇偶分支切换强制新建 Web（src 创建时固定不随属性重载） */
@@ -6337,6 +6343,27 @@ export struct Reader {
         Toggle({ type: ToggleType.Switch, isOn: this.webOpen })
           .onChange((isOn: boolean) => {
             this.webOpen = isOn;
+          })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      // ── 卡片滑动忽略（用户要求，默认开启）──
+      Row({ space: HwSpace.xs }) {
+        Column({ space: 2 }) {
+          Text(L10n.t('卡片滑动忽略'))
+            .fontSize(HwType.label)
+            .fontColor(this.palette().textPrimary)
+          Text(L10n.t('上下滑到代码块 / 图片 / 公式 / 图表卡片上时不吞手势，滑动直接带动整页；关闭后卡片内可双指缩放'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette().textTertiary)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        Toggle({ type: ToggleType.Switch, isOn: this.cardSwipeIgnore })
+          .onChange((isOn: boolean) => {
+            this.cardSwipeIgnore = isOn;
           })
       }
       .width('100%')
@@ -8749,6 +8776,7 @@ export struct Reader {
                     },
                     // 网页开放（用户要求）：开关开启时点 http(s) 链接走半模态面板
                     webOpen: this.webOpen,
+                    cardSwipeIgnore: this.cardSwipeIgnore,
                     webLinkHandler: (href: string) => {
                       this.openWebSheet(href);
                     },

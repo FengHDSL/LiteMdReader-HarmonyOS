@@ -48,6 +48,7 @@ export class SettingsMirror {
     'readerTabBarAtBottom',
     // 网页开放（阅读页「更多」面板开关）
     'readerWebOpen',
+    'readerCardSwipeIgnore',
     // 大屏 / 平板横屏专属：侧边栏「默认展开」偏好
     'readerTocPinnedDefault', 'readerNotesPinnedDefault',
     'hlOpacity', 'waveThickness',

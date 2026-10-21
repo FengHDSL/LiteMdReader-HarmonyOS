@@ -945,6 +945,13 @@ export struct MdBlockView {
   /** **网页开放开关**（阅读页下发）：true 时点击 http(s) 链接走 webLinkHandler
    *  半模态打开；false（默认）维持「点击复制地址」。 */
   @Prop webOpen: boolean = false;
+  /**
+   * **卡片滑动忽略**（阅读页「更多」里的开关，默认开）：true 时卡片正文那块
+   * （Web 画布 / 图表 / 公式 / 思维导图）不参与命中测试，上下滑动直接交给外层列表，
+   * 不会被卡片"停住"。卡片顶部的 放大 / 源码 / 刷新 / 批注 是同级节点，照常可点。
+   * 关掉开关就回到原样：卡片内可以双指缩放、点图内元素。
+   */
+  @Prop cardSwipeIgnore: boolean = true;
   /** 最近一次点选的批注色索引（色板点击时记录） */
   @State lastAnnoColor: number = 0;
   /** 点正文退出系统选择模式（宿主清掉 systemSelectId） */
@@ -2369,6 +2376,9 @@ export struct MdBlockView {
         }
         .scrollable(ScrollDirection.Vertical)
         .scrollBar(BarState.Off)
+        // **卡片滑动忽略**：开着时代码块自己不吃滚动手势，上下滑直接带动整页
+        // （Web 卡片用的是 hitTestBehavior，代码块是内层 Scroll，两套路子不同）
+        .enableScrollInteraction(!this.cardSwipeIgnore)
         .width('100%')
         // 展开 / 收起控制条已移到 Scroll 之外（固定在卡片底部），
         // 这里把它的高度一并算进去 —— 否则卡片比内容矮，下边缘会压住正文
@@ -3281,7 +3291,13 @@ export struct MdBlockView {
       }) {
         Column() {
           this.cardHeader('公式', 'katex', this.block.code, 'mdchart_' + this.block.id, '', false, true, true)
-          DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+          // 正文单独包一层再挂 hitTestBehavior（通用属性不能直接挂在自定义组件上）：
+          // 「卡片滑动忽略」开着时这块不吃触摸，上下滑交给外层列表
+          Column() {
+            DiagramWeb({ mode: 'katex', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+          }
+          .width('100%')
+          .hitTestBehavior(this.cardSwipeIgnore ? HitTestMode.None : HitTestMode.Default)
         }
         .width('100%')
       }
@@ -3308,7 +3324,11 @@ export struct MdBlockView {
           Column() {
             this.cardHeader(this.chartTitle(), 'markmap', this.block.code,
               'mdchart_' + this.block.id, this.chartTitle(), true, false, true)
-            DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+            Column() {
+              DiagramWeb({ mode: 'markmap', payload: this.block.code, dark: this.dark, cardBg: this.cardBgKey(), reloadRequest: this.chartReloadTick, onWebTouch: (down: boolean) => { this.webTouchHandler(down); } })
+            }
+            .width('100%')
+            .hitTestBehavior(this.cardSwipeIgnore ? HitTestMode.None : HitTestMode.Default)
           }
           .width('100%')
         }
@@ -3403,6 +3423,9 @@ export struct MdBlockView {
               .width('100%')
             }
             .width('100%')
+            // 图表卡片正文（Web 画布那一整块）：开关开着时不吃触摸，滑动交给外层列表。
+            // 顶部 cardHeader 是同级节点，放大 / 源码 / 刷新 / 批注 照常可点。
+            .hitTestBehavior(this.cardSwipeIgnore ? HitTestMode.None : HitTestMode.Default)
           }
           .width('100%')
         }
