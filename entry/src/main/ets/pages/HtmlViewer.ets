@@ -20,7 +20,7 @@ import { fileIo as fs } from '@kit.CoreFileKit';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
-import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor } from '../theme/DesignTokens';
+import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor, HwFont } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
@@ -51,6 +51,8 @@ export struct HtmlViewer {
    *（用户实测"切深色浅色，顶栏悬浮胶囊没有立即切换"；阅读页同一坑见 Reader.palette()）。
    */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 待打印 HTML 内容（loadData 直接注入，规避沙箱 file URI 不被 Web 接受的问题） */
   private pendingHtml: string = '';
   private started: boolean = false;
@@ -322,6 +324,7 @@ export struct HtmlViewer {
           }
 
           Text(this.docName.length > 0 ? this.docName : L10n.t('网页预览'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label)
             .fontWeight(FontWeight.Medium)
             .fontColor(this.palette().textPrimary)
@@ -382,6 +385,7 @@ export struct HtmlViewer {
                 .color(this.failed ? '#FFD93B3B' : this.palette().accent)
             }
             Text(this.status)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(12)
               .fontColor(this.failed ? '#FFD93B3B' : this.palette().textSecondary)
               .maxLines(2)

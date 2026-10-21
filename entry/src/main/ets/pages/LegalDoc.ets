@@ -21,7 +21,8 @@ import {
   ReaderPalette,
   ReaderThemeMode,
   isDarkTheme,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
@@ -49,6 +50,8 @@ export struct LegalDoc {
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   private legalCtrl: webview.WebviewController = new webview.WebviewController();
 
   private palette(): ReaderPalette {
@@ -113,10 +116,12 @@ export struct LegalDoc {
           }
           Column({ space: 2 }) {
             Text(this.shellTitle())
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.label + 3)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().textPrimary)
             Text(this.shellSubtitle())
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption - 1)
               .fontColor(this.palette().textTertiary)
           }

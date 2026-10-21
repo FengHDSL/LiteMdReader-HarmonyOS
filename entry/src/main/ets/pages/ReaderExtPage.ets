@@ -6,6 +6,7 @@
  */
 import { DocStore } from '../service/DocStore';
 import { L10n } from '../service/L10n';
+import { HwFont } from '../theme/DesignTokens';
 
 @Entry
 @Component
@@ -15,6 +16,8 @@ struct ReaderExtPage {
   @State fontSize: number = 18;
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   private scroller: Scroller = new Scroller();
 
   /** 正文行：按换行切分（扩展页只做纯文本阅读，不引 Markdown 管线）。 */
@@ -30,6 +33,7 @@ struct ReaderExtPage {
       // 顶栏：文档名 + 字号控制
       Row({ space: 8 }) {
         Text(this.docName)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .fontColor('#E6222226')
@@ -37,6 +41,7 @@ struct ReaderExtPage {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
         Text('A-')
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(13)
           .fontColor('#666666')
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -47,6 +52,7 @@ struct ReaderExtPage {
             this.fontSize = Math.max(12, this.fontSize - 2);
           })
         Text('A+')
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(13)
           .fontColor('#666666')
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
@@ -67,6 +73,7 @@ struct ReaderExtPage {
         Column({ space: 6 }) {
           if (this.lines().length === 0) {
             Text(L10n.t('暂无接续内容。请先在手机端打开一篇文档，再通过多设备流转迁移到本端。'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(14)
               .fontColor('#99666666')
               .padding(16)

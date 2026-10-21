@@ -17,7 +17,8 @@ import {
   HwType,
   ReaderPalette,
   ReaderThemeMode,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 
 /**
@@ -37,6 +38,8 @@ export struct Changelog {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 外观刷新计数：主题色 / 灰字 / 沾色改动后由它触发重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、
@@ -121,10 +124,12 @@ export struct Changelog {
             Row() {
               Row({ space: HwSpace.sm }) {
                 Text(entry.version)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label + 2)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(this.palette().accent)
                 Text(entry.date)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.caption)
                   .fontColor(this.palette().textTertiary)
               }
@@ -153,6 +158,7 @@ export struct Changelog {
                   .backgroundColor(this.itemColor(item))
                   .margin({ top: 7 })
                 Text(item)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label)
                   .fontColor(this.itemColor(item))
                   .lineHeight(HwType.label * 1.7)

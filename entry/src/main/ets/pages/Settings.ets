@@ -39,7 +39,8 @@ import {
   ReaderPalette,
   ReaderThemeMode,
   isDarkTheme,
-  paletteFor
+  paletteFor,
+  HwFont
 } from '../theme/DesignTokens';
 
 /** 一个设置板块 */
@@ -121,6 +122,8 @@ export struct Settings {
   @State stackDepthAtOpen: number = 0;
   /** 应用版本号（loadVersion 从资源/包信息读取） */
   @State versionName: string = '1.0.0';
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   /** 第一次 onShown 紧跟 aboutToAppear（数据已经是刚算过的），跳过它。 */
   private shownOnce: boolean = false;
@@ -279,6 +282,7 @@ export struct Settings {
           } else {
             Column({ space: HwSpace.sm }) {
               Text(this.s('从左侧选择一个设置板块'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textTertiary)
             }
@@ -440,10 +444,12 @@ export struct Settings {
 
             Column({ space: 2 }) {
               Text(L10n.t('澄笺·ChéngJiān'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 4)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
               Text(this.s1('版本 %1', this.versionName) + ' · ' + this.s('沉浸光感 Markdown 阅读器'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -463,10 +469,12 @@ export struct Settings {
           Row({ space: HwSpace.sm }) {
             Column({ space: 3 }) {
               Text(this.s(item.name))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(this.palette().textPrimary)
               Text(this.s(item.note))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
@@ -501,6 +509,7 @@ export struct Settings {
 
       // ── 页脚 ──
       Text(this.s('澄心执笔，笺上生光'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textTertiary)
         .width('100%')

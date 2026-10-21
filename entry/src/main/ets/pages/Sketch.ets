@@ -21,7 +21,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { display } from '@kit.ArkUI';
 import { DocStore } from '../service/DocStore';
-import { HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme } from '../theme/DesignTokens';
+import { HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme, HwFont } from '../theme/DesignTokens';
 import { ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { L10n } from '../service/L10n';
@@ -112,6 +112,8 @@ export struct Sketch {
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   /** 手写页用途：'annotate' = 作为文本批注（返回时回传 sketchAnnotationImage） */
   @StorageProp('sketchMode') sketchMode: string = '';
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   // ── 画布背景（色 + 底纹）：持久化，重进手写页保持上次选择 ──
   // 三键共挂一个 @Watch：任一变化都要**主动重绘**画布与面板预览（见 onBgChanged）。
@@ -680,6 +682,7 @@ export struct Sketch {
         }
 
         Text(this.sketchMode === 'annotate' ? L10n.t('手写批注') : L10n.t('手写笔记'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label + 3)
           .fontWeight(FontWeight.Bold)
           .fontColor(this.palette().textPrimary)
@@ -850,6 +853,7 @@ export struct Sketch {
     Column({ space: HwSpace.md }) {
       // ── ① 底色：每排 3 个大方格（31% × 3 + 均分间隙），方块大小随面板自适应 ──
       Text(L10n.t('底色'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
@@ -878,6 +882,7 @@ export struct Sketch {
             .aspectRatio(1)
 
             Text(opt.name)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.bgColor === opt.color
                 ? this.palette().accent : this.palette().textSecondary)
@@ -895,6 +900,7 @@ export struct Sketch {
 
       // ── ② 底纹：同样每排 3 个大方格，方块里是「当前底色 + 该底纹」的小样 ──
       Text(L10n.t('底纹'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
@@ -930,6 +936,7 @@ export struct Sketch {
             .aspectRatio(1)
 
             Text(p.name)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.bgPattern === p.value
                 ? this.palette().accent : this.palette().textSecondary)
@@ -947,6 +954,7 @@ export struct Sketch {
 
       // ── ③ 线条粗细：三档，同样用大方格预览（方块里三条横线，粗细即该档） ──
       Text(L10n.t('线条粗细'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label + 1)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.palette().textPrimary)
@@ -981,6 +989,7 @@ export struct Sketch {
             .aspectRatio(1)
 
             Text(lw.name)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.bgLineWidth === lw.value
                 ? this.palette().accent : this.palette().textSecondary)
