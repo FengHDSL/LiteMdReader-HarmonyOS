@@ -21,8 +21,9 @@
  *  · **高度**——手机形态给**档位阶梯**（起档 = 原来那档：fitContent 或 MEDIUM，
  *    往上可拖到 MEDIUM / LARGE，用户要求面板要能手动抬高）；横屏/平板居中窗口
  *    平台不支持多档拖拽，仍走 height 定高。
- *  · **键盘避让**——平台对 BindSheet 不做键盘避让（SDK NOTE 明确列出 BindSheet），
- *    所以面板内容一律包在 `SheetKeyboardLift` 里，靠键盘高度垫底把输入框抬到输入法上方。
+ *  · **键盘避让**——交给系统：真机实测键盘弹起时半模态自己会让位到输入法上方，
+ *    以前在 `SheetKeyboardLift` 里再垫一整段键盘高度属于重复让位，会把面板顶出屏幕
+ *    （2026-10-21 删）。那一层现在只当各面板 @Builder 的单根容器。
  *  · **拖拽条（操作提示）**——dragBar: true。
  *  · **关闭按钮**——规范默认显示，showClose: true，出现在标题栏右上角。
  *  · **标题栏**——官方自带标题区（title / subtitle），渲染在左上角，
@@ -33,57 +34,34 @@
  */
 
 import { withAlpha } from '../theme/DesignTokens';
-import { AppearanceFx } from '../service/AppearanceFx';
 
 /**
- * 半模态内容的**键盘抬高包装层**（所有面板共用，内容都包在里面）。
+ * 半模态内容的**单根容器**（所有面板共用，内容都包在里面）。
  *
- * **为什么只能应用层自己做**：SDK 在 `UIContext.setKeyboardAvoidMode` 的 NOTE 里
- * 写死了 —— "only affects page layouts. It does not apply to popup components,
- * including the following: **Dialog, Popup, Menu, BindSheet, BindContentCover,
- * Toast, OverlayManager**"（见 Sdk/26.0.0/ets/api/@ohos.arkui.UIContext.d.ts）。
- * 所以键盘弹起时半模态**不会**自动上移，面板下部的输入框必然被输入法盖住；
- * 把内容做高也不行（fitContent 只跟内容尺寸走，跟键盘无关）。
+ * **这里以前还负责"键盘抬高"，2026-10-21 实测后删掉了**：原来给内容垫一段等于
+ * 键盘高度的底部 padding，理由是 SDK 在 `UIContext.setKeyboardAvoidMode` 的 NOTE 里
+ * 把 BindSheet 列进"不做键盘避让"的弹窗清单（Sdk/26.0.0/ets/api/@ohos.arkui.UIContext.d.ts）。
+ * 但那条讲的是**页面级避让模式这个 API 管不管弹窗**，不等于半模态自己完全不理会输入法——
+ * 真机上键盘弹起时面板已经让位到输入法上方，于是那段 padding 变成纯死空间：
+ * 内容被顶到状态栏（原文条被切一半）、下面空一大截，而且**所有**半模态面板一起中招
+ * （用户两次反馈，第二次明确说"其他面板也这样，非常高"）。
  *
- * **做法**：给内容垫一段等于键盘高度的底部 padding —— 内容整体落到键盘上沿之上。
- * fitContent 面板随之长高，定高面板则压缩可视区，两种都让输入框可见。
- *
- * **数据源**：AppStorage 的 `keyboardPx`，由 AppWindow 用 avoidAreaChange 的
- * **TYPE_KEYBOARD** 全局广播。刻意不用 `keyboardHeightChange`：本仓实测其上报值
- * 与键盘面板真实高度不一致，会悬空一大截（见 service/AppWindow.ets 注释）。
- *
- * **为什么是组件而不是给各面板直接加属性**：bindSheet 的 builder 不跟宿主状态
- * 重渲染（本工程固定坑，AutoScrollTile / ReadAloudTile / ReaderFlagTile 同一结论），
- * 键盘高度这种"面板开着时才会变"的量，必须由自持 @StorageProp 的子组件来吃。
+ * 现在保留这一层只为两件事：① 给各面板的 @Builder 一个**单根**（半模态要求单根节点）；
+ * ② 万一哪天系统不再让位，键盘避让的开关仍然只在这一个地方。
  */
 @Component
 export struct SheetKeyboardLift {
-  @StorageProp('keyboardPx') keyboardPx: number = 0;
-
   @Builder
   doNothing() {
   }
 
   @BuilderParam content: () => void = this.doNothing;
 
-  /** 键盘占位（px → vp）；键盘收起时为 0，不垫任何高度。 */
-  private liftVp(): number {
-    if (this.keyboardPx <= 0) {
-      return 0;
-    }
-    return Math.round(this.getUIContext().px2vp(this.keyboardPx));
-  }
-
   build() {
     Column() {
       this.content()
     }
     .width('100%')
-    .padding({ bottom: this.liftVp() })
-    // **抬/落都走过渡**（用户要求平滑移动上去、平滑移动下来）：
-    // ArkUI 的 .animation 只管**它之前声明的那些属性**，所以必须排在 padding 之后。
-    // 时长取 200ms：再长会和系统键盘动画脱节，再短就还是"跳"。
-    .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
   }
 }
 

@@ -835,11 +835,10 @@ export struct Sketch {
   }
 
   /**
-   * 半模态内容入口：键盘垫高层 + 背景面板本体。
-   * BindSheet 不参与平台的键盘避让（SDK 在 setKeyboardAvoidMode 的 NOTE 里点名
-   * 排除 Dialog/Popup/Menu/BindSheet/...），所以所有面板统一包 SheetKeyboardLift；
-   * 本面板自己不打字，垫高只在键盘因别处弹起时生效，不影响常规观感。
-   * ⚠️ 半模态里的 @Builder 必须**单根包裹**（SheetKeyboardLift 内部就是一个 Column）。
+   * 半模态内容入口：单根容器 + 背景面板本体。
+   * 包 SheetKeyboardLift 只为满足半模态要求 @Builder **单根**（它内部就是一个 Column）；
+   * 它以前还会垫一整段键盘高度，实测系统自己会让位、再垫会把面板顶出屏幕，
+   * 那段 padding 已于 2026-10-21 删掉。**别再往回加。**
    */
   @Builder
   bgSheet() {

@@ -13,8 +13,9 @@
  * 这些状态放在 Reader 里全都不会刷新，所以状态住进本组件，宿主只在**打开面板
  * 那一刻**传初值（init* 一组普通成员，不参与刷新），之后靠回调把结果交回去。
  *
- * 键盘避让不在这里做：平台对 BindSheet 不做键盘避让，抬高由外层
- * `material/SheetKeyboardLift` 统一负责（所有半模态共用）。
+ * 键盘避让不在这里做：真机实测半模态在键盘弹起时系统自己会让位，
+ * 外层 `material/SheetKeyboardLift` 现在只当单根容器（它以前垫的键盘高度已删，
+ * 那属于重复让位，会把面板顶出屏幕）。
  */
 import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, ANNOTATION_COLORS, AnnotationColor, annotationColor } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
@@ -218,7 +219,8 @@ export struct NotePanel {
    * 窗口高与键盘占高（都是 AppWindow 全局广播的 px）：输入框"随内容继续长高"
    * 要有上限，上限就得跟着**键盘之外的可视高度**走——键盘弹起时可视带变窄，
    * 框跟着收；键盘收起（或面板拖到大档）时框可以继续长。
-   * 垫高本身由外层 SheetKeyboardLift 负责，这里只用来算尺寸，不重复抬面板。
+   * 这里只按"键盘之外的可视高度"给输入框设上限：键盘弹起时可视带变窄，框跟着收；
+   * 键盘收起（或面板拖到大档）时框可以继续长。**不再额外垫高面板**（那是重复让位）。
    */
   @StorageProp('windowHpx') windowHpx: number = 0;
   @StorageProp('keyboardPx') keyboardPx: number = 0;

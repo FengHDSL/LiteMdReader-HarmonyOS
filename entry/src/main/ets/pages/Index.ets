@@ -5563,10 +5563,10 @@ struct Index {
   }
 
   /**
-   * bindSheet 内容 = 键盘垫高层 + 面板本体。
-   * BindSheet 不参与平台的键盘避让（SDK 在 setKeyboardAvoidMode 的 NOTE 里点名
-   * 排除 Dialog/Popup/Menu/BindSheet/...），所以一律包 SheetKeyboardLift，
-   * 键盘弹起时把内容抬到输入法上方（重命名、新建文档这些都要打字）。
+   * bindSheet 内容 = 单根容器 + 面板本体。
+   * 包 SheetKeyboardLift 只是为了给 @Builder 一个单根节点：它以前还会垫一整段键盘高度，
+   * 但真机实测半模态在键盘弹起时系统自己会让位，再垫就是重复让位（面板被顶出屏幕），
+   * 那段 padding 已于 2026-10-21 删掉。**别再往回加。**
    */
   @Builder
   indexSheet() {

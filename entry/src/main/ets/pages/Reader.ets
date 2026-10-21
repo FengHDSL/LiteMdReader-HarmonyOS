@@ -5077,9 +5077,10 @@ export struct Reader {
   }
 
   /**
-   * 面板内容 = 键盘垫高层 + 具体面板。
-   * 平台对 BindSheet 不做键盘避让（SDK 的 setKeyboardAvoidMode NOTE 里点名 BindSheet
-   * 不生效），所以统一包一层 SheetKeyboardLift，键盘弹起时把内容抬到输入法上方。
+   * 面板内容 = 单根容器 + 具体面板。
+   * SheetKeyboardLift 现在只给 @Builder 提供一个单根节点；它以前垫的那整段键盘高度
+   * 已于 2026-10-21 删掉——真机实测半模态在键盘弹起时系统自己会让位，再垫属于
+   * 重复让位，会把批注面板顶到状态栏、下面空一大截。**别再往回加。**
    */
   @Builder
   currentSheet() {
