@@ -3,17 +3,27 @@
  * ================================================
  *
  * 三个职责：
- *   ① `check()` —— 拉 HAP 资源站详情页解析最新版本号（原实现从 SettingsExplore 抽出，
- *      手动检查与自动检查共用同一份网络与解析逻辑）；
+ *   ① **两个渠道各查一次，结果一起展示**（用户要求）：
+ *      · `checkBeta()` —— **测试版**：拉 HAP 资源站详情页解析版本徽标
+ *        （原实现从 SettingsExplore 抽出，手动与自动共用同一份网络与解析逻辑）；
+ *      · `checkStore()` —— **正式版**：AppGallery Kit 的 `updateManager.checkAppUpdate()`，
+ *        由应用市场自己比对在架版本（市场正式版通常比资源站晚几个版本）；
+ *      · `checkAll()` —— 两条并发跑完，拼成逐行文案给页面显示。
  *   ② `maybeAutoCheck()` —— **固定 48 小时自动检查一次**（用户要求）：距上次检查
- *      不足 48h 直接跳过；有更新用**默认即时反馈（toast）**提醒，不打扰式弹窗；
+ *      不足 48h 直接跳过；任一渠道有更新用**默认即时反馈（toast）**提醒，不打扰式弹窗；
  *   ③ 使用模式：`appMode()` 为 'offline'（基础模式 / 纯离线）时，一切联网能力关停。
+ *
+ * ⚠️ `checkAppUpdate` 只在**从应用市场安装的包**上准；DevEco 直装的调试包多半回
+ *    1009400002 / 1009400007，这时正式版那一行写清「查不到（非市场安装常见）」，
+ *    不影响测试版那一行照常展示。
  *
  * 键：`lastAutoCheckAt`（毫秒时间戳）、`lastSeenVersion`（已提示过的版本）、
  * `appMode`（'' 未选择 / 'full' 全量 / 'offline' 基础）。
  */
 
 import { common, bundleManager } from '@kit.AbilityKit';
+import { updateManager } from '@kit.AppGalleryKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { SettingsMirror } from './SettingsMirror';
@@ -29,15 +39,27 @@ const AUTO_CHECK_INTERVAL: number = 48 * 60 * 60 * 1000;
 export const APP_MODE_FULL: string = 'full';
 export const APP_MODE_OFFLINE: string = 'offline';
 
-/** 检查结果 */
-export interface UpdateCheckResult {
+/** 单个渠道的检查结果（测试版 = HAP 资源站；正式版 = 华为应用市场） */
+export interface ChannelResult {
+  /** 渠道名（已本地化，逐行显示时做前缀） */
+  label: string;
   ok: boolean;
-  /** 远端版本（不含 v 前缀）；ok=false 时为空串 */
+  /** 该渠道在架版本（不含 v 前缀）；查不到时为空串 */
   remote: string;
-  /** 更简洁的提示文案（页面直接用） */
-  message: string;
-  /** 远端比当前新 */
+  /** 该渠道比当前版本新 */
   hasUpdate: boolean;
+  /** 一行结果文案（弹窗逐行显示与 toast 摘要都用它拼） */
+  line: string;
+}
+
+/** 两个渠道合并后的结果（用户要求：检查结果两条一起展示） */
+export interface UpdateCheckAllResult {
+  beta: ChannelResult;
+  store: ChannelResult;
+  /** 任一渠道有更新 */
+  hasUpdate: boolean;
+  /** 弹窗正文：测试版一行、正式版一行 */
+  lines: string[];
 }
 
 export class UpdateService {
@@ -104,31 +126,30 @@ export class UpdateService {
     return '';
   }
 
+  /** 渠道失败行：ok=false、没有版本号，只有一行原因文案 */
+  private static fail(label: string, reason: string): ChannelResult {
+    return {
+      label: label, ok: false, remote: '', hasUpdate: false,
+      line: label + '：' + reason
+    } as ChannelResult;
+  }
+
   /**
-   * 拉资源站检查最新版本（8 秒超时保护）。
-   * 基础模式（纯离线）下直接返回「离线模式不可用」的结果，不发任何请求。
+   * 测试版渠道：拉 HAP 资源站详情页解析版本徽标（8 秒超时保护）。
+   * 基础模式（纯离线）下不发任何请求，直接返回「离线模式不可用」。
    */
-  static check(): Promise<UpdateCheckResult> {
+  static checkBeta(): Promise<ChannelResult> {
+    const label: string = L10n.t('测试版（HAP 资源站）');
     const current: string = UpdateService.currentVersion();
     if (UpdateService.isOffline()) {
-      return Promise.resolve({
-        ok: false,
-        remote: '',
-        message: L10n.t('当前是基础模式（纯离线），检查更新不可用'),
-        hasUpdate: false
-      } as UpdateCheckResult);
+      return Promise.resolve(UpdateService.fail(label, L10n.t('当前是基础模式（纯离线），检查更新不可用')));
     }
-    return new Promise<UpdateCheckResult>((resolve) => {
+    return new Promise<ChannelResult>((resolve) => {
       let finished: boolean = false;
       const timer = setTimeout(() => {
         if (!finished) {
           finished = true;
-          resolve({
-            ok: false,
-            remote: '',
-            message: L10n.t('检查更新超时，请稍后再试'),
-            hasUpdate: false
-          } as UpdateCheckResult);
+          resolve(UpdateService.fail(label, L10n.t('检查更新超时，请稍后再试')));
         }
       }, UPDATE_TIMEOUT);
       const httpRequest = http.createHttp();
@@ -147,23 +168,19 @@ export class UpdateService {
         const html: string = typeof resp.result === 'string' ? resp.result : '';
         const remote: string = UpdateService.parseRemoteVersion(html);
         if (remote.length === 0) {
-          resolve({
-            ok: false,
-            remote: '',
-            message: L10n.t('检查更新失败，请稍后再试'),
-            hasUpdate: false
-          } as UpdateCheckResult);
+          resolve(UpdateService.fail(label, L10n.t('检查更新失败，解析不到版本号')));
           return;
         }
         const cmp: number = UpdateService.compareVersion(current, remote);
+        const detail: string = cmp < 0
+          ? L10n.t('可更新 v') + remote + L10n.t('（当前 v') + current + '）'
+          : (cmp > 0
+            ? L10n.t('在架 v') + remote + L10n.t('，当前版本比它更高')
+            : L10n.t('已是最新（v') + current + '）');
         resolve({
-          ok: true,
-          remote: remote,
-          message: cmp < 0
-            ? L10n.t('发现新版本 v') + remote + '（当前 v' + current + '）'
-            : (cmp > 0 ? L10n.t('当前版本比最新版本更高') : L10n.t('已是最新版本（v') + current + '）'),
-          hasUpdate: cmp < 0
-        } as UpdateCheckResult);
+          label: label, ok: true, remote: remote, hasUpdate: cmp < 0,
+          line: label + '：' + detail
+        } as ChannelResult);
       }).catch((err: Error) => {
         if (finished) {
           return;
@@ -171,13 +188,115 @@ export class UpdateService {
         finished = true;
         clearTimeout(timer);
         httpRequest.destroy();
-        resolve({
-          ok: false,
-          remote: '',
-          message: L10n.t('检查更新失败，请检查网络后重试'),
-          hasUpdate: false
-        } as UpdateCheckResult);
+        resolve(UpdateService.fail(label, L10n.t('检查更新失败，请检查网络后重试')));
       });
+    });
+  }
+
+  /**
+   * 正式版渠道：`updateManager.checkAppUpdate()` 让**应用市场自己**比对在架版本，
+   * 返回 `updateAvailable` 与（since 20）`versionName`。8 秒超时保护同测试版。
+   * ⚠️ 非市场安装的包（DevEco 直装的调试包）通常直接报错，那一行写清原因即可，
+   *    不影响测试版那一行展示。
+   */
+  static checkStore(ctx: common.UIAbilityContext | null): Promise<ChannelResult> {
+    const label: string = L10n.t('正式版（华为应用市场）');
+    const current: string = UpdateService.currentVersion();
+    if (UpdateService.isOffline()) {
+      return Promise.resolve(UpdateService.fail(label, L10n.t('当前是基础模式（纯离线），检查更新不可用')));
+    }
+    if (ctx === null) {
+      return Promise.resolve(UpdateService.fail(label, L10n.t('取不到应用上下文')));
+    }
+    return new Promise<ChannelResult>((resolve) => {
+      let finished: boolean = false;
+      const timer = setTimeout(() => {
+        if (!finished) {
+          finished = true;
+          resolve(UpdateService.fail(label, L10n.t('应用市场没有响应，请稍后再试')));
+        }
+      }, UPDATE_TIMEOUT);
+      const settle = (res: ChannelResult): void => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        clearTimeout(timer);
+        resolve(res);
+      };
+      let call: Promise<updateManager.CheckUpdateResult>;
+      try {
+        call = updateManager.checkAppUpdate(ctx);
+      } catch (err) {
+        // 同步抛（缺 syscap、非前台、上下文不合法）：只挂 promise 的 catch 接不到
+        settle(UpdateService.fail(label, UpdateService.storeReason(err as BusinessError)));
+        return;
+      }
+      call.then((res: updateManager.CheckUpdateResult) => {
+        const remote: string = res.versionName === undefined || res.versionName === null ? '' : res.versionName;
+        const available: boolean = res.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_EXIST;
+        hilog.info(0x0000, 'UpdateService', 'store check: available=%{public}d name=%{public}s',
+          res.updateAvailable, remote);
+        if (remote.length > 0) {
+          const cmp: number = UpdateService.compareVersion(current, remote);
+          const detail: string = cmp < 0
+            ? L10n.t('可更新 v') + remote + L10n.t('（当前 v') + current + '）'
+            : (cmp > 0
+              ? L10n.t('在架 v') + remote + L10n.t('，当前版本比它更高')
+              : L10n.t('已是最新（v') + current + '）');
+          settle({
+            label: label, ok: true, remote: remote, hasUpdate: cmp < 0,
+            line: label + '：' + detail
+          } as ChannelResult);
+          return;
+        }
+        // 市场没给版本号：只能按 updateAvailable 说话
+        settle({
+          label: label, ok: true, remote: '', hasUpdate: available,
+          line: label + '：' + (available ? L10n.t('有可用的新版本') : L10n.t('已是最新（v') + current + '）')
+        } as ChannelResult);
+      }).catch((err: BusinessError) => {
+        hilog.warn(0x0000, 'UpdateService', 'store check failed code=%{public}d',
+          err === null || err === undefined ? 0 : err.code);
+        settle(UpdateService.fail(label, UpdateService.storeReason(err)));
+      });
+    });
+  }
+
+  /** 应用市场检查更新的官方错误码 → 中文原因 */
+  private static storeReason(err: BusinessError): string {
+    const code: number = err === null || err === undefined ? 0 : err.code;
+    if (code === 1009400003) {
+      return L10n.t('网络不通，请检查网络后重试');
+    }
+    if (code === 1009400004) {
+      return L10n.t('应用不在前台，请回到应用后再查');
+    }
+    if (code === 1009400005) {
+      return L10n.t('请先同意应用市场的隐私协议');
+    }
+    if (code === 1009400006) {
+      return L10n.t('查询过于频繁，请稍后再试');
+    }
+    // 401 / 1009400001 / 2 / 7 与其它：调试直装的包最常见的就是这一类
+    return L10n.t('查不到（非应用市场安装的包通常查不到）');
+  }
+
+  /**
+   * 两个渠道并发跑完，拼成逐行结果（用户要求：检查结果两条一起展示）。
+   * 顺序固定：测试版在前、正式版在后。
+   */
+  static checkAll(ctx: common.UIAbilityContext | null): Promise<UpdateCheckAllResult> {
+    const betaP: Promise<ChannelResult> = UpdateService.checkBeta();
+    const storeP: Promise<ChannelResult> = UpdateService.checkStore(ctx);
+    return Promise.all([betaP, storeP]).then((list: ChannelResult[]) => {
+      const beta: ChannelResult = list[0];
+      const store: ChannelResult = list[1];
+      return {
+        beta: beta, store: store,
+        hasUpdate: beta.hasUpdate || store.hasUpdate,
+        lines: [beta.line, store.line]
+      } as UpdateCheckAllResult;
     });
   }
 
@@ -200,11 +319,20 @@ export class UpdateService {
     // 同时写一次 settings.json（第二腿，PersistentStorage 在部分设备不落盘）
     AppStorage.setOrCreate('lastAutoCheckAt', now);
     SettingsMirror.save(ctx);
-    UpdateService.check().then((res: UpdateCheckResult) => {
-      if (res.ok && res.hasUpdate) {
-        notify('发现新版本 v' + res.remote + '，可在「探索中心 → 检查更新」查看');
-        hilog.info(0x0000, 'UpdateService', 'auto check: new version %{public}s', res.remote);
+    UpdateService.checkAll(ctx).then((res: UpdateCheckAllResult) => {
+      if (!res.hasUpdate) {
+        return;
       }
+      const parts: string[] = [];
+      if (res.beta.hasUpdate) {
+        parts.push(L10n.t('测试版') + ' v' + res.beta.remote);
+      }
+      if (res.store.hasUpdate) {
+        parts.push(L10n.t('正式版'));
+      }
+      notify(L10n.t('发现新版本（') + parts.join(' / ') + L10n.t('），可在「探索中心 → 检查更新」查看'));
+      hilog.info(0x0000, 'UpdateService', 'auto check: beta=%{public}s store=%{public}s',
+        res.beta.remote, res.store.remote);
     }).catch(() => {
       // 自动检查失败静默（不打扰用户）
     });

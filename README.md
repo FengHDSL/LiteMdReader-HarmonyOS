@@ -281,11 +281,19 @@
 
 ### 检查更新
 
-- 在「探索中心」点「检查更新」→ `http.createHttp()` 拉取发布页
-  （`https://www.sydxky.cn/detail.php?id=956`）→ 解析页面上的版本徽标
-  （`fa-code-branch` 图标后紧跟的 `<span>vX.Y.Z</span>`）→ 与 `bundleManager`
-  读到的当前版本**逐段数字比对**：远端更高提示前往更新，当前更高提示版本超前，
-  相等提示已是最新。带 8 秒超时与"进行中忽略重复点击"保护。
+- 「探索中心 → 检查更新」**同时查两个渠道，结果两条一起显示**：
+  - **测试版**：`http.createHttp()` 拉取 HAP 资源站发布页
+    （`https://www.sydxky.cn/detail.php?id=956`），解析版本徽标
+    （`fa-code-branch` 图标后紧跟的 `<span>vX.Y.Z</span>`），与 `bundleManager`
+    读到的当前版本**逐段数字比对**；侧载 / 邀测走这条，通常领先几个版本。
+  - **正式版**：AppGallery Kit 的 `updateManager.checkAppUpdate()`，由应用市场自己
+    比对在架版本（市场正式版上架会晚几个版本）。有正式版更新时结果弹窗的第一个按钮
+    直接调 `updateManager.showUpdateDialog()` 弹官方更新框。
+- 两条渠道各带 8 秒超时与"进行中忽略重复点击"保护；任一渠道失败只影响它自己那一行，
+  另一行照常展示。
+- ⚠️ `checkAppUpdate` 只在**从应用市场安装的包**上准：DevEco 直装的调试包通常返回
+  1009400002 / 1009400007，此时正式版那一行写明「查不到（非应用市场安装的包通常查不到）」。
+- 每 48 小时自动查一次（`lastAutoCheckAt`），任一渠道有更新用 toast 提醒，不弹窗打扰。
 
 ---
 

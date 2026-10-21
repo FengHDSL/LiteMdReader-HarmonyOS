@@ -14,12 +14,12 @@ import { ImmersiveCard, ImmersiveChip, ImmersiveIconButton } from '../material/I
 import { SettingsShell } from './SettingsShell';
 import { webview } from '@kit.ArkWeb';
 import { LegalDoc } from './LegalDoc';
-import { UpdateService, APP_MODE_OFFLINE } from '../service/UpdateService';
+import { UpdateService, UpdateCheckAllResult, APP_MODE_OFFLINE } from '../service/UpdateService';
 import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { Rating } from '../service/Rating';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
-import { http } from '@kit.NetworkKit';
+import { updateManager } from '@kit.AppGalleryKit';
 import { promptAction } from '@kit.ArkUI';
 import { AppearanceFx } from '../service/AppearanceFx';
 import {
@@ -32,13 +32,11 @@ import {
 } from '../theme/DesignTokens';
 
 /**
- * 澄笺在 HAP 资源站上的详情页（用户指定）。
- * 「检查更新」直接拉这个页面、解析版本徽标（fa-code-branch 后的 vX.Y.Z）来比对。
+ * 澄笺在 HAP 资源站上的详情页（用户指定）= **测试版渠道**：
+ * 检查更新时解析它的版本徽标（fa-code-branch 后的 vX.Y.Z），结果弹窗里「前往更新」也跳这里。
+ * 正式版走应用市场（`updateManager`），不占网址。
  */
 const UPDATE_SITE: string = 'https://www.sydxky.cn/detail.php?id=956';
-
-/** 检查更新超时（毫秒）：网络不可达 / 域名解析失败时给个明确提示，不要一直转 */
-const UPDATE_TIMEOUT: number = 8000;
 
 /** 平板分栏内嵌法务文档的 Web 高度（vp）：420 在横屏下太矮，正文只剩几行 */
 const EMBEDDED_LEGAL_HEIGHT: number = 560;
@@ -253,12 +251,14 @@ export struct SettingsExplore {
 
   // ══════════════════════ 检查更新 ══════════════════════
   //
-  // 做法与参考项目 xjau 的 AboutPage 一致：拉取 HAP 资源站详情页 HTML，
-  // 解析版本徽标（`fa-code-branch` 后紧跟的 `<span>vX.Y.Z</span>`）作为最新版本，
-  // 再与 bundleManager 读到的当前版本逐段比对：
-  //   远端更高 → 弹「发现新版本」并可跳转资源站；当前更高 → 「版本超前」；相等 → toast 已是最新。
+  // **两个渠道一起查、结果一起展示**（用户要求）：
+  //   · 测试版 = HAP 资源站详情页的版本徽标（`fa-code-branch` 后紧跟 `<span>vX.Y.Z</span>`，
+  //     侧载 / 邀测走这条，通常领先几个版本）；
+  //   · 正式版 = 华为应用市场（AppGallery Kit 的 `updateManager.checkAppUpdate()`，
+  //     由市场自己比对在架版本）。
+  // 两条文案逐行显示在同一个结果弹窗里；网络与解析细节都在 UpdateService 里。
 
-  /** 检查更新：8 秒超时保护 + 重复点击忽略（网络不通时给明确提示，不一直转圈）。 */
+  /** 检查更新：两个渠道并发跑完，重复点击直接忽略（超时保护在 UpdateService 内部）。 */
   private checkUpdate(): void {
     if (this.checkingUpdate) {
       return;
@@ -269,112 +269,67 @@ export struct SettingsExplore {
       return;
     }
     this.checkingUpdate = true;
-    let finished: boolean = false;
-    const timer = setTimeout(() => {
-      if (!finished) {
-        finished = true;
-        this.checkingUpdate = false;
-        this.toast(L10n.t('检查更新超时，请稍后再试'));
-      }
-    }, UPDATE_TIMEOUT);
-    const httpRequest = http.createHttp();
-    httpRequest.request(UPDATE_SITE, {
-      method: http.RequestMethod.GET,
-      connectTimeout: UPDATE_TIMEOUT,
-      readTimeout: UPDATE_TIMEOUT,
-      header: { 'User-Agent': 'Mozilla/5.0 (HarmonyOS) ChengJian' }
-    }).then((resp: http.HttpResponse) => {
-      if (finished) {
-        return;
-      }
-      finished = true;
-      clearTimeout(timer);
-      httpRequest.destroy();
+    UpdateService.checkAll(this.hostCtx()).then((res: UpdateCheckAllResult) => {
       this.checkingUpdate = false;
-      const html: string = typeof resp.result === 'string' ? resp.result : '';
-      const remote: string = this.parseRemoteVersion(html);
-      if (remote.length === 0) {
-        this.toast(L10n.t('检查更新失败，请稍后再试'));
-        return;
-      }
-      const cmp: number = this.compareVersion(this.versionName, remote);
-      if (cmp < 0) {
-        this.getUIContext().getPromptAction().showDialog({
-          title: L10n.t('发现新版本'),
-          message: L10n.t('发现新版本 v') + remote + '（当前 v' + this.versionName + '）。' +
-            '可前往 HAP 资源站查看更新说明并下载安装包。',
-          buttons: [
-            { text: L10n.t('前往更新'), color: this.palette().accent },
-            { text: L10n.t('稍后再说'), color: this.palette().textSecondary }
-          ]
-        }).then((res: promptAction.ShowDialogSuccessResponse) => {
-          if (res.index === 0) {
-            this.openLink(UPDATE_SITE);
-          }
-        }).catch(() => {
-          // 用户手势取消对话框，无需提示
-        });
-      } else if (cmp > 0) {
-        this.getUIContext().getPromptAction().showDialog({
-          title: L10n.t('版本超前'),
-          message: L10n.t('当前版本（v') + this.versionName + '）比最新版本（v' + remote + '）更高！',
-          buttons: [
-            { text: L10n.t('知道了'), color: this.palette().accent }
-          ]
-        }).catch(() => {
-          // 关闭失败无副作用
-        });
-      } else {
-        this.toast('已是最新版本（v' + this.versionName + '）');
-      }
+      this.showCheckResult(res);
     }).catch(() => {
-      if (finished) {
-        return;
-      }
-      finished = true;
-      clearTimeout(timer);
-      httpRequest.destroy();
       this.checkingUpdate = false;
       this.toast(L10n.t('检查更新失败，请检查网络后重试'));
     });
   }
 
   /**
-   * 从资源站 HTML 解析最新版本号。
-   * 优先版本徽标锚点（`fa-code-branch` 后 400 字符内），兜底全页第一个 `vX.Y.Z`；
-   * 取不到返回空串（调用方按「检查更新失败」处理）。
+   * 结果弹窗：标题随「有没有更新」变，正文每个渠道一行（用户要求两条都展示）。
+   * 第一个按钮的动作也跟着变：只有正式版有更新 → 调应用市场官方更新框
+   * （`updateManager.showUpdateDialog`）；测试版有更新（或两个都有）→ 去资源站。
    */
-  private parseRemoteVersion(html: string): string {
-    const anchor: number = html.indexOf('fa-code-branch');
-    if (anchor >= 0) {
-      const seg: string = html.substring(anchor, Math.min(anchor + 400, html.length));
-      const m: RegExpMatchArray | null = seg.match(/<span>\s*v(\d+\.\d+(?:\.\d+)?)\s*<\/span>/);
-      if (m !== null && m.length > 1) {
-        return m[1];
+  private showCheckResult(res: UpdateCheckAllResult): void {
+    const goStore: boolean = res.store.hasUpdate && !res.beta.hasUpdate;
+    // 按钮显式写成 promptAction.Button[]：ArkTS 对对象字面量要求能从上下文推出类型，
+    // 用三元返回两个不同长度的数组字面量最容易在构建时炸
+    const btns: promptAction.Button[] = [];
+    if (res.hasUpdate) {
+      btns.push({
+        text: goStore ? L10n.t('在市场更新') : L10n.t('前往更新'),
+        color: this.palette().accent
+      });
+    }
+    btns.push({
+      text: res.hasUpdate ? L10n.t('稍后再说') : L10n.t('知道了'),
+      color: this.palette().textSecondary
+    });
+    this.getUIContext().getPromptAction().showDialog({
+      title: res.hasUpdate ? L10n.t('发现新版本') : L10n.t('检查更新'),
+      message: res.lines.join('\n'),
+      buttons: btns
+    }).then((dr: promptAction.ShowDialogSuccessResponse) => {
+      if (!res.hasUpdate || dr.index !== 0) {
+        return;
       }
-    }
-    const m2: RegExpMatchArray | null = html.match(/<span>\s*v(\d+\.\d+(?:\.\d+)?)\s*<\/span>/);
-    if (m2 !== null && m2.length > 1) {
-      return m2[1];
-    }
-    return '';
-  }
-
-  /** 版本号比较：a>b 返回 1，a<b 返回 -1，相等返回 0（按数字段逐段比较，缺位补 0）。 */
-  private compareVersion(a: string, b: string): number {
-    const pa: string[] = a.split('.');
-    const pb: string[] = b.split('.');
-    const n: number = Math.max(pa.length, pb.length);
-    for (let i = 0; i < n; i++) {
-      const x: number = i < pa.length ? parseInt(pa[i], 10) : 0;
-      const y: number = i < pb.length ? parseInt(pb[i], 10) : 0;
-      const xi: number = isNaN(x) ? 0 : x;
-      const yi: number = isNaN(y) ? 0 : y;
-      if (xi !== yi) {
-        return xi > yi ? 1 : -1;
+      if (!goStore) {
+        this.openLink(UPDATE_SITE);
+        return;
       }
-    }
-    return 0;
+      const ctx = this.hostCtx();
+      if (ctx === null) {
+        this.toast(L10n.t('请前往应用市场更新'));
+        return;
+      }
+      // showUpdateDialog 同样可能**同步抛**（缺 syscap / 不在前台），只挂 promise 的 catch 接不到
+      try {
+        updateManager.showUpdateDialog(ctx).then((code: updateManager.ShowUpdateResultCode) => {
+          if (code === updateManager.ShowUpdateResultCode.SHOW_DIALOG_FAILURE) {
+            this.toast(L10n.t('打不开应用市场的更新框，请前往应用市场更新'));
+          }
+        }).catch(() => {
+          this.toast(L10n.t('打不开应用市场的更新框，请前往应用市场更新'));
+        });
+      } catch (err) {
+        this.toast(L10n.t('打不开应用市场的更新框，请前往应用市场更新'));
+      }
+    }).catch(() => {
+      // 用户手势取消对话框，无需提示
+    });
   }
 
   build() {
