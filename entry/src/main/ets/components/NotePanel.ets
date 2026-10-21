@@ -120,23 +120,32 @@ export struct NotePanel {
     });
   }
 
+  /**
+   * 拉一遍书架候选（自动忽略当前文档）。
+   * 打开面板时也要拉一次 —— 编辑已有批注要把正文里的 `[名称](doc://名称)`
+   * 换回框外的按钮行，没有候选就查不到真身、换不回来。
+   */
+  private loadCandidates(): void {
+    const ctx = getContext(this) as common.UIAbilityContext;
+    try {
+      DocStore.init(ctx);
+      const all: DocMeta[] = DocStore.list(ctx);
+      const kept: DocMeta[] = [];
+      for (let k = 0; k < all.length; k++) {
+        // **自动忽略当前文档**（用户要求）：不能关联自己
+        if (all[k].name !== this.currentDoc && all[k].fileName !== this.currentDoc) {
+          kept.push(all[k]);
+        }
+      }
+      this.docCandidates = kept;
+    } catch (err) {
+      this.docCandidates = [];
+    }
+  }
+
   private toggleDocPicker(): void {
     if (!this.docPickerOpen) {
-      const ctx = getContext(this) as common.UIAbilityContext;
-      try {
-        DocStore.init(ctx);
-        const all: DocMeta[] = DocStore.list(ctx);
-        const kept: DocMeta[] = [];
-        for (let k = 0; k < all.length; k++) {
-          // **自动忽略当前文档**（用户要求）：不能关联自己
-          if (all[k].name !== this.currentDoc && all[k].fileName !== this.currentDoc) {
-            kept.push(all[k]);
-          }
-        }
-        this.docCandidates = kept;
-      } catch (err) {
-        this.docCandidates = [];
-      }
+      this.loadCandidates();
     }
     this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
       this.docPickerOpen = !this.docPickerOpen;
@@ -230,6 +239,8 @@ export struct NotePanel {
   aboutToAppear(): void {
     this.mathQuote = this.initMathQuote;
     this.mathSrc = this.initMathQuote;
+    // 先拉候选：下面拆关联文档标记时要拿它查真身
+    this.loadCandidates();
     // **编辑已有批注**：把图片引用从文本抽到 pickedImages（文本框保持干净）
     const re: RegExp = /!\[[^\]]*\]\((images\/[^)]+)\)\n?/g;
     this.pickedImages = [];
@@ -242,11 +253,17 @@ export struct NotePanel {
     // **关联文档也剥出文本框，显示成框外的独立按钮行**（用户要求）：
     // 正文里存的是 `[名称](doc://名称)`，编辑时如果不在这里拆出来，
     // 文本框里就会出现一行裸标记 —— 看起来像"关联文档被改成文本显示了"。
-    const dre: RegExp = /\n?\[([^\]]*)\]\(doc:\/\/([^)]+)\)/g;
+    // ⚠️ 只处理**能在候选里查到真身**的那几个：查不到就原样留在正文里。
+    //    伪造一个缺字段的 DocMeta 会被 DevEco 直接判类型错（DocMeta 字段比想象的多），
+    //    而"解析不到就删掉标记"会把用户的关联文档弄丢 —— 两头都不能干。
+    const dre: RegExp = /\n?\[[^\]]*\]\(doc:\/\/[^)]+\)/g;
     const restored: DocMeta[] = [];
+    const eaten: string[] = [];
     let dm: RegExpExecArray | null = dre.exec(this.draft);
     while (dm !== null) {
-      const fname: string = dm[2];
+      const whole: string = dm[0];
+      const nameAt: number = whole.indexOf('](doc://') + 8;
+      const fname: string = whole.substring(nameAt, whole.length - 1);
       let meta: DocMeta | null = null;
       for (let k = 0; k < this.docCandidates.length; k++) {
         if (this.docCandidates[k].fileName === fname || this.docCandidates[k].name === fname) {
@@ -254,18 +271,17 @@ export struct NotePanel {
           break;
         }
       }
-      if (meta === null) {
-        // 候选还没加载（或文档已被移除）：先按名字占位，图标行照常显示、照常可移除
-        const ghost: DocMeta = {
-          name: dm[1].length > 0 ? dm[1] : fname, fileName: fname, builtin: false,
-          size: 0, mtime: 0, charCount: 0, wordCount: 0
-        };
-        meta = ghost;
+      if (meta !== null) {
+        restored.push(meta);
+        eaten.push(whole);
       }
-      restored.push(meta);
       dm = dre.exec(this.draft);
     }
-    this.draft = this.draft.replace(dre, '').trim();
+    let cleaned: string = this.draft;
+    for (let k = 0; k < eaten.length; k++) {
+      cleaned = cleaned.split(eaten[k]).join('');
+    }
+    this.draft = cleaned.trim();
     this.linkedDocs = restored;
     this.style = this.initStyle;
     // 编辑已有批注 → 用原色；新建 → 默认黄（宿主给 initColor）
