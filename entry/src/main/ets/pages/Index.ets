@@ -451,11 +451,8 @@ struct Index {
     UpdateService.maybeAutoCheck(ctx, (message: string) => {
       this.toast(message);
     });
-    // ── 好评鼓励：安装满 24 小时后自动弹一次应用内评分框（只弹一次；
-    //    测试期立即弹，开关见 service/Rating.ets 顶部 RATE_TEST_IMMEDIATE）──
-    Rating.maybeAutoAsk(ctx, (message: string) => {
-      this.toast(message);
-    });
+    // ── 好评鼓励：安装满 24 小时后自动弹一次应用内评分框，弹过就不再打扰 ──
+    Rating.maybeAutoAsk(ctx);
     // 启动页时序：首帧即显 → 1.2s 后开始淡出（420ms）→ 淡出结束移除
     setTimeout(() => {
       this.getUIContext().animateTo(AppearanceFx.anim(420, Curve.FastOutSlowIn), () => {

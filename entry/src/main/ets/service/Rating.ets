@@ -11,9 +11,11 @@
  *      时不记账，下次启动还有一次机会 —— 没打扰到任何人，不算「弹过」。
  *      基础模式（纯离线）不自动弹。
  *
- * ⚠️ 这个 API 只有真机 + 已登录华为账号才有效（`@stagemodelonly`，since 6.0.0(20)），
- *    模拟器、无应用市场的设备会直接报错；错误码全部按官方表格映射成中文提示，
- *    异常一律 try/catch 兜住，绝不让它冒到调用方。
+ * ⚠️ 这个 API 只有真机 + 已登录华为账号才有反应（`@stagemodelonly`，since 6.0.0(20)）。
+ *    d.ts 顶部明写「Exceptions need to be captured when an API is called」——
+ *    入参 / context 不合法这类是**同步抛**，只挂在 promise 上的 catch 接不到，
+ *    表现就是「点了没反应、连提示都没有」，所以同步与异步两条失败路径都要兜
+ *    （见 `ask()`），错误码一律映射成中文提示。
  */
 
 import { commentManager } from '@kit.AppGalleryKit';
@@ -24,15 +26,8 @@ import { L10n } from './L10n';
 import { SettingsMirror } from './SettingsMirror';
 import { UpdateService } from './UpdateService';
 
-/** 自动求好评的安装时长门槛：24 小时 */
+/** 自动求好评的安装时长门槛：安装满 24 小时才弹，且只弹一次 */
 const RATE_AFTER_INSTALL_MS: number = 24 * 60 * 60 * 1000;
-
-/**
- * ⚠️ **测试开关**（用户要求先立刻弹，方便真机验证）：
- * true = 跳过 24 小时门槛，进书架 2.5 秒后就弹。
- * **验证完改回 false**，自动询问即恢复「安装满 24 小时才弹、且只弹一次」。
- */
-const RATE_TEST_IMMEDIATE: boolean = true;
 
 /** 自动弹窗的启动延迟（毫秒）：等书架首帧与「本次更新内容」弹窗收场，别叠一层 */
 const RATE_START_DELAY: number = 2500;
@@ -49,23 +44,38 @@ export class Rating {
    * @returns true = 弹窗真的出现过，或本机已经评过分（自动询问就此收工，别再打扰）
    */
   static ask(ctx: common.UIAbilityContext, notify: (message: string) => void): Promise<boolean> {
-    return commentManager.showCommentDialog(ctx).then(() => {
+    hilog.info(0x0000, 'Rating', 'ask called');
+    let call: Promise<void>;
+    try {
+      call = commentManager.showCommentDialog(ctx);
+    } catch (err) {
+      // 同步抛（入参 / context 不合法、设备没有这个 syscap）：只挂 promise 的 catch 接不到
+      return Promise.resolve(Rating.failed(err as BusinessError, notify));
+    }
+    return call.then(() => {
       hilog.info(0x0000, 'Rating', 'comment dialog shown');
       return true;
-    }).catch((err: BusinessError) => {
-      const code: number = err === null || err === undefined ? 0 : err.code;
-      notify(Rating.messageFor(code));
-      hilog.warn(0x0000, 'Rating', 'showCommentDialog failed code=%{public}d', code);
-      // 「这个版本评过了」/「一年内评过了」= 用户已经支持过，自动询问不必再来
-      return code === 1021500007 || code === 1021500009;
-    });
+    }).catch((err: BusinessError) => Rating.failed(err, notify));
   }
 
   /**
-   * 自动求好评：安装满 24 小时 + 本机没弹过 → 延迟一会儿弹一次。
-   * 与 `UpdateService.maybeAutoCheck` 同形，由书架 `aboutToAppear` 调用。
+   * 失败统一处理（同步抛与 promise 拒绝都走这里）。
+   * @returns true = 系统说「已经评过分」，自动询问就此收工，别再打扰
    */
-  static maybeAutoAsk(ctx: common.UIAbilityContext | null, notify: (message: string) => void): void {
+  private static failed(err: BusinessError, notify: (message: string) => void): boolean {
+    const code: number = err === null || err === undefined ? 0 : err.code;
+    notify(Rating.messageFor(code));
+    hilog.warn(0x0000, 'Rating', 'showCommentDialog failed code=%{public}d', code);
+    return code === 1021500007 || code === 1021500009;
+  }
+
+  /**
+   * 自动求好评：安装满 24 小时 + 本机没弹过 → 延迟一会儿弹一次，弹过就落 `ratingPrompted`。
+   * 与 `UpdateService.maybeAutoCheck` 同形，由书架 `aboutToAppear` 调用。
+   * **失败一律静默**（用户要求避免打扰）：不弹窗也不提示，只记 hilog，下次启动还有一次机会；
+   * 只有手动点探索中心的芯片才会把错误码 toast 出来。
+   */
+  static maybeAutoAsk(ctx: common.UIAbilityContext | null): void {
     if (autoScheduled || ctx === null) {
       return;
     }
@@ -76,12 +86,14 @@ export class Rating {
     if (UpdateService.isOffline()) {
       return;
     }
-    if (!RATE_TEST_IMMEDIATE && !Rating.installedLongEnough()) {
+    if (!Rating.installedLongEnough()) {
       return;
     }
     autoScheduled = true;
     setTimeout(() => {
-      Rating.ask(ctx, notify).then((done: boolean) => {
+      Rating.ask(ctx, (message: string) => {
+        hilog.info(0x0000, 'Rating', 'auto ask skipped: %{public}s', message);
+      }).then((done: boolean) => {
         if (done) {
           Rating.markPrompted(ctx);
         }
