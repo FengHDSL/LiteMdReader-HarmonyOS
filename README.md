@@ -335,11 +335,20 @@
 - 桌面卡片跑在 FormExtension 独立进程，读不到主应用 AppStorage：`FormSync.buildData`
   随 `bindingData` 多推一个 `cardFont` 键，卡片用 `@LocalStorageProp('cardFont')` 接。
   因此卡片换字跟着**下一次卡片推送/刷新**生效。
-- 系统「字体安装和管理」里导入的字体（INSTALLED）**必须先注册**：真机实测直接取
-  `descriptor.fontFamily` 不生效，`FontStore.registerInstalledAll()` 会用
-  `descriptor.path` 走 `font.registerFont({familyName, familySrc:'file://'+path})`
-  （再把 fullName 也注册成别名）。读不到文件路径的款式进 `installFailed` 名单，
-  选择器里点它会直接说明"暂时用不了，可以把字体文件用导入字体导进来"。
+- 系统字体**必须先注册**：真机实测直接取 `descriptor.fontFamily` 不生效，`FontStore` 会用
+  `descriptor.path` 走 `font.registerFont({familyName, familySrc:'file://'+path})`。
+  读不到文件路径的款式进 `installFailed` 名单，选择器里点它会直接说明"暂时用不了，
+  可以把字体文件用导入字体导进来"。
+- **枚举口径**：`getSystemFontFullNamesByType` 要按 `INSTALLED`（用户在系统「字体安装和管理」
+  里装的）/ `GENERIC`（系统自带）/ `STYLISH`（样式字体）三类分别查，只查 INSTALLED 会少一大半。
+  **只按 fullName 去重、不按家族名去重** —— 一款字体的 Regular / Bold / Italic 家族名相同，
+  按家族去重就把样式并掉了；选中值也因此用 fullName，家族名照样注册成别名（兼容老设置）。
+- **性能**：逐款 `getFontDescriptorByFullName` 是串行 await，几百款就是打开面板那一下的卡顿；
+  现在 16 个一批并发，并把结果写进 `files/fonts/fontindex.json`（带 `INDEX_VERSION`，
+  结构一变旧索引自动作废），下次打开当帧出列表。启动只注册**当前选中**的那几款
+  （`registerSelected`），点中某款时 `ensureRegisteredByName` 按需补；列表顶部有「刷新」按钮
+  走 `refreshInstalled()` 强制重扫。注册完成后 `regTick++` 拼进 ForEach 的 key 重画一遍，
+  否则预览行会停在系统默认字。
 
 ### 界面字号 / 字重
 
