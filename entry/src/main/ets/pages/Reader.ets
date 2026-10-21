@@ -2817,7 +2817,9 @@ export struct Reader {
     if (this.editingAnnId.length > 0) {
       for (let k = 0; k < this.annotations.length; k++) {
         if (this.annotations[k].id === this.editingAnnId) {
-          this.annotations[k].text = draft0;
+          // **只改批注内容（note）**：text 是选区原文，用于正文高亮定位——
+          // 改它会导致正文匹配不到批注（用户反馈"选区文本被一起改"）
+          this.annotations[k].note = draft0;
           if (color >= 0) {
             this.annotations[k].color = color;
           }
@@ -4354,7 +4356,7 @@ export struct Reader {
       this.noteImgSavedY = 0;
     }
     this.closeTapBar();
-    this.closePinned('notes');
+    this.closeSide('notes');
     this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
       this.enlargeMode = 'image';
       this.enlargePayload = uri;
