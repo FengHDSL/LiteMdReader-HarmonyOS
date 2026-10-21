@@ -1320,6 +1320,9 @@ export struct ReviewPage {
     }
     .width('100%')
     .height('100%')
+    // **铺进状态栏**（与书架同一写法）：不展开的话内容根本不进那条带，
+    // StatusBarBlur 背后没有可糊的东西，效果看着像"没加上"（真机反馈）。
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   /** 分节标题（「计划」「统计」式的小节头）。 */

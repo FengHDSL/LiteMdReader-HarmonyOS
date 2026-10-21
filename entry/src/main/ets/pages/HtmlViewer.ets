@@ -427,6 +427,8 @@ export struct HtmlViewer {
     }
     .width('100%')
     .height('100%')
+    // 铺进状态栏（与书架同一写法）：不展开的话那条带里没有可糊的内容
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     // 阅读页同款纸面渐变（加载 / 白屏期间露出来的就是它，不再是纯白纯黑）
     .linearGradient({
       angle: 180,

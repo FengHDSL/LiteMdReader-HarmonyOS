@@ -1693,11 +1693,14 @@ export struct AiChat {
         Column()
           .width('100%')
           .height('100%')
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .backgroundColor(this.pageBackground())
       } else {
         Column()
           .width('100%')
           .height('100%')
+          // 铺进状态栏（与书架同一写法）：不展开的话那条带里没有可糊的内容
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .linearGradient({
             angle: 180,
             colors: [[this.palette().pageTop, 0.0], [this.palette().pageBottom, 1.0]]
