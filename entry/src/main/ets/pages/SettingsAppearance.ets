@@ -892,8 +892,7 @@ export struct SettingsAppearance {
 
           Text(FontStore.supportsBold(this.uiFontKey)
             ? this.s('最左「跟随原样式」保住标题比正文粗；往右所有界面文字统一到该档。')
-            : this.s('最左「跟随原样式」保住标题比正文粗；往右所有界面文字统一到该档。'
-              + '当前这款字体没有粗体字面，500 以上可能看不出变化，换一款字体即可。'))
+            : this.s('最左「跟随原样式」保住标题比正文粗；往右所有界面文字统一到该档。当前这款字体没有粗体字面，500 以上可能看不出变化，换一款字体即可。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)

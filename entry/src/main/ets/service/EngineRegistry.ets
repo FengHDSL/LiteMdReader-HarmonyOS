@@ -113,8 +113,7 @@ export const ENGINE_LIST: EngineInfo[] = [
   {
     id: 'plantuml', name: 'PlantUML（官方内核）', version: '1.2026.8', date: '2026-09-06',
     repo: 'https://github.com/plantuml/plantuml',
-    desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；'
-      + '内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树'),
+    desc: L10n.t('PlantUML 原生语法（@plantuml/core，TeaVM 编译，无服务端）：时序 / 用例 / 类 / 活动 / 组件 / 部署 / 状态 / 脑图 / WBS / 甘特 / JSON / YAML / Archimate / ER；内核没有渲染器的六个图种由澄笺自己出图：盐图→HTML 线框、nwdiag→mermaid 网络图、ditaa→SVG 方框、数学公式→KaTeX、时间线→mermaid、文件树→制表符树'),
     size: '11.03 MB',
   },
   {

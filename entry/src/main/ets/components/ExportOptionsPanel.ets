@@ -272,8 +272,7 @@ export struct ExportOptionsPanel {
           SymbolGlyph($r('sys.symbol.info_circle'))
             .fontSize(15)
             .fontColor([this.palette.textTertiary])
-          Text(L10n.t('若导出HTML与打印，图表显示不完全或不显示，请尝试回到阅读页面，'
-            + '完全浏览并加载完所有卡片，若仍不行，请提供文件并反馈，等待后续适配。'))
+          Text(L10n.t('若导出HTML与打印，图表显示不完全或不显示，请尝试回到阅读页面，完全浏览并加载完所有卡片，若仍不行，请提供文件并反馈，等待后续适配。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)

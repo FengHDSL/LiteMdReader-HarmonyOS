@@ -789,8 +789,7 @@ export struct ReadingSettingsPanel {
 
         Text(this.bodyBoldOk()
           ? L10n.t('最左「跟随原样式」＝标题粗、正文常规；往右整篇正文统一到该档，标题与粗体词不再更粗。')
-          : L10n.t('最左「跟随原样式」＝标题粗、正文常规；往右整篇正文统一到该档。'
-            + '当前这款字体没有粗体字面，500 以上可能看不出变化，换一款字体即可。'))
+          : L10n.t('最左「跟随原样式」＝标题粗、正文常规；往右整篇正文统一到该档。当前这款字体没有粗体字面，500 以上可能看不出变化，换一款字体即可。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
