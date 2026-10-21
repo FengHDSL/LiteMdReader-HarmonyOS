@@ -4878,7 +4878,8 @@ export struct Reader {
               Text(this.tabLabel(tab.name))
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.caption + 0.5, this.uiFontScale))
-              .fontWeight(this.docName === tab.name ? FontWeight.Medium : FontWeight.Normal)
+              .fontWeight(HwFont.bump(this.docName === tab.name ? FontWeight.Medium : FontWeight.Normal,
+                this.uiFontWeightDelta))
               // 未选中标签必须用 textPrimary：胶囊底接近实色，textSecondary 在上面发灰看不清
               .fontColor(this.docName === tab.name ? this.palette().accent : this.palette().textPrimary)
               .maxLines(1)
@@ -5510,7 +5511,7 @@ export struct Reader {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
-          .lineHeight(HwType.caption * 1.7)
+          .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
           .width('100%')
 
         Flex({ wrap: FlexWrap.Wrap }) {
@@ -5612,7 +5613,7 @@ export struct Reader {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
-          .lineHeight(HwType.caption * 1.6)
+          .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
           .width('100%')
       }
     }
@@ -7868,7 +7869,8 @@ export struct Reader {
     Text(label)
       .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-      .fontWeight(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal)
+      .fontWeight(HwFont.bump(this.themeMode === mode ? FontWeight.Medium : FontWeight.Normal,
+        this.uiFontWeightDelta))
       .fontColor(this.themeMode === mode ? this.palette().accent : this.palette().textPrimary)
       .textAlign(TextAlign.Center)
       // **必须 layoutWeight 均分**：写 width('100%') 时每个芯片都想占满整行，
@@ -8047,8 +8049,9 @@ export struct Reader {
                     }
                     Text(item.text)
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(item.level <= 2 ? HwType.label + 1 : HwType.label)
-                      .fontWeight(item.level <= 2 ? FontWeight.Medium : FontWeight.Normal)
+                      .fontSize(HwFont.sx(item.level <= 2 ? HwType.label + 1 : HwType.label, this.uiFontScale))
+                      .fontWeight(HwFont.bump(item.level <= 2 ? FontWeight.Medium : FontWeight.Normal,
+                        this.uiFontWeightDelta))
                       .fontColor(this.activeHeading === item.text
                         ? this.palette().accent
                         : (item.level <= 2 ? this.palette().textPrimary : this.palette().textSecondary))
@@ -8380,7 +8383,7 @@ export struct Reader {
                         .fontFamily(HwFont.resolve(this.uiFontKey))
                         .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                         .fontColor(this.palette().textSecondary)
-                        .lineHeight(HwType.caption * 1.6)
+                        .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
                         .width('100%')
                     } else {
                       // **备注渲染公式**（用户在备注里写的 $…$ 由抽屉共用池出图）
@@ -8464,7 +8467,7 @@ export struct Reader {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
-                  .lineHeight(HwType.label * 1.7)
+                  .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
                   .width('100%')
               } else if (this.searchedNotes().length === 0) {
                 Text(L10n.t('没有匹配「') + this.notesQuery.trim() + '」的脚注')

@@ -4594,7 +4594,8 @@ struct Index {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.dragOverNewCard ? this.palette().accent : this.palette().textTertiary)
-        .fontWeight(this.dragOverNewCard ? FontWeight.Medium : FontWeight.Regular)
+        .fontWeight(HwFont.bump(this.dragOverNewCard ? FontWeight.Medium : FontWeight.Regular,
+          this.uiFontWeightDelta))
         .width('100%')
         .textAlign(TextAlign.Center)
     }
@@ -4848,7 +4849,7 @@ struct Index {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
@@ -4915,7 +4916,7 @@ struct Index {
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
-                .lineHeight(HwType.label * 1.8)
+                .lineHeight(HwFont.sx(HwType.label * 1.8, this.uiFontScale))
                 .width('100%')
             }, (line: string) => 'df_' + line)
           }
@@ -4982,7 +4983,7 @@ struct Index {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
-            .lineHeight(HwType.label * 1.7)
+            .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .maxLines(2)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
             .width('100%')
@@ -5192,14 +5193,14 @@ struct Index {
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
-              .lineHeight(HwType.label * 1.8)
+              .lineHeight(HwFont.sx(HwType.label * 1.8, this.uiFontScale))
               .width('100%')
             Text(this.reviewBackText())
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(this.reviewFlipped ? HwType.label : HwType.caption)
+              .fontSize(HwFont.sx(this.reviewFlipped ? HwType.label : HwType.caption, this.uiFontScale))
               .fontColor(this.reviewFlipped ? this.palette().textSecondary
                 : this.palette().textTertiary)
-              .lineHeight(HwType.label * 1.7)
+              .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
               .width('100%')
           }
           .width('100%')
@@ -5422,7 +5423,7 @@ struct Index {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
-        .lineHeight(HwType.caption * 1.7)
+        .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
         .width('100%')
 
       this.templateRow(0)
@@ -6590,7 +6591,7 @@ struct Index {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
-          .lineHeight(HwType.label * 1.6)
+          .lineHeight(HwFont.sx(HwType.label * 1.6, this.uiFontScale))
           .width('100%')
       } else {
         ForEach(this.starredDocs, (doc: DocMeta) => {
@@ -7789,7 +7790,7 @@ struct Index {
                     .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .textAlign(TextAlign.Center)
-                    .lineHeight(HwType.caption * 1.6)
+                    .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
                 }
                 .padding({ top: HwSpace.lg })
                 .width('100%')
@@ -8769,7 +8770,7 @@ export struct EncodingChoiceCard {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
-          .lineHeight(HwType.caption * 1.7)
+          .lineHeight(HwFont.sx(HwType.caption * 1.7, this.uiFontScale))
           .width('100%')
 
         ForEach(this.values(), (enc: string) => {
