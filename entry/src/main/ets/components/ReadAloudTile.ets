@@ -14,7 +14,7 @@
  *  · `@StorageLink('ttsSpeaking')`：当前是否正在发声；
  *  · 回调把用户意图转给宿主（引擎只有宿主拿得到）。
  */
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
@@ -25,6 +25,8 @@ export struct ReadAloudTile {
   /** 是否正在发声（暂停时为 false） */
   @StorageLink('ttsSpeaking') speaking: boolean = false;
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 开始 / 继续 */
   onPlay: () => void = () => {
   };
@@ -51,9 +53,11 @@ export struct ReadAloudTile {
 
         Column({ space: 2 }) {
           Text(L10n.t('朗读全文'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette.textPrimary)
           Text(this.statusText())
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
             .maxLines(2)
@@ -105,6 +109,7 @@ export struct ReadAloudTile {
       .alignItems(VerticalAlign.Center)
 
       Text(L10n.t('代码块、表格与图表会跳过不读；读到哪一段，屏幕会自动跟到那一段。') + '朗读用系统语音，离线或设备不支持时会有提示。')
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette.textTertiary)
         .lineHeight(HwType.caption * 1.6)

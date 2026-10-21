@@ -225,7 +225,8 @@ export struct LiveBlockEditor {
               palette: this.palette,
               bodySize: this.bodySize,
               lineMul: this.lineMul,
-              fontKey: this.fontKey
+              fontKey: this.fontKey,
+              uiFontKey: this.uiFontKey
             })
           }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch + '_ft' + this.formulaTick
             + '_r' + this.previewTick)

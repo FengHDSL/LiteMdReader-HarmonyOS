@@ -12,6 +12,7 @@ import { AppearanceFx } from '../service/AppearanceFx';
  * 深浅自适应（弹窗内直接读主题两键登记依赖）。
  */
 import {
+  HwFont,
   HwRadius,
   LIGHT_PALETTE,
   ReaderPalette,
@@ -32,6 +33,8 @@ export struct AppResetDialog {
 
   @StorageProp('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 倒计时剩余秒数（>0 时确认键不可点） */
   @State left: number = 5;
   private timer: number = -1;
@@ -71,18 +74,21 @@ export struct AppResetDialog {
   build() {
     Column({ space: 12 }) {
       Text(L10n.t('应用初始化'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor('#FFD93B3B')
         .width('100%')
 
       Text(L10n.t('将清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。')
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(13)
         .fontColor(this.pal().textPrimary)
         .lineHeight(20)
         .width('100%')
 
       Text(L10n.t('效果等同于卸载后重装，且**无法恢复**，请谨慎操作。'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(13)
         .fontColor('#FFD93B3B')
         .lineHeight(20)
@@ -92,6 +98,7 @@ export struct AppResetDialog {
       Text(this.left > 0
         ? L10n.t('为防止误触，请等待 ') + this.left + ' 秒后再确认'
         : L10n.t('已可确认：此操作不可撤销'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwTypeLabel())
         .fontColor(this.left > 0 ? this.pal().textTertiary : '#FFD93B3B')
         .width('100%')
@@ -99,6 +106,7 @@ export struct AppResetDialog {
 
       Row({ space: 10 }) {
         Text(L10n.t('取消'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(14)
           .fontColor(this.pal().textPrimary)
           .textAlign(TextAlign.Center)
@@ -111,6 +119,7 @@ export struct AppResetDialog {
           })
 
         Text(this.left > 0 ? L10n.t('确认清除（') + this.left + 's）' : L10n.t('确认清除'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor('#FFFFFFFF')

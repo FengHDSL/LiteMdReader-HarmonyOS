@@ -15,7 +15,7 @@
  *   · kind='tabbar' → readerTabBarAtBottom（标签栏在顶栏下 / 底部悬浮栏上方，
  *                     图标用 chevron_up.svg / chevron_down_l.svg，跟随状态实时切换）
  */
-import { HwRadius, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwFont, HwRadius, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { L10n } from '../service/L10n';
 
 @Component
@@ -30,6 +30,8 @@ export struct ReaderFlagTile {
   @StorageLink('readerShowMeta') showMeta: boolean = true;
   @StorageLink('drawerImmersive') drawerOn: boolean = true;
   @StorageLink('readerTabBarAtBottom') tabBarBottom: boolean = false;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   /** 当前是否开启（按 kind 取对应键）。 */
   private isOn(): boolean {
@@ -71,6 +73,7 @@ export struct ReaderFlagTile {
           .fontColor([this.isOn() ? this.palette.accent : this.palette.textTertiary])
       }
       Text(this.label())
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette.textPrimary)
         .maxLines(1)

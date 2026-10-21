@@ -11,7 +11,7 @@
  * **宽度 '82%' + 卡片实底 + 紧排文字 + 整宽按钮**，不铺满屏幕、不用页面渐变蓝灰底。
  */
 import {
-  HwSpace, LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
+  HwFont, HwSpace, LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
 import { APP_MODE_FULL, APP_MODE_OFFLINE } from '../service/UpdateService';
 import { L10n } from '../service/L10n';
@@ -31,6 +31,8 @@ export struct AppModeDialog {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   private pal(): ReaderPalette {
     // 显式读一遍 themeMode / systemDark 落成局部常量：paletteFor 是纯函数读 AppStorage、
@@ -54,11 +56,13 @@ export struct AppModeDialog {
         .fontColor([this.currentMode === mode ? this.pal().accent : this.pal().textTertiary])
       Column({ space: 2 }) {
         Text(title)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(14)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.pal().textPrimary)
           .width('100%')
         Text(desc)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(12)
           .fontColor(this.pal().textTertiary)
           .lineHeight(17)
@@ -89,12 +93,14 @@ export struct AppModeDialog {
   build() {
     Column({ space: 10 }) {
       Text(this.titleText)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
       Text(L10n.t('两种模式随时可在「探索中心」重选，数据完全一致，只是联网能力不同。'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(12)
         .fontColor(this.pal().textTertiary)
         .lineHeight(17)

@@ -23,6 +23,7 @@
  */
 
 import {
+  HwFont,
   HwRadius,
   HwSpace,
   HwType,
@@ -51,6 +52,8 @@ export struct ImmersiveInput {
    */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
   @StorageProp('immersiveGrade') fxGrade: string = 'default';
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   /** 输入回调（普通成员：函数类型禁止加 V1 装饰器） */
   onInput: (value: string) => void = () => {
@@ -79,6 +82,7 @@ export struct ImmersiveInput {
 
       // ③ 输入框本体：透明底，文字直接落在材质上
       TextInput({ text: this.text, placeholder: this.placeholder })
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .width('100%')
         .fontSize(this.inputFontSize)
         .fontColor(this.palette.textPrimary)

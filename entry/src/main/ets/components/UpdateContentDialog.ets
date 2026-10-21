@@ -20,7 +20,7 @@
  */
 import { display } from '@kit.ArkUI';
 import {
-  LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
+  HwFont, LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
 
 @CustomDialog
@@ -33,6 +33,8 @@ export struct UpdateContentDialog {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 条目区的**高度上限**（vp）：进页面时按屏幕算一次，不每帧查 display */
   @State listMax: number = 240;
 
@@ -75,6 +77,7 @@ export struct UpdateContentDialog {
   build() {
     Column({ space: 10 }) {
       Text(this.titleText)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .fontColor(this.pal().textPrimary)
@@ -86,6 +89,7 @@ export struct UpdateContentDialog {
         Column({ space: 5 }) {
           ForEach(this.lines, (line: string, idx: number) => {
             Text('· ' + line)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(13)
               .fontColor(this.pal().textSecondary)
               .lineHeight(20)
@@ -105,6 +109,7 @@ export struct UpdateContentDialog {
       .edgeEffect(EdgeEffect.Spring)
 
       Button('知道了')
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(14)
         .fontColor('#FFFFFFFF')
         .backgroundColor(this.pal().accent)

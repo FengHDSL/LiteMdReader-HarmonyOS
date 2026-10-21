@@ -13,7 +13,7 @@
  *  · `@StorageLink('autoScrollOn')`：真正的运行时状态，宿主据此开关定时器；
  *  · `onToggle` / `onSpeed`：把用户操作转给宿主（定时器只有宿主拿得到 Scroller）。
  */
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
@@ -25,6 +25,8 @@ export struct AutoScrollTile {
   @StorageLink('autoScrollSpeed') speed: number = 4;
   /** 调色板：必须 @Prop，否则主题切换不更新 */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 起停（宿主负责真正驱动滚动） */
   onToggle: (on: boolean) => void = () => {
   };
@@ -41,9 +43,11 @@ export struct AutoScrollTile {
 
         Column({ space: 2 }) {
           Text(L10n.t('自动滚屏'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label + 1)
             .fontColor(this.palette.textPrimary)
           Text(this.running ? L10n.t('正在匀速下滚 · 点正文任意处即停') : L10n.t('免手滑匀速下滚，长文校对用'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
         }
@@ -64,6 +68,7 @@ export struct AutoScrollTile {
 
       Row({ space: HwSpace.xs }) {
         Text(L10n.t('慢'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
         Slider({ value: this.speed, min: 1, max: 10, step: 1, style: SliderStyle.OutSet })
@@ -76,6 +81,7 @@ export struct AutoScrollTile {
             this.onSpeed(this.speed);
           })
         Text(L10n.t('快'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }

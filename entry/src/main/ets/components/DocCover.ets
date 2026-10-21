@@ -7,7 +7,7 @@
  * 同一篇文档的封面恒定，书架与文档详情头（参考图二）共用这一组件。
  */
 
-import { CoverStyle, HwSpace, coverStyleOf } from '../theme/DesignTokens';
+import { CoverStyle, HwFont, HwSpace, coverStyleOf } from '../theme/DesignTokens';
 import { ImmersiveCardLayer } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 
@@ -88,6 +88,8 @@ export struct DocCover {
    * 与 coverBadge 同行显示，透明度更低（"淡淡的"）。
    */
   @Prop formatLabel: string = '';
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   /** 底色：自定义色优先，其次调用方给的哈希配色 */
   private topColor(): string {
@@ -192,6 +194,7 @@ export struct DocCover {
           Blank()
 
           Text(this.title)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(16)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.inkColor())

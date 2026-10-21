@@ -18,7 +18,7 @@ import { ExportService } from '../service/ExportService';
 import { MergeExport, MergeItem, MergeOptions, MergeSource } from '../service/MergeExport';
 import { MdToPlain } from '../markdown/MdToPlain';
 import { PrintRoute } from '../service/DocStore';
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
@@ -39,6 +39,8 @@ export struct MergeExportPanel {
   @State order: string[] = [];
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 「添加文档」清单是否展开 */
   @State addOpen: boolean = false;
   @State withTitle: boolean = true;
@@ -270,6 +272,7 @@ export struct MergeExportPanel {
         .width(20)
         .textAlign(TextAlign.Center)
       Text(name)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label)
         .fontColor(this.palette.textPrimary)
         .maxLines(1)
@@ -314,9 +317,11 @@ export struct MergeExportPanel {
     Row({ space: HwSpace.sm }) {
       Column({ space: 2 }) {
         Text(label)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label)
           .fontColor(this.palette.textPrimary)
         Text(hint)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }
@@ -337,9 +342,11 @@ export struct MergeExportPanel {
     Row({ space: HwSpace.sm }) {
       Column({ space: 2 }) {
         Text(label)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.label + 1)
           .fontColor(this.palette.textPrimary)
         Text(hint)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }
@@ -365,6 +372,7 @@ export struct MergeExportPanel {
       // Scroll 问父级要多高 → 塌陷）。会无限变长的只有清单那一块，就只滚它。
       Column({ space: HwSpace.sm }) {
         Text(L10n.t('已选 ') + this.order.length + ' 篇 · 按从上到下的顺序合并')
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
           .width('100%')
@@ -376,6 +384,7 @@ export struct MergeExportPanel {
             }, (name: string, index: number) => name + '@' + index + '#' + this.order.length)
             if (this.order.length === 0) {
               Text(L10n.t('还没有选中任何文档，点下面「添加文档」。'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontColor(this.palette.textTertiary)
                 .width('100%')
@@ -406,6 +415,7 @@ export struct MergeExportPanel {
             ForEach(this.remaining(), (s: MergeSource) => {
               Row({ space: HwSpace.sm }) {
                 Text(s.name)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label)
                   .fontColor(this.palette.textPrimary)
                   .maxLines(1)
@@ -426,6 +436,7 @@ export struct MergeExportPanel {
             }, (s: MergeSource) => 'add_' + s.name)
             if (this.remaining().length === 0) {
               Text(L10n.t('所有文档都已选入。'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette.textTertiary)
             }
@@ -442,6 +453,7 @@ export struct MergeExportPanel {
             this.withDivider = v;
           })
         Text(L10n.t('说明：各文档开头的 YAML Front Matter 不参与合并，会被剥掉。'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
           .width('100%')
@@ -471,6 +483,7 @@ export struct MergeExportPanel {
             .height(40)
             .color(this.palette.accent)
           Text(L10n.t('正在处理，请稍候…'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
         }

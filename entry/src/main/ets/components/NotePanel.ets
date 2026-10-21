@@ -16,7 +16,7 @@
  * 键盘避让不在这里做：平台对 BindSheet 不做键盘避让，抬高由外层
  * `material/SheetKeyboardLift` 统一负责（所有半模态共用）。
  */
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, ANNOTATION_COLORS, AnnotationColor, annotationColor } from '../theme/DesignTokens';
+import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, ANNOTATION_COLORS, AnnotationColor, annotationColor } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
 import { L10n } from '../service/L10n';
@@ -79,6 +79,8 @@ export struct NotePanel {
   @State pickColor: number = 3;
   /** 当前文档名（关联文档列表里自动忽略自己） */
   @Prop currentDoc: string = '';
+  /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   /**
    * **插入图片**（用户要求）：相册选图 → 拷贝进 docs/images →
@@ -355,6 +357,7 @@ export struct NotePanel {
         // 下面那块渲染 + 源码框就是它的替代品）
         Column() {
           Text('「' + this.initQuote + '」')
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.label)
             .fontColor(this.palette.textSecondary)
             .lineHeight(HwType.label * 1.7)
@@ -371,6 +374,7 @@ export struct NotePanel {
       } else {
         Column({ space: HwSpace.xs }) {
           Text(this.rangeLabel())
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
             .width('100%')
@@ -418,6 +422,7 @@ export struct NotePanel {
           }
           .width('100%')
           Text(L10n.t('长按选中一段就只批注那一段；改过源码点「保存公式」写回文档。'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
             .lineHeight(HwType.caption * 1.6)
@@ -426,6 +431,7 @@ export struct NotePanel {
           // 公式既可以标成普通批注，也可以进背诵系统（用户要求：卡片上能选）
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('普通批注'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption + 1)
               .fontWeight(this.kindWeight(''))
               .fontColor(this.kindForeground(''))
@@ -436,6 +442,7 @@ export struct NotePanel {
                 this.style = '';
               })
             Text(L10n.t('学习卡'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption + 1)
               .fontWeight(this.kindWeight('card'))
               .fontColor(this.kindForeground('card'))
@@ -483,6 +490,7 @@ export struct NotePanel {
                   .fontSize(13)
                   .fontColor([this.palette.textPrimary])
                 Text(L10n.t(d.name))
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwType.label)
                   .fontColor(this.palette.textPrimary)
                   .maxLines(1)
@@ -512,6 +520,7 @@ export struct NotePanel {
             .fontSize(13)
             .fontColor([this.palette.accent])
           Text(d.name)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textPrimary)
             .maxLines(1)
@@ -533,6 +542,7 @@ export struct NotePanel {
       // **荧光笔颜色选择**（用户要求：添加批注可选色）
       Row({ space: HwSpace.xs }) {
         Text(L10n.t('荧光笔'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
         ForEach(ANNOTATION_COLORS, (c: AnnotationColor, idx: number) => {
@@ -558,6 +568,7 @@ export struct NotePanel {
             .objectFit(ImageFit.Cover)
             .borderRadius(HwRadius.inner)
           Text(img)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.textTertiary)
             .layoutWeight(1)
@@ -578,6 +589,7 @@ export struct NotePanel {
 
       TextArea({ text: this.draft, placeholder: this.style === 'card'
         ? L10n.t('要记的内容（学习卡必填题干）……') : L10n.t('写下你的批注……') })
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .width('100%')
         // **随文本内容继续长高**（用户要求）：不写死 height，内容多行时输入框自己
         // 长，长到 draftMax 就内部滚动；draftMax 跟着"键盘之外的可视高度"走，
