@@ -68,7 +68,7 @@ export struct AppModeDialog {
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(12, this.uiFontScale))
           .fontColor(this.pal().textTertiary)
-          .lineHeight(17)
+          .lineHeight(HwFont.sx(17, this.uiFontScale))
           .width('100%')
       }
       .layoutWeight(1)
@@ -106,7 +106,7 @@ export struct AppModeDialog {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(12, this.uiFontScale))
         .fontColor(this.pal().textTertiary)
-        .lineHeight(17)
+        .lineHeight(HwFont.sx(17, this.uiFontScale))
         .width('100%')
 
       Column({ space: 8 }) {

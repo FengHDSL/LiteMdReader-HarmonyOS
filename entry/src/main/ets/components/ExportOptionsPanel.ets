@@ -277,7 +277,7 @@ export struct ExportOptionsPanel {
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
-            .lineHeight(18)
+            .lineHeight(HwFont.sx(18, this.uiFontScale))
             .layoutWeight(1)
         }
         .width('100%')

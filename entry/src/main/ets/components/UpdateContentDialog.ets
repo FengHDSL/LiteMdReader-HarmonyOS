@@ -95,7 +95,7 @@ export struct UpdateContentDialog {
               .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwFont.sx(13, this.uiFontScale))
               .fontColor(this.pal().textSecondary)
-              .lineHeight(20)
+              .lineHeight(HwFont.sx(20, this.uiFontScale))
               .width('100%')
               .textAlign(TextAlign.Start)
           }, (line: string, idx: number) => 'ul_' + idx)

@@ -87,14 +87,14 @@ export struct AppResetDialog {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(13, this.uiFontScale))
         .fontColor(this.pal().textPrimary)
-        .lineHeight(20)
+        .lineHeight(HwFont.sx(20, this.uiFontScale))
         .width('100%')
 
       Text(L10n.t('效果等同于卸载后重装，且**无法恢复**，请谨慎操作。'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwFont.sx(13, this.uiFontScale))
         .fontColor('#FFD93B3B')
-        .lineHeight(20)
+        .lineHeight(HwFont.sx(20, this.uiFontScale))
         .width('100%')
 
       // 倒计时提示（每秒刷新；动画过渡避免数字硬切）
