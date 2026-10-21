@@ -229,7 +229,9 @@ export struct LiveBlockEditor {
               bodySize: this.bodySize,
               lineMul: this.lineMul,
               fontKey: this.fontKey,
-              uiFontKey: this.uiFontKey
+              uiFontKey: this.uiFontKey,
+              uiFontScale: this.uiFontScale,
+              uiFontWeightDelta: this.uiFontWeightDelta
             })
           }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch + '_ft' + this.formulaTick
             + '_r' + this.previewTick)
