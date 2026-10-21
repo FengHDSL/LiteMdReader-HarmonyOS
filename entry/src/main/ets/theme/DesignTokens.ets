@@ -943,9 +943,13 @@ export function isDarkTheme(mode: number, systemDark: boolean): boolean {
 export class HwFont {
   static readonly DEFAULT: string = '';
 
-  /** 按设置键取 fontFamily：空串 = 系统默认；非空 = 用户导入的字体 familyName。 */
+  /** 按设置键取 fontFamily：空串 = 系统默认；非空 = 字体家族名 + HarmonyOS Sans 回退
+   *  （官方建议：字体被卸载后回退默认，避免显示异常）。 */
   static resolve(key: string): string {
-    return key;
+    if (key.length === 0) {
+      return key;
+    }
+    return key + ',HarmonyOS Sans';
   }
 
   static label(key: string): string {

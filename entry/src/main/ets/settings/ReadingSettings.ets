@@ -34,7 +34,7 @@ import {
   themeModeLabel
 } from '../theme/DesignTokens';
 import { materialDiagnostics } from '../material/SystemMaterial';
-import { UserFont, FontStore } from '../service/FontStore';
+import { UserFont, SystemFont, FontStore } from '../service/FontStore';
 import { setKeepScreenOn, setWindowBrightnessLevel } from '../service/AppWindow';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -87,6 +87,8 @@ export struct ReadingSettingsPanel {
   @StorageLink('readerCustomBgDark') customBgDark: string = '';
   /** 用户导入的自定义字体（familyName 即设置键） */
   @State userFonts: UserFont[] = [];
+  /** 系统已安装字体（系统字体管理器 INSTALLED 类型） */
+  @State systemFonts: SystemFont[] = [];
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
   @StorageLink('readerBgPath') readerBgPath: string = '';
   @StorageLink('readerBgId') readerBgId: string = '';
@@ -124,6 +126,10 @@ export struct ReadingSettingsPanel {
       FontStore.registerAll(ctx);
       this.userFonts = FontStore.list(ctx);
     }
+    // **系统已安装字体**（用户要求：调用系统字体管理器，无需自建导入工具）
+    FontStore.loadInstalled().then((list: SystemFont[]) => {
+      this.systemFonts = list;
+    });
   }
 
   /**
@@ -596,6 +602,25 @@ export struct ReadingSettingsPanel {
             SymbolGlyph($r('sys.symbol.plus'))
               .fontSize(13)
               .fontColor([this.palette().accent])
+          }
+
+          // **系统已安装字体**（用户要求：调用系统字体管理器 INSTALLED 类型；长按删除仅限导入字体）
+          if (this.systemFonts.length > 0) {
+            Text(L10n.t('系统已安装'))
+              .fontSize(HwType.caption)
+              .fontColor(this.palette().textTertiary)
+            Scroll() {
+              Row({ space: HwSpace.xs }) {
+                ForEach(this.systemFonts, (f: SystemFont) => {
+                  this.fontChip(f.family, f.fullName)
+                }, (f: SystemFont) => f.family)
+              }
+              .width('100%')
+              .justifyContent(FlexAlign.Start)
+            }
+            .scrollable(ScrollDirection.Horizontal)
+            .scrollBar(BarState.Off)
+            .width('100%')
           }
         }
         .width('100%')

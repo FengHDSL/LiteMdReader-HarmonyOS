@@ -10,7 +10,14 @@
 
 import { common } from '@kit.AbilityKit';
 import { font } from '@kit.ArkUI';
+import { text } from '@kit.ArkGraphics2D';
 import { fileIo as fs } from '@kit.CoreFileKit';
+
+/** 系统已安装字体（family = fontFamily 家族名，可直接用于 fontFamily 属性） */
+export interface SystemFont {
+  family: string;
+  fullName: string;
+}
 
 export interface UserFont {
   /** 注册的 familyName（= 文件名去扩展名），同时是设置键 */
@@ -109,6 +116,46 @@ export class FontStore {
   /** 字体清单缓存（进程内）：转场期间避免重复同步 IO。 */
   private static cache: UserFont[] = [];
   private static cacheReady: boolean = false;
+
+  /** 系统已安装字体（用户通过系统「字体安装和管理」导入的 INSTALLED 类型） */
+  static sysCache: SystemFont[] = [];
+  private static sysReady: boolean = false;
+
+  /**
+   * **查询系统已安装字体**（用户要求：调用系统字体管理器，应用无需自建导入工具）。
+   * API 14+：getSystemFontFullNamesByType(INSTALLED) → getFontDescriptorByFullName
+   * 取 fontFamily（这才是 fontFamily 属性匹配用的家族名）。同家族多个全名去重。
+   */
+  static async loadInstalled(): Promise<SystemFont[]> {
+    if (FontStore.sysReady) {
+      return FontStore.sysCache.slice();
+    }
+    try {
+      const fullNames: string[] =
+        await text.getSystemFontFullNamesByType(text.SystemFontType.INSTALLED);
+      const seen: string[] = [];
+      const out: SystemFont[] = [];
+      for (let k = 0; k < fullNames.length; k++) {
+        try {
+          const descriptor: text.FontDescriptor =
+            await text.getFontDescriptorByFullName(fullNames[k], text.SystemFontType.INSTALLED);
+          const family: string = descriptor.fontFamily;
+          if (family.length > 0 && seen.indexOf(family) < 0) {
+            seen.push(family);
+            out.push({ family: family, fullName: fullNames[k] });
+          }
+        } catch (err) {
+          // 单个字体描述符失败跳过
+        }
+      }
+      FontStore.sysCache = out;
+      FontStore.sysReady = true;
+      return out.slice();
+    } catch (err) {
+      // API 不支持 / 无字体：返回空
+      return [];
+    }
+  }
 
   /** 字体导入 / 删除后调用：下次 list 重新读盘。 */
   static invalidateCache(): void {
