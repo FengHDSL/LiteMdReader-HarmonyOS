@@ -29,7 +29,13 @@ function walk(dir) {
       for (; j < lines.length; j++) {
         depth += (lines[j].match(/\{/g) || []).length - (lines[j].match(/\}/g) || []).length;
         if (lines[j].indexOf('{') >= 0) { started = true; }
-        if (started) { body.push(lines[j]); }
+        if (started) {
+          const t = lines[j].trim();
+          // 注释里举的例子（"各页写 this.uiFontScale" 这种）不算引用
+          if (!(t.startsWith('//') || t.startsWith('*') || t.startsWith('/*'))) {
+            body.push(lines[j]);
+          }
+        }
         if (started && depth === 0) { break; }
       }
       const text = body.join('\n');

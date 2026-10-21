@@ -162,12 +162,12 @@ export struct SettingsAppearance {
   @StorageLink('appFontSyncReader') @Watch('onUiFontChanged') uiFontSyncReader: boolean = false;
   /**
    * **界面字号**（0.85~1.30，步进 0.05）与**界面字重**（0 跟随 / 100 略粗 / 200 加粗）。
-   * 与界面字体一样是逐点生效：各页 `.fontSize(HwFont.sx(基准, this.uiFontScale))`、
-   * `.fontWeight(HwFont.bump(原字重, this.uiFontWeightDelta))`；改完广播 appearanceTick。
+   * 与界面字体一样是逐点生效：各页把 fontSize 走 HwFont.sx、fontWeight 走 HwFont.bump；
+   * 改完广播 appearanceTick。
    * 注意 ArkUI 数字字号单位是 fp，本来也跟随系统「字体与样式」缩放，两者是叠乘关系。
    */
-  @StorageLink('appFontScale') @Watch('onUiFontChanged') uiScale: number = 1;
-  @StorageLink('appFontWeightDelta') @Watch('onUiFontChanged') uiWeightDelta: number = 0;
+  @StorageLink('appFontScale') @Watch('onUiFontChanged') uiFontScale: number = 1;
+  @StorageLink('appFontWeightDelta') @Watch('onUiFontChanged') uiFontWeightDelta: number = 0;
   /** 界面字体列表是否展开 */
   @State uiFontListOpen: boolean = false;
   /** 列表重取信号（导入 / 删除字体后自增） */
@@ -350,7 +350,7 @@ export struct SettingsAppearance {
       this.toast(this.s('这款字体没有粗体字重；换一款字体或选「跟随」'));
       return;
     }
-    this.uiWeightDelta = delta;
+    this.uiFontWeightDelta = delta;
   }
 
   /** 广播一次外观刷新：递增 appearanceTick + 落镜像盘。 */
@@ -416,8 +416,8 @@ export struct SettingsAppearance {
     this.uiFontKey = '';
     this.uiFontSyncReader = false;
     // 界面字号与字重也回到"不调"
-    this.uiScale = 1;
-    this.uiWeightDelta = 0;
+    this.uiFontScale = 1;
+    this.uiFontWeightDelta = 0;
     AppStorage.setOrCreate('grayTextMode', 'auto');
     AppStorage.setOrCreate('grayTextColor', '');
     AppStorage.setOrCreate('grayTextModeLight', 'auto');
@@ -799,19 +799,19 @@ export struct SettingsAppearance {
               .fontSize(HwType.label + 1)
               .fontColor(this.palette().textPrimary)
             Blank()
-            Text(Math.round(this.uiScale * 100) + '%')
+            Text(Math.round(this.uiFontScale * 100) + '%')
               .fontSize(HwType.label)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.palette().accent)
           }
           .width('100%')
 
-          Slider({ value: this.uiScale * 100, min: 85, max: 130, step: 5, style: SliderStyle.OutSet })
+          Slider({ value: this.uiFontScale * 100, min: 85, max: 130, step: 5, style: SliderStyle.OutSet })
             .width('100%')
             .selectedColor(this.palette().accent)
             .blockColor(this.palette().accent)
             .onChange((v: number, mode: SliderChangeMode) => {
-              this.uiScale = Math.round(v) / 100;
+              this.uiFontScale = Math.round(v) / 100;
             })
 
           Text(this.s('标题、正文与数字会按同一系数放大；系统的「字体与样式」缩放是叠加生效的'))
@@ -838,16 +838,16 @@ export struct SettingsAppearance {
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
-              chipActive: this.uiWeightDelta === 0,
+              chipActive: this.uiFontWeightDelta === 0,
               chipLabel: this.s('跟随'),
               chipOnTap: () => {
-                this.uiWeightDelta = 0;
+                this.uiFontWeightDelta = 0;
               }
             })
             Column() {
               ImmersiveChip({
                 palette: this.palette(),
-                chipActive: this.uiWeightDelta === 100,
+                chipActive: this.uiFontWeightDelta === 100,
                 chipLabel: this.s('略粗'),
                 chipOnTap: () => {
                   this.pickUiWeight(100);
@@ -858,7 +858,7 @@ export struct SettingsAppearance {
             Column() {
               ImmersiveChip({
                 palette: this.palette(),
-                chipActive: this.uiWeightDelta === 200,
+                chipActive: this.uiFontWeightDelta === 200,
                 chipLabel: this.s('加粗'),
                 chipOnTap: () => {
                   this.pickUiWeight(200);
