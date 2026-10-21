@@ -805,6 +805,8 @@ export struct Reader {
 
   @State noteDraft: string = '';
   @State noteQuote: string = '';
+  /** 打开面板时带进去的荧光笔原色（编辑已有批注用；新建固定 3 = 黄） */
+  @State noteColorSeed: number = 3;
   /**
    * **公式批注上下文**（action='mathnote' 时非空，其余批注为空串）。
    * 面板内的编辑/选区/预览都由 NotePanel 自持（bindSheet 不跟宿主刷新），
@@ -4408,6 +4410,11 @@ export struct Reader {
 
   private editAnn(ann: MdAnnotation): void {
     this.editingAnnId = ann.id;
+    // **先清公式上下文**：残留的 noteMathQuote 会让面板判定成公式批注（isMath() 为真），
+    // 「原文」那一行整条隐藏 —— 用户看到的"修改批注没有标题"有这个成因之一。
+    this.clearMathNoteContext();
+    // **带上这条批注原来的荧光笔颜色**（原来恒从黄色起步，编辑一次就刷成黄色）
+    this.noteColorSeed = ann.color;
     // **预填批注原文**（用户反馈：修改时标题条显示「」）——NotePanel 原文条用它
     this.noteQuote = ann.text;
     this.noteDraft = ann.text;
@@ -5547,6 +5554,7 @@ export struct Reader {
         initMathQuote: this.noteMathQuote,
         initDraft: this.noteDraft,
         initStyle: this.pendingStyle,
+        initColor: this.editingAnnId.length > 0 ? this.noteColorSeed : 3,
         dark: this.isDark(),
         bodySize: this.fontSize,
         palette: this.palette(),

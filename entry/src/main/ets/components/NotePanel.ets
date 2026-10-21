@@ -29,14 +29,25 @@ import { common } from '@kit.AbilityKit';
 @Component
 export struct NotePanel {
   // ── 初值（打开面板那一刻读一次；**刻意不加 @Prop**，见文件头注释）──
-  /** 文字批注的引用原文 */
-  initQuote: string = '';
+  /**
+   * 文字批注的引用原文 —— **例外：必须是 @Prop**。
+   * 之前它是普通成员，只在组件创建那一刻赋值一次；bindSheet 的内容实例会被复用，
+   * 于是「修改批注」时标题条拿到的是第一次创建时的空串，界面上就只剩一对空括号「」
+   * （用户反馈）。这一行只读不写，跟着宿主刷新没有副作用。
+   */
+  @Prop initQuote: string = '';
   /** 公式批注的文档现存源码；空串 = 非公式批注 */
   initMathQuote: string = '';
   /** 未过期的草稿 */
   initDraft: string = '';
   /** 进来的形态：'' 普通批注 / 'card' 学习卡 */
   initStyle: string = '';
+  /**
+   * 进来的荧光笔颜色（**编辑已有批注时要带上原色**）：
+   * 原来面板里 pickColor 恒从 3（黄）起步，编辑任何一条批注都会把它刷成黄色，
+   * 也没法保留「无底色 / 波浪线」那档（-1）。
+   */
+  initColor: number = 3;
   // ── 外部注入（这些变化都伴随面板重建，用 @Prop 即可）──
   @Prop dark: boolean = false;
   @Prop bodySize: number = 16;
@@ -229,6 +240,8 @@ export struct NotePanel {
     }
     this.draft = this.initDraft.replace(re, '').trim();
     this.style = this.initStyle;
+    // 编辑已有批注 → 用原色；新建 → 默认黄（宿主给 initColor）
+    this.pickColor = this.initColor;
   }
 
   private isMath(): boolean {
