@@ -5365,6 +5365,7 @@ export struct Reader {
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
                 fontKey: this.bodyFontKey,
+                uiFontKey: this.uiFontKey,
                 dark: this.isDark(),
                 // 对照是只读视图：批注 / 勾选 / 锚点等回调不传（默认空实现）；
                 // 放大有反应（铁律），但 **geoKey 传空**——对照块与正文块共享同一套
@@ -8839,6 +8840,7 @@ export struct Reader {
                   bodySize: this.fontSize,
                   lineMul: this.lineMul,
                   fontKey: this.bodyFontKey,
+                  uiFontKey: this.uiFontKey,
                   // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
                   indentOn: this.indentOn,
                   dark: this.isDark(),
@@ -9040,6 +9042,7 @@ export struct Reader {
                       bodySize: Math.max(HwType.bodyMin, this.fontSize - 2),
                       lineMul: this.lineMul,
                       fontKey: this.bodyFontKey,
+                      uiFontKey: this.uiFontKey,
                       dark: this.isDark(),
                       // 分屏列的放大同样 **geoKey 传空**（与正文同 id 元素共存会让
                       // 一镜到底错乱，见对照面板同名注释）

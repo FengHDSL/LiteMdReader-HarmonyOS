@@ -983,8 +983,12 @@ export struct MdBlockView {
    * AppStorage，子组件不保证回刷，表现就是「选了字体，正文一点变化没有」。
    */
   @Prop fontKey: string = '';
-  /** **界面字体**：只给块上的界面 chrome（菜单项、提示语、页签徽标）用，正文仍走 bodyFamily */
-  @StorageProp('appFontFamily') uiFontKey: string = '';
+  /**
+   * 界面字体（外观设置）：**由宿主以 @Prop 下发**。
+   * 这里以前直接 `@StorageProp('appFontFamily')` —— 与正文栽过的是同一个坑：
+   * MdBlockView 是被 ForEach 按 key 复用的子组件，AppStorage 被别处改写后不保证回刷。
+   */
+  @Prop uiFontKey: string = '';
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。

@@ -2761,6 +2761,7 @@ export struct Editor {
                   bodySize: HwType.label,
                   lineMul: 1.4,
                   fontKey: this.bodyFontKey,
+                  uiFontKey: this.uiFontKey,
                   dark: this.isDark(),
                   // **必须传放大回调**（用户反馈：流程图那行的放大按钮点了没反应）——
                   // MdBlockView 的 enlargeHandler / imageTapHandler 不传就是默认空实现，
@@ -2915,6 +2916,7 @@ export struct Editor {
             bodySize: this.fontSize,
             lineMul: this.lineMul,
             fontKey: this.bodyFontKey,
+            uiFontKey: this.uiFontKey,
             // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
             // 勾选直接改对应源码行的 [ ]↔[x]，与就地编辑同一套数据。
             taskToggleHandler: (blockId: string): void => {
@@ -3086,6 +3088,7 @@ export struct Editor {
                 bodySize: this.fontSize,
                 lineMul: this.lineMul,
                 fontKey: this.bodyFontKey,
+                uiFontKey: this.uiFontKey,
                 // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
                 // 勾选直接翻转对应源码行的 [ ]↔[x]；同时置 liveChildTap，
                 // 防止这次点击冒泡到外层、误触"整块进入编辑态"。

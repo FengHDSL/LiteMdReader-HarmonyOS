@@ -3162,6 +3162,7 @@ export struct AiChat {
         palette: this.palette(),
         bodySize: HwType.bodyDefault,
         fontKey: this.bodyFontKey,
+        uiFontKey: this.uiFontKey,
         dark: this.isDark(),
         alwaysSystemSelect: true,
         // 代码块 / 图表「放大查看」：**统一走全屏放大浮层**（与阅读页同一套界面）——
