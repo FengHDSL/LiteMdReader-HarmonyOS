@@ -619,7 +619,7 @@ export struct ReadingSettingsPanel {
               .fontColor([this.palette().accent])
           }
 
-          Text(L10n.t('列表里的字体名与预览都由该字体本身绘制；字体被卸载后自动回退 HarmonyOS Sans'))
+          Text(L10n.t('预览行只用拉丁字母与数字画，避免缺中文字形的字体显示成方块；字体被卸载后自动回退 HarmonyOS Sans'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)

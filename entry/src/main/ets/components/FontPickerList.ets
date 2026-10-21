@@ -12,7 +12,9 @@
  */
 import { L10n } from '../service/L10n';
 import { UserFont, SystemFont, FontStore } from '../service/FontStore';
+import { AppearanceFx } from '../service/AppearanceFx';
 import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
 import {
   HwRadius,
   HwSpace,
@@ -22,8 +24,17 @@ import {
   HwFont
 } from '../theme/DesignTokens';
 
-/** 每行第二句：用该字体画一行短文，一眼看得出字形差别 */
-const PREVIEW_LINE: string = '澄笺 Aa 123 · 天地之间';
+/**
+ * 每行第二句的预览样本：**只用拉丁字母与数字**。
+ * 有些用户导入的字体 CJK 码位映射是坏的（或缺中文字形），拿中文做预览就是一片
+ * 方块/乱码，看着像"这个列表坏了"；拉丁与数字几乎每款字体都覆盖，能稳定看出字形差别。
+ */
+const PREVIEW_LINE: string = 'Aa Bb 123 abcdefg';
+
+/** 字体总数超过这个数就提示一次（几十款同时按各自字形画预览，首帧明显发涩） */
+const FONT_MANY: number = 40;
+/** 提示里给出的"只列前 N 款"的 N */
+const FONT_TRIM_TO: number = 30;
 
 @Component
 export struct FontPickerList {
@@ -48,6 +59,10 @@ export struct FontPickerList {
   @State userFonts: UserFont[] = [];
   /** 系统「字体安装和管理」里导入的字体（INSTALLED） */
   @State systemFonts: SystemFont[] = [];
+  /** 字体过多时是否只列前 `FONT_TRIM_TO` 款（由提示弹窗里用户选） */
+  @State trimToMax: boolean = false;
+  /** 一次面板生命周期里只提示一次"字体较多"，不反复打扰 */
+  private warnedMany: boolean = false;
 
   aboutToAppear(): void {
     this.reload();
@@ -67,9 +82,87 @@ export struct FontPickerList {
       return FontStore.loadInstalled();
     }).then((list: SystemFont[]) => {
       this.systemFonts = list;
+      this.checkTooMany();
     }).catch(() => {
       // 取不到就只留导入的那份
     });
+  }
+
+  /** 导入 + 系统已安装的总数（决定要不要提示"字体较多"） */
+  private totalFonts(): number {
+    return this.userFonts.length + this.systemFonts.length;
+  }
+
+  /** 按「只列前 N 款」开关裁剪后的两份列表 */
+  private shownUserFonts(): UserFont[] {
+    return this.trimToMax && this.userFonts.length > FONT_TRIM_TO
+      ? this.userFonts.slice(0, FONT_TRIM_TO) : this.userFonts;
+  }
+
+  private shownSystemFonts(): SystemFont[] {
+    if (!this.trimToMax || this.systemFonts.length <= FONT_TRIM_TO) {
+      return this.systemFonts;
+    }
+    const left: number = Math.max(0, FONT_TRIM_TO - this.userFonts.length);
+    return this.systemFonts.slice(0, left);
+  }
+
+  /**
+   * 字体几十款时先问一句：每一款都要按自己的字形画预览，列表首帧会明显发涩
+   * （用户要求"检测到可能会卡就弹窗提示"）。选「只列前 30 款」后仍可再展开看全部。
+   */
+  private checkTooMany(): void {
+    const n: number = this.totalFonts();
+    if (this.warnedMany || n < FONT_MANY) {
+      return;
+    }
+    this.warnedMany = true;
+    const btns: promptAction.Button[] = [
+      { text: L10n.t('只列前 30 款'), color: this.palette.accent },
+      { text: L10n.t('全部显示'), color: this.palette.textSecondary }
+    ];
+    try {
+      this.getUIContext().getPromptAction().showDialog({
+        title: L10n.t('字体较多'),
+        message: L10n.t('检测到 ') + n + L10n.t(' 款字体：每一款都要按自己的字形画预览，列表会有点卡。')
+          + L10n.t('可以先只列前 30 款，需要时再全部显示。'),
+        buttons: btns
+      }).then((dr: promptAction.ShowDialogSuccessResponse) => {
+        if (dr.index === 0) {
+          this.trimToMax = true;
+        }
+      }).catch(() => {
+        // 手势关掉弹窗：保持全部显示
+      });
+    } catch (err) {
+      // 弹窗不可用就不打扰
+    }
+  }
+
+  /**
+   * 字体名消毒：个别字体描述符里的名字带控制字符 / 替换符（编码异常），直接显示就是一串
+   * 方块 —— 看着像列表坏了。这类款式退回用另一个名字显示，两个都不可读时用占位。
+   */
+  private showName(primary: string, fallback: string): string {
+    const a: string = this.cleanName(primary);
+    if (a.length > 0) {
+      return a;
+    }
+    const b: string = this.cleanName(fallback);
+    return b.length > 0 ? b : L10n.t('未命名');
+  }
+
+  private cleanName(s: string): string {
+    let out: string = '';
+    for (let k = 0; k < s.length; k++) {
+      const code: number = s.charCodeAt(k);
+      // 控制字符与替换符（U+FFFD）就是"乱码"的直接来源，丢掉
+      if (code < 0x20 || code === 0xFFFD) {
+        continue;
+      }
+      out += s.charAt(k);
+    }
+    return out.trim();
   }
 
   @Builder
@@ -141,15 +234,28 @@ export struct FontPickerList {
         }
         if (this.userFonts.length > 0) {
           this.groupTitle(L10n.t('导入的字体（长按可删除）'))
-          ForEach(this.userFonts, (f: UserFont) => {
-            this.row(f.family, f.family, PREVIEW_LINE, this.allowRemove)
+          ForEach(this.shownUserFonts(), (f: UserFont) => {
+            this.row(f.family, this.showName(f.family, ''), PREVIEW_LINE, this.allowRemove)
           }, (f: UserFont) => f.family)
         }
         if (this.systemFonts.length > 0) {
           this.groupTitle(L10n.t('系统已安装'))
-          ForEach(this.systemFonts, (f: SystemFont) => {
-            this.row(f.family, f.family, f.fullName + ' · ' + PREVIEW_LINE, false)
+          ForEach(this.shownSystemFonts(), (f: SystemFont) => {
+            this.row(f.family, this.showName(f.family, f.fullName),
+              this.showName(f.fullName, f.family) + ' · ' + PREVIEW_LINE, false)
           }, (f: SystemFont) => f.family)
+        }
+        if (this.trimToMax) {
+          // 裁短了要留一个反悔入口：说清"还有多少没列出来"，点一下就全展开
+          Text(L10n.t('只列了前 ') + FONT_TRIM_TO + L10n.t(' 款（共 ') + this.totalFonts()
+            + L10n.t(' 款）· 点此全部显示'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette.accent)
+            .width('100%')
+            .padding({ left: HwSpace.sm, top: 6, bottom: 6 })
+            .onClick(() => {
+              this.trimToMax = false;
+            })
         }
       }
       .width('100%')
@@ -164,5 +270,10 @@ export struct FontPickerList {
     .clip(true)
     .backgroundColor(this.palette.surface)
     .border({ width: 1, color: this.palette.surfaceBorder })
+    // **展开 / 收起动画**：淡入 + 竖向轻微缩放。挂在组件自己这层 Scroll 上，
+    // 宿主只管用 if 控制出现与消失，阅读设置与外观设置两处共用同一份动效。
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.scale({ x: 0.98, y: 0.86 }))
+      .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
   }
 }
