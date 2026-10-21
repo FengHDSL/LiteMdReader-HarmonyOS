@@ -197,18 +197,61 @@ export struct SettingsExplore {
   }
 
   /**
-   * 好评鼓励的结果用**弹窗**说（用户要求：已经评价过要弹窗提醒）——
-   * toast 一闪而过，「这个版本你已经评价过了」这类结论必须留在屏幕上让人看到。
+   * 好评鼓励的结果用**弹窗**说（用户要求：已经评价过要弹窗提醒）——toast 一闪就没了。
+   * 弹窗里同时给「去应用市场」出口：官方限制**同一用户一年内最多弹 3 次**（超出后
+   * 弹窗不再出现并回 1021500008），这时只能按华为给的办法用隐式 Want 跳市场写评论页。
    */
   private rateHint(message: string): void {
-    const btns: promptAction.Button[] = [{ text: L10n.t('知道了'), color: this.palette().accent }];
+    const btns: promptAction.Button[] = [
+      { text: L10n.t('去应用市场'), color: this.palette().accent },
+      { text: L10n.t('知道了'), color: this.palette().textSecondary }
+    ];
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('好评鼓励'),
       message: message,
       buttons: btns
+    }).then((dr: promptAction.ShowDialogSuccessResponse) => {
+      if (dr.index === 0) {
+        this.openStoreReview();
+      }
     }).catch(() => {
       // 用户手势关闭弹窗，无副作用
     });
+  }
+
+  /**
+   * 跳应用市场的「写评论」页（华为官方给评分弹窗超限时的兜底办法）：
+   * 隐式 Want，`action=ohos.want.action.appdetail` +
+   * `uri=store://appgallery.huawei.com/app/detail?id=包名&action=write-review`。
+   */
+  private openStoreReview(): void {
+    const ctx = this.hostCtx();
+    if (ctx === null) {
+      this.toast(L10n.t('打不开应用市场'));
+      return;
+    }
+    let bundleName: string = '';
+    try {
+      bundleName = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT).name;
+    } catch (err) {
+      bundleName = '';
+    }
+    if (bundleName.length === 0) {
+      this.toast(L10n.t('打不开应用市场'));
+      return;
+    }
+    const want: Want = {
+      action: 'ohos.want.action.appdetail',
+      uri: 'store://appgallery.huawei.com/app/detail?id=' + bundleName + '&action=write-review'
+    };
+    try {
+      ctx.startAbility(want).catch(() => {
+        this.toast(L10n.t('打不开应用市场'));
+      });
+    } catch (err) {
+      this.toast(L10n.t('打不开应用市场'));
+    }
   }
 
   private palette(): ReaderPalette {

@@ -242,8 +242,8 @@ export class UpdateService {
         settle({
           label: label, ok: true, remote: '', hasUpdate: available,
           line: label + '：' + (available
-            ? L10n.t('有比当前更新的新版本，可直接在市场更新')
-            : L10n.t('市场没有比当前更新的版本（当前 v') + current + '）')
+            ? L10n.t('可更新（当前 v') + current + '）'
+            : L10n.t('已是最新（v') + current + '）')
         } as ChannelResult);
       }).catch((err: BusinessError) => {
         hilog.warn(0x0000, 'UpdateService', 'store check failed code=%{public}d',

@@ -298,6 +298,19 @@
   1009400002 / 1009400007，此时正式版那一行写明「查不到（非应用市场安装的包通常查不到）」。
 - 每 48 小时自动查一次（`lastAutoCheckAt`），任一渠道有更新用 toast 提醒，不弹窗打扰。
 
+### 好评鼓励
+
+- 「探索中心 → 好评鼓励」调 AppGallery Kit 的 `commentManager.showCommentDialog()`，
+  在**应用内**弹官方评分框，不跳市场详情页。
+- 书架启动时若**安装满 24 小时**（`bundleManager` 的 `installTime`）且本机没弹过，自动弹一次；
+  真弹出来过就写 `ratingPrompted` 落盘，从此不再自动弹。自动路径失败**静默**（不打扰），
+  手动点才给提示。
+- ⚠️ 平台限制：不支持模拟器；同一用户**一年内最多触发 3 次**，超出后弹窗不再出现并回
+  错误码 1021500008。因此所有失败码（未登录 / 连不上市场 / 已评过 / 次数上限）都映射成
+  中文**弹窗**，并提供「去应用市场写评论」出口——隐式 Want
+  （`ohos.want.action.appdetail` + `store://appgallery.huawei.com/app/detail?id=包名&action=write-review`），
+  这是应用市场侧超限时的官方兜底办法。
+
 ---
 
 ## 代码结构
