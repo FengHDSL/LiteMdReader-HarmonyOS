@@ -894,6 +894,11 @@ export struct ImmersiveBar {
    * `backdropBlur`。目前只有阅读页的悬浮底栏用它，其它条栏保持默认 0、观感不变。
    */
   @Prop barBackdropBlur: number = 0;
+  /**
+   * 条栏上的一层**薄纱调色**（8 位 hex）：浅色模式加白（如 '#26FFFFFF'）、深色加黑
+   * （'#26000000'），让胶囊在正文上更"立得住"。空串 = 不加，观感与之前完全一致。
+   */
+  @Prop barShade: string = '';
 
   @Builder
   doNothing() {
@@ -927,6 +932,17 @@ export struct ImmersiveBar {
       //    条栏曾经单独走官方 HDS(Tabs) 材质，但它在设备上不渲染，
       //    于是全应用只有条栏没有光感——统一回承载层。
       ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: true })
+
+      // ②·5 薄纱调色层（可选）：浅色加白、深色加黑。压在材质**之上**、内容**之下**，
+      //    这样材质可用与否都能看到同一层色偏；空串 = 不铺，观感与以前一样。
+      if (this.barShade.length > 0) {
+        Column()
+          .width(LayoutPolicy.matchParent)
+          .height(LayoutPolicy.matchParent)
+          .borderRadius(HwRadius.pill)
+          .backgroundColor(this.barShade)
+          .hitTestBehavior(HitTestMode.None)
+      }
 
       // ③ 内容层
       Row() {
