@@ -17,7 +17,6 @@ import { LegalDoc } from './LegalDoc';
 import { UpdateService, UpdateCheckAllResult, APP_MODE_OFFLINE } from '../service/UpdateService';
 import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
-import { Rating } from '../service/Rating';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { updateManager } from '@kit.AppGalleryKit';
 import { promptAction } from '@kit.ArkUI';
@@ -182,52 +181,12 @@ export struct SettingsExplore {
   }
 
   /**
-   * 好评鼓励：调 AppGallery Kit 在**应用内**弹官方评分框（不跳市场详情页）。
-   * 只有真机 + 已登录华为账号才有反应；错误码在 Rating.ask 里映射成中文原因。
-   */
-  private rateApp(): void {
-    const ctx = this.hostCtx();
-    if (ctx === null) {
-      this.rateHint(L10n.t('评分弹窗暂时不可用，请稍后再试'));
-      return;
-    }
-    Rating.ask(ctx, (message: string) => {
-      this.rateHint(message);
-    });
-  }
-
-  /**
-   * 好评鼓励的结果用**弹窗**说（用户要求：已经评价过要弹窗提醒）——toast 一闪就没了。
-   * 弹窗里同时给「去应用市场」出口：官方限制**同一用户一年内最多弹 3 次**（超出后
-   * 弹窗不再出现并回 1021500008），这时只能按华为给的办法用隐式 Want 跳市场写评论页。
-   */
-  private rateHint(message: string): void {
-    const btns: promptAction.Button[] = [
-      { text: L10n.t('去应用市场'), color: this.palette().accent },
-      { text: L10n.t('知道了'), color: this.palette().textSecondary }
-    ];
-    // showDialog 本身也可能同步抛（窗口不可用）：兜一层 toast，保证点下去一定有可见结果
-    try {
-      this.getUIContext().getPromptAction().showDialog({
-        title: L10n.t('好评鼓励'),
-        message: message,
-        buttons: btns
-      }).then((dr: promptAction.ShowDialogSuccessResponse) => {
-        if (dr.index === 0) {
-          this.openStoreReview();
-        }
-      }).catch(() => {
-        // 用户手势关闭弹窗，无副作用
-      });
-    } catch (err) {
-      this.toast(message);
-    }
-  }
-
-  /**
-   * 跳应用市场的「写评论」页（华为官方给评分弹窗超限时的兜底办法）：
+   * 好评鼓励的手动入口：跳应用市场的「写评论」页（华为官方给评分弹窗超限时的兜底办法）——
    * 隐式 Want，`action=ohos.want.action.appdetail` +
    * `uri=store://appgallery.huawei.com/app/detail?id=包名&action=write-review`。
+   * 不用 `commentManager.showCommentDialog` 那颗应用内评分框：实测在 DevEco 直装的包上
+   * 点了不画框（连错误码都不回），而且被市场限成同一用户一年内最多 3 次；
+   * 那条只留给安装满 24 小时的自动弹（见 service/Rating.ets，失败全程静默）。
    */
   private openStoreReview(): void {
     const ctx = this.hostCtx();
@@ -488,9 +447,10 @@ export struct SettingsExplore {
           .width('100%')
 
           // ── 好评鼓励（用户要求）：单独一行，不与上面三枚芯片挤在一起 ──
-          // 左：在应用内弹官方评分框（commentManager，不跳市场详情页）；
-          // 右：**直连应用市场写评论页**（隐式 Want）。评分框那条被应用市场限成
-          // 「同一用户一年内最多 3 次」，超限时点它没反应，右边这颗是不受这个限制的另一条路。
+          // 点它**直达应用市场的「写评论」页**（隐式 Want）。应用内那个官方评分框
+          // （commentManager.showCommentDialog）真机实测在 DevEco 直装的包上点了不画框，
+          // 应用市场又把它限成同一用户一年内最多 3 次——所以手动入口改走市场页，
+          // 应用内评分框只留给「安装满 24 小时」那一次自动弹（静默，出现就赚到）。
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
@@ -498,22 +458,13 @@ export struct SettingsExplore {
               chipActive: true,
               chipLabel: L10n.t('好评鼓励'),
               chipOnTap: () => {
-                this.rateApp();
+                this.openStoreReview();
               }
             }) {
               SymbolGlyph($r('sys.symbol.heart_fill'))
                 .fontSize(14)
                 .fontColor(['#FFB26A00'])
             }
-            ImmersiveChip({
-              palette: this.palette(),
-              chipTint: '#FFB26A00',
-              chipActive: false,
-              chipLabel: L10n.t('去应用市场评价'),
-              chipOnTap: () => {
-                this.openStoreReview();
-              }
-            })
           }
           .width('100%')
         }

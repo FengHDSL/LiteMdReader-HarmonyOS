@@ -296,21 +296,26 @@
   另一行照常展示。
 - ⚠️ `checkAppUpdate` 只在**从应用市场安装的包**上准：DevEco 直装的调试包通常返回
   1009400002 / 1009400007，此时正式版那一行写明「查不到（非应用市场安装的包通常查不到）」。
+- 正式版这条的出处：官方**应用市场更新服务**（AppGallery Kit，`updateManager`，
+  SDK 里 `hms/ets/api/@hms.core.appgalleryservice.updateManager.d.ts`，syscap
+  `SystemCapability.AppGalleryService.Distribution.Update`，起始 5.0.0(12)，Stage 模型、
+  真机专用、要求应用已在应用市场上架）。官方指南写明了它的边界：只回答"有没有新版本"，
+  **新版本号要开发者自己维护**（`CheckUpdateResult.versionName/versionCode` 仅元服务可用），
+  弹窗标题固定为「更新提示」由系统画。
 - 每 48 小时自动查一次（`lastAutoCheckAt`），任一渠道有更新用 toast 提醒，不弹窗打扰。
 
 ### 好评鼓励
 
-- 「探索中心 → 好评鼓励」调 AppGallery Kit 的 `commentManager.showCommentDialog()`，
-  在**应用内**弹官方评分框，不跳市场详情页。旁边另有一枚「去应用市场评价」，
-  用隐式 Want 直达市场的写评论页（不受下面的次数限制）。
-- 书架启动时若**安装满 24 小时**（`bundleManager` 的 `installTime`）且本机没弹过，自动弹一次；
-  真弹出来过就写 `ratingPrompted` 落盘，从此不再自动弹。自动路径失败**静默**（不打扰），
-  手动点才给提示。
-- ⚠️ 平台限制：不支持模拟器；同一用户**一年内最多触发 3 次**，超出后弹窗不再出现并回
-  错误码 1021500008。因此所有失败码（未登录 / 连不上市场 / 已评过 / 次数上限）都映射成
-  中文**弹窗**，并提供「去应用市场写评论」出口——隐式 Want
-  （`ohos.want.action.appdetail` + `store://appgallery.huawei.com/app/detail?id=包名&action=write-review`），
-  这是应用市场侧超限时的官方兜底办法。
+- 「探索中心 → 好评鼓励」用隐式 Want **直达应用市场的「写评论」页**
+  （`ohos.want.action.appdetail` +
+  `store://appgallery.huawei.com/app/detail?id=包名&action=write-review`，包名由
+  `bundleManager.getBundleInfoForSelfSync().name` 现取），一步就能打分写评论。
+- 之所以不用应用内那颗官方评分框：真机实测在 DevEco 直装的包上点它**不画框、也不回错误码**，
+  而应用市场又把它限成**同一用户一年内最多触发 3 次**（超出后不再出现）。
+- 「安装满 24 小时」（`bundleManager` 的 `installTime`）且本机没弹过时，仍会试一次
+  **应用内**自动评分框（`commentManager.showCommentDialog`）：真弹出来过就写
+  `ratingPrompted` 落盘、从此不再自动弹；失败（未登录 / 连不上市场 / 已评过 / 次数上限）
+  **全程静默**，原因只写 hilog，不打扰用户。基础模式（纯离线）跳过。
 
 ---
 

@@ -3,19 +3,21 @@
  * =====================================
  *
  * 用 AppGallery Kit 的 `commentManager.showCommentDialog()` 在**应用内**弹官方评分框，
- * 不跳市场详情页（用户要求）。两个入口：
- *   ① 探索中心「好评鼓励」芯片 —— 用户主动点，失败一定给一句明确提示；
+ * 不跳市场详情页（用户最初的要求）。真机实测（2026-10-21）：DevEco 直装的包点这颗
+ * 弹窗**不画框、也不回错误码**，而应用市场又把同一用户的评分框限成**一年最多 3 次**，
+ * 所以两个入口这样分工：
+ *   ① 探索中心「好评鼓励」——**不走本文件**，直接用隐式 Want 跳市场写评论页
+ *      （SettingsExplore.ets 的 `openStoreReview()`），一定有可见结果；
  *   ② `maybeAutoAsk()` —— **安装满 24 小时自动弹一次**（用户要求，避免打扰）：
  *      安装时间取 `bundleManager` 的 `installTime`；真弹出来过就写 `ratingPrompted`
  *      落盘，本机从此不再自动弹。弹窗**没**真正出现（未登录 / 连不上市场 / 系统错误）
  *      时不记账，下次启动还有一次机会 —— 没打扰到任何人，不算「弹过」。
- *      基础模式（纯离线）不自动弹。
+ *      基础模式（纯离线）不自动弹，失败全程静默（原因只写 hilog）。
  *
- * ⚠️ 这个 API 只有真机 + 已登录华为账号才有反应（`@stagemodelonly`，since 6.0.0(20)）。
- *    d.ts 顶部明写「Exceptions need to be captured when an API is called」——
- *    入参 / context 不合法这类是**同步抛**，只挂在 promise 上的 catch 接不到，
- *    表现就是「点了没反应、连提示都没有」，所以同步与异步两条失败路径都要兜
- *    （见 `ask()`），错误码一律映射成中文提示。
+ * ⚠️ 这个 API 只有真机 + 已登录华为账号才有机会看到弹窗（`@stagemodelonly`，since 6.0.0(20)，
+ *    官方明确不支持模拟器）。d.ts 顶部写着 "Exceptions need to be captured when an API is
+ *    called"：入参 / context 不合法这类是**同步抛**，只挂 promise 的 catch 接不到，
+ *    所以同步与异步两条失败路径都要兜（见 `ask()`），错误码按官方表格映射成中文原因。
  */
 
 import { commentManager } from '@kit.AppGalleryKit';
