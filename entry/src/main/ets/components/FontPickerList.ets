@@ -61,7 +61,11 @@ export struct FontPickerList {
       FontStore.registerAll(ctx);
       this.userFonts = FontStore.list(ctx);
     }
-    FontStore.loadInstalled().then((list: SystemFont[]) => {
+    // 系统已安装字体要**先注册进 ArkUI 字体管理器**，fontFamily 才解析得到
+    // （直接取 descriptor.fontFamily 在真机上不生效，见 FontStore.registerInstalledAll）
+    FontStore.registerInstalledAll().then(() => {
+      return FontStore.loadInstalled();
+    }).then((list: SystemFont[]) => {
       this.systemFonts = list;
     }).catch(() => {
       // 取不到就只留导入的那份

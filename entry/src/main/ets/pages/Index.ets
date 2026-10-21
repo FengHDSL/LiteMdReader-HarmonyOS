@@ -440,6 +440,11 @@ struct Index {
     if (ctx !== null) {
       // 用户导入的自定义字体在书架启动时就注册，正文渲染才能直接用
       FontStore.registerAll(ctx);
+      // **系统已安装字体同样要注册**（只取 descriptor.fontFamily 在真机上不生效，
+      // 见 FontStore.registerInstalledAll）；异步跑完正好赶在打开文档之前
+      FontStore.registerInstalledAll().catch(() => {
+        // 一个都注册不上也不影响其它功能
+      });
     }
     this.refresh();
     this.startBlobDrift();

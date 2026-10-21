@@ -12,11 +12,15 @@ import { common } from '@kit.AbilityKit';
 import { font } from '@kit.ArkUI';
 import { text } from '@kit.ArkGraphics2D';
 import { fileIo as fs } from '@kit.CoreFileKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 /** 系统已安装字体（family = fontFamily 家族名，可直接用于 fontFamily 属性） */
 export interface SystemFont {
   family: string;
   fullName: string;
+  /** 字体文件绝对路径（descriptor.path）——注册进 ArkUI 字体管理器时用 */
+  path: string;
 }
 
 export interface UserFont {
@@ -142,7 +146,11 @@ export class FontStore {
           const family: string = descriptor.fontFamily ?? '';
           if (family.length > 0 && seen.indexOf(family) < 0) {
             seen.push(family);
-            out.push({ family: family, fullName: fullNames[k] });
+            out.push({
+              family: family,
+              fullName: fullNames[k],
+              path: descriptor.path ?? ''
+            });
           }
         } catch (err) {
           // 单个字体描述符失败跳过
@@ -155,6 +163,46 @@ export class FontStore {
       // API 不支持 / 无字体：返回空
       return [];
     }
+  }
+
+  /**
+   * **把系统已安装字体注册进 ArkUI 字体管理器**（关键一步）。
+   * 官方文档说 INSTALLED 字体直接取 `descriptor.fontFamily` 就能用，但真机实测
+   * （2026-10-21）不成立：选择器里的预览行与正文都仍是系统默认字。所以按导入字体
+   * 同一套办法补注册 —— `font.registerFont({ familyName: family, familySrc: 'file://' + path })`，
+   * 注册过之后 `fontFamily` 才解析得到。路径不可读时逐个静默跳过并记日志
+   * （那种字体就是取不到文件，界面回退默认，不能让整个流程崩）。
+   * @returns 成功可用的数量（含"早就注册过"的）
+   */
+  static async registerInstalledAll(): Promise<number> {
+    const list: SystemFont[] = await FontStore.loadInstalled();
+    let ok: number = 0;
+    for (let k = 0; k < list.length; k++) {
+      const s: SystemFont = list[k];
+      if (FontStore.registered.indexOf(s.family) >= 0) {
+        ok++;
+        continue;
+      }
+      if (s.path.length === 0) {
+        hilog.warn(0x0000, 'FontStore', 'installed font has no path: %{public}s', s.family);
+        continue;
+      }
+      try {
+        const info: font.FontOptions = {
+          familyName: s.family,
+          familySrc: 'file://' + s.path
+        };
+        font.registerFont(info);
+        FontStore.registered.push(s.family);
+        ok++;
+      } catch (err) {
+        const code: number = err === null || err === undefined ? 0 : (err as BusinessError).code;
+        hilog.warn(0x0000, 'FontStore', 'register installed font failed: %{public}s code=%{public}d',
+          s.family, code);
+      }
+    }
+    hilog.info(0x0000, 'FontStore', 'installed fonts registered %{public}d/%{public}d', ok, list.length);
+    return ok;
   }
 
   /** 字体导入 / 删除后调用：下次 list 重新读盘。 */
