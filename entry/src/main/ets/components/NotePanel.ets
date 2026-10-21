@@ -16,7 +16,7 @@
  * 键盘避让不在这里做：平台对 BindSheet 不做键盘避让，抬高由外层
  * `material/SheetKeyboardLift` 统一负责（所有半模态共用）。
  */
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, ANNOTATION_COLORS, AnnotationColor, annotationColor } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
 import { L10n } from '../service/L10n';
@@ -50,7 +50,7 @@ export struct NotePanel {
     return false;
   };
   /** 提交：draft + 形态（'' / 'card'）+ 选中的公式子串（'' = 整条） */
-  onSubmit: (draft: string, style: string, sub: string) => void = () => {
+  onSubmit: (draft: string, style: string, sub: string, color: number) => void = () => {
   };
   onCancel: () => void = () => {
   };
@@ -64,6 +64,8 @@ export struct NotePanel {
   @State pickedImages: string[] = [];
   /** **已关联的文档**（独立于草稿文本，提交时拼回，界面上只显示图标行） */
   @State linkedDocs: DocMeta[] = [];
+  /** **荧光笔颜色**（用户要求：添加批注可选色）；默认黄（索引 3） */
+  @State pickColor: number = 3;
   /** 当前文档名（关联文档列表里自动忽略自己） */
   @Prop currentDoc: string = '';
 
@@ -286,7 +288,7 @@ export struct NotePanel {
 
   /** 源码框选中一段 → 只批那一段；提交时把选中段交给宿主去定位。 */
   private submitNow(): void {
-    this.onSubmit(this.composeDraft(), this.style, this.selMaps() ? this.selected() : '');
+    this.onSubmit(this.composeDraft(), this.style, this.selMaps() ? this.selected() : '', this.pickColor);
   }
 
   build() {
@@ -470,6 +472,25 @@ export struct NotePanel {
         .borderRadius(HwRadius.inner)
         .backgroundColor(this.palette.quoteBg)
       }, (d: DocMeta) => d.fileName)
+
+      // **荧光笔颜色选择**（用户要求：添加批注可选色）
+      Row({ space: HwSpace.xs }) {
+        Text(L10n.t('荧光笔'))
+          .fontSize(HwType.caption)
+          .fontColor(this.palette.textTertiary)
+        ForEach(ANNOTATION_COLORS, (c: AnnotationColor, idx: number) => {
+          Column()
+            .width(22)
+            .height(22)
+            .borderRadius(11)
+            .backgroundColor(annotationColor(idx, this.dark))
+            .border({ width: this.pickColor === idx ? 2 : 0, color: this.palette.textPrimary })
+            .onClick(() => {
+              this.pickColor = idx;
+            })
+        }, (c: AnnotationColor) => c.name)
+      }
+      .width('100%')
 
       // **图片预览**（独立列表：56×56 缩略 + × 移除，文本框不再显示引用串）
       ForEach(this.pickedImages, (img: string) => {

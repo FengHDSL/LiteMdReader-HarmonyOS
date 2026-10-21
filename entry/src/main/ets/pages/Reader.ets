@@ -2811,16 +2811,22 @@ export struct Reader {
    * @param style  '' 普通批注 / 'card' 学习卡（面板里可切换，所以形态在这里定）
    * @param sub    面板中选中的公式子串；'' = 整条公式
    */
-  private saveNoteDraft(draft0: string, style: string, sub: string): void {
+  private saveNoteDraft(draft0: string, style: string, sub: string, color: number): void {
     // **快速修改已有批注**（用户要求）：只替换正文，选区 / 颜色 / 关联保持不动
     if (this.editingAnnId.length > 0) {
       for (let k = 0; k < this.annotations.length; k++) {
         if (this.annotations[k].id === this.editingAnnId) {
           this.annotations[k].text = draft0;
+          if (color >= 0) {
+            this.annotations[k].color = color;
+          }
         }
       }
       this.commitAnnotations(this.annotations.slice());
       this.editingAnnId = '';
+      // **清草稿**（用户反馈：编辑后新建会串上一条内容——3 分钟草稿窗口里残留）
+      AppStorage.setOrCreate(NOTE_DRAFT_KEY, '');
+      AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, 0);
       this.sheetVisible = false;
       this.toast(L10n.t('已修改批注'));
       return;
@@ -2833,8 +2839,8 @@ export struct Reader {
     const isCard: boolean = style === 'card';
     this.pendingStyle = style;
     // 学习卡要实色底（同 studycard 入口的口径：默认黄色索引 3）
-    // **文字批注同样给荧光黄底**（用户要求），学习卡实色底同为黄
-    this.pendingColor = 3;
+    // **荧光笔颜色**（用户要求：添加批注可选色）：NotePanel 选色回传
+    this.pendingColor = color >= 0 ? color : 3;
     let aStart: number = this.pendingStart;
     let aEnd: number = this.pendingEnd;
     let aText: string = this.noteQuote;
@@ -3866,6 +3872,13 @@ export struct Reader {
    * 用 UIContext 上的 animateTo，全局那个已经标记废弃。
    */
   private openToc(): void {
+    // **退出系统选择模式**（用户要求）：长按出现文本选择时侧滑开目录，选择器应自动退出
+    if (this.systemSelectBlock.length > 0) {
+      // **照 aboutToDisappear 的退出模式**：清块 id + 收起选择胶囊
+      this.systemSelectBlock = '';
+      this.sysTabX = -1;
+      this.sysTabY = -1;
+    }
     // 大屏/横屏：目录固定停靠在左侧（可手动关闭），不再用浮层抽屉
     if (this.isWide()) {
       // **动画锁**：上一个停靠开合动画没走完，忽略本次（防打断抽搐）
@@ -3976,6 +3989,12 @@ export struct Reader {
   }
 
   private openNotes(): void {
+    // **退出系统选择模式**（用户要求）：同 openToc
+    if (this.systemSelectBlock.length > 0) {
+      this.systemSelectBlock = '';
+      this.sysTabX = -1;
+      this.sysTabY = -1;
+    }
     // 抽屉要渲染批注/脚注里的公式：打开时重收一次任务（共用水池）
     this.rebuildDrawerFormulaTasks();
     // 大屏/横屏：注释固定停靠在右侧
@@ -4098,6 +4117,7 @@ export struct Reader {
   @State flashAnnText: string = '';
   /** **查看插图时收起侧边栏/浮条**，关闭图片后恢复（用户要求） */
   @State noteImgDrawerWasOpen: boolean = false;
+  @State noteImgReturnDrawer: boolean = false;
   @State noteImgReturnAnnId: string = '';
   @State noteImgReturnTap: boolean = false;
   @State noteImgSavedY: number = 0;
@@ -4367,6 +4387,8 @@ export struct Reader {
 
   private editAnn(ann: MdAnnotation): void {
     this.editingAnnId = ann.id;
+    // **预填批注原文**（用户反馈：修改时标题条显示「」）——NotePanel 原文条用它
+    this.noteQuote = ann.text;
     this.noteDraft = ann.text;
     AppStorage.setOrCreate(NOTE_DRAFT_KEY, ann.text);
     AppStorage.setOrCreate(NOTE_DRAFT_AT_KEY, Date.now());
@@ -5516,8 +5538,8 @@ export struct Reader {
         onSaveMath: (latex: string): boolean => {
           return this.saveMathEdit(latex);
         },
-        onSubmit: (draft: string, style: string, sub: string) => {
-          this.saveNoteDraft(draft, style, sub);
+        onSubmit: (draft: string, style: string, sub: string, color: number) => {
+          this.saveNoteDraft(draft, style, sub, color);
         },
         onCancel: () => {
           this.closeNoteSheet();

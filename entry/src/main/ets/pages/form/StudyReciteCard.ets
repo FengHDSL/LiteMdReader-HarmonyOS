@@ -80,11 +80,12 @@ struct StudyReciteCard {
       .padding(14)
       // **「具体」右边中间**（用户要求）：router 进应用看该卡的批注详情
       Text(this.showBack ? L10n.t('返回') : L10n.t('具体'))
-        .fontSize(11)
-        .fontColor('#FF1565C0')
-        .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-        .borderRadius(13)
-        .border({ width: 1, color: '#FF1565C0' })
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#FFFFFFFF')
+        .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+        .borderRadius(16)
+        .backgroundColor('#FF1565C0')
         // ⚠️ position 没有 right 键——之前写 right 被忽略，按钮跑到左边（用户截图实锤）。
         // 改用 x='100%'（贴右缘）+ markAnchor 反向偏移按钮自身宽度
         .position({ x: '100%', y: '46%' })
