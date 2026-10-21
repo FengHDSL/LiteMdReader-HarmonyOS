@@ -1,11 +1,11 @@
 /**
- * 界面字体逐点挂点的**进度表**（只读统计，不改任何源码）
- * ===================================================
+ * 界面字体 / 字号 / 字重的**进度表**（只读统计，不改任何源码）
+ * =========================================================
  *
- * ArkUI 没有应用级字体钩子（Theme 只有 colors，fontFamily 不是通用属性），
- * 所以「界面字体」只能一处一处给 Text 挂 `.fontFamily(HwFont.resolve(this.uiFontKey))`。
- * 这个脚本把每个 .ets 里 Text( 的数量与已有 fontFamily 的数量摆出来，
- * 当作啃这 854 处的清单与进度；估算值，不作为门禁（正则读不懂属性链）。
+ * ArkUI 没有应用级字体钩子（Theme 只有 colors，fontFamily / fontSize / fontWeight 都不是
+ * 通用属性），所以这三项都只能一处一处挂。这个脚本把每个 .ets 里带文字组件的数量与
+ * 三项覆盖面摆出来：字体 = `.fontFamily(`，字号 = 走 `HwFont.sx(`，字重 = 走 `HwFont.bump(`。
+ * 当清单与进度用，**不是门禁**（正则读不懂属性链，数字是估算）。
  *
  * 用法：node tools/check-ui-font.js
  */
@@ -17,6 +17,10 @@ const SKIP_MARKS = ['//', '*', 'Text(', '  ']; // 注释里的 Text( 不计：�
 const rows = [];
 let totalText = 0;
 let totalHas = 0;
+let totalSz = 0;
+let totalSzOk = 0;
+let totalWt = 0;
+let totalWtOk = 0;
 
 function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -31,6 +35,10 @@ function walk(dir) {
     const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
     let textNodes = 0;
     let withFont = 0;
+    let sizeNodes = 0;
+    let sizeScaled = 0;
+    let weightNodes = 0;
+    let weightBumped = 0;
     for (let i = 0; i < lines.length; i++) {
       const raw = lines[i];
       const t = raw.trim();
@@ -54,12 +62,42 @@ function walk(dir) {
         }
       }
     }
+    const sz = countStyle(lines, /^\s*\.fontSize\(/, /HwFont\.sx\(/);
+    sizeNodes = sz.n;
+    sizeScaled = sz.ok;
+    const wt = countStyle(lines, /^\s*\.fontWeight\(/, /HwFont\.bump\(/);
+    weightNodes = wt.n;
+    weightBumped = wt.ok;
     if (textNodes > 0) {
-      rows.push({ f: path.relative(path.join(__dirname, '..'), p), n: textNodes, has: withFont });
+      rows.push({ f: path.relative(path.join(__dirname, '..'), p), n: textNodes, has: withFont,
+        sz: sizeNodes, szOk: sizeScaled, wt: weightNodes, wtOk: weightBumped });
       totalText += textNodes;
       totalHas += withFont;
+      totalSz += sizeNodes;
+      totalSzOk += sizeScaled;
+      totalWt += weightNodes;
+      totalWtOk += weightBumped;
     }
   }
+}
+
+// 字号 / 字重的覆盖面：整文件行级统计（这两项是"改写现有那一行"，不需要读属性链）
+function countStyle(lines, callRe, doneRe) {
+  let n = 0;
+  let ok = 0;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) {
+      continue;
+    }
+    if (callRe.test(t)) {
+      n++;
+      if (doneRe.test(t)) {
+        ok++;
+      }
+    }
+  }
+  return { n: n, ok: ok };
 }
 
 walk(ROOT);
@@ -67,8 +105,11 @@ rows.sort((a, b) => (b.n - b.has) - (a.n - a.has));
 for (const r of rows) {
   const todo = r.n - r.has;
   console.log((todo === 0 ? '  完成  ' : todo > 20 ? '  很多  ' : '  待挂  ')
-    + r.f + '  Text=' + r.n + ' 已挂=' + r.has + ' 待=' + todo);
+    + r.f + '  字体 ' + r.has + '/' + r.n
+    + '  字号 ' + r.szOk + '/' + r.sz + '  字重 ' + r.wtOk + '/' + r.wt
+    + '  待=' + todo);
 }
 console.log('');
-console.log('合计 Text 节点 ' + totalText + ' / 已挂 fontFamily ' + totalHas
-  + ' / 待挂 ' + (totalText - totalHas) + '（估算：正则读不懂属性链，实际以逐处为准）');
+console.log('字体：' + totalText + ' 个带文字组件，已挂 ' + totalHas + '，待挂 ' + (totalText - totalHas)
+  + '；字号：已改 ' + totalSzOk + '/' + totalSz + '；字重：已改 ' + totalWtOk + '/' + totalWt
+  + '（估算：正则读不懂属性链，实际以逐处为准）');
