@@ -11,7 +11,7 @@
  * 时序图 / 甘特图 / 饼图等不在子集内，原样按代码块呈现，不做伪装。
  */
 
-import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette } from '../theme/DesignTokens';
+import { HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, HwFont } from '../theme/DesignTokens';
 import { L10n } from '../service/L10n';
 
 export interface FlowNode {
@@ -196,6 +196,8 @@ export struct FlowChartView {
   @Prop bodySize: number = 14;
   /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
+  /** **界面字体**（外观设置）：只用于图下方那行界面说明，节点与连线标签仍跟正文尺寸走 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
 
   private graph: FlowGraph = { direction: 'TD', nodes: [], edges: [], ok: false };
   private parsed: boolean = false;
@@ -367,6 +369,7 @@ export struct FlowChartView {
       }
 
       Text(L10n.t('Mermaid 流程图子集 · graph TD/LR'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption - 1)
         .fontColor(this.palette.textTertiary)
         .width('100%')
