@@ -237,6 +237,9 @@ struct Index {
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页所有文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 智感握姿：-1 左手 / 0 未知或居中 / 1 右手 */
   @State gripSide: number = 0;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
@@ -947,7 +950,7 @@ struct Index {
       }
       Text(L10n.t(label))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
         .fontColor(red ? '#FFD93B3B' : this.palette().textPrimary)
         .layoutWeight(1)
     }
@@ -2774,13 +2777,13 @@ struct Index {
             .fontColor([this.palette().accent])
           Text(L10n.t('阅读'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 2)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
           Blank()
           Text(L10n.t('今日 ') + ReadingLog.human(this.readToday))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().accent)
         }
         .width('100%')
@@ -2809,14 +2812,14 @@ struct Index {
             Row({ space: HwSpace.xs }) {
               Text(d.name)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textSecondary)
                 .layoutWeight(1)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               Text(ReadingLog.human(d.seconds))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().accent)
             }
             .width('100%')
@@ -2826,7 +2829,7 @@ struct Index {
 
         Text(L10n.t('近 7 天有 ') + this.readWeekDays + ' 天在读 · 只统计停留在本应用的时间')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }
@@ -2841,13 +2844,13 @@ struct Index {
     Column({ space: 2 }) {
       Text(value)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 2)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
     }
     .layoutWeight(1)
@@ -2863,12 +2866,12 @@ struct Index {
         .fontColor([this.palette().accent])
       Text(value)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
     }
     .layoutWeight(1)
@@ -3032,7 +3035,7 @@ struct Index {
             .id('shelfSearchInput')
             .layoutWeight(1)
             .height('100%')
-            .fontSize(HwType.label + 2)
+            .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .placeholderColor(this.palette().textTertiary)
             .backgroundColor('#00000000')
@@ -3047,7 +3050,7 @@ struct Index {
           if (this.searchQuery.trim().length > 0) {
             Text(this.searchHits.length > 0 ? '' + this.searchHits.length : '0')
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().accent)
           }
           ImmersiveIconButton({
@@ -3115,24 +3118,24 @@ struct Index {
             if (this.shelfPage === 0) {
               Text(L10n.t('文房'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(22, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
                   .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             } else if (this.shelfPage === 2) {
               Text(L10n.t('写作日志'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(22, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
                   .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
             } else {
               Text(L10n.t('书架'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(22)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(22, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
                 .transition(TransitionEffect.OPACITY
                   .animation(AppearanceFx.anim(220, Curve.FastOutSlowIn)))
@@ -3311,7 +3314,7 @@ struct Index {
       if (this.searchQuery.trim().length === 0) {
         Text(L10n.t('输入关键词，搜索文件名与全部文档正文'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
           .padding({ left: HwSpace.sm, top: HwSpace.xxs, bottom: HwSpace.xxs })
@@ -3321,7 +3324,7 @@ struct Index {
         Column() {
           Text(L10n.t('没有匹配的文件名、正文或图片'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .width('100%')
             .textAlign(TextAlign.Center)
@@ -3343,8 +3346,8 @@ struct Index {
         if (this.searchNameHits.length > 0) {
           Text(L10n.t('文档'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 5)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
             .width('100%')
             // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
@@ -3367,19 +3370,19 @@ struct Index {
                 Column({ space: 3 }) {
                   Text(hit.name)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 1)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(hit.builtin ? L10n.t('内置文档') : L10n.t('我的文档'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
                   Text(DocStore.formatSize(hit.size) + ' · ' + DocStore.formatTime(hit.mtime))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
                 }
@@ -3430,8 +3433,8 @@ struct Index {
         if (this.searchContentHits.length > 0) {
           Text(L10n.t('内容'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 5)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
             .width('100%')
             // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
@@ -3458,7 +3461,7 @@ struct Index {
                   Text() {
                     ForEach(hit.snippetParts, (part: string, pi: number) => {
                       Span(part)
-                        .fontSize(HwType.label)
+                        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                         .fontWeight(pi % 2 === 1 ? FontWeight.Bold : FontWeight.Normal)
                         .fontColor(pi % 2 === 1 ? this.palette().accent : this.palette().textPrimary)
                     }, (part: string, pi: number) => 'sp' + index + '_' + pi)
@@ -3469,13 +3472,13 @@ struct Index {
                   // **出自哪个文件**
                   Text(hit.name)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(DocStore.formatSize(hit.size) + ' · ' + DocStore.formatTime(hit.mtime))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
                 }
@@ -3523,8 +3526,8 @@ struct Index {
         if (this.searchImageHits.length > 0) {
           Text(L10n.t('图片'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 5)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 5, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
             .width('100%')
             // 上/下留白与左间距取同一档（HwSpace.md）：标题整体下移一档，三边留白一致
@@ -3545,8 +3548,8 @@ struct Index {
                 Column({ space: 3 }) {
                   Text(img.name)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 1)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -3557,7 +3560,7 @@ struct Index {
                     + ' · ' + ((img.width > 0 && img.height > 0)
                       ? (img.width + ' × ' + img.height) : L10n.t('尺寸未知')))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -3606,7 +3609,7 @@ struct Index {
         if (this.searchHits.length > SEARCH_PANEL_MAX) {
           Text(L10n.t('共 ') + this.searchHits.length + ' 条命中，仅显示前 ' + SEARCH_PANEL_MAX + ' 条')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption - 1)
+            .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
             .textAlign(TextAlign.Center)
@@ -3777,7 +3780,7 @@ struct Index {
                 .fontColor([this.palette().accent])
               Text(L10n.t('合并为文件夹'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().accent)
             }
           }
@@ -3799,8 +3802,8 @@ struct Index {
         // 显示名：Front Matter 里写了 title 就用它（文件名不动）
         Text(DocStore.displayName(meta))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -3813,7 +3816,7 @@ struct Index {
         : (meta.fmDate !== undefined && meta.fmDate.length > 0
           ? meta.fmDate : DocStore.formatTime(meta.mtime)))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .width('100%')
         .textAlign(TextAlign.Center)
@@ -3869,7 +3872,7 @@ struct Index {
       if (this.swapReadyName === meta.name) {
         Text(L10n.t('松手换位'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption - 2)
+          .fontSize(HwFont.sx(HwType.caption - 2, this.uiFontScale))
           .fontColor('#FFFFFFFF')
           .padding({ left: 7, right: 7, top: 2, bottom: 2 })
           .borderRadius(HwRadius.pill)
@@ -4027,8 +4030,8 @@ struct Index {
       if (folder.hideCoverName !== true) {
         Text(folder.name)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -4039,7 +4042,7 @@ struct Index {
       // 篇数按**当前可见**成员算（隐藏的内置、已删的文档都不算）
       Text(this.folderDocs(folder.name).length + ' 篇')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .width('100%')
         .textAlign(TextAlign.Center)
@@ -4413,8 +4416,8 @@ struct Index {
             .fontColor([this.palette().accent])
           Text(this.openFolderName)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 2)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -4425,7 +4428,7 @@ struct Index {
             })
           Text(this.folderDocs(this.openFolderName).length + ' 篇')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
           Image($r('app.media.chevron_up_circle'))
             .width(16)
@@ -4560,7 +4563,7 @@ struct Index {
               .fontColor([this.palette().textTertiary])
             Text(L10n.t('新建文档'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .width('100%')
@@ -4589,7 +4592,7 @@ struct Index {
 
       Text(this.dragOverNewCard ? '释放导入 .md/.txt' : L10n.t('或长按导入'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.dragOverNewCard ? this.palette().accent : this.palette().textTertiary)
         .fontWeight(this.dragOverNewCard ? FontWeight.Medium : FontWeight.Regular)
         .width('100%')
@@ -4650,18 +4653,18 @@ struct Index {
             Row({ space: HwSpace.xs }) {
               Text(L10n.t('继续阅读'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().accent)
               Text(L10n.t('已读 ') + Math.round(this.resumeRatio * 100) + '% · '
                 + DocStore.formatTime(this.resumeLastOpen))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             Text(this.resumeName)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 1)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().textPrimary)
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -4711,14 +4714,14 @@ struct Index {
         Column({ space: 2 }) {
           Text(L10n.t('回头看看'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().accent)
           // **溢出时自动滚动播放**（用户要求）：这颗卡片里图标 + 两个芯片占位，
           // 窄屏上这行提示会被挤得只剩几个字，省略号看不出内容 ——
           // 改成 MARQUEE（跑马灯），长了就自己滚一遍。
           Text(L10n.t('书架共 ') + this.docs.length + ' 篇 · 挑一篇旧文重读')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.MARQUEE })
@@ -4819,14 +4822,14 @@ struct Index {
           }
           Text(title)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 3)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
           Blank()
           Row({ space: 4 }) {
             Text(actionLabel)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().accent)
             Image($r('app.media.chevron_right'))
               .width(12)
@@ -4843,7 +4846,7 @@ struct Index {
         ForEach(lines.length > 0 ? lines : ['暂无内容'], (line: string) => {
           Text(line)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .maxLines(2)
@@ -4880,14 +4883,14 @@ struct Index {
             .fontColor([this.palette().accent])
           Text(L10n.t('今日笺'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 3)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
           Blank()
           Row({ space: 4 }) {
             Text(L10n.t('点开看今天的安排'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
             Image($r('app.media.chevron_right'))
               .width(12)
@@ -4910,7 +4913,7 @@ struct Index {
             ForEach(this.studyDailyFull, (line: string) => {
               Text(line)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
                 .lineHeight(HwType.label * 1.8)
                 .width('100%')
@@ -4951,14 +4954,14 @@ struct Index {
             .fontColor([this.palette().accent])
           Text(L10n.t('全部待办'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 3)
-            .fontWeight(FontWeight.Bold)
+            .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
           Blank()
           Row({ space: 4 }) {
             Text(this.studyTaskCount > 0 ? this.studyTaskCount + ' 条未完成' : L10n.t('全部完成'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.studyTaskCount > 0 ? this.palette().accent : this.palette().textTertiary)
             Image($r('app.media.chevron_right'))
               .width(12)
@@ -4977,7 +4980,7 @@ struct Index {
           : ['所有文档里没有未完成的任务'], (line: string) => {
           Text(line)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .maxLines(2)
@@ -5009,7 +5012,7 @@ struct Index {
                   Column({ space: 1 }) {
                     Text(item.text)
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(HwType.label)
+                      .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                       .fontColor(item.done ? this.palette().textTertiary : this.palette().textPrimary)
                       .decoration({
                         type: item.done ? TextDecorationType.LineThrough : TextDecorationType.None
@@ -5019,7 +5022,7 @@ struct Index {
                       .width('100%')
                     Text(item.docName)
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(HwType.caption - 1)
+                      .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
                       .fontColor(this.palette().textTertiary)
                       .maxLines(1)
                       .width('100%')
@@ -5166,11 +5169,11 @@ struct Index {
       Row() {
         Text(L10n.t('复习卡片'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
         Text((this.reviewIndex + 1) + ' / ' + this.reviewCards.length)
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .width('100%')
@@ -5187,7 +5190,7 @@ struct Index {
           Column({ space: HwSpace.sm }) {
             Text(this.reviewFrontText())
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 2)
+              .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
               .fontColor(this.palette().textPrimary)
               .lineHeight(HwType.label * 1.8)
               .width('100%')
@@ -5248,7 +5251,7 @@ struct Index {
   reviewButton(label: string, grade: number, color: string) {
     Button(label)
       .fontFamily(HwFont.resolve(this.uiFontKey))
-      .fontSize(HwType.label)
+      .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
       .fontColor('#FFFFFFFF')
       .backgroundColor(color)
       .layoutWeight(1)
@@ -5270,7 +5273,7 @@ struct Index {
         // **返回上一级**（用户要求）：回到封面「⋯」菜单，而不是关掉面板
         Text(L10n.t('‹ 返回'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().accent)
           .onClick(() => {
             this.shelfSheet = 'cellMenu';
@@ -5279,12 +5282,12 @@ struct Index {
           })
         Text(L10n.t('全部待办'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
         Text(this.taskSummary)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       .width('100%')
@@ -5300,7 +5303,7 @@ struct Index {
               Column({ space: 2 }) {
                 Text(it.text.length > 0 ? it.text : L10n.t('（空任务）'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label)
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   // 已完成：划线 + 置灰（条目**保留在列表里**，用户要能看到勾过了什么）
                   .decoration({
                     type: it.done ? TextDecorationType.LineThrough : TextDecorationType.None,
@@ -5311,7 +5314,7 @@ struct Index {
                 Text('《' + it.docName + '》第 ' + it.line + ' 行'
                   + (it.builtin ? L10n.t(' · 内置只读') : (it.readOnly ? L10n.t(' · 只读') : '')))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                   .width('100%')
               }
@@ -5412,12 +5415,12 @@ struct Index {
     Column({ space: HwSpace.xs }) {
       Text(L10n.t('新建文档'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .width('100%')
       Text(L10n.t('可以直接写空白文档，也可以从模板开始 —— 模板自带小节标题与待办项。'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .lineHeight(HwType.caption * 1.7)
         .width('100%')
@@ -5442,8 +5445,8 @@ struct Index {
       // **图标**：自绘的圆角色块 + 单字徽标（不依赖符号库、不引资源，
       // 与代码块的语言徽标同一套做法，深浅主题下都清晰）
       Text(this.templateBadge(index))
-        .fontSize(12)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(12, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor('#FFFFFFFF')
         .width(26)
         .height(26)
@@ -5454,12 +5457,12 @@ struct Index {
       Column({ space: 2 }) {
         Text(index === 0 ? L10n.t('空白文档') : DOC_TEMPLATES[index - 1].name)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().textPrimary)
           .width('100%')
         Text(index === 0 ? L10n.t('从零开始写') : this.templateHint(index - 1))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }
@@ -5682,7 +5685,7 @@ struct Index {
     Row({ space: HwSpace.xs }) {
       Text(L10n.t('读写 / 只读'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label)
+        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
       ImmersiveChip({
@@ -5713,7 +5716,7 @@ struct Index {
     Row() {
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .layoutWeight(1)
       Image($r('app.media.chevron_right_circle'))
@@ -5795,13 +5798,13 @@ struct Index {
             ? L10n.t('内置教程默认只读，可在上面切到「可写」后编辑；移除后可在「设置 → 数据管理」恢复')
             : '内置教程已解锁为可写；「重命名 / 删除」对内置文档仍然受限')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
         } else if (this.cellMenuReadOnly) {
           Text(L10n.t('只读文档不提供编辑入口；「重命名 / 删除 / 封面 / 导出」不受影响'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
         }
@@ -5833,8 +5836,8 @@ struct Index {
 
         Text(L10n.t('封面'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.palette().textSecondary)
           .width('100%')
 
@@ -5879,7 +5882,7 @@ struct Index {
         Row({ space: HwSpace.xs }) {
           Text(L10n.t('封面显示名称'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .layoutWeight(1)
           Toggle({ type: ToggleType.Switch, isOn: !this.cellMenuHideName() })
@@ -5985,7 +5988,7 @@ struct Index {
         .fontFamily(HwFont.resolve(this.uiFontKey))
         .layoutWeight(1)
         .height(44)
-        .fontSize(HwType.label + 1)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .backgroundColor(this.palette().quoteBg)
         .borderRadius(HwRadius.inner)
@@ -6067,7 +6070,7 @@ struct Index {
         })
       Text(meta.name)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -6075,17 +6078,17 @@ struct Index {
       if (meta.progressRatio > 0.001) {
         Text(L10n.t('已读 ') + Math.round(meta.progressRatio * 100) + '%')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       } else if (!meta.builtin) {
         Text(DocStore.formatTime(meta.mtime))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       } else {
         Text(L10n.t('内置'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
       if (this.multiSelect) {
@@ -6203,15 +6206,15 @@ struct Index {
           ? this.folderColorOf(folder) : this.palette().accent])
       Text(folder.name)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       Text(this.folderDocs(folder.name).length + ' 篇')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
       Column() {
         ImmersiveIconButton({
@@ -6334,7 +6337,7 @@ struct Index {
       ListItem() {
         Text(L10n.t('树形视图 · 文件夹来自书架拖拽归组'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
           .textAlign(TextAlign.Center)
@@ -6375,7 +6378,7 @@ struct Index {
       Row({ space: 6 }) {
         Text(L10n.t('已选 ') + this.multiNames.length)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textPrimary)
           .constraintSize({ maxWidth: 64 })
           .maxLines(1)
@@ -6460,7 +6463,7 @@ struct Index {
       }
       Text(this.docs.length + ' 篇 · ' + this.folders.length + ' 个文件夹')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textSecondary)
         // **弹性中段 + 跑马灯**（用户要求）：空间不够时**文本自身收窄**并滚动，
         // 绝不把两侧按钮顶出去。此前 constraintSize(200) 只是"上限"不是"收缩承诺"——
@@ -6474,7 +6477,7 @@ struct Index {
         .marqueeOptions({ start: true, step: 3, fromStart: true })
       Text(this.totalWords + ' 字')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .constraintSize({ maxWidth: 100 })
         .maxLines(1)
@@ -6585,7 +6588,7 @@ struct Index {
       if (this.starredDocs.length === 0) {
         Text(L10n.t('还没有收藏的文档：在阅读页信息卡右上角点爱心即可收藏。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.label * 1.6)
           .width('100%')
@@ -6606,14 +6609,14 @@ struct Index {
             Column({ space: 2 }) {
               Text(doc.name)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textPrimary)
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
                 .width('100%')
               Text(L10n.t('收藏于 ') + Index.starDateLabel(doc.starredAt))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textSecondary)
                 .width('100%')
             }
@@ -7059,7 +7062,7 @@ struct Index {
             // 时间列（轴外，右对齐）
             Text(this.trailTime(m.lastOpen))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption - 1)
+              .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .width(76)
               .textAlign(TextAlign.End)
@@ -7100,7 +7103,7 @@ struct Index {
                   .textAlign(TextAlign.Center)
                 Text(m.name)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label)
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -7129,7 +7132,7 @@ struct Index {
         if (this.trailItems.length === 0) {
           Text(L10n.t('还没有阅读记录，打开一篇文档试试'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
             .padding(HwSpace.sm)
@@ -7776,14 +7779,14 @@ struct Index {
                 Column({ space: HwSpace.xs }) {
                   Text(L10n.t('书架还是空的'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                   // **两段提示合成一段**（用户要求精简）：
                   // 原「怎么新建」与「长按合并文件夹」各占一段，空书架时显得啰嗦
                   Text(L10n.t('点「新建文档」写一篇、或用文件夹按钮导入 .md 文件；长按封面拖到另一张上可合并成文件夹'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                     .textAlign(TextAlign.Center)
                     .lineHeight(HwType.caption * 1.6)
@@ -7800,7 +7803,7 @@ struct Index {
             GridItem() {
               Text(L10n.t('长按封面拖到另一张上合并为文件夹 · 封面由文档名生成'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
                 .width('100%')
                 .textAlign(TextAlign.Center)
@@ -7940,8 +7943,8 @@ struct Index {
                 if (this.shelfPage === 0) {
                   Text(L10n.t('文房'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(24)
-                    .fontWeight(FontWeight.Bold)
+                    .fontSize(HwFont.sx(24, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
@@ -7949,8 +7952,8 @@ struct Index {
                 } else if (this.shelfPage === 2) {
                   Text(L10n.t('写作日志'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(24)
-                    .fontWeight(FontWeight.Bold)
+                    .fontSize(HwFont.sx(24, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
@@ -7958,8 +7961,8 @@ struct Index {
                 } else {
                   Text(L10n.t('书架'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(24)
-                    .fontWeight(FontWeight.Bold)
+                    .fontSize(HwFont.sx(24, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .margin({ top: 6 })
                     .transition(TransitionEffect.OPACITY
@@ -8063,7 +8066,7 @@ struct Index {
                     }
                     Text(L10n.t('回到书架'))
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(HwType.label)
+                      .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                       .fontColor(this.palette().textPrimary)
                       .maxLines(1)
                     Blank()
@@ -8165,14 +8168,14 @@ struct Index {
             Column({ space: 3 }) {
               Text(this.imgPreviewName)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor('#FFFFFFFF')
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
               Text(this.imgPreviewMeta)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor('#B3FFFFFF')
                 .maxLines(1)
             }
@@ -8232,8 +8235,8 @@ struct Index {
               .width(132)
               .height(132)
             Text('ChéngJiān')
-              .fontSize(24)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(24, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .letterSpacing(8)
               .margin({ left: 8 })
               .fontColor(this.isDark() ? '#FFECF1E9' : '#FF3D4A3C')
@@ -8716,6 +8719,9 @@ export struct EncodingChoiceCard {
   /** 当前档位（固定键；打开面板时由宿主写入当前文档的编码） */
   @StorageLink('cellMenuEncoding') current: string = 'auto';
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private values(): string[] {
     const out: string[] = [];
@@ -8756,12 +8762,12 @@ export struct EncodingChoiceCard {
       Column({ space: HwSpace.xs }) {
         Text(L10n.t('文档编码'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor(this.palette.textPrimary)
           .width('100%')
         Text(L10n.t('非 UTF-8 的文档（例如 GBK 存出来的 txt）按 UTF-8 硬解会整篇乱码；') + '自动识别不准时在这里手动指定。')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
           .lineHeight(HwType.caption * 1.7)
           .width('100%')
@@ -8770,7 +8776,7 @@ export struct EncodingChoiceCard {
           Row({ space: HwSpace.sm }) {
             Text(this.labelOf(enc))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.current === enc
                 ? this.palette.accent : this.palette.textPrimary)
               .layoutWeight(1)
