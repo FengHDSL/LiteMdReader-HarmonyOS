@@ -2972,13 +2972,13 @@ export struct Reader {
   }
 
   /** 按块 id 跳转；正文被改过导致找不到时给出提示而不是静默失败。 */
-  private jumpToBlockId(blockId: string): void {
+  private jumpToBlockId(blockId: string, center: boolean = false): void {
     const index: number = this.blockIndexOf(blockId);
     if (index < 0) {
       this.toast(L10n.t('这段正文已被修改，位置已失效'));
       return;
     }
-    this.jumpTo(index);
+    this.jumpTo(index, center);
   }
 
   /** 块 id → 块下标；找不到返回 -1。 */
@@ -4244,6 +4244,34 @@ export struct Reader {
     });
   }
 
+  /** 解析批注里的插图路径（照手写批注：相对路径必须 resolve，否则一片空白） */
+  private resolvedNoteImg(img: string): string {
+    return DocStore.resolveImagePath(img);
+  }
+
+  /** 点插图 → 放大浮层查看（照手写批注的 enlarge 流程） */
+  private openNoteImage(img: string, title: string): void {
+    const resolved: string = DocStore.resolveImagePath(img);
+    if (resolved.length === 0) {
+      this.toast(L10n.t('找不到批注图片'));
+      return;
+    }
+    const uri: string = resolved;
+    this.imgScale = 1;
+    this.imgDx = 0;
+    this.imgDy = 0;
+    this.rotated = false;
+    this.getUIContext().animateTo(AppearanceFx.anim(280, Curve.FastOutSlowIn), () => {
+      this.enlargeMode = 'image';
+      this.enlargePayload = uri;
+      this.enlargeGeo = '';
+      this.enlargeTitle = title;
+      this.enlargeWebMounted = true;
+      this.enlargeRefitTick = 0;
+      AppStorage.setOrCreate('readerOverlayOpen', true);
+    });
+  }
+
   private closeTapBar(): void {
     this.getUIContext().animateTo(AppearanceFx.anim(180, Curve.FastOutSlowIn), () => {
       this.tapAnnId = '';
@@ -4307,7 +4335,7 @@ export struct Reader {
     return text.substring(0, 120) + '…';
   }
 
-  private jumpTo(blockIndex: number): void {
+  private jumpTo(blockIndex: number, center: boolean = false): void {
     if (this.docIsHeavy && !this.jumpLoading) {
       // ① 先收目录（露出正文），同时弹加载框（淡入 220ms）
       if (this.tocOpen) {
@@ -4318,7 +4346,7 @@ export struct Reader {
       });
       // ② 弹窗出现后再做真跳转（真跳转的卡顿被弹窗遮住）
       setTimeout(() => {
-        this.jumpToNow(blockIndex);
+        this.jumpToNow(blockIndex, center);
         // ③ 跳完立即收框：保底显示 420ms（避免"闪一下"），跳得慢时也就多等这一会儿
         setTimeout(() => {
           this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
@@ -4328,11 +4356,11 @@ export struct Reader {
       }, 260);
       return;
     }
-    this.jumpToNow(blockIndex);
+    this.jumpToNow(blockIndex, center);
   }
 
   /** 真正的跳转执行（懒渲染扩容 + 定位 + 收抽屉），由 jumpTo 编排调用。 */
-  private jumpToNow(blockIndex: number): void {
+  private jumpToNow(blockIndex: number, center: boolean = false): void {
     // **懒渲染**：目标块可能尚未渲染（visibleBlocks 之外），这时 scrollToIndex 指向
     // 不存在的条目 → 点了没反应（用户实测：在文档顶部点目录最后一项无效）。
     // 先把它纳入渲染范围，再跳。
@@ -4345,7 +4373,7 @@ export struct Reader {
     }
     this.lockAutoHide();
     try {
-      this.scroller.scrollToIndex(blockIndex + this.headerCount(), true, ScrollAlign.START);
+      this.scroller.scrollToIndex(blockIndex + this.headerCount(), true, center ? ScrollAlign.CENTER : ScrollAlign.START);
     } catch (err) {
       // 忽略
     }
@@ -8063,14 +8091,16 @@ export struct Reader {
                     maxLines: this.isExpanded('a' + annIndex) ? 0 : 4,
                     generate: false
                   })
-                  // **批注里的图片**（插入的插图直接显示——标记在备注 note 里）
+                  // **批注里的图片**（照手写批注模式：resolve 解析 + 点击放大浮层）
                   ForEach(this.noteImages(ann.text + '\n' + ann.note), (img: string) => {
-                    // **默认缩略图**（用户要求）
-                    Image('file://' + DocStore.imagesDirPath() + '/' + img)
+                    Image(this.resolvedNoteImg(img))
                       .width('100%')
                       .constraintSize({ maxHeight: 64 })
                       .objectFit(ImageFit.Cover)
                       .borderRadius(HwRadius.inner)
+                      .onClick(() => {
+                        this.openNoteImage(img, L10n.t('批注插图'));
+                      })
                   }, (img: string) => img)
                   // **批注里的关联文档**（点击跳转——标记在备注 note 里）
                   ForEach(this.noteDocs(ann.text + '\n' + ann.note), (docFile: string) => {
@@ -8124,13 +8154,16 @@ export struct Reader {
                         lineMul: 1.6,
                         generate: false
                       })
-                      // **备注里的插图**（批注时插入的图片直接显示）
+                      // **备注里的插图**（照手写批注模式：resolve + 点击放大）
                       ForEach(this.noteImages(ann.text + '\n' + ann.note), (img: string) => {
-                        Image('file://' + DocStore.imagesDirPath() + '/' + img)
+                        Image(this.resolvedNoteImg(img))
                           .width('100%')
                           .constraintSize({ maxHeight: 96 })
                           .objectFit(ImageFit.Cover)
                           .borderRadius(HwRadius.inner)
+                          .onClick(() => {
+                            this.openNoteImage(img, L10n.t('批注插图'));
+                          })
                       }, (img: string) => img)
                       // **备注里的关联文档**（点击跳转）
                       ForEach(this.noteDocs(ann.text + '\n' + ann.note), (docFile: string) => {
@@ -8170,7 +8203,9 @@ export struct Reader {
                   color: { left: ann.color >= 0 ? annotationColor(ann.color, this.isDark()) : this.palette().divider }
                 })
                 .onClick(() => {
-                  this.jumpToBlockId(ann.blockId);
+                  // **块居中显示**（用户要求：批注不出屏）+ 闪烁提示
+                  this.jumpToBlockId(ann.blockId, true);
+                  this.flashBlock(ann.blockId);
                 })
                 // **删除 / 筛选淡出**（配 animateTo 的数组变更，其余卡片滑动补位）
                 .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
@@ -9517,101 +9552,101 @@ export struct Reader {
 
 
 
-      // **点批注弹出的浮条**（用户要求：样式与长按文本弹出的批注条一致）——
-      // 全应用最顶层（.overlay 会拦手势，继续用内嵌层），点空白关
+      // **点批注弹出的浮条**（重做：上下遮罩留中带——照 floatMask 洞模式，
+      // 洞内浮条完全不受遮罩 onClick 影响；按钮照 NotePanel 的 chip，已验证可点）
       if (this.tapAnnId.length > 0) {
         Column() {
-          Column({ space: HwSpace.xs }) {
-            Row({ space: HwSpace.xs }) {
-              SymbolGlyph($r('sys.symbol.paintbrush'))
-                .fontSize(13)
-                .fontColor([this.palette().accent])
-              Text(L10n.t('批注'))
-                .fontSize(HwType.caption)
-                .fontColor(this.palette().textTertiary)
-                .layoutWeight(1)
-              // **操作三连：修改 / 复制 / 删除（图标）**
-              ImmersiveIconButton({
-                buttonSize: 34,
-                buttonMaterialShadow: false,
-                palette: this.palette(),
-                buttonOnTap: () => {
-                  const a: MdAnnotation | null = this.tapAnn();
-                  if (a !== null) {
-                    this.closeTapBar();
-                    this.editAnn(a);
-                  }
-                }
-              }) {
-                SymbolGlyph($r('sys.symbol.square_and_pencil'))
-                  .fontSize(16)
-                  .fontColor([this.palette().accent])
-              }
-              ImmersiveIconButton({
-                buttonSize: 34,
-                buttonMaterialShadow: false,
-                palette: this.palette(),
-                buttonOnTap: () => {
-                  const a: MdAnnotation | null = this.tapAnn();
-                  if (a !== null) {
-                    this.copyNoteText(this.stripNoteMeta(this.inlineClean(a.text)));
-                  }
-                }
-              }) {
-                SymbolGlyph($r('sys.symbol.doc_plaintext'))
-                  .fontSize(16)
-                  .fontColor([this.palette().textSecondary])
-              }
-              ImmersiveIconButton({
-                buttonSize: 34,
-                buttonMaterialShadow: false,
-                palette: this.palette(),
-                buttonOnTap: () => {
-                  const a: MdAnnotation | null = this.tapAnn();
-                  if (a !== null) {
-                    this.askDeleteAnn(a);
-                  }
-                }
-              }) {
-                SymbolGlyph($r('sys.symbol.trash'))
-                  .fontSize(16)
-                  .fontColor(['#FFD32F2F'])
-              }
-            }
+          // 上遮罩：点击关闭
+          Column()
             .width('100%')
-            .alignItems(VerticalAlign.Center)
-            // **批注内容摘要**（带荧光底色，呼应正文样式）
-            Text(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text : '')
-              .fontSize(HwType.label + 1)
-              .fontColor(this.palette().textPrimary)
-              .maxLines(5)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1)
+            .backdropBlur(16)
+            .onClick(() => {
+              this.closeTapBar();
+            })
+          // 中带：浮条卡片（可交互区）
+          Column() {
+            Column({ space: HwSpace.xs }) {
+              Row({ space: HwSpace.xs }) {
+                SymbolGlyph($r('sys.symbol.paintbrush'))
+                  .fontSize(14)
+                  .fontColor([this.palette().accent])
+                Text(L10n.t('批注'))
+                  .fontSize(HwType.caption)
+                  .fontColor(this.palette().textTertiary)
+                  .layoutWeight(1)
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipActive: true,
+                  chipLabel: L10n.t('修改'),
+                  chipOnTap: () => {
+                    const a: MdAnnotation | null = this.tapAnn();
+                    if (a !== null) {
+                      this.closeTapBar();
+                      this.editAnn(a);
+                    }
+                  }
+                })
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipActive: true,
+                  chipLabel: L10n.t('复制'),
+                  chipOnTap: () => {
+                    const a: MdAnnotation | null = this.tapAnn();
+                    if (a !== null) {
+                      this.copyNoteText(this.stripNoteMeta(this.inlineClean(a.text)));
+                    }
+                  }
+                })
+                ImmersiveChip({
+                  palette: this.palette(),
+                  chipTint: '#FFD32F2F',
+                  chipActive: true,
+                  chipLabel: L10n.t('删除'),
+                  chipOnTap: () => {
+                    const a: MdAnnotation | null = this.tapAnn();
+                    if (a !== null) {
+                      this.askDeleteAnn(a);
+                    }
+                  }
+                })
+              }
               .width('100%')
+              .alignItems(VerticalAlign.Center)
+              Text(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text : '')
+                .fontSize(HwType.label + 1)
+                .fontColor(this.palette().textPrimary)
+                .maxLines(5)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+            }
+            .padding(HwSpace.md)
+            .borderRadius(HwRadius.card)
+            .backgroundColor(withAlpha(this.palette().surface, 'FF'))
+            .border({ width: 1, color: this.palette().divider })
+            .transition(TransitionEffect.OPACITY
+              .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
           }
-          .width('92%')
-          .padding(HwSpace.md)
-          .borderRadius(HwRadius.card)
-          .backgroundColor(withAlpha(this.palette().surface, 'FF'))
-          .border({ width: 1, color: this.palette().divider })
-          // **onTouch stopPropagation**：点击/触摸不再穿透到遮罩（空 onClick 不够，
-          // 遮罩的 onClick 仍会收到冒泡——用户反馈"点按钮只是关闭"）
+          .width('100%')
+          .height('auto')
+          .onClick(() => {
+          })
           .onTouch((e: TouchEvent) => {
             e.stopPropagation();
           })
-          .onClick(() => {
-          })
-          .transition(TransitionEffect.OPACITY
-            .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
+          // 下遮罩：点击关闭
+          Column()
+            .width('100%')
+            .layoutWeight(1)
+            .backdropBlur(16)
+            .onClick(() => {
+              this.closeTapBar();
+            })
         }
         .width('100%')
         .height('100%')
-        .alignItems(HorizontalAlign.Center)
-        .justifyContent(FlexAlign.Center)
-        .hitTestBehavior(HitTestMode.Block)
-        .onClick(() => {
-          this.closeTapBar();
-        })
       }
+
 
       // **目录跳转的加载提示**（重文档专用）：全应用最顶层浮层（盖过目录抽屉/顶栏）。
       // ⚠️ 内嵌在根 Stack 里——.overlay() 会拦截整页手势（2026-10-20 实测），禁用。

@@ -474,7 +474,7 @@ export struct NotePanel {
       // **图片预览**（独立列表：56×56 缩略 + × 移除，文本框不再显示引用串）
       ForEach(this.pickedImages, (img: string) => {
         Row({ space: HwSpace.xs }) {
-          Image('file://' + DocStore.imagesDirPath() + '/' + img)
+          Image(DocStore.resolveImagePath(img))
             .width(56)
             .height(56)
             .objectFit(ImageFit.Cover)
