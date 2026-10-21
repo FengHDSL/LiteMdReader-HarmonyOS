@@ -35,6 +35,7 @@ import { InlineFormulaPool } from '../components/InlineFormulaPool';
 import { FormulaTask, FormulaTasks } from '../markdown/FormulaTasks';
 import {
   HwBar,
+  HwFont,
   HwRadius,
   HwSpace,
   HwType,
@@ -321,6 +322,8 @@ export struct Editor {
   /** 界面字体与同步开关：值由 HwFont.bodyFamily 现读，这里挂上只为改动能触发重建 */
   @StorageLink('appFontFamily') @Watch('onVisualChanged') appFontKey: string = '';
   @StorageLink('appFontSyncReader') @Watch('onVisualChanged') appFontSync: boolean = false;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
@@ -445,10 +448,12 @@ export struct Editor {
             .fontColor([this.previewMode === item.m ? '#D4BA86' : '#00000000'])
           Column({ space: 2 }) {
             Text(item.label)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(15)
               .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
               .fontColor(this.palette().textPrimary)
             Text(item.desc)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(12)
               .fontColor(this.palette().textTertiary)
           }
@@ -473,6 +478,7 @@ export struct Editor {
           .fontSize(15)
           .fontColor([this.palette().textSecondary])
         Text(L10n.t('关闭实时预览'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(15)
           .fontColor(this.palette().textSecondary)
       }
@@ -1755,6 +1761,7 @@ export struct Editor {
       }
 
       TextInput({ text: this.docName, placeholder: this.isNew ? L10n.t('给文档起个名字') : L10n.t('文档名') })
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .layoutWeight(1)
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
@@ -2169,6 +2176,7 @@ export struct Editor {
     Column({ space: HwSpace.xs }) {
       Row({ space: HwSpace.xs }) {
         Text(L10n.t('全部编辑功能'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .layoutWeight(1)
@@ -2178,6 +2186,7 @@ export struct Editor {
             .height(16)
             .fillColor(this.palette().accent)
           Text(L10n.t('收起'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().accent)
         }
@@ -2261,6 +2270,7 @@ export struct Editor {
     if (items.length > 0) {
       Column({ space: 6 }) {
         Text(title)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -2347,6 +2357,7 @@ export struct Editor {
   bottomBar() {
     ImmersiveBar({ palette: this.palette(), barPaddingH: HwSpace.md, barPaddingV: HwSpace.xs }) {
       Text(this.stats())
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette().textSecondary)
         .constraintSize({ maxWidth: 120 })
@@ -2472,9 +2483,11 @@ export struct Editor {
         Row({ space: HwSpace.sm }) {
           Column({ space: 2 }) {
             Text(L10n.t('自动保存版本'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.label + 1)
               .fontColor(this.palette().textPrimary)
             Text(L10n.t('按下面的间隔记录快照，内容没变化不重复记'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -2492,6 +2505,7 @@ export struct Editor {
         if (this.versionAutoSave) {
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('间隔'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveChip({
@@ -2534,6 +2548,7 @@ export struct Editor {
 
         if (this.versionList.length === 0) {
           Text(L10n.t('还没有快照。手动保存或自动保存后会出现在这里'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette().textTertiary)
             .width('100%')
@@ -2542,9 +2557,11 @@ export struct Editor {
           Row({ space: HwSpace.sm }) {
             Column({ space: 2 }) {
               Text(this.versionTime(v.ts))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
               Text(this.versionMeta(v.ts))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -2592,6 +2609,7 @@ export struct Editor {
           }
         })
         Text(L10n.t('红色 = 旧版独有 · 绿色 = 当前独有'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .layoutWeight(1)
@@ -2698,6 +2716,7 @@ export struct Editor {
         // **操作提示放在内容里**：官方标题栏的副标题在手机端只有一行、
         // 长句会被截断（用户反馈「看不到全部内容」）——这里完整显示。
         Text(L10n.t('点任意一行即可插入到光标位置；末尾的「语法教程」有完整示例。'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.caption * 1.6)
@@ -2706,6 +2725,7 @@ export struct Editor {
         // 语法口径与示例说明的参考来源（用户要求注明）
         Text(L10n.t('语法分类与说明参考：younghz/Markdown（github.com/younghz/Markdown），') +
           '并按澄笺支持的范围补充了提示块 / 脚注 / 公式 / 图表等扩展语法。')
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption - 0.5)
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwType.caption * 1.6)
@@ -2721,6 +2741,7 @@ export struct Editor {
               .fontColor(this.palette().accent)
               .width('100%')
             Text(row.desc)
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textSecondary)
               .lineHeight(HwType.caption * 1.6)
@@ -2730,6 +2751,7 @@ export struct Editor {
             // （解析结果按 syntax 缓存，只解析一次）
             Column({ space: HwSpace.xxs }) {
               Text(L10n.t('效果'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption - 1)
                 .fontColor(this.palette().textTertiary)
               ForEach(this.syntaxBlocks(row.syntax), (b: MdBlock) => {
@@ -2929,6 +2951,7 @@ export struct Editor {
       })
       ListItem() {
         Text(L10n.t('—— 预览结束 ——'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette().textTertiary)
           .width('100%')
@@ -2969,6 +2992,7 @@ export struct Editor {
         ListItem() {
           Column({ space: HwSpace.xs }) {
             Text(L10n.t('即时渲染 · 直接改源码，下方实时预览'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             TextArea({ text: this.irDraft })
@@ -2997,6 +3021,7 @@ export struct Editor {
               .fontSize(12)
               .fontColor([this.palette().textTertiary])
             Text(L10n.t('点任意一块即可就地编辑 · 表格点开是网格 · 代码块带实时预览'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .layoutWeight(1)
@@ -3105,6 +3130,7 @@ export struct Editor {
                     .fontSize(12)
                     .fontColor([this.palette().textTertiary])
                   Text(L10n.t('编辑'))
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.caption - 1)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -3203,6 +3229,7 @@ export struct Editor {
               .fontSize(14)
               .fontColor([this.palette().textTertiary])
             Text(L10n.t('点这里新建段落'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
           }
@@ -3533,6 +3560,7 @@ export struct Editor {
         .fontSize(13)
         .fontColor([this.palette().accent])
       Text(index >= 0 && index < this.outlineItems.length ? this.outlineItems[index].text : '')
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.label)
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
@@ -4424,10 +4452,12 @@ export struct Editor {
               Row({ space: 10 }) {
                 Column({ space: 2 }) {
                   Text(item.label)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(15)
                     .fontWeight(this.previewMode === item.m ? FontWeight.Bold : FontWeight.Normal)
                     .fontColor(this.palette().textPrimary)
                   Text(item.desc)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(12)
                     .fontColor(this.palette().textTertiary)
                 }
@@ -4452,6 +4482,7 @@ export struct Editor {
                 .fontSize(15)
                 .fontColor([this.palette().textSecondary])
               Text(L10n.t('关闭实时预览'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(15)
                 .fontColor(this.palette().textSecondary)
             }
@@ -4538,6 +4569,7 @@ export struct Editor {
           ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })
           Row({ space: 6 }) {
             Text(L10n.t('专注中'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveIconButton({
@@ -4584,6 +4616,7 @@ export struct Editor {
               .fontSize(14)
               .fontColor([this.palette().textTertiary])
             TextInput({ text: this.findQuery, placeholder: L10n.t('查找内容') })
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .layoutWeight(1)
               .height('100%')
               .fontSize(HwType.label)
@@ -4597,6 +4630,7 @@ export struct Editor {
                 this.recomputeMatches();
               })
             Text(this.findLabel())
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
             ImmersiveIconButton({
@@ -4663,6 +4697,7 @@ export struct Editor {
               barWidth: '100%'
             }) {
               TextInput({ text: this.replaceText, placeholder: L10n.t('替换为') })
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .layoutWeight(1)
                 .height('100%')
                 .fontSize(HwType.label)
@@ -4745,6 +4780,7 @@ export struct Editor {
                 .fontSize(16)
                 .fontColor([this.palette().accent])
               Text(L10n.t('编辑这一块'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -4779,6 +4815,7 @@ export struct Editor {
             Row({ space: HwSpace.sm }) {
               Blank()
               Text(L10n.t('取消'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textSecondary)
                 .padding({ left: 16, right: 16, top: 8, bottom: 8 })
@@ -4788,6 +4825,7 @@ export struct Editor {
                   this.wysOpen = false;
                 })
               Text(L10n.t('保存'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontColor('#FFFFFF')
                 .padding({ left: 20, right: 20, top: 8, bottom: 8 })
@@ -4829,6 +4867,7 @@ export struct Editor {
                 .fontSize(16)
                 .fontColor([this.palette().accent])
               Text(L10n.t('大纲重排'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label + 2)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(this.palette().textPrimary)
@@ -4850,12 +4889,14 @@ export struct Editor {
             .alignItems(VerticalAlign.Center)
 
             Text(L10n.t('长按拖动可整节换序（连同它的子标题一起搬）· 也可用 ↑↓ 微调'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette().textTertiary)
               .width('100%')
 
             if (this.outlineItems.length === 0) {
               Text(L10n.t('这篇还没有标题。先写几个 `##` 小节，再回来整理顺序。'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.label)
                 .fontColor(this.palette().textSecondary)
                 .width('100%')
@@ -4866,10 +4907,12 @@ export struct Editor {
                   ListItem() {
                     Row({ space: HwSpace.xs }) {
                       Text('H' + h.level)
+                        .fontFamily(HwFont.resolve(this.uiFontKey))
                         .fontSize(HwType.caption - 1)
                         .fontColor(this.palette().textTertiary)
                         .width(20)
                       Text(h.text)
+                        .fontFamily(HwFont.resolve(this.uiFontKey))
                         .fontSize(h.level <= 2 ? HwType.label + 1 : HwType.label)
                         .fontColor(this.palette().textPrimary)
                         .layoutWeight(1)
@@ -4949,10 +4992,12 @@ export struct Editor {
                 .fontSize(13)
                 .fontColor([this.palette().accent])
               Text(L10n.t('链接到文档'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().accent)
               Blank()
               Text(L10n.t('点一条插入 [[名称]]'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwType.caption)
                 .fontColor(this.palette().textTertiary)
             }
@@ -4968,6 +5013,7 @@ export struct Editor {
                       .fontColor([this.palette().textTertiary])
                     // 显示文件名本身：`[[ ]]` 里要写的就是它（写显示名会变成悬空链接）
                     Text(name)
+                      .fontFamily(HwFont.resolve(this.uiFontKey))
                       .fontSize(HwType.label)
                       .fontColor(this.palette().textPrimary)
                       .layoutWeight(1)
@@ -5047,6 +5093,7 @@ export struct Editor {
             )
 
           Text(L10n.t('点此关闭'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor('#FFFFFFFF')
             .padding({ left: HwSpace.md, right: HwSpace.md, top: 6, bottom: 6 })

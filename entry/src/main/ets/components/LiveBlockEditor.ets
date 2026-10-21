@@ -14,6 +14,7 @@
  *     公式在编辑态里就是「实时预览的模样」，改一个字效果立刻变。
  */
 import {
+  HwFont,
   HwRadius,
   HwSpace,
   HwType,
@@ -48,6 +49,8 @@ export struct LiveBlockEditor {
   @Prop previewTick: number = 0;
   /** 草稿的解析结果（宿主在草稿变化时解析好传进来；组件内不做重活） */
   @Prop previewBlocks: MdBlock[] = [];
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 源码草稿：与宿主的 @State 双向绑定（@Link 同一引用） */
   @Link draft: string;
   /** 删除这一块 */
@@ -152,6 +155,7 @@ export struct LiveBlockEditor {
             .borderRadius(2)
             .backgroundColor(this.palette.accent)
           Text(L10n.t('正在编辑 · ') + this.kindLabel())
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption)
             .fontColor(this.palette.accent)
         }
@@ -202,10 +206,12 @@ export struct LiveBlockEditor {
         Column() {
           Row({ space: 5 }) {
             Text(L10n.t('预览效果'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette.textTertiary)
             Blank()
             Text(L10n.t('以正文样式渲染'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption - 1)
               .fontColor(this.palette.textTertiary)
               .opacity(0.7)

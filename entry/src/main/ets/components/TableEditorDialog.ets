@@ -22,7 +22,7 @@ import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import {
   LIGHT_PALETTE, ReaderPalette, ReaderThemeMode, paletteFor, withAlpha
 } from '../theme/DesignTokens';
-import { HwSpace, HwRadius } from '../theme/DesignTokens';
+import { HwSpace, HwRadius, HwFont } from '../theme/DesignTokens';
 import { MdTable, TableTool } from '../service/TableTool';
 import { L10n } from '../service/L10n';
 
@@ -40,6 +40,8 @@ export struct TableEditorDialog {
   };
   @StorageProp('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
+  /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 调色板：**必须 @Prop**，否则主题切换后不更新（普通成员只在创建时赋值一次） */
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** 网格重建纪元：增删行列 / 换对齐后 ++，ForEach key 带上它强制重建 */
@@ -150,6 +152,7 @@ export struct TableEditorDialog {
   @Builder
   copyChip(label: string, kind: string) {
     Text(label)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(12)
       .fontColor(this.pal().textSecondary)
       .textAlign(TextAlign.Center)
@@ -166,11 +169,13 @@ export struct TableEditorDialog {
       // ── 标题 + 行列数 ──
       Row({ space: HwSpace.sm }) {
         Text(L10n.t('编辑表格'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.pal().textPrimary)
           .layoutWeight(1)
         Text((this.tbl.rows.length + 1) + ' 行 × ' + this.tbl.header.length + ' 列')
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(12)
           .fontColor(this.pal().textTertiary)
       }
@@ -178,6 +183,7 @@ export struct TableEditorDialog {
 
       // 使用说明
       Text(L10n.t('「＋ 行 / ＋ 列」在末尾追加；行尾 × 删除该行。表头与对齐样式保持原文不动。'))
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(12)
         .fontColor(this.pal().textTertiary)
         .width('100%')
@@ -207,6 +213,7 @@ export struct TableEditorDialog {
               Column().width(30).height(22)
               ForEach(this.tbl.header, (cell: string, ci: number) => {
                 Text(L10n.t('第') + (ci + 1) + '列')
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width(CELL_W)
                   .height(22)
                   .fontSize(11)
@@ -222,6 +229,7 @@ export struct TableEditorDialog {
             // 聚焦即选中，两者不冲突
             Row({ space: 4 }) {
               Text(L10n.t('头'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
                 .width(30)
                 .height(CELL_H)
                 .fontSize(11)
@@ -316,6 +324,7 @@ export struct TableEditorDialog {
       // ── 底部：取消 | 保存 ──
       Row({ space: HwSpace.sm }) {
         Text(L10n.t('取消'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(14)
           .fontColor('#FFD32F2F')
           .textAlign(TextAlign.Center)
@@ -327,6 +336,7 @@ export struct TableEditorDialog {
             this.controller?.close();
           })
         Text(L10n.t('保存表格'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(14)
           .fontColor('#FFFFFFFF')
           .fontWeight(FontWeight.Medium)
@@ -352,6 +362,7 @@ export struct TableEditorDialog {
   @Builder
   toolChip(label: string, cmd: string, disabled: boolean) {
     Text(label)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(12)
       .fontColor(disabled ? this.pal().textTertiary : this.pal().accent)
       .padding({ left: 10, right: 10, top: 5, bottom: 5 })
