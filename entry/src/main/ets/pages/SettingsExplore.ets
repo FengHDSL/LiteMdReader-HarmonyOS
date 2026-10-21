@@ -206,17 +206,22 @@ export struct SettingsExplore {
       { text: L10n.t('去应用市场'), color: this.palette().accent },
       { text: L10n.t('知道了'), color: this.palette().textSecondary }
     ];
-    this.getUIContext().getPromptAction().showDialog({
-      title: L10n.t('好评鼓励'),
-      message: message,
-      buttons: btns
-    }).then((dr: promptAction.ShowDialogSuccessResponse) => {
-      if (dr.index === 0) {
-        this.openStoreReview();
-      }
-    }).catch(() => {
-      // 用户手势关闭弹窗，无副作用
-    });
+    // showDialog 本身也可能同步抛（窗口不可用）：兜一层 toast，保证点下去一定有可见结果
+    try {
+      this.getUIContext().getPromptAction().showDialog({
+        title: L10n.t('好评鼓励'),
+        message: message,
+        buttons: btns
+      }).then((dr: promptAction.ShowDialogSuccessResponse) => {
+        if (dr.index === 0) {
+          this.openStoreReview();
+        }
+      }).catch(() => {
+        // 用户手势关闭弹窗，无副作用
+      });
+    } catch (err) {
+      this.toast(message);
+    }
   }
 
   /**
@@ -483,8 +488,10 @@ export struct SettingsExplore {
           .width('100%')
 
           // ── 好评鼓励（用户要求）：单独一行，不与上面三枚芯片挤在一起 ──
-          // 点它**在应用内**弹应用市场的官方评分框（commentManager），不跳市场详情页
-          Row() {
+          // 左：在应用内弹官方评分框（commentManager，不跳市场详情页）；
+          // 右：**直连应用市场写评论页**（隐式 Want）。评分框那条被应用市场限成
+          // 「同一用户一年内最多 3 次」，超限时点它没反应，右边这颗是不受这个限制的另一条路。
+          Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
               chipTint: '#FFB26A00',
@@ -498,6 +505,15 @@ export struct SettingsExplore {
                 .fontSize(14)
                 .fontColor(['#FFB26A00'])
             }
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FFB26A00',
+              chipActive: false,
+              chipLabel: L10n.t('去应用市场评价'),
+              chipOnTap: () => {
+                this.openStoreReview();
+              }
+            })
           }
           .width('100%')
         }
