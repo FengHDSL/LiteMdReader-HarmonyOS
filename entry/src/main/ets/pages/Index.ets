@@ -446,9 +446,15 @@ struct Index {
     if (ctx !== null) {
       // 用户导入的自定义字体在书架启动时就注册，正文渲染才能直接用
       FontStore.registerAll(ctx);
-      // **系统已安装字体同样要注册**（只取 descriptor.fontFamily 在真机上不生效，
-      // 见 FontStore.registerInstalledAll）；异步跑完正好赶在打开文档之前
-      FontStore.registerInstalledAll().catch(() => {
+      // **系统字体也要注册**（只取 descriptor.fontFamily 在真机上不生效，见 FontStore）。
+      // 启动只注册**当前正在用的那几款**：几百款逐个 registerFont 是书架首帧后的明显负载，
+      // 而没被选中的字体根本用不到；在选择器里点中时按需补注册。
+      FontStore.registerSelected([
+        AppStorage.get<string>('appFontFamily') ?? '',
+        AppStorage.get<string>('appFontFamilyEn') ?? '',
+        AppStorage.get<string>('readerFontFamily') ?? '',
+        AppStorage.get<string>('readerFontFamilyEn') ?? ''
+      ]).catch(() => {
         // 一个都注册不上也不影响其它功能
       });
     }

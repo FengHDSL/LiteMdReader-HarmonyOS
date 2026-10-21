@@ -57,8 +57,12 @@ export struct FontPickerList {
 
   /** 用户导入进沙箱的字体 */
   @State userFonts: UserFont[] = [];
-  /** 系统「字体安装和管理」里导入的字体（INSTALLED） */
+  /** 系统字体表里的一款（**含每个样式**，按类型分组显示） */
   @State systemFonts: SystemFont[] = [];
+  /** 注册完成计数：拼进 ForEach 的 key，注册完强制重画一遍（否则预览行停在系统默认字） */
+  @State regTick: number = 0;
+  /** 刷新进行中（转圈 + 防重复点） */
+  @State refreshing: boolean = false;
   /** 字体过多时是否只列前 `FONT_TRIM_TO` 款（由提示弹窗里用户选） */
   @State trimToMax: boolean = false;
   /** 一次面板生命周期里只提示一次"字体较多"，不反复打扰 */
@@ -68,7 +72,7 @@ export struct FontPickerList {
     this.reload();
   }
 
-  /** 重新取两份列表（导入 / 删除后宿主可再调一次） */
+  /** 重新取两份列表（导入 / 删除后宿主可再调一次；列表里的「刷新」按钮走 refreshFonts） */
   reload(): void {
     const c = this.getUIContext().getHostContext();
     if (c !== undefined && c !== null) {
@@ -76,16 +80,61 @@ export struct FontPickerList {
       FontStore.registerAll(ctx);
       this.userFonts = FontStore.list(ctx);
     }
-    // 系统已安装字体要**先注册进 ArkUI 字体管理器**，fontFamily 才解析得到
-    // （直接取 descriptor.fontFamily 在真机上不生效，见 FontStore.registerInstalledAll）
-    FontStore.registerInstalledAll().then(() => {
-      return FontStore.loadInstalled();
-    }).then((list: SystemFont[]) => {
+    // 列表先出（内存 / 磁盘索引命中就是当帧画完），注册放后面慢慢做：
+    // 逐款 registerFont 是打开面板那一下卡顿的大头，没必要让列表等它。
+    FontStore.loadInstalled().then((list: SystemFont[]) => {
       this.systemFonts = list;
       this.checkTooMany();
+      return FontStore.registerInstalledAll();
+    }).then(() => {
+      // 注册完再画一遍：没注册时 fontFamily 解析不到，预览行是系统默认字
+      this.regTick++;
     }).catch(() => {
       // 取不到就只留导入的那份
     });
+  }
+
+  /** 「刷新字体数据」：强制重扫系统字体表并重写磁盘索引 */
+  private refreshFonts(): void {
+    if (this.refreshing) {
+      return;
+    }
+    this.refreshing = true;
+    FontStore.refreshInstalled().then((n: number) => {
+      return FontStore.registerInstalledAll().then(() => {
+        return n;
+      });
+    }).then((n: number) => {
+      this.systemFonts = FontStore.sysCache.slice();
+      this.regTick++;
+      this.warnedMany = false;
+      this.trimToMax = false;
+      this.refreshing = false;
+      this.getUIContext().getPromptAction().showToast({
+        message: L10n.t('字体列表已刷新，共 ') + n + L10n.t(' 款系统字体'),
+        duration: 1800
+      });
+      this.checkTooMany();
+    }).catch(() => {
+      this.refreshing = false;
+      this.getUIContext().getPromptAction().showToast({
+        message: L10n.t('刷新失败，稍后再试'),
+        duration: 1600
+      });
+    });
+  }
+
+  /** 按类型分组（installed = 用户在系统字体管理器里装的 / generic = 系统自带 / stylish = 样式字体） */
+  private sysOfType(tag: string): SystemFont[] {
+    const out: SystemFont[] = [];
+    const list: SystemFont[] = this.trimToMax && this.systemFonts.length > FONT_TRIM_TO
+      ? this.systemFonts.slice(0, FONT_TRIM_TO) : this.systemFonts;
+    for (let k = 0; k < list.length; k++) {
+      if (list[k].type === tag) {
+        out.push(list[k]);
+      }
+    }
+    return out;
   }
 
   /** 导入 + 系统已安装的总数（决定要不要提示"字体较多"） */
@@ -97,14 +146,6 @@ export struct FontPickerList {
   private shownUserFonts(): UserFont[] {
     return this.trimToMax && this.userFonts.length > FONT_TRIM_TO
       ? this.userFonts.slice(0, FONT_TRIM_TO) : this.userFonts;
-  }
-
-  private shownSystemFonts(): SystemFont[] {
-    if (!this.trimToMax || this.systemFonts.length <= FONT_TRIM_TO) {
-      return this.systemFonts;
-    }
-    const left: number = Math.max(0, FONT_TRIM_TO - this.userFonts.length);
-    return this.systemFonts.slice(0, left);
   }
 
   /**
@@ -166,7 +207,7 @@ export struct FontPickerList {
   }
 
   @Builder
-  row(key: string, name: string, sub: string, removable: boolean) {
+  row(key: string, name: string, sub: string, removable: boolean, active: boolean) {
     Row({ space: HwSpace.sm }) {
       Column({ space: 1 }) {
         Text(name)
@@ -185,7 +226,7 @@ export struct FontPickerList {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
-      if (this.chosen === key) {
+      if (active) {
         SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
           .fontSize(18)
           .fontColor([this.palette.accent])
@@ -194,9 +235,15 @@ export struct FontPickerList {
     .width('100%')
     .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 7, bottom: 7 })
     .borderRadius(HwRadius.inner)
-    .backgroundColor(this.chosen === key ? this.palette.accentSoft : '#00000000')
+    .backgroundColor(active ? this.palette.accentSoft : '#00000000')
     .onClick(() => {
       this.onPick(key);
+      // 后台那轮注册可能还没跑到这一款：点中就按需补一次，别等（新格式下正文解析不到会停在默认字）
+      if (key.length > 0) {
+        FontStore.ensureRegisteredByName(key).catch(() => {
+          // 补注册失败交给下面的"读不到文件"提示与后台那轮
+        });
+      }
       // 系统字体注册不上（沙箱读不到那个字体文件）时，选了也不会有效果 —— 直说，
       // 并给出可行的路：把同一个字体文件用「导入字体」导进来（那条已验证生效）
       if (!FontStore.installedUsable(key)) {
@@ -217,6 +264,24 @@ export struct FontPickerList {
     )
   }
 
+  /**
+   * 系统字体的一行。键用 **fullName**（一款字体的 Regular / Bold / Italic 家族名相同，
+   * 只有全名能定位到具体样式），标题显示「家族 · 样式」，预览行用这一款自己画。
+   */
+  @Builder
+  sysRow(f: SystemFont) {
+    this.row(f.key, this.sysTitle(f), f.fullName + ' · ' + PREVIEW_LINE, false,
+      this.chosen === f.key || this.chosen === f.family)
+  }
+
+  private sysTitle(f: SystemFont): string {
+    const fam: string = this.showName(f.family, f.fullName);
+    if (f.style.length === 0) {
+      return fam;
+    }
+    return fam + ' · ' + f.style;
+  }
+
   @Builder
   groupTitle(label: string) {
     Text(label)
@@ -229,21 +294,55 @@ export struct FontPickerList {
   build() {
     Scroll() {
       Column({ space: 2 }) {
+        // ── 顶部：总数 + 刷新（重扫系统字体表并写回磁盘索引）──
+        Row({ space: HwSpace.xs }) {
+          Text(L10n.t('共 ') + this.totalFonts() + L10n.t(' 款可换字体'))
+            .fontSize(HwType.caption)
+            .fontColor(this.palette.textTertiary)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+            .fontSize(15)
+            .fontColor([this.refreshing ? this.palette.textTertiary : this.palette.accent])
+          Text(this.refreshing ? L10n.t('刷新中…') : L10n.t('刷新'))
+            .fontSize(HwType.caption)
+            .fontColor(this.refreshing ? this.palette.textTertiary : this.palette.accent)
+            .onClick(() => {
+              this.refreshFonts();
+            })
+        }
+        .width('100%')
+        .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 6, bottom: 6 })
+
         if (this.showDefault) {
-          this.row('', L10n.t('默认'), L10n.t('系统默认字形 · ') + PREVIEW_LINE, false)
+          this.row('', L10n.t('默认'), L10n.t('系统默认字形 · ') + PREVIEW_LINE, false, this.chosen === '')
         }
         if (this.userFonts.length > 0) {
           this.groupTitle(L10n.t('导入的字体（长按可删除）'))
           ForEach(this.shownUserFonts(), (f: UserFont) => {
-            this.row(f.family, this.showName(f.family, ''), PREVIEW_LINE, this.allowRemove)
+            this.row(f.family, this.showName(f.family, ''), PREVIEW_LINE, this.allowRemove,
+              this.chosen === f.family)
           }, (f: UserFont) => f.family)
         }
-        if (this.systemFonts.length > 0) {
-          this.groupTitle(L10n.t('系统已安装'))
-          ForEach(this.shownSystemFonts(), (f: SystemFont) => {
-            this.row(f.family, this.showName(f.family, f.fullName),
-              this.showName(f.fullName, f.family) + ' · ' + PREVIEW_LINE, false)
-          }, (f: SystemFont) => f.family)
+        // ── 系统字体按类型分三段；**每个样式单独一行**（家族名分不出 Bold / Italic）──
+        if (this.sysOfType('installed').length > 0) {
+          this.groupTitle(L10n.t('系统已安装（字体管理器导入的）'))
+          ForEach(this.sysOfType('installed'), (f: SystemFont) => {
+            this.sysRow(f)
+          }, (f: SystemFont) => 'sys_' + f.key + '_' + this.regTick)
+        }
+        if (this.sysOfType('generic').length > 0) {
+          this.groupTitle(L10n.t('系统自带字体'))
+          ForEach(this.sysOfType('generic'), (f: SystemFont) => {
+            this.sysRow(f)
+          }, (f: SystemFont) => 'gen_' + f.key + '_' + this.regTick)
+        }
+        if (this.sysOfType('stylish').length > 0) {
+          this.groupTitle(L10n.t('样式字体'))
+          ForEach(this.sysOfType('stylish'), (f: SystemFont) => {
+            this.sysRow(f)
+          }, (f: SystemFont) => 'sty_' + f.key + '_' + this.regTick)
         }
         if (this.trimToMax) {
           // 裁短了要留一个反悔入口：说清"还有多少没列出来"，点一下就全展开
