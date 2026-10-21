@@ -53,6 +53,9 @@ export struct HtmlViewer {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 待打印 HTML 内容（loadData 直接注入，规避沙箱 file URI 不被 Web 接受的问题） */
   private pendingHtml: string = '';
   private started: boolean = false;
@@ -325,8 +328,8 @@ export struct HtmlViewer {
 
           Text(this.docName.length > 0 ? this.docName : L10n.t('网页预览'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
-            .fontWeight(FontWeight.Medium)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
             .fontColor(this.palette().textPrimary)
             .layoutWeight(1)
             .textAlign(TextAlign.Center)
@@ -386,7 +389,7 @@ export struct HtmlViewer {
             }
             Text(this.status)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(12)
+              .fontSize(HwFont.sx(12, this.uiFontScale))
               .fontColor(this.failed ? '#FFD93B3B' : this.palette().textSecondary)
               .maxLines(2)
               .textAlign(TextAlign.Center)

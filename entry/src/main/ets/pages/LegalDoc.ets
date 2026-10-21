@@ -52,6 +52,9 @@ export struct LegalDoc {
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   private legalCtrl: webview.WebviewController = new webview.WebviewController();
 
   private palette(): ReaderPalette {
@@ -117,12 +120,12 @@ export struct LegalDoc {
           Column({ space: 2 }) {
             Text(this.shellTitle())
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 3)
-              .fontWeight(FontWeight.Medium)
+              .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
               .fontColor(this.palette().textPrimary)
             Text(this.shellSubtitle())
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption - 1)
+              .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
           }
           .alignItems(HorizontalAlign.Start)

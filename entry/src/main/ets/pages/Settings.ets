@@ -124,6 +124,9 @@ export struct Settings {
   @State versionName: string = '1.0.0';
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   /** 第一次 onShown 紧跟 aboutToAppear（数据已经是刚算过的），跳过它。 */
   private shownOnce: boolean = false;
@@ -283,7 +286,7 @@ export struct Settings {
             Column({ space: HwSpace.sm }) {
               Text(this.s('从左侧选择一个设置板块'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 1)
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .width('100%')
@@ -445,12 +448,12 @@ export struct Settings {
             Column({ space: 2 }) {
               Text(L10n.t('澄笺·ChéngJiān'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 4)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(HwType.label + 4, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Text(this.s1('版本 %1', this.versionName) + ' · ' + this.s('沉浸光感 Markdown 阅读器'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -470,12 +473,12 @@ export struct Settings {
             Column({ space: 3 }) {
               Text(this.s(item.name))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 2)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Text(this.s(item.note))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
                 .maxLines(2)
             }
@@ -510,7 +513,7 @@ export struct Settings {
       // ── 页脚 ──
       Text(this.s('澄心执笔，笺上生光'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .width('100%')
         .textAlign(TextAlign.Center)

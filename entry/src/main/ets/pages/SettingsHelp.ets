@@ -744,6 +744,9 @@ export struct SettingsHelp {
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private palette(): ReaderPalette {
     return paletteFor(this.themeMode, this.systemDark);
@@ -834,7 +837,7 @@ export struct SettingsHelp {
                 + this.visibleFaq().length + ' 条问题')
               .fontFamily(HwFont.resolve(this.uiFontKey))
               // 计数行加一个轻微淡入（内容随输入变化，配合下方结果的过渡一起看）
-              .fontSize(HwType.label)
+              .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .width('100%')
               .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
@@ -856,8 +859,8 @@ export struct SettingsHelp {
                   .fontColor([this.palette().accent])
                 Text(L10n.t('先用三句话说明白'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 3)
-                  .fontWeight(FontWeight.Bold)
+                  .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                   .fontColor(this.palette().textPrimary)
               }
               .width('100%')
@@ -867,13 +870,13 @@ export struct SettingsHelp {
                 Column({ space: 4 }) {
                   Text(it.title)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 2)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().accent)
                     .width('100%')
                   Text(it.body)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 1)
+                    .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
                     .lineHeight((HwType.label + 1) * 1.75)
                     .width('100%')
@@ -908,8 +911,8 @@ export struct SettingsHelp {
                   .fontColor([this.palette().accent])
                 Text(sec.name)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 3)
-                  .fontWeight(FontWeight.Bold)
+                  .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                   .fontColor(this.palette().textPrimary)
               }
               .width('100%')
@@ -920,13 +923,13 @@ export struct SettingsHelp {
                 Column({ space: 4 }) {
                   Text(it.title)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 2)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().textPrimary)
                     .width('100%')
                   Text(it.body)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 1)
+                    .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
                     .lineHeight((HwType.label + 1) * 1.75)
                     .width('100%')
@@ -965,8 +968,8 @@ export struct SettingsHelp {
                   .fontColor([this.palette().accent])
                 Text(L10n.t('常见问题'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 3)
-                  .fontWeight(FontWeight.Bold)
+                  .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                   .fontColor(this.palette().textPrimary)
               }
               .width('100%')
@@ -976,13 +979,13 @@ export struct SettingsHelp {
                 Column({ space: 4 }) {
                   Text('Q · ' + it.title)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 2)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().accent)
                     .width('100%')
                   Text('A · ' + it.body)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label + 1)
+                    .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
                     .fontColor(this.palette().textSecondary)
                     .lineHeight((HwType.label + 1) * 1.75)
                     .width('100%')
@@ -1009,7 +1012,7 @@ export struct SettingsHelp {
           Column() {
             Text(L10n.t('没有找到相关内容，换个词试试（例如「滚屏」「表格」「备份」「编码」）'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.label + 1)
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
               .fontColor(this.palette().textTertiary)
               .textAlign(TextAlign.Center)
               .width('100%')
@@ -1021,7 +1024,7 @@ export struct SettingsHelp {
 
         Text(L10n.t('没找到想要的？可在「参考与致谢」里查看项目主页，或到更新日志里看看每个版本新增了什么。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }

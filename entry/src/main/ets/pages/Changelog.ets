@@ -40,6 +40,9 @@ export struct Changelog {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private palette(): ReaderPalette {
     // 三个来源都要显式读一遍落成局部常量：paletteFor 是纯函数读 AppStorage、
@@ -125,12 +128,12 @@ export struct Changelog {
               Row({ space: HwSpace.sm }) {
                 Text(entry.version)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label + 2)
-                  .fontWeight(FontWeight.Bold)
+                  .fontSize(HwFont.sx(HwType.label + 2, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                   .fontColor(this.palette().accent)
                 Text(entry.date)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.caption)
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
               }
 
@@ -159,7 +162,7 @@ export struct Changelog {
                   .margin({ top: 7 })
                 Text(item)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label)
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.itemColor(item))
                   .lineHeight(HwType.label * 1.7)
                   .layoutWeight(1)

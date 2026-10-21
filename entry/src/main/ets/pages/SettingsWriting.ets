@@ -116,6 +116,9 @@ export struct SettingsWriting {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 本页实测宽度（热力图格子尺寸按可用宽度算） */
   /** 书架总量（自建） */
   @State totalDocs: number = 0;
@@ -409,14 +412,14 @@ export struct SettingsWriting {
   statCell(value: string, label: string) {
     Column({ space: 2 }) {
       Text(value)
-        .fontSize(HwType.label + 6)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(HwType.label + 6, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(label)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
     }
     .layoutWeight(1)
@@ -511,7 +514,7 @@ export struct SettingsWriting {
       Row({ space: 3 }) {
         Text(L10n.t('按每日写作增量统计'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption - 1)
+          .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
         Blank()
         Text(L10n.t('少'))
@@ -536,7 +539,7 @@ export struct SettingsWriting {
        Row({ space: HwSpace.sm }) {
          Text(L10n.t('切换年份，查看不同时段的写作热力'))
            .fontFamily(HwFont.resolve(this.uiFontKey))
-           .fontSize(HwType.caption)
+           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
            .fontColor(this.palette().textTertiary)
            .layoutWeight(1)
            .maxLines(1)
@@ -729,7 +732,7 @@ export struct SettingsWriting {
       if (this.latestDocs.length === 0) {
         Text(L10n.t('还没有自建笔记，去书架新建一篇吧'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
           .padding({ top: HwSpace.sm, bottom: HwSpace.sm })
@@ -742,8 +745,8 @@ export struct SettingsWriting {
             Row({ space: HwSpace.sm }) {
               Text(g.monthLabel)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Divider()
                 .strokeWidth(1)
@@ -772,14 +775,14 @@ export struct SettingsWriting {
                 Column({ space: 2 }) {
                   Text(item.name)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.label)
-                    .fontWeight(FontWeight.Medium)
+                    .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                    .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                     .fontColor(this.palette().accent)
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(this.fmt(item.words) + ' 字 · ' + item.date)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                 }
                 .layoutWeight(1)
@@ -803,7 +806,7 @@ export struct SettingsWriting {
         // 比例条说明（用户问"那个进度条是什么意思"）
         Text(L10n.t('右侧横条表示该文档的字数多少：越长字数越多（按这一批里字数最多的一篇归一化）。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption - 1)
+          .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }
@@ -904,7 +907,7 @@ export struct SettingsWriting {
         if (this.loadError.length > 0) {
           Text(this.loadError)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor('#FFD93B3B')
             .width('100%')
         }
@@ -913,8 +916,8 @@ export struct SettingsWriting {
         //    **卡外区块标题**，大号字直接压在背景上，热力图卡紧随其下）
         Text(this.halfYearSummary())
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 4)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(HwType.label + 4, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .width('100%')
 
@@ -930,8 +933,8 @@ export struct SettingsWriting {
         // ④ "最近动态"区块标题（GitHub "Contribution activity" 式：卡外标题）
         Text(L10n.t('最近动态'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 4)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(HwType.label + 4, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .width('100%')
 
@@ -949,7 +952,7 @@ export struct SettingsWriting {
         // 设置页一并移除（卡片常驻展示）。
         Text(L10n.t('数据来自本机写作记录，卸载应用或清除数据后不可恢复。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
       }

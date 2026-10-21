@@ -83,6 +83,9 @@ export struct SettingsExplore {
   @State versionName: string = '1.0.0';
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
   /** 「检查更新」进行中（按钮转圈 + 文案变「检查中…」，期间重复点击直接忽略） */
@@ -385,12 +388,12 @@ export struct SettingsExplore {
             Column({ space: 2 }) {
               Text(L10n.t('澄笺·ChéngJiān'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 6)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(HwType.label + 6, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Text(L10n.t('版本 ') + this.versionName + ' · HarmonyOS 原生')
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -402,14 +405,14 @@ export struct SettingsExplore {
           Text(L10n.t('一款沉浸光感 Markdown 阅读器：卡片化排版、荧光笔批注、多标签阅读、') +
             '函数绘制壁纸，数据留在本机。')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
 
           Text(L10n.t('「澄」是澄澈透光——磨砂与光感玻璃；「笺」是文人读写的纸笺。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
@@ -489,12 +492,12 @@ export struct SettingsExplore {
             Column({ space: 2 }) {
               Text(L10n.t('功能帮助'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label + 3)
-                .fontWeight(FontWeight.Bold)
+                .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Text(L10n.t('全部功能 · 使用方法 · 常见问题'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette().textTertiary)
             }
             .layoutWeight(1)
@@ -505,7 +508,7 @@ export struct SettingsExplore {
 
           Text(L10n.t('按板块列出每一个功能怎么用，并汇总常见问题 —— 例如「自动滚屏的悬浮按钮怎么关」、') + '「点了段落为什么改不了」这类。支持关键词搜索。')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette().textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
@@ -531,14 +534,14 @@ export struct SettingsExplore {
         Column({ space: HwSpace.sm }) {
           Text(L10n.t('设计与实现参考'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette().textPrimary)
             .width('100%')
 
           // **致谢**（用户要求）：标题下方一句，向参考项目致意
           Text(L10n.t('感谢下列开源项目的作者与贡献者。本项目在渲染形态、动效与交互细节上参考了它们的实现思路，') + '在此向这些付出致意。')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .lineHeight(HwType.caption * 1.7)
             .width('100%')
@@ -548,7 +551,7 @@ export struct SettingsExplore {
             Row({ space: HwSpace.sm }) {
               Text(item.name)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 // 用户要求：参考链接文字用**蓝色**（可点击的观感）
                 .fontColor('#FF2F63E8')
                 .maxLines(1)
@@ -564,7 +567,7 @@ export struct SettingsExplore {
 
           Text(L10n.t('澄心执笔，笺上生光'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
             .textAlign(TextAlign.Center)

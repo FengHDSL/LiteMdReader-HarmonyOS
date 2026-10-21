@@ -18,6 +18,9 @@ struct ReaderExtPage {
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   private scroller: Scroller = new Scroller();
 
   /** 正文行：按换行切分（扩展页只做纯文本阅读，不引 Markdown 管线）。 */
@@ -34,15 +37,15 @@ struct ReaderExtPage {
       Row({ space: 8 }) {
         Text(this.docName)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(15, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor('#E6222226')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
         Text('A-')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(13)
+          .fontSize(HwFont.sx(13, this.uiFontScale))
           .fontColor('#666666')
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
           .borderRadius(8)
@@ -53,7 +56,7 @@ struct ReaderExtPage {
           })
         Text('A+')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(13)
+          .fontSize(HwFont.sx(13, this.uiFontScale))
           .fontColor('#666666')
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
           .borderRadius(8)
@@ -74,7 +77,7 @@ struct ReaderExtPage {
           if (this.lines().length === 0) {
             Text(L10n.t('暂无接续内容。请先在手机端打开一篇文档，再通过多设备流转迁移到本端。'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(14)
+              .fontSize(HwFont.sx(14, this.uiFontScale))
               .fontColor('#99666666')
               .padding(16)
           } else {

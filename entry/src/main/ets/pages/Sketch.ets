@@ -114,6 +114,9 @@ export struct Sketch {
   @StorageProp('sketchMode') sketchMode: string = '';
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   // ── 画布背景（色 + 底纹）：持久化，重进手写页保持上次选择 ──
   // 三键共挂一个 @Watch：任一变化都要**主动重绘**画布与面板预览（见 onBgChanged）。
@@ -683,8 +686,8 @@ export struct Sketch {
 
         Text(this.sketchMode === 'annotate' ? L10n.t('手写批注') : L10n.t('手写笔记'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 3)
-          .fontWeight(FontWeight.Bold)
+          .fontSize(HwFont.sx(HwType.label + 3, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
           .fontColor(this.palette().textPrimary)
           .layoutWeight(1)
 
@@ -854,8 +857,8 @@ export struct Sketch {
       // ── ① 底色：每排 3 个大方格（31% × 3 + 均分间隙），方块大小随面板自适应 ──
       Text(L10n.t('底色'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .width('100%')
 
@@ -883,7 +886,7 @@ export struct Sketch {
 
             Text(opt.name)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.bgColor === opt.color
                 ? this.palette().accent : this.palette().textSecondary)
               .maxLines(1)
@@ -901,8 +904,8 @@ export struct Sketch {
       // ── ② 底纹：同样每排 3 个大方格，方块里是「当前底色 + 该底纹」的小样 ──
       Text(L10n.t('底纹'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .width('100%')
         .margin({ top: HwSpace.xs })
@@ -937,7 +940,7 @@ export struct Sketch {
 
             Text(p.name)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.bgPattern === p.value
                 ? this.palette().accent : this.palette().textSecondary)
               .maxLines(1)
@@ -955,8 +958,8 @@ export struct Sketch {
       // ── ③ 线条粗细：三档，同样用大方格预览（方块里三条横线，粗细即该档） ──
       Text(L10n.t('线条粗细'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label + 1)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
         .width('100%')
         .margin({ top: HwSpace.xs })
@@ -990,7 +993,7 @@ export struct Sketch {
 
             Text(lw.name)
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.bgLineWidth === lw.value
                 ? this.palette().accent : this.palette().textSecondary)
               .maxLines(1)

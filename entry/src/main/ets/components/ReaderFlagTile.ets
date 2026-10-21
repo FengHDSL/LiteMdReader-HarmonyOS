@@ -32,6 +32,9 @@ export struct ReaderFlagTile {
   @StorageLink('readerTabBarAtBottom') tabBarBottom: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   /** 当前是否开启（按 kind 取对应键）。 */
   private isOn(): boolean {
@@ -74,7 +77,7 @@ export struct ReaderFlagTile {
       }
       Text(this.label())
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette.textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })

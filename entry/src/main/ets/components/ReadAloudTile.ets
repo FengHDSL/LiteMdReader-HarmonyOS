@@ -27,6 +27,9 @@ export struct ReadAloudTile {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 开始 / 继续 */
   onPlay: () => void = () => {
   };
@@ -54,11 +57,11 @@ export struct ReadAloudTile {
         Column({ space: 2 }) {
           Text(L10n.t('朗读全文'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette.textPrimary)
           Text(this.statusText())
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .maxLines(2)
         }
@@ -110,7 +113,7 @@ export struct ReadAloudTile {
 
       Text(L10n.t('代码块、表格与图表会跳过不读；读到哪一段，屏幕会自动跟到那一段。') + '朗读用系统语音，离线或设备不支持时会有提示。')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette.textTertiary)
         .lineHeight(HwType.caption * 1.6)
         .width('100%')

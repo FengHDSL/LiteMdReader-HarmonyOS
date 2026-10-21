@@ -27,6 +27,9 @@ export struct AutoScrollTile {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 起停（宿主负责真正驱动滚动） */
   onToggle: (on: boolean) => void = () => {
   };
@@ -44,11 +47,11 @@ export struct AutoScrollTile {
         Column({ space: 2 }) {
           Text(L10n.t('自动滚屏'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label + 1)
+            .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
             .fontColor(this.palette.textPrimary)
           Text(this.running ? L10n.t('正在匀速下滚 · 点正文任意处即停') : L10n.t('免手滑匀速下滚，长文校对用'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
         }
         .layoutWeight(1)
@@ -69,7 +72,7 @@ export struct AutoScrollTile {
       Row({ space: HwSpace.xs }) {
         Text(L10n.t('慢'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
         Slider({ value: this.speed, min: 1, max: 10, step: 1, style: SliderStyle.OutSet })
           .layoutWeight(1)
@@ -82,7 +85,7 @@ export struct AutoScrollTile {
           })
         Text(L10n.t('快'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }
       .width('100%')

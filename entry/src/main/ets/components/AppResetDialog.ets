@@ -35,6 +35,9 @@ export struct AppResetDialog {
   @StorageProp('systemDark') systemDark: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 倒计时剩余秒数（>0 时确认键不可点） */
   @State left: number = 5;
   private timer: number = -1;
@@ -75,21 +78,21 @@ export struct AppResetDialog {
     Column({ space: 12 }) {
       Text(L10n.t('应用初始化'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(17)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(17, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor('#FFD93B3B')
         .width('100%')
 
       Text(L10n.t('将清空应用的全部数据：文档与文件夹、批注与手写、AI 配置与对话记录、') + '阅读设置与外观、版本历史与备份记录。')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(13)
+        .fontSize(HwFont.sx(13, this.uiFontScale))
         .fontColor(this.pal().textPrimary)
         .lineHeight(20)
         .width('100%')
 
       Text(L10n.t('效果等同于卸载后重装，且**无法恢复**，请谨慎操作。'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(13)
+        .fontSize(HwFont.sx(13, this.uiFontScale))
         .fontColor('#FFD93B3B')
         .lineHeight(20)
         .width('100%')
@@ -107,7 +110,7 @@ export struct AppResetDialog {
       Row({ space: 10 }) {
         Text(L10n.t('取消'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
           .fontColor(this.pal().textPrimary)
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
@@ -120,8 +123,8 @@ export struct AppResetDialog {
 
         Text(this.left > 0 ? L10n.t('确认清除（') + this.left + 's）' : L10n.t('确认清除'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor('#FFFFFFFF')
           .textAlign(TextAlign.Center)
           .layoutWeight(1)

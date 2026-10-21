@@ -46,6 +46,9 @@ export struct UnsavedConfirmDialog {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   /** 实际取色：按当前主题现算（显式读两键落局部常量，登记渲染依赖）。 */
   private pal(): ReaderPalette {
@@ -63,14 +66,14 @@ export struct UnsavedConfirmDialog {
     Column({ space: 12 }) {
       Text(L10n.t('还有未保存的修改'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(17)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(17, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
       Text(L10n.t('「直接离开」会自动存一份草稿，下次打开这篇文档时自动恢复。'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(13)
+        .fontSize(HwFont.sx(13, this.uiFontScale))
         .fontColor(this.pal().textSecondary)
         .width('100%')
 
@@ -78,7 +81,7 @@ export struct UnsavedConfirmDialog {
       Row({ space: 10 }) {
         Text(L10n.t('取消'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
           .fontColor(this.pal().textPrimary)
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
@@ -91,7 +94,7 @@ export struct UnsavedConfirmDialog {
 
         Text(L10n.t('直接离开'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
           .fontColor(this.pal().accent)
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
@@ -108,7 +111,7 @@ export struct UnsavedConfirmDialog {
       Row({ space: 10 }) {
         Text(L10n.t('不保存'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
           .fontColor('#FFD93B3B')
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
@@ -121,9 +124,9 @@ export struct UnsavedConfirmDialog {
 
         Text(L10n.t('保存'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
           .fontColor('#FFFFFFFF')
-          .fontWeight(FontWeight.Medium)
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
           .height(40)

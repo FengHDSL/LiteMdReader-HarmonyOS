@@ -33,6 +33,9 @@ export struct AppModeDialog {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   private pal(): ReaderPalette {
     // 显式读一遍 themeMode / systemDark 落成局部常量：paletteFor 是纯函数读 AppStorage、
@@ -57,13 +60,13 @@ export struct AppModeDialog {
       Column({ space: 2 }) {
         Text(title)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(HwFont.sx(14, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
           .fontColor(this.pal().textPrimary)
           .width('100%')
         Text(desc)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(12)
+          .fontSize(HwFont.sx(12, this.uiFontScale))
           .fontColor(this.pal().textTertiary)
           .lineHeight(17)
           .width('100%')
@@ -94,14 +97,14 @@ export struct AppModeDialog {
     Column({ space: 10 }) {
       Text(this.titleText)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(17)
-        .fontWeight(FontWeight.Bold)
+        .fontSize(HwFont.sx(17, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
         .fontColor(this.pal().textPrimary)
         .width('100%')
 
       Text(L10n.t('两种模式随时可在「探索中心」重选，数据完全一致，只是联网能力不同。'))
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(12)
+        .fontSize(HwFont.sx(12, this.uiFontScale))
         .fontColor(this.pal().textTertiary)
         .lineHeight(17)
         .width('100%')

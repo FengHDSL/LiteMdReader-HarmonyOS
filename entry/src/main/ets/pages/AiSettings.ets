@@ -46,6 +46,9 @@ export struct AiSettings {
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   // ── 表单 ──
   @State apiUrl: string = '';
@@ -169,12 +172,12 @@ export struct AiSettings {
   usageCell(label: string, b: AiTokenBucket) {
     Column({ space: 2 }) {
       Text(this.fmtStatNum(b.tokens))
-        .fontSize(15)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(15, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
       Text(label + ' · ' + b.replies + ' 次')
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(10.5)
+        .fontSize(HwFont.sx(10.5, this.uiFontScale))
         .fontColor(this.palette().textTertiary)
         .maxLines(1)
     }
@@ -456,8 +459,8 @@ export struct AiSettings {
               }
               Text(L10n.t('助手设置'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(17)
-                .fontWeight(FontWeight.Medium)
+                .fontSize(HwFont.sx(17, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                 .fontColor(this.palette().textPrimary)
               Blank()
             }
@@ -487,14 +490,14 @@ export struct AiSettings {
               Row({ space: HwSpace.sm }) {
                 Text(L10n.t('API 配置'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(13)
-                  .fontWeight(FontWeight.Medium)
+                  .fontSize(HwFont.sx(13, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                   .fontColor(this.palette().textPrimary)
                 Blank()
                 if (this.profiles.length > 1) {
                   Text(L10n.t('删除当前'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(12)
+                    .fontSize(HwFont.sx(12, this.uiFontScale))
                     .fontColor('#FFD32F2F')
                     .padding({ left: 8, right: 8, top: 4, bottom: 4 })
                     .borderRadius(HwRadius.pill)
@@ -512,7 +515,7 @@ export struct AiSettings {
                     // 名称兜底：配置缺 name 时用序号（Text(undefined) 会抛异常把进程带崩）
                     Text(p.name !== undefined && p.name.length > 0 ? p.name : 'API ' + (i + 1))
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(12.5)
+                      .fontSize(HwFont.sx(12.5, this.uiFontScale))
                       .fontColor(i === this.activeIdx ? '#FFFFFFFF' : this.palette().textPrimary)
                       .backgroundColor(i === this.activeIdx
                         ? this.palette().accent
@@ -527,7 +530,7 @@ export struct AiSettings {
                     + (p.name !== undefined ? p.name : ''))
                   Text(L10n.t('+ 新增'))
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(12.5)
+                    .fontSize(HwFont.sx(12.5, this.uiFontScale))
                     .fontColor(this.palette().accent)
                     .border({ width: 1, color: this.palette().accent })
                     .padding({ left: 12, right: 12, top: 6, bottom: 6 })
@@ -555,7 +558,7 @@ export struct AiSettings {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width('100%')
                   .height(46)
-                  .fontSize(15)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .placeholderColor(this.palette().textTertiary)
                   .placeholderFont({ size: 14 })
@@ -579,7 +582,7 @@ export struct AiSettings {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width('100%')
                   .height(46)
-                  .fontSize(15)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .placeholderColor(this.palette().textTertiary)
                   .placeholderFont({ size: 14 })
@@ -601,7 +604,7 @@ export struct AiSettings {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width('100%')
                   .height(46)
-                  .fontSize(15)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .placeholderColor(this.palette().textTertiary)
                   .placeholderFont({ size: 14 })
@@ -626,7 +629,7 @@ export struct AiSettings {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width('100%')
                   .height(46)
-                  .fontSize(15)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .placeholderColor(this.palette().textTertiary)
                   .placeholderFont({ size: 14 })
@@ -655,7 +658,7 @@ export struct AiSettings {
                   placeholder: L10n.t('例：你是我的阅读助手，回答简洁准确，用中文。') })
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .width('100%')
-                  .fontSize(15)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
                   .fontColor(this.palette().textPrimary)
                   .placeholderColor(this.palette().textTertiary)
                   .placeholderFont({ size: 14 })
@@ -709,7 +712,7 @@ export struct AiSettings {
             Row({ space: HwSpace.sm }) {
               Text(this.testing ? L10n.t('正在测试…') : L10n.t('测试连接'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(15)
+                .fontSize(HwFont.sx(15, this.uiFontScale))
                 .fontColor(this.palette().accent)
               Blank()
               if (this.testing) {
@@ -742,8 +745,8 @@ export struct AiSettings {
               Row() {
                 Text(L10n.t('保 存'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
+                  .fontSize(HwFont.sx(16, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                   .fontColor(this.palette().accent)
               }
               .width('100%')
@@ -759,15 +762,15 @@ export struct AiSettings {
               Row({ space: HwSpace.sm }) {
                 Text(L10n.t('词元消耗'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Medium)
+                  .fontSize(HwFont.sx(15, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
                   .fontColor(this.palette().textPrimary)
                 Blank()
                 if (this.usage.totalReplies > 0) {
                   Text(L10n.t('共 ') + this.usage.totalReplies + ' 次 · '
                     + this.fmtStatNum(this.usage.totalTokens) + ' 词元')
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(12.5)
+                    .fontSize(HwFont.sx(12.5, this.uiFontScale))
                     .fontColor(this.palette().textTertiary)
                 }
               }
@@ -776,7 +779,7 @@ export struct AiSettings {
               if (this.usage.totalReplies === 0) {
                 Text(L10n.t('暂无记录 · 与 AI 对话后这里会按时间与模型统计'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(12.5)
+                  .fontSize(HwFont.sx(12.5, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
               }
               if (this.usage.totalReplies > 0) {
@@ -800,18 +803,18 @@ export struct AiSettings {
                   .color(this.palette().divider)
                 Text(L10n.t('历年'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(12)
+                  .fontSize(HwFont.sx(12, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                 ForEach(this.usage.years, (ys: AiTokenYearStat) => {
                   Row({ space: HwSpace.sm }) {
                     Text(ys.year + ' 年')
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(13)
+                      .fontSize(HwFont.sx(13, this.uiFontScale))
                       .fontColor(this.palette().textPrimary)
                     Blank()
                     Text(ys.replies + ' 次 · ' + this.fmtStatNum(ys.tokens) + ' 词元')
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(12)
+                      .fontSize(HwFont.sx(12, this.uiFontScale))
                       .fontColor(this.palette().textSecondary)
                   }
                   .width('100%')
@@ -822,20 +825,20 @@ export struct AiSettings {
                   .color(this.palette().divider)
                 Text(L10n.t('按模型'))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(12)
+                  .fontSize(HwFont.sx(12, this.uiFontScale))
                   .fontColor(this.palette().textTertiary)
                 ForEach(this.usage.models, (st: AiTokenStat) => {
                   Row({ space: HwSpace.sm }) {
                     Text(st.model)
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(13)
+                      .fontSize(HwFont.sx(13, this.uiFontScale))
                       .fontColor(this.palette().textPrimary)
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis })
                     Blank()
                     Text(st.replies + ' 次 · ' + this.fmtStatNum(st.tokens) + ' 词元')
                       .fontFamily(HwFont.resolve(this.uiFontKey))
-                      .fontSize(12)
+                      .fontSize(HwFont.sx(12, this.uiFontScale))
                       .fontColor(this.palette().textSecondary)
                   }
                   .width('100%')
@@ -877,13 +880,13 @@ export struct AiSettings {
     Column({ space: 3 }) {
       Text(title)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(15)
-        .fontWeight(FontWeight.Medium)
+        .fontSize(HwFont.sx(15, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
         .fontColor(this.palette().textPrimary)
       if (desc.length > 0) {
         Text(desc)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(12.5)
+          .fontSize(HwFont.sx(12.5, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
       }
     }
