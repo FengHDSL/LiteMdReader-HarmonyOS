@@ -28,6 +28,9 @@ export struct ExportOptionsPanel {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 动作完成（含取消）后收起面板的回调 */
   onClosed: () => void = () => {
   };
@@ -237,11 +240,11 @@ export struct ExportOptionsPanel {
       Column({ space: 2 }) {
         Text(label)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor(this.palette.textPrimary)
         Text(hint)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }
       .layoutWeight(1)
@@ -272,7 +275,7 @@ export struct ExportOptionsPanel {
           Text(L10n.t('若导出HTML与打印，图表显示不完全或不显示，请尝试回到阅读页面，'
             + '完全浏览并加载完所有卡片，若仍不行，请提供文件并反馈，等待后续适配。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .lineHeight(18)
             .layoutWeight(1)
@@ -314,7 +317,7 @@ export struct ExportOptionsPanel {
             .color(this.palette.accent)
           Text(this.busyText.length > 0 ? this.busyText : L10n.t('正在处理，请稍候…'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .textAlign(TextAlign.Center)
             .maxLines(3)

@@ -51,6 +51,9 @@ export struct LiveBlockEditor {
   @Prop previewBlocks: MdBlock[] = [];
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 源码草稿：与宿主的 @State 双向绑定（@Link 同一引用） */
   @Link draft: string;
   /** 删除这一块 */
@@ -156,7 +159,7 @@ export struct LiveBlockEditor {
             .backgroundColor(this.palette.accent)
           Text(L10n.t('正在编辑 · ') + this.kindLabel())
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.accent)
         }
         .alignItems(VerticalAlign.Center)
@@ -207,12 +210,12 @@ export struct LiveBlockEditor {
           Row({ space: 5 }) {
             Text(L10n.t('预览效果'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette.textTertiary)
             Blank()
             Text(L10n.t('以正文样式渲染'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption - 1)
+              .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
               .fontColor(this.palette.textTertiary)
               .opacity(0.7)
           }

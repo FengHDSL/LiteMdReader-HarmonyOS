@@ -81,6 +81,9 @@ export struct NotePanel {
   @Prop currentDoc: string = '';
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
 
   /**
    * **插入图片**（用户要求）：相册选图 → 拷贝进 docs/images →
@@ -358,7 +361,7 @@ export struct NotePanel {
         Column() {
           Text('「' + this.initQuote + '」')
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.label)
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
             .fontColor(this.palette.textSecondary)
             .lineHeight(HwType.label * 1.7)
             .width('100%')
@@ -375,7 +378,7 @@ export struct NotePanel {
         Column({ space: HwSpace.xs }) {
           Text(this.rangeLabel())
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .width('100%')
           // 公式渲染预览（用户要求：面板要先渲染）
@@ -423,7 +426,7 @@ export struct NotePanel {
           .width('100%')
           Text(L10n.t('长按选中一段就只批注那一段；改过源码点「保存公式」写回文档。'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .lineHeight(HwType.caption * 1.6)
             .width('100%')
@@ -432,7 +435,7 @@ export struct NotePanel {
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('普通批注'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption + 1)
+              .fontSize(HwFont.sx(HwType.caption + 1, this.uiFontScale))
               .fontWeight(this.kindWeight(''))
               .fontColor(this.kindForeground(''))
               .padding({ left: 12, right: 12, top: 6, bottom: 6 })
@@ -443,7 +446,7 @@ export struct NotePanel {
               })
             Text(L10n.t('学习卡'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption + 1)
+              .fontSize(HwFont.sx(HwType.caption + 1, this.uiFontScale))
               .fontWeight(this.kindWeight('card'))
               .fontColor(this.kindForeground('card'))
               .padding({ left: 12, right: 12, top: 6, bottom: 6 })
@@ -491,7 +494,7 @@ export struct NotePanel {
                   .fontColor([this.palette.textPrimary])
                 Text(L10n.t(d.name))
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label)
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.palette.textPrimary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -521,7 +524,7 @@ export struct NotePanel {
             .fontColor([this.palette.accent])
           Text(d.name)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textPrimary)
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -543,7 +546,7 @@ export struct NotePanel {
       Row({ space: HwSpace.xs }) {
         Text(L10n.t('荧光笔'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
         ForEach(ANNOTATION_COLORS, (c: AnnotationColor, idx: number) => {
           Column()
@@ -569,7 +572,7 @@ export struct NotePanel {
             .borderRadius(HwRadius.inner)
           Text(img)
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .layoutWeight(1)
             .maxLines(1)
@@ -597,7 +600,7 @@ export struct NotePanel {
         .constraintSize({ minHeight: 120, maxHeight: this.draftMax() })
         // 长高/回落都走过渡（.animation 只管它之前声明的属性，位置别挪）
         .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn))
-        .fontSize(HwType.label)
+        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
         .fontColor(this.palette.textPrimary)
         .placeholderColor(this.palette.textTertiary)
         .backgroundColor(this.palette.quoteBg)

@@ -41,6 +41,9 @@ export struct MergeExportPanel {
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：组件内文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
+  /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
+  @StorageProp('appFontScale') uiFontScale: number = 1;
+  @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 「添加文档」清单是否展开 */
   @State addOpen: boolean = false;
   @State withTitle: boolean = true;
@@ -273,7 +276,7 @@ export struct MergeExportPanel {
         .textAlign(TextAlign.Center)
       Text(name)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.label)
+        .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
         .fontColor(this.palette.textPrimary)
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -318,11 +321,11 @@ export struct MergeExportPanel {
       Column({ space: 2 }) {
         Text(label)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label)
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
           .fontColor(this.palette.textPrimary)
         Text(hint)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }
       .layoutWeight(1)
@@ -343,11 +346,11 @@ export struct MergeExportPanel {
       Column({ space: 2 }) {
         Text(label)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.label + 1)
+          .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
           .fontColor(this.palette.textPrimary)
         Text(hint)
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }
       .layoutWeight(1)
@@ -373,7 +376,7 @@ export struct MergeExportPanel {
       Column({ space: HwSpace.sm }) {
         Text(L10n.t('已选 ') + this.order.length + ' 篇 · 按从上到下的顺序合并')
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
           .width('100%')
 
@@ -385,7 +388,7 @@ export struct MergeExportPanel {
             if (this.order.length === 0) {
               Text(L10n.t('还没有选中任何文档，点下面「添加文档」。'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.label)
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 .fontColor(this.palette.textTertiary)
                 .width('100%')
                 .padding(HwSpace.sm)
@@ -416,7 +419,7 @@ export struct MergeExportPanel {
               Row({ space: HwSpace.sm }) {
                 Text(s.name)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwType.label)
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                   .fontColor(this.palette.textPrimary)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -437,7 +440,7 @@ export struct MergeExportPanel {
             if (this.remaining().length === 0) {
               Text(L10n.t('所有文档都已选入。'))
                 .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwType.caption)
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                 .fontColor(this.palette.textTertiary)
             }
           }
@@ -454,7 +457,7 @@ export struct MergeExportPanel {
           })
         Text(L10n.t('说明：各文档开头的 YAML Front Matter 不参与合并，会被剥掉。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
           .width('100%')
 
@@ -484,7 +487,7 @@ export struct MergeExportPanel {
             .color(this.palette.accent)
           Text(L10n.t('正在处理，请稍候…'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption)
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
         }
         .padding({ left: HwSpace.xl, right: HwSpace.xl, top: HwSpace.lg, bottom: HwSpace.lg })
