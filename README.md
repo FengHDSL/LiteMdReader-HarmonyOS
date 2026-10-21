@@ -99,6 +99,9 @@
 - 深浅两套壁纸（内置七款程序化绘制）、**系统已安装字体**（走系统字体管理器的 INSTALLED 类型，
   应用内不建导入工具）与自定义字体导入（.ttf / .otf）；字体在**阅读页 / 阅读调整页**
   用列表选择器挑选，一行一款、字体名与预览都由该字体本身绘制，选中项附加 HarmonyOS Sans 回退
+- **外观设置「界面字体 / 界面字号 / 界面字重」**：一处设定，全应用界面文字跟着变
+  （字号 85%~130%，字重三档走相对加粗；字体没有真粗体时加粗两档自动置灰），
+  带「同步应用到阅读页」开关
 - 动效：封面一镜到底、文件夹展开、粒子消散；智感握姿让底部工具条贴近持机侧
 - 启动页；法务页（隐私政策 / 用户协议）跟随系统深浅色
 
@@ -328,6 +331,31 @@
   `descriptor.path` 走 `font.registerFont({familyName, familySrc:'file://'+path})`
   （再把 fullName 也注册成别名）。读不到文件路径的款式进 `installFailed` 名单，
   选择器里点它会直接说明"暂时用不了，可以把字体文件用导入字体导进来"。
+
+### 界面字号 / 字重
+
+- 与界面字体同一组：`appFontScale`（1 = 不调，0.85~1.30）、`appFontWeightDelta`
+  （0 / 100 / 200），同样进 `persistProp` + `SettingsMirror.KEYS`，「恢复默认外观」一起归零。
+- **和字体一样没有全局钩子**，只能逐点写：字号 `.fontSize(HwFont.sx(原值, this.uiFontScale))`，
+  字重 `.fontWeight(HwFont.bump(原字重, this.uiFontWeightDelta))`。字重走**相对加粗**而不是
+  绝对覆盖，否则标题与正文会被压成同一档。
+- **配套 `lineHeight` 也要缩放**（`.lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))`）：
+  只放大字号不动行高，多行界面文字会被行高裁切。
+- ArkUI 的数字字号单位是 **fp**，本身就跟随系统「设置 → 字体与样式」，应用内滑杆与它是
+  **叠乘**关系（设置页里写明了这句，免得以为两处打架）。
+- `FontWeight` 这版只有 Lighter/Normal/Regular/Medium/Bold/Bolder 六个成员**且没有显式赋值**
+  （运行时是字符串），枚举做不了算术，所以 `HwFont.num()` 走一张换算表。
+- 判"这款字体有没有真粗体"没法查（`@ohos.font` 不给字重信息），只能**实测**：
+  `FontStore.supportsBold()` 用静态 `MeasureText.measureText` 拿同一串拉丁文本在 400 与 700
+  下各量一次宽度，差 <5% 判为不支持——外观设置里「略粗 / 加粗」两档随之置灰，点它只说明原因。
+- **有意不跟着变的**：与界面字体同一份清单（正文与各处预览、代码块与行号、公式、表格单元、
+  字体选择器自己的预览行、封面 `DocCover` 与徽标这类几何耦合数值）；桌面卡片只跟字体
+  （随 `bindingData` 推 `cardFont`），**字号与字重不做**——卡片进程读不到 AppStorage，
+  要为这两个值再开一条推送通道，代价是拨完不即时生效，用户明确同意放弃。
+- 校验脚本（都只读）：`tools/check-ui-font.js` 报三类覆盖数，
+  `tools/check-ui-font-members.js` 查"引用了成员却没在 struct 里声明"，
+  `tools/inspect-font-node.js <文件> [fontSize|fontWeight|lineHeight]` 把未包裹的节点按
+  「界面文字 / 正文跳过 / 图标跳过」分好类，用来确认没有漏挂也没有误挂。
 
 ### 好评鼓励
 
