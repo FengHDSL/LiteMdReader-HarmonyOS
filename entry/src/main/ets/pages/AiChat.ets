@@ -31,6 +31,7 @@ import {
   withAlpha
 } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveCard, ImmersiveChip, ImmersiveIconButton, ImmersiveSheetPanel } from '../material/ImmersiveCard';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { modalSheetOptions, SheetKeyboardLift } from '../material/ModalSheet';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -1866,6 +1867,8 @@ export struct AiChat {
       }
 
       // ── 悬浮顶栏：返回 + 标题 + 新话题 + 历史 + 设置 ──
+      // 状态栏那一条先垫模糊（顶栏是 position 浮层，浮在这层之上）
+      StatusBarBlur({ heightVp: Math.round(this.getUIContext().px2vp(this.safeTopPx)) })
       Row() {
         ImmersiveBar({
           palette: this.palette(),

@@ -51,6 +51,7 @@ import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
   markThemeApplied, themeChangedSince, startThemeWatchdog, stopThemeWatchdog } from '../service/AppWindow';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { RecycleStore } from '../service/RecycleStore';
 import { DocLint, LintIssue, LintReport } from '../service/DocLint';
@@ -7937,6 +7938,8 @@ struct Index {
                 this.collapseSearch();
               })
           }
+
+          StatusBarBlur({ heightVp: this.padTop() })
 
           // ── 悬浮顶栏 / 底栏（材质胶囊）─────────────────────────
           // 两者都**脱离布局流**（position 定位），内容从它们下面滚过。

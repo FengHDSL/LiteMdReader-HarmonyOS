@@ -29,6 +29,7 @@ import {
   HwBar, HwFont, HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme, ReaderThemeMode
 } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveCard, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
@@ -1194,6 +1195,8 @@ export struct ReviewPage {
           // 悬浮顶栏：返回 + 分段页签（用户要求：与其他页面一样悬浮顶栏）。
           // ⚠️ 顶栏写在 Scroll **之后**并且 zIndex(2)：写在前面会被后声明的 Scroll
           // 盖住（图层顺序 = 声明顺序），顶栏就成了"垫在内容底下"（真机反馈图层错误）。
+          // 状态栏模糊层同理也必须写在 Scroll 之后、且排在顶栏前面（顶栏要压在模糊之上）。
+          StatusBarBlur({ heightVp: this.safeTopVp() })
           Row() {
             ImmersiveBar({
               palette: this.palette(),
@@ -2332,6 +2335,8 @@ export struct ReviewPage {
       // ── 悬浮胶囊顶栏（用户要求：与其他页面同一套效果）：
       // 退出 + 进度 + **学习卡朗读**（speaker_wave_2 图标）+ 提示（绿色沉浸光感）。
       // ⚠️ 写在内容之后 + position + zIndex(2)：与学习主页顶栏同款图层方案。
+      // 状态栏模糊层同样排在它前面（顶栏要压在模糊之上）。
+      StatusBarBlur({ heightVp: this.safeTopVp() })
       Row() {
         ImmersiveBar({
           palette: this.palette(),

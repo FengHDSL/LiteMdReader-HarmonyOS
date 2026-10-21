@@ -64,6 +64,7 @@ import { MdBlockView } from '../markdown/MdView';
 import { MdTable, TableAlign, TableTool } from '../service/TableTool';
 import { TableEditorDialog } from '../components/TableEditorDialog';
 import { LiveBlockEditor } from '../components/LiveBlockEditor';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
 
@@ -4451,6 +4452,8 @@ export struct Editor {
 
       // ── 悬浮顶栏：材质胶囊，内容从它底下穿过（焦点写作时隐藏）──
       if (!this.focusMode) {
+        // 状态栏那一条垫模糊（与阅读页同款）：焦点写作时顶栏本身不出现，这层也一起收
+        StatusBarBlur({ heightVp: this.padTop() })
         Column() {
           this.topBar()
         }

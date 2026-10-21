@@ -22,6 +22,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { PrintService } from '../service/PrintService';
 import { HwSpace, HwType, HwBar, ReaderPalette, LIGHT_PALETTE, paletteFor, HwFont } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
 
@@ -300,6 +301,10 @@ export struct HtmlViewer {
           // 就绪提示里已有白屏兜底话术，这里只做软提示。
           this.status = '已就绪。若白屏或无法滑动，请退出重新选择打印';
         })
+
+      // 状态栏那一条垫模糊（与阅读页同款）：Web 铺满整页，顶栏浮在它上面，
+      // 不垫这层的话滚动中的正文会直接从状态栏底下穿过去。
+      StatusBarBlur({ heightVp: this.topPad() })
 
       Column({ space: HwSpace.xs }) {
         // ── 顶栏：与书架 / 阅读页同一枚材质胶囊（ImmersiveBar 承载沉浸光感）──

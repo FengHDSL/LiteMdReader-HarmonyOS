@@ -17,6 +17,7 @@ import { ImmersiveBar, ImmersiveIconButton, ImmersiveCard } from '../material/Im
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
 import { applySystemBarTheme, applyAppColorMode, syncSystemDarkFromContext,
@@ -291,6 +292,8 @@ export struct SettingsShell {
       .onDidScroll((offset: number, state: ScrollState) => {
         this.onScrollFrame(offset);
       })
+
+      StatusBarBlur({ heightVp: this.padTop() })
 
       // ── 悬浮材质顶栏：返回 + 标题 + 说明 ──
       // 收起 = 淡出 + 上移 + 关闭命中（不占触摸），与书架底栏同一套处理。

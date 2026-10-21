@@ -11,6 +11,7 @@
 
 import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveBar, ImmersiveIconButton } from '../material/ImmersiveCard';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { PageBackdrop } from '../components/PageBackdrop';
 import { webview } from '@kit.ArkWeb';
 import {
@@ -94,6 +95,8 @@ export struct LegalDoc {
       PageBackdrop({ palette: this.palette(), dark: this.isDark(), plain: true })
 
       Column() {
+        // 状态栏那一条垫模糊（与阅读页同款），顶栏胶囊浮在它之上
+        StatusBarBlur({ heightVp: this.padTop() })
         ImmersiveBar({
           palette: this.palette(),
           barPaddingH: HwSpace.sm,

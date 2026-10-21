@@ -28,6 +28,7 @@ import {
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { L10n } from '../service/L10n';
 import { AppearanceFx } from '../service/AppearanceFx';
 
@@ -433,6 +434,7 @@ export struct AiSettings {
             })
         }
         this.settingScroll()
+        StatusBarBlur({ heightVp: Math.round(this.getUIContext().px2vp(this.safeTopPx)) })
         // ── 悬浮顶栏：返回 + 标题（与其他页面同款；仅全屏形态）──
         Row() {
           ImmersiveBar({
