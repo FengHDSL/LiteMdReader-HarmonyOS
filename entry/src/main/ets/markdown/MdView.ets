@@ -983,6 +983,8 @@ export struct MdBlockView {
    * AppStorage，子组件不保证回刷，表现就是「选了字体，正文一点变化没有」。
    */
   @Prop fontKey: string = '';
+  /** **界面字体**：只给块上的界面 chrome（菜单项、提示语、页签徽标）用，正文仍走 bodyFamily */
+  @StorageProp('appFontFamily') uiFontKey: string = '';
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。
@@ -2929,6 +2931,7 @@ export struct MdBlockView {
   @Builder
   mathMenuAction(label: string, onTap: () => void) {
     Text(label)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
       .fontSize(HwType.caption + 1)
       .fontColor(this.palette.textPrimary)
       .padding({ left: 12, right: 12, top: 7, bottom: 7 })
@@ -2962,6 +2965,7 @@ export struct MdBlockView {
         lineMul: 1.5
       })
       Text(this.mathMenuText)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
         .fontSize(HwType.caption)
         .fontColor(this.palette.textTertiary)
         .maxLines(2)
@@ -2981,6 +2985,7 @@ export struct MdBlockView {
             })
         }, (item: AnnotationColor, index: number) => 'ms' + index)
         Text(L10n.t('荧光笔'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwType.caption)
           .fontColor(this.palette.textTertiary)
       }
@@ -3124,9 +3129,11 @@ export struct MdBlockView {
         Column() {
           Row({ space: HwSpace.xs }) {
             Text(EngineRegistry.nameOf(this.blockEngineId()))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette.textTertiary)
             Text(L10n.t('引擎已关闭 · 仅显示源码'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
               .fontSize(HwType.caption)
               .fontColor(this.palette.accent)
             Blank()
@@ -3169,6 +3176,7 @@ export struct MdBlockView {
           .padding({ left: HwSpace.md, right: HwSpace.md, top: HwSpace.xs, bottom: HwSpace.sm })
 
           Text(L10n.t('可在「设置 → 引擎管理」中重新开启'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwType.caption - 1)
             .fontColor(this.palette.textTertiary)
             .width('100%')
@@ -3645,6 +3653,7 @@ export struct MdBlockView {
               Row({ space: HwSpace.xs }) {
                 ForEach(this.groupCodesSafe(), (gc: GroupCode, gi: number) => {
                   Text(gc.label)
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
                     .fontSize(HwType.caption)
                     .fontColor((this.groupActiveKey === this.block.id + '|' + gi)
                       ? this.palette.textPrimary : this.palette.textTertiary)
