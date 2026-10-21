@@ -241,11 +241,10 @@ export class UpdateService {
         hilog.info(0x0000, 'UpdateService', 'store check: available=%{public}d', res.updateAvailable);
         settle({
           label: label, ok: true, remote: '', hasUpdate: available,
-          // 市场不回在架版本号（versionName 元服务专用），所以只说「比当前新不新」，
-          // 不谎报「已是最新」（用户要求）
+          // 与上面测试版那一行同句式（用户要求）；市场不回在架版本号，所以不带那个数字
           line: label + '：' + (available
-            ? L10n.t('有比当前（v') + current + L10n.t('）更新的新版本，在架版本号应用市场不返回')
-            : L10n.t('没有比当前（v') + current + L10n.t('）更新的版本，在架版本号应用市场不返回'))
+            ? L10n.t('可更新（当前 v') + current + '）'
+            : L10n.t('已是最新（v') + current + '）')
         } as ChannelResult);
       }).catch((err: BusinessError) => {
         hilog.warn(0x0000, 'UpdateService', 'store check failed code=%{public}d',
