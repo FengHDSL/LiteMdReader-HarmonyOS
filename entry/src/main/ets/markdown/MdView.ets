@@ -989,6 +989,12 @@ export struct MdBlockView {
    * MdBlockView 是被 ForEach 按 key 复用的子组件，AppStorage 被别处改写后不保证回刷。
    */
   @Prop uiFontKey: string = '';
+  /**
+   * 界面字号 / 字重（外观设置）。**同样由宿主 @Prop 下发**——MdBlockView 被 ForEach
+   * 按 key 复用，自读 AppStorage 不保证回刷（字体那条就栽过）。
+   */
+  @Prop uiFontScale: number = 1;
+  @Prop uiFontWeightDelta: number = 0;
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。
@@ -2936,7 +2942,7 @@ export struct MdBlockView {
   mathMenuAction(label: string, onTap: () => void) {
     Text(label)
       .fontFamily(HwFont.resolve(this.uiFontKey))
-      .fontSize(HwType.caption + 1)
+      .fontSize(HwFont.sx(HwType.caption + 1, this.uiFontScale))
       .fontColor(this.palette.textPrimary)
       .padding({ left: 12, right: 12, top: 7, bottom: 7 })
       .borderRadius(15)
@@ -2970,7 +2976,7 @@ export struct MdBlockView {
       })
       Text(this.mathMenuText)
         .fontFamily(HwFont.resolve(this.uiFontKey))
-        .fontSize(HwType.caption)
+        .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
         .fontColor(this.palette.textTertiary)
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -2990,7 +2996,7 @@ export struct MdBlockView {
         }, (item: AnnotationColor, index: number) => 'ms' + index)
         Text(L10n.t('荧光笔'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwType.caption)
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
       }
       .width('100%')
@@ -3134,11 +3140,11 @@ export struct MdBlockView {
           Row({ space: HwSpace.xs }) {
             Text(EngineRegistry.nameOf(this.blockEngineId()))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette.textTertiary)
             Text(L10n.t('引擎已关闭 · 仅显示源码'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwType.caption)
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
               .fontColor(this.palette.accent)
             Blank()
             ImmersiveIconButton({
@@ -3181,7 +3187,7 @@ export struct MdBlockView {
 
           Text(L10n.t('可在「设置 → 引擎管理」中重新开启'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwType.caption - 1)
+            .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
             .fontColor(this.palette.textTertiary)
             .width('100%')
             .textAlign(TextAlign.Center)
@@ -3658,7 +3664,7 @@ export struct MdBlockView {
                 ForEach(this.groupCodesSafe(), (gc: GroupCode, gi: number) => {
                   Text(gc.label)
                     .fontFamily(HwFont.resolve(this.uiFontKey))
-                    .fontSize(HwType.caption)
+                    .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                     .fontColor((this.groupActiveKey === this.block.id + '|' + gi)
                       ? this.palette.textPrimary : this.palette.textTertiary)
                     .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 4, bottom: 4 })

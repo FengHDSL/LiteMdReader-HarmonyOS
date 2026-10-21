@@ -1,4 +1,5 @@
-// 只读核验：每个 struct 里若引用了 this.uiFontKey / this.cardFont，就必须自己声明该成员。
+// 只读核验：每个 struct 里若引用了 this.uiFontKey / this.cardFont / this.uiFontScale /
+// this.uiFontWeightDelta，就必须在该 struct 内声明这个成员。
 // （组件文件本地只判定界符，漏声明成员只有用户构建才会炸。）
 const fs = require('fs');
 const path = require('path');
@@ -12,7 +13,10 @@ function walk(dir) {
     if (e.isDirectory()) { walk(p); continue; }
     if (!e.name.endsWith('.ets')) { continue; }
     const src = fs.readFileSync(p, 'utf8');
-    if (src.indexOf('uiFontKey') < 0 && src.indexOf('cardFont') < 0) { continue; }
+    if (src.indexOf('uiFontKey') < 0 && src.indexOf('cardFont') < 0
+      && src.indexOf('uiFontScale') < 0 && src.indexOf('uiFontWeightDelta') < 0) {
+      continue;
+    }
     const lines = src.split(/\r?\n/);
     // 切 struct 块：以 `struct X {` 开头，按花括号配平找结尾
     for (let i = 0; i < lines.length; i++) {
@@ -29,7 +33,7 @@ function walk(dir) {
         if (started && depth === 0) { break; }
       }
       const text = body.join('\n');
-      for (const member of ['uiFontKey', 'cardFont']) {
+      for (const member of ['uiFontKey', 'cardFont', 'uiFontScale', 'uiFontWeightDelta']) {
         const used = new RegExp('this\\.' + member, '').test(text);
         if (!used) { continue; }
         checked++;
