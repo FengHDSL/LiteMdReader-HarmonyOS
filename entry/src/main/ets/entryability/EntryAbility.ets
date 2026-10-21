@@ -65,6 +65,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('ratingPrompted', false);
 
     PersistentStorage.persistProp('readerFontSize', 16);
+    // 正文字重档位：'follow' = 各档原样，其余为绝对覆盖（见 HwFont.bodyWeight）
+    PersistentStorage.persistProp('readerFontWeight', 'follow');
     PersistentStorage.persistProp('readerLineHeight', 1.75);
     PersistentStorage.persistProp('readerMeasure', 40);
     PersistentStorage.persistProp('readerThemeMode', 0);

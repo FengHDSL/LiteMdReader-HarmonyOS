@@ -46,6 +46,7 @@ import { L10n } from '../service/L10n';
 /** 一键恢复阅读默认（排版 / 主题 / 批注 / 阅读背景全部回到出厂值）。 */
 export function restoreReadingDefaults(ctx: common.UIAbilityContext | null): void {
   AppStorage.setOrCreate('readerFontSize', HwType.bodyDefault);
+  AppStorage.setOrCreate('readerFontWeight', 'follow');
   AppStorage.setOrCreate('readerLineHeight', HwType.lineDefault);
   AppStorage.setOrCreate('readerMeasure', HwType.measureDefault);
   AppStorage.setOrCreate('readerParaSpace', 1.0);
@@ -69,6 +70,12 @@ export function restoreReadingDefaults(ctx: common.UIAbilityContext | null): voi
 @Component
 export struct ReadingSettingsPanel {
   @StorageLink('readerFontSize') fontSize: number = HwType.bodyDefault;
+  /**
+   * **正文字重**（阅读设置 → 字体粗细）：'follow' = 各档原样（标题粗、正文常规），
+   * thin/light/regular/medium/bold 是**绝对覆盖**——整篇正文取同一档，标题与粗体词的
+   * 层级随之压平（用户点名要的效果，见 HwFont.bodyWeight）。
+   */
+  @StorageLink('readerFontWeight') bodyWeight: string = 'follow';
   @StorageLink('readerLineHeight') lineMul: number = HwType.lineDefault;
   @StorageLink('readerMeasure') measure: number = HwType.measureDefault;
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
@@ -494,6 +501,66 @@ export struct ReadingSettingsPanel {
       })
   }
 
+  /** 档位键 → 界面说法（toast 里不能直接吐 'medium' 这种键名） */
+  private bodyWeightLabel(mode: string): string {
+    if (mode === 'thin') {
+      return '细';
+    }
+    if (mode === 'light') {
+      return '轻';
+    }
+    if (mode === 'regular') {
+      return '常规';
+    }
+    if (mode === 'medium') {
+      return '中等';
+    }
+    if (mode === 'bold') {
+      return '粗';
+    }
+    return '跟随';
+  }
+
+  /**
+   * 选正文字重档位：这款字体**没有真粗体**时「中等 / 粗」不给选（档位同时置灰），
+   * 只说明怎么办——判据与界面字重那条同一套（同一串字在 400 与 700 下各量一次宽度）。
+   */
+  private pickBodyWeight(mode: string): void {
+    if ((mode === 'medium' || mode === 'bold') && !FontStore.supportsBold(this.fontKey)) {
+      this.toast('这款字体没有粗体字重；换一款字体或选「跟随」');
+      return;
+    }
+    this.bodyWeight = mode;
+    this.toast('正文字重：' + this.bodyWeightLabel(mode));
+  }
+
+  /** 正文体的粗细档位是否可用（'follow' 三档不需要真粗体） */
+  private bodyBoldOk(): boolean {
+    return FontStore.supportsBold(this.fontKey);
+  }
+
+  /**
+   * 正文字重芯片（**等宽平铺**）：六档一行放不下会顶出卡片，按主题芯片那条同一教训拆成
+   * 3 + 3 两行；置灰只作用于需要真粗体的两档。
+   */
+  @Builder
+  bodyWeightChip(mode: string, label: string) {
+    Text(label)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
+      .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+      .fontWeight(HwFont.bump(this.bodyWeight === mode ? FontWeight.Medium : FontWeight.Normal,
+        this.uiFontWeightDelta))
+      .fontColor(this.bodyWeight === mode ? this.palette().accent : this.palette().textPrimary)
+      .textAlign(TextAlign.Center)
+      .layoutWeight(1)
+      .height(34)
+      .borderRadius(HwRadius.inner)
+      .backgroundColor(this.bodyWeight === mode ? this.palette().accentSoft : this.palette().quoteBg)
+      .onClick(() => {
+        this.pickBodyWeight(mode);
+      })
+  }
+
   /** 背景色板：预设色圆点 + 一键恢复默认（默认项就是色板里 value 为空的那个）。 */
   @Builder
   bgSwatchRow(label: string, dark: boolean) {
@@ -678,6 +745,35 @@ export struct ReadingSettingsPanel {
           .width('100%')
 
         this.sliderRow('font', '正文字号', HwType.bodyMin, HwType.bodyMax, 1, '标题字号会按同一比例跟着缩放')
+
+        // ── 正文字重：六档**绝对覆盖**（跟随 = 不覆盖）──
+        this.sectionTitle('字体粗细')
+        Row({ space: HwSpace.xs }) {
+          this.bodyWeightChip('follow', '跟随')
+          this.bodyWeightChip('thin', '细')
+          this.bodyWeightChip('light', '轻')
+        }
+        .width('100%')
+
+        Row({ space: HwSpace.xs }) {
+          this.bodyWeightChip('regular', '常规')
+          Column() {
+            this.bodyWeightChip('medium', '中等')
+          }
+          .opacity(this.bodyBoldOk() ? 1 : 0.4)
+          Column() {
+            this.bodyWeightChip('bold', '粗')
+          }
+          .opacity(this.bodyBoldOk() ? 1 : 0.4)
+        }
+        .width('100%')
+
+        Text(L10n.t('除「跟随」外，整篇正文统一到这一档：标题与粗体词不再更粗。'
+          + '字体没有真粗体时，「中等 / 粗」置灰'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
 
         this.sliderRow('line', '行高倍数', HwType.lineMin, HwType.lineMax, 0.05, '')
 

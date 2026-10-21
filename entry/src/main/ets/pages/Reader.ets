@@ -321,6 +321,8 @@ export struct Reader {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
+  /** **正文字重**（阅读设置 → 字体粗细）：以 @Prop 下发给正文块组件，'follow' = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
   /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
   @StorageLink('drawerImmersive') drawerImmersive: boolean = true;
   /** 信息卡：创建 / 修改时间（毫秒，0 = 未知）与收藏状态 */
@@ -5372,6 +5374,7 @@ export struct Reader {
                 uiFontKey: this.uiFontKey,
                 uiFontScale: this.uiFontScale,
                 uiFontWeightDelta: this.uiFontWeightDelta,
+                bodyWeightMode: this.bodyWeightMode,
                 dark: this.isDark(),
                 // 对照是只读视图：批注 / 勾选 / 锚点等回调不传（默认空实现）；
                 // 放大有反应（铁律），但 **geoKey 传空**——对照块与正文块共享同一套
@@ -8851,6 +8854,7 @@ export struct Reader {
                   uiFontKey: this.uiFontKey,
                   uiFontScale: this.uiFontScale,
                   uiFontWeightDelta: this.uiFontWeightDelta,
+                  bodyWeightMode: this.bodyWeightMode,
                   // 首行缩进以属性管道下发（子组件内部读 AppStorage 不保证回刷）
                   indentOn: this.indentOn,
                   dark: this.isDark(),
@@ -9055,6 +9059,7 @@ export struct Reader {
                       uiFontKey: this.uiFontKey,
                       uiFontScale: this.uiFontScale,
                       uiFontWeightDelta: this.uiFontWeightDelta,
+                      bodyWeightMode: this.bodyWeightMode,
                       dark: this.isDark(),
                       // 分屏列的放大同样 **geoKey 传空**（与正文同 id 元素共存会让
                       // 一镜到底错乱，见对照面板同名注释）

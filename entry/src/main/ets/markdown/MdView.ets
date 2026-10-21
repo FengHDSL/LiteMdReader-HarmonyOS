@@ -995,6 +995,12 @@ export struct MdBlockView {
    */
   @Prop uiFontScale: number = 1;
   @Prop uiFontWeightDelta: number = 0;
+  /**
+   * **正文字重**（阅读设置 → 字体粗细）：'follow' / thin / light / regular / medium / bold。
+   * 同样**必须 @Prop 由宿主下发**（正文 span 也在这份被 ForEach 复用的组件里）；
+   * 'follow' 之外的档位是**绝对覆盖**，见 HwFont.bodyWeight。
+   */
+  @Prop bodyWeightMode: string = 'follow';
   @StorageProp('readerParaSpace') paraSpaceMul: number = 1.0;
   /**
    * 首行缩进（由**宿主以 @Prop 传入**）。
@@ -1840,7 +1846,8 @@ export struct MdBlockView {
         Span(piece.text)
           .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
-          .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
+          .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
+            piece.bold ? FontWeight.Bold : FontWeight.Normal))
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(this.flashBgFor(piece) ??
@@ -1924,8 +1931,9 @@ export struct MdBlockView {
                 // 基准字用正文色；被荧光笔划过时用高亮色（与线性路径同口径）
                 .fontColor(atom.sample !== null && atom.sample.highlight.length > 0
                   ? atom.sample.highlight : baseColor)
-                .fontWeight(atom.sample !== null && atom.sample.bold
-                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
+                  atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal))
                 .fontFamily(HwFont.bodyFamily(this.fontKey))
                 .maxLines(1)
                 .textAlign(TextAlign.Center)
@@ -2021,7 +2029,8 @@ export struct MdBlockView {
         Span(piece.text)
           .fontSize(MdViewUtil.pieceSize(piece, size, HwFont.resolve(this.fontKey)))
           .fontColor(MdViewUtil.pieceColor(piece, baseColor, this.palette))
-          .fontWeight(piece.bold ? FontWeight.Bold : FontWeight.Normal)
+          .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
+            piece.bold ? FontWeight.Bold : FontWeight.Normal))
           .fontStyle(piece.italic ? FontStyle.Italic : FontStyle.Normal)
           .decoration(MdViewUtil.pieceDecoration(piece, this.palette, this.waveThickness))
           .textBackgroundStyle(this.flashBgFor(piece) ??
@@ -2061,8 +2070,9 @@ export struct MdBlockView {
               Text(atom.base)
                 .fontSize(size)
                 .fontColor(baseColor)
-                .fontWeight(atom.sample !== null && atom.sample.bold
-                  ? FontWeight.Bold : FontWeight.Normal)
+                .fontWeight(HwFont.bodyWeight(this.bodyWeightMode,
+                  atom.sample !== null && atom.sample.bold
+                  ? FontWeight.Bold : FontWeight.Normal))
                 .fontFamily(HwFont.bodyFamily(this.fontKey))
                 .maxLines(1)
                 .textAlign(TextAlign.Center)

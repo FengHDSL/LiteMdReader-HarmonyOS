@@ -327,6 +327,8 @@ export struct Editor {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
+  /** **正文字重**（阅读设置 → 字体粗细）：预览与就地编辑都用它，'follow' = 不覆盖 */
+  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
   @StorageLink('readerThemeMode') @Watch('onThemeChanged') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') @Watch('onThemeChanged') systemDark: boolean = false;
   /** 沉浸布局下的状态栏 / 手势条避让高度（px） */
@@ -2768,6 +2770,7 @@ export struct Editor {
                   uiFontKey: this.uiFontKey,
                   uiFontScale: this.uiFontScale,
                   uiFontWeightDelta: this.uiFontWeightDelta,
+                  bodyWeightMode: this.bodyWeightMode,
                   dark: this.isDark(),
                   // **必须传放大回调**（用户反馈：流程图那行的放大按钮点了没反应）——
                   // MdBlockView 的 enlargeHandler / imageTapHandler 不传就是默认空实现，
@@ -2925,6 +2928,7 @@ export struct Editor {
             uiFontKey: this.uiFontKey,
             uiFontScale: this.uiFontScale,
             uiFontWeightDelta: this.uiFontWeightDelta,
+            bodyWeightMode: this.bodyWeightMode,
             // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
             // 勾选直接改对应源码行的 [ ]↔[x]，与就地编辑同一套数据。
             taskToggleHandler: (blockId: string): void => {
@@ -3099,6 +3103,7 @@ export struct Editor {
                 uiFontKey: this.uiFontKey,
                 uiFontScale: this.uiFontScale,
                 uiFontWeightDelta: this.uiFontWeightDelta,
+                bodyWeightMode: this.bodyWeightMode,
                 // **预览里的待办清单要能勾选**（用户反馈：待办点了没反应）——
                 // 勾选直接翻转对应源码行的 [ ]↔[x]；同时置 liveChildTap，
                 // 防止这次点击冒泡到外层、误触"整块进入编辑态"。

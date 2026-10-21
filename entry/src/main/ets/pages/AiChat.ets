@@ -315,6 +315,8 @@ export struct AiChat {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
+  /** **正文字重**（阅读设置 → 字体粗细）：AI 回答正文与阅读页同一套 */
+  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
   @StorageProp('safeTopPx') safeTopPx: number = 0;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   @StorageProp('appearanceTick') @Watch('onThemeTick') appearanceTick: number = 0;
@@ -3168,6 +3170,7 @@ export struct AiChat {
         uiFontKey: this.uiFontKey,
         uiFontScale: this.uiFontScale,
         uiFontWeightDelta: this.uiFontWeightDelta,
+        bodyWeightMode: this.bodyWeightMode,
         dark: this.isDark(),
         alwaysSystemSelect: true,
         // 代码块 / 图表「放大查看」：**统一走全屏放大浮层**（与阅读页同一套界面）——

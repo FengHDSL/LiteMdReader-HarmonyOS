@@ -54,6 +54,8 @@ export struct LiveBlockEditor {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
+  /** **正文字重**（阅读设置 → 字体粗细）：就地预览那几块也走同一档 */
+  @StorageProp('readerFontWeight') bodyWeightMode: string = 'follow';
   /** 源码草稿：与宿主的 @State 双向绑定（@Link 同一引用） */
   @Link draft: string;
   /** 删除这一块 */
@@ -231,7 +233,8 @@ export struct LiveBlockEditor {
               fontKey: this.fontKey,
               uiFontKey: this.uiFontKey,
               uiFontScale: this.uiFontScale,
-              uiFontWeightDelta: this.uiFontWeightDelta
+              uiFontWeightDelta: this.uiFontWeightDelta,
+              bodyWeightMode: this.bodyWeightMode
             })
           }, (pb: MdBlock) => 'lp_' + pb.id + '_' + this.renderEpoch + '_ft' + this.formulaTick
             + '_r' + this.previewTick)

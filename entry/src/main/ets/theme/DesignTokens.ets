@@ -1015,6 +1015,33 @@ export class HwFont {
     const n: number = HwFont.num(w);
     return delta === 0 ? n : Math.min(900, n + delta);
   }
+
+  /**
+   * **正文字重**（阅读设置 → 字体粗细）：'follow'（空串同义）保持各档原样，
+   * 其余按档位**绝对覆盖**。
+   *
+   * 这里刻意与界面字重那条相反：界面要的是"标题仍比正文粗"，所以走相对加粗；
+   * 正文用户要的是"整篇一起变粗/变细"，相对加粗在正文里等于每层同步抬升、
+   * 肉眼几乎看不出调过。绝对覆盖的代价是标题与粗体词的层级被压平，这是明示过的取舍。
+   */
+  static bodyWeight(mode: string, base: FontWeight): number {
+    if (mode === 'follow' || mode.length === 0) {
+      return HwFont.num(base);
+    }
+    if (mode === 'thin') {
+      return 200;
+    }
+    if (mode === 'light') {
+      return 300;
+    }
+    if (mode === 'regular') {
+      return 400;
+    }
+    if (mode === 'medium') {
+      return 500;
+    }
+    return 700;
+  }
 }
 
 /**

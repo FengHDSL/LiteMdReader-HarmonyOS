@@ -43,7 +43,7 @@ export class SettingsMirror {
   static readonly KEYS: string[] = [
     // 阅读排版 / 显示
     'readerThemeMode', 'readerFontSize', 'readerLineHeight', 'readerMeasure',
-    'readerFontFamily', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
+    'readerFontFamily', 'readerFontWeight', 'readerParaSpace', 'readerIndent', 'readerShowMeta',
     // 界面字体（外观设置）与「同步到阅读页」开关、界面字号缩放与字重加粗
     'appFontFamily', 'appFontSyncReader', 'appFontScale', 'appFontWeightDelta',
     'readerKeepScreenOn', 'readerBrightness', 'readerCustomBgLight', 'readerCustomBgDark',
