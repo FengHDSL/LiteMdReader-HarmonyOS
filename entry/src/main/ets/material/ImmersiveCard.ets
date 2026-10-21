@@ -704,6 +704,10 @@ export struct ImmersiveChip {
         .borderRadius(HwRadius.pill)
         .backgroundColor(this.chipColor())
         .backgroundBlurStyle((this.fxLookOn && !this.materialOn()) ? BlurStyle.Thin : BlurStyle.NONE)
+        // **关闭沉浸光感（或节能档）时补一圈包边**：材质层自带的高光边缘没了，
+        // 芯片底色又与卡片同色，按钮就糊在卡片上看不出可点（用户要求，与
+        // ImmersiveIconButton 的 1px divider 保持同一观感）。开光感时宽度 0，边缘仍由材质给。
+        .border({ width: this.materialOn() ? 0 : 1, color: this.palette.divider })
         .hitTestBehavior(HitTestMode.None)
 
       ImmersiveCardLayer({ layerRadius: HwRadius.pill, layerShadow: false })

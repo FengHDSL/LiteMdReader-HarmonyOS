@@ -194,8 +194,9 @@ export class UpdateService {
   }
 
   /**
-   * 正式版渠道：`updateManager.checkAppUpdate()` 让**应用市场自己**比对在架版本，
-   * 返回 `updateAvailable` 与（since 20）`versionName`。8 秒超时保护同测试版。
+   * 正式版渠道：`updateManager.checkAppUpdate()` —— **由应用市场自己比对**在架版本与
+   * 本机安装的 versionCode，只回 `updateAvailable`（0 没有更新 / 1 有更新）。
+   * 8 秒超时保护同测试版。
    * ⚠️ 非市场安装的包（DevEco 直装的调试包）通常直接报错，那一行写清原因即可，
    *    不影响测试版那一行展示。
    */
@@ -233,27 +234,16 @@ export class UpdateService {
         return;
       }
       call.then((res: updateManager.CheckUpdateResult) => {
-        const remote: string = res.versionName === undefined || res.versionName === null ? '' : res.versionName;
+        // **比对是应用市场自己做的**：它拿本机 versionCode 跟在架版本比，只回一个结论。
+        // CheckUpdateResult 的 versionName / versionCode 官方注明「只对元服务开放」，
+        // 普通应用恒为空 → 这一行只写「有没有更新 + 当前版本」，不假装知道在架版本号。
         const available: boolean = res.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_EXIST;
-        hilog.info(0x0000, 'UpdateService', 'store check: available=%{public}d name=%{public}s',
-          res.updateAvailable, remote);
-        if (remote.length > 0) {
-          const cmp: number = UpdateService.compareVersion(current, remote);
-          const detail: string = cmp < 0
-            ? L10n.t('可更新 v') + remote + L10n.t('（当前 v') + current + '）'
-            : (cmp > 0
-              ? L10n.t('在架 v') + remote + L10n.t('，当前版本比它更高')
-              : L10n.t('已是最新（v') + current + '）');
-          settle({
-            label: label, ok: true, remote: remote, hasUpdate: cmp < 0,
-            line: label + '：' + detail
-          } as ChannelResult);
-          return;
-        }
-        // 市场没给版本号：只能按 updateAvailable 说话
+        hilog.info(0x0000, 'UpdateService', 'store check: available=%{public}d', res.updateAvailable);
         settle({
           label: label, ok: true, remote: '', hasUpdate: available,
-          line: label + '：' + (available ? L10n.t('有可用的新版本') : L10n.t('已是最新（v') + current + '）')
+          line: label + '：' + (available
+            ? L10n.t('有比当前更新的新版本，可直接在市场更新')
+            : L10n.t('市场没有比当前更新的版本（当前 v') + current + '）')
         } as ChannelResult);
       }).catch((err: BusinessError) => {
         hilog.warn(0x0000, 'UpdateService', 'store check failed code=%{public}d',

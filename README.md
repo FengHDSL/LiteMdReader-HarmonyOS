@@ -286,9 +286,12 @@
     （`https://www.sydxky.cn/detail.php?id=956`），解析版本徽标
     （`fa-code-branch` 图标后紧跟的 `<span>vX.Y.Z</span>`），与 `bundleManager`
     读到的当前版本**逐段数字比对**；侧载 / 邀测走这条，通常领先几个版本。
-  - **正式版**：AppGallery Kit 的 `updateManager.checkAppUpdate()`，由应用市场自己
-    比对在架版本（市场正式版上架会晚几个版本）。有正式版更新时结果弹窗的第一个按钮
-    直接调 `updateManager.showUpdateDialog()` 弹官方更新框。
+  - **正式版**：AppGallery Kit 的 `updateManager.checkAppUpdate()`，**由市场自己比对**在架版本
+    与本机安装的 `versionCode`，只回「有没有更新」。`CheckUpdateResult` 的
+    `versionName` / `versionCode` 官方注明只对元服务开放，普通应用恒为空，所以正式版
+    那一行写「有比当前更新的新版本」或「市场没有比当前更新的版本（当前 vX）」，
+    不假装知道在架版本号。有正式版更新时结果弹窗的第一个按钮直接调
+    `updateManager.showUpdateDialog()` 弹官方更新框。
 - 两条渠道各带 8 秒超时与"进行中忽略重复点击"保护；任一渠道失败只影响它自己那一行，
   另一行照常展示。
 - ⚠️ `checkAppUpdate` 只在**从应用市场安装的包**上准：DevEco 直装的调试包通常返回

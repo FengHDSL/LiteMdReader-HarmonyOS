@@ -183,17 +183,31 @@ export struct SettingsExplore {
 
   /**
    * 好评鼓励：调 AppGallery Kit 在**应用内**弹官方评分框（不跳市场详情页）。
-   * 只有真机 + 已登录华为账号才有反应；错误码在 Rating.ask 里映射成中文提示，
-   * 这里只负责把提示 toast 出去。
+   * 只有真机 + 已登录华为账号才有反应；错误码在 Rating.ask 里映射成中文原因。
    */
   private rateApp(): void {
     const ctx = this.hostCtx();
     if (ctx === null) {
-      this.toast(L10n.t('评分弹窗暂时不可用，请稍后再试'));
+      this.rateHint(L10n.t('评分弹窗暂时不可用，请稍后再试'));
       return;
     }
     Rating.ask(ctx, (message: string) => {
-      this.toast(message);
+      this.rateHint(message);
+    });
+  }
+
+  /**
+   * 好评鼓励的结果用**弹窗**说（用户要求：已经评价过要弹窗提醒）——
+   * toast 一闪而过，「这个版本你已经评价过了」这类结论必须留在屏幕上让人看到。
+   */
+  private rateHint(message: string): void {
+    const btns: promptAction.Button[] = [{ text: L10n.t('知道了'), color: this.palette().accent }];
+    this.getUIContext().getPromptAction().showDialog({
+      title: L10n.t('好评鼓励'),
+      message: message,
+      buttons: btns
+    }).catch(() => {
+      // 用户手势关闭弹窗，无副作用
     });
   }
 
