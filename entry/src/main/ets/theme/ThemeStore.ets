@@ -8,6 +8,8 @@
  * 旧键 red/blue/orange/purple/cheng（朱砂印/砚池青…）保留解析，只是不再出现在选择项里，
  * 免得老用户升级后主题色突然失效。
  */
+import { L10n } from '../service/L10n';
+
 export class ThemeStore {
   static readonly KEY_AS: string = 'themeColor';
 
@@ -76,33 +78,33 @@ export class ThemeStore {
       return t.toUpperCase();
     }
     if (t === 'cheng') {
-      return '澄光';
+      return L10n.t('澄光');
     }
     if (t === 'xuan') {
-      return '宣纸';
+      return L10n.t('宣纸');
     }
     if (t === 'yan') {
-      return '砚青';
+      return L10n.t('砚青');
     }
     if (t === 'zhu') {
-      return '竹影';
+      return L10n.t('竹影');
     }
     if (t === 'xia') {
-      return '霞笺';
+      return L10n.t('霞笺');
     }
     if (t === 'red') {
-      return '朱砂印';
+      return L10n.t('朱砂印');
     }
     if (t === 'blue') {
-      return '砚池青';
+      return L10n.t('砚池青');
     }
     if (t === 'orange') {
-      return '落日橙';
+      return L10n.t('落日橙');
     }
     if (t === 'purple') {
-      return '紫罗兰';
+      return L10n.t('紫罗兰');
     }
-    return '跟随主题';
+    return L10n.t('跟随主题');
   }
 
   /** #RRGGBB → rgba(r,g,b,a)，供渐变用（非法值回落澄金） */

@@ -136,7 +136,7 @@ export struct ReadingSettingsPanel {
         this.toast(L10n.t('阅读背景已更新'));
       }
     }).catch((e: BusinessError) => {
-      this.toast('选择图片失败：' + e.message);
+      this.toast(L10n.t('选择图片失败：') + e.message);
     });
   }
   /** 滑块的实测尺寸（vp）：防误触的 responseRegion 只能用数值，先量后算 */
@@ -191,9 +191,9 @@ export struct ReadingSettingsPanel {
         }
         this.fontListRev++;
         this.fontKey = family;
-        this.toast('已导入并启用字体「' + family + '」');
+        this.toast(L10n.t('已导入并启用字体「') + family + '」');
       }).catch((err: BusinessError) => {
-        this.toast('选择字体失败：' + err.message);
+        this.toast(L10n.t('选择字体失败：') + err.message);
       });
     } catch (err) {
       this.toast(L10n.t('无法打开文件选择器'));
@@ -209,7 +209,7 @@ export struct ReadingSettingsPanel {
     const ctx = c as common.UIAbilityContext;
     this.getUIContext().getPromptAction().showDialog({
       title: L10n.t('删除字体'),
-      message: L10n.t('将删除「') + family + '」的字体文件；正在使用它的文档会回退为默认字体。',
+      message: L10n.t('将删除「') + family + L10n.t('」的字体文件；正在使用它的文档会回退为默认字体。'),
       buttons: [
         { text: L10n.t('取消'), color: this.palette().textSecondary },
         { text: L10n.t('删除'), color: '#FFD93B3B' }
@@ -232,7 +232,7 @@ export struct ReadingSettingsPanel {
         this.toast(L10n.t('删除失败'));
       }
     }).catch((err: BusinessError) => {
-      this.toast('操作失败：' + err.message);
+      this.toast(L10n.t('操作失败：') + err.message);
     });
   }
   @StorageProp('systemDark') systemDark: boolean = false;
@@ -265,7 +265,7 @@ export struct ReadingSettingsPanel {
   /** 亮度滑杆当前显示值：0 显示「跟随系统」，否则显示百分比。 */
   private brightnessText(): string {
     if (this.brightLevel <= 0) {
-      return '跟随系统';
+      return L10n.t('跟随系统');
     }
     return Math.round(this.brightLevel * 100) + '%';
   }
@@ -361,7 +361,7 @@ export struct ReadingSettingsPanel {
       return '×' + this.fixed1(this.paraSpace);
     }
     if (kind === 'measure') {
-      return '每行 ' + Math.round(this.measure) + ' 字';
+      return L10n.t('每行 ') + Math.round(this.measure) + L10n.t(' 字');
     }
     if (kind === 'hlop') {
       return Math.round(this.hlOpacity * 100) + '%';
@@ -506,12 +506,12 @@ export struct ReadingSettingsPanel {
       .onClick(() => {
         // 先提示再干活：主题一变是全应用重渲染 + 图表深浅孪生重烘，占在同一帧里
         // 就是上架自检报的冻屏（与外观页深色开关同一口径）
-        this.toast('切换中，请耐心等待');
+        this.toast(L10n.t('切换中，请耐心等待'));
         setTimeout((): void => {
           this.themeMode = mode;
           // 主题是持久化键：切完立刻落一次镜像，别等面板消失
           SettingsMirror.save(this.hostCtx());
-          this.toast('主题：' + themeModeLabel(mode));
+          this.toast(L10n.t('主题：') + themeModeLabel(mode));
         }, 350);
       })
   }
@@ -560,8 +560,8 @@ export struct ReadingSettingsPanel {
             } else {
               this.customBgLight = item.value;
             }
-            this.toast('浅色背景：' + bgPresetName(LIGHT_BG_PRESETS, this.customBgLight)
-              + ' · 深色背景：' + bgPresetName(DARK_BG_PRESETS, this.customBgDark));
+            this.toast(L10n.t('浅色背景：') + bgPresetName(LIGHT_BG_PRESETS, this.customBgLight)
+              + L10n.t(' · 深色背景：') + bgPresetName(DARK_BG_PRESETS, this.customBgDark));
           })
       }, (item: NamedColor) => label + item.name)
     }
@@ -595,7 +595,7 @@ export struct ReadingSettingsPanel {
 
         // ── 排版（分组 'layout'）──
         if (this.inGroup('layout')) {
-        this.sectionTitle('排版')
+        this.sectionTitle(L10n.t('排版'))
 
         // 字体：**列表选择器**（用户要求，替换原来两排横向滚动芯片）。
         // 标题行显示当前字体并用它自己渲染，点一下展开 / 收起；列表里一项一个字体。
@@ -640,7 +640,7 @@ export struct ReadingSettingsPanel {
               rev: this.fontListRev,
               onPick: (k: string) => {
                 this.fontKey = k;
-                this.toast('正文字体：' + HwFont.label(k));
+                this.toast(L10n.t('正文字体：') + HwFont.label(k));
               },
               onRemove: (family: string) => {
                 this.askRemoveFont(family);
@@ -689,7 +689,7 @@ export struct ReadingSettingsPanel {
               rev: this.fontListRev,
               onPick: (k: string) => {
                 this.fontEnKey = k;
-                this.toast('英数字体：' + HwFont.label(k));
+                this.toast(L10n.t('英数字体：') + HwFont.label(k));
               },
               onRemove: (family: string) => {
                 this.askRemoveFont(family);
@@ -763,7 +763,8 @@ export struct ReadingSettingsPanel {
           .fontColor(this.palette().textTertiary)
           .width('100%')
 
-        this.sliderRow('font', '正文字号', HwType.bodyMin, HwType.bodyMax, 1, '标题字号会按同一比例跟着缩放')
+        this.sliderRow('font', L10n.t('正文字号'), HwType.bodyMin, HwType.bodyMax, 1,
+          L10n.t('标题字号会按同一比例跟着缩放'))
 
         // ── 正文字重：一根滑条 0~900（0 = 跟随原样式，其余整篇绝对覆盖）──
         Row({ space: HwSpace.xs }) {
@@ -795,32 +796,33 @@ export struct ReadingSettingsPanel {
           .fontColor(this.palette().textTertiary)
           .width('100%')
 
-        this.sliderRow('line', '行高倍数', HwType.lineMin, HwType.lineMax, 0.05, '')
+        this.sliderRow('line', L10n.t('行高倍数'), HwType.lineMin, HwType.lineMax, 0.05, '')
 
-        this.sliderRow('para', '段落间距', 0.6, 2.2, 0.1, '段落之间的留白倍数，长文阅读时调大更松弛')
+        this.sliderRow('para', L10n.t('段落间距'), 0.6, 2.2, 0.1,
+          L10n.t('段落之间的留白倍数，长文阅读时调大更松弛'))
 
-        this.sliderRow('measure', '版心宽度', HwType.measureMin, HwType.measureMax, 1,
-          '平板与折叠屏上限制正文最大宽度，避免一行过长')
+        this.sliderRow('measure', L10n.t('版心宽度'), HwType.measureMin, HwType.measureMax, 1,
+          L10n.t('平板与折叠屏上限制正文最大宽度，避免一行过长'))
 
-        this.switchRow('indent', '首行缩进', '段落首行空两格，中文排版习惯', this.indentOn)
+        this.switchRow('indent', L10n.t('首行缩进'), L10n.t('段落首行空两格，中文排版习惯'), this.indentOn)
         }
 
         // ── 主题（分组 'theme'）──
         if (this.inGroup('theme')) {
-        this.sectionTitle('主题')
+        this.sectionTitle(L10n.t('主题'))
 
         // 主题芯片：3 + 2 两行等宽平铺（原来一行 5 个会顶出卡片，用户反馈）
         Row({ space: HwSpace.xs }) {
-          this.themeChip(ReaderThemeMode.System, '跟随系统')
-          this.themeChip(ReaderThemeMode.Light, '浅色')
-          this.themeChip(ReaderThemeMode.Dark, '深色')
+          this.themeChip(ReaderThemeMode.System, L10n.t('跟随系统'))
+          this.themeChip(ReaderThemeMode.Light, L10n.t('浅色'))
+          this.themeChip(ReaderThemeMode.Dark, L10n.t('深色'))
         }
         .width('100%')
         .alignItems(VerticalAlign.Center)
 
         Row({ space: HwSpace.xs }) {
-          this.themeChip(ReaderThemeMode.Sepia, '羊皮纸')
-          this.themeChip(ReaderThemeMode.Green, '护眼绿')
+          this.themeChip(ReaderThemeMode.Sepia, L10n.t('羊皮纸'))
+          this.themeChip(ReaderThemeMode.Green, L10n.t('护眼绿'))
           // 占位：第二行只有两项时也保持与第一行一致的格宽
           Column().layoutWeight(1)
         }
@@ -828,11 +830,11 @@ export struct ReadingSettingsPanel {
         .alignItems(VerticalAlign.Center)
 
         // ── 阅读背景（分组 'theme'，与主题同卡）──
-        this.sectionTitle('阅读背景')
+        this.sectionTitle(L10n.t('阅读背景'))
 
         Column({ space: HwSpace.sm }) {
-          this.bgSwatchRow('浅色', false)
-          this.bgSwatchRow('深色', true)
+          this.bgSwatchRow(L10n.t('浅色'), false)
+          this.bgSwatchRow(L10n.t('深色'), true)
           Text(L10n.t('色板第一格是「默认」（纸白 / 碳黑固定色，不随主题变）；选中后所有页面的背景换成所选纯色，光斑保留'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
@@ -913,24 +915,24 @@ export struct ReadingSettingsPanel {
 
         // ── 显示（分组 'display'）：批注滑块 + 显示相关项 ──
         if (this.inGroup('display')) {
-        this.sectionTitle('批注')
+        this.sectionTitle(L10n.t('批注'))
 
-        this.sliderRow('hlop', '荧光笔透明度', 20, 100, 5,
-          '只影响荧光笔底纹的浓淡；搜索命中与语法底纹不受影响')
+        this.sliderRow('hlop', L10n.t('荧光笔透明度'), 20, 100, 5,
+          L10n.t('只影响荧光笔底纹的浓淡；搜索命中与语法底纹不受影响'))
 
-        this.sliderRow('wavet', '波浪线粗细', 50, 300, 25,
-          '系统波浪装饰线的描边倍率；波峰密度与高度由系统决定，无法单独调节')
+        this.sliderRow('wavet', L10n.t('波浪线粗细'), 50, 300, 25,
+          L10n.t('系统波浪装饰线的描边倍率；波峰密度与高度由系统决定，无法单独调节'))
 
-        this.sectionTitle('显示')
+        this.sectionTitle(L10n.t('显示'))
 
-        this.switchRow('meta', '文档信息卡', '正文顶部显示字数统计与 Front Matter', this.showMeta)
+        this.switchRow('meta', L10n.t('文档信息卡'), L10n.t('正文顶部显示字数统计与 Front Matter'), this.showMeta)
         // 沉浸光感开关已移至 设置 → 外观设置（避免重复入口）
 
-        this.switchRow('keepon', '屏幕常亮', '阅读时不自动熄屏，仅本应用窗口生效', this.keepOn)
+        this.switchRow('keepon', L10n.t('屏幕常亮'), L10n.t('阅读时不自动熄屏，仅本应用窗口生效'), this.keepOn)
 
         Column({ space: HwSpace.xs }) {
-          this.sliderRow('brightness', '窗口亮度', 5, 100, 5,
-            '只调低本应用窗口的亮度，不影响系统设置；夜间阅读不刺眼')
+          this.sliderRow('brightness', L10n.t('窗口亮度'), 5, 100, 5,
+            L10n.t('只调低本应用窗口的亮度，不影响系统设置；夜间阅读不刺眼'))
           if (this.brightLevel > 0) {
             Text(L10n.t('正在使用固定亮度，系统亮度条暂被接管'))
               .fontFamily(HwFont.resolve(this.uiFontKey))

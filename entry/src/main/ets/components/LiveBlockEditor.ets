@@ -123,30 +123,30 @@ export struct LiveBlockEditor {
   /** 块类型名（让用户知道自己在改什么） */
   private kindLabel(): string {
     if (this.block.kind === MdBlockKind.Heading) {
-      return '标题';
+      return L10n.t('标题');
     }
     if (this.block.kind === MdBlockKind.Code || this.block.kind === MdBlockKind.Chart) {
-      return '代码 / 图表';
+      return L10n.t('代码 / 图表');
     }
     if (this.block.kind === MdBlockKind.Table) {
-      return '表格';
+      return L10n.t('表格');
     }
     if (this.block.kind === MdBlockKind.Quote || this.block.kind === MdBlockKind.Callout) {
-      return '引用';
+      return L10n.t('引用');
     }
     if (this.block.kind === MdBlockKind.ListItem) {
-      return '列表项';
+      return L10n.t('列表项');
     }
     if (this.block.kind === MdBlockKind.Math) {
-      return '公式';
+      return L10n.t('公式');
     }
     if (this.block.kind === MdBlockKind.Divider) {
-      return '分割线';
+      return L10n.t('分割线');
     }
     if (this.block.kind === MdBlockKind.Details) {
-      return '折叠块';
+      return L10n.t('折叠块');
     }
-    return '段落';
+    return L10n.t('段落');
   }
 
   build() {

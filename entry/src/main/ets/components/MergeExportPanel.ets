@@ -143,7 +143,7 @@ export struct MergeExportPanel {
       return null;
     }
     if (this.order.length === 0) {
-      this.notify('先选择要合并的文档');
+      this.notify(L10n.t('先选择要合并的文档'));
       return null;
     }
     const items: MergeItem[] = [];
@@ -158,7 +158,7 @@ export struct MergeExportPanel {
       }
       const content: string | null = ExportService.readContent(ctx, name, builtin);
       if (content === null) {
-        this.notify('读取「' + name + '」失败');
+        this.notify(L10n.t('读取「') + name + L10n.t('」失败'));
         return null;
       }
       items.push({ name: name, content: content } as MergeItem);
@@ -166,7 +166,7 @@ export struct MergeExportPanel {
     const opts: MergeOptions = { withTitle: this.withTitle, withDivider: this.withDivider };
     const merged: string = MergeExport.buildMarkdown(items, opts);
     if (merged.length === 0) {
-      this.notify('选中的文档都是空的');
+      this.notify(L10n.t('选中的文档都是空的'));
       return null;
     }
     return merged;
@@ -222,14 +222,14 @@ export struct MergeExportPanel {
       try {
         const text: string = MdToPlain.convert(merged);
         if (text.length === 0) {
-          this.notify('正文为空');
+          this.notify(L10n.t('正文为空'));
           return;
         }
         ExportService.saveText(ctx, this.fileName('.txt'), text, (m: string) => {
           this.notify(m);
         });
       } catch (err) {
-        this.notify('转换纯文本失败');
+        this.notify(L10n.t('转换纯文本失败'));
       }
     });
   }
@@ -237,7 +237,7 @@ export struct MergeExportPanel {
   /** 打印：合并正文交给打印准备页（页内构建 HTML 并调起系统打印预览）。 */
   private doPrint(): void {
     if (this.stack === null) {
-      this.notify('当前环境不支持打印');
+      this.notify(L10n.t('当前环境不支持打印'));
       return;
     }
     const merged: string | null = this.buildMerged();
@@ -254,7 +254,7 @@ export struct MergeExportPanel {
         } as PrintRoute
       }, AppearanceFx.navAnimated());
     } catch (err) {
-      this.notify('无法打开打印');
+      this.notify(L10n.t('无法打开打印'));
     }
   }
 
@@ -374,7 +374,7 @@ export struct MergeExportPanel {
       // 外层再套一个 Scroll 会让高度测量变成循环（fitContent 问内容要多高、
       // Scroll 问父级要多高 → 塌陷）。会无限变长的只有清单那一块，就只滚它。
       Column({ space: HwSpace.sm }) {
-        Text(L10n.t('已选 ') + this.order.length + ' 篇 · 按从上到下的顺序合并')
+        Text(L10n.t('已选 ') + this.order.length + L10n.t(' 篇 · 按从上到下的顺序合并'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette.textTertiary)
@@ -447,11 +447,11 @@ export struct MergeExportPanel {
           .width('100%')
         }
 
-        this.switchRow('每篇加标题', '在每篇正文前插入该文档名的一级标题', this.withTitle,
+        this.switchRow(L10n.t('每篇加标题'), L10n.t('在每篇正文前插入该文档名的一级标题'), this.withTitle,
           (v: boolean) => {
             this.withTitle = v;
           })
-        this.switchRow('篇间分隔线', '每两篇之间插入一条分割线', this.withDivider,
+        this.switchRow(L10n.t('篇间分隔线'), L10n.t('每两篇之间插入一条分割线'), this.withDivider,
           (v: boolean) => {
             this.withDivider = v;
           })
@@ -463,16 +463,16 @@ export struct MergeExportPanel {
 
         Divider().color(this.palette.divider)
 
-        this.exportRow('导出 HTML', '自包含网页，图表只内联一份', (): void => {
+        this.exportRow(L10n.t('导出 HTML'), L10n.t('自包含网页，图表只内联一份'), (): void => {
           this.doHtml();
         })
-        this.exportRow('打印', '合并结果送进系统打印预览', (): void => {
+        this.exportRow(L10n.t('打印'), L10n.t('合并结果送进系统打印预览'), (): void => {
           this.doPrint();
         })
-        this.exportRow('导出 MD', '合并后的 Markdown 原文', (): void => {
+        this.exportRow(L10n.t('导出 MD'), L10n.t('合并后的 Markdown 原文'), (): void => {
           this.doMd();
         })
-        this.exportRow('导出 TXT', '剥掉语法后的纯文本', (): void => {
+        this.exportRow(L10n.t('导出 TXT'), L10n.t('剥掉语法后的纯文本'), (): void => {
           this.doTxt();
         })
       }

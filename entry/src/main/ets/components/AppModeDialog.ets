@@ -110,11 +110,11 @@ export struct AppModeDialog {
         .width('100%')
 
       Column({ space: 8 }) {
-        this.modeRow(APP_MODE_FULL, '全量模式',
-          '功能正常使用、无任何限制：可加载网络图片、使用网络备份与检查更新',
+        this.modeRow(APP_MODE_FULL, L10n.t('全量模式'),
+          L10n.t('功能正常使用、无任何限制：可加载网络图片、使用网络备份与检查更新'),
           $r('sys.symbol.checkmark_circle'))
-        this.modeRow(APP_MODE_OFFLINE, '基础模式',
-          '纯离线使用：应用不联网，网络图片无法加载，网络备份 / 检查更新不可用',
+        this.modeRow(APP_MODE_OFFLINE, L10n.t('基础模式'),
+          L10n.t('纯离线使用：应用不联网，网络图片无法加载，网络备份 / 检查更新不可用'),
           $r('sys.symbol.xmark_circle'))
       }
       .width('100%')

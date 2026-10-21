@@ -735,7 +735,7 @@ export function bgPresetName(presets: NamedColor[], value: string): string {
       return presets[k].name;
     }
   }
-  return '自定义';
+  return L10n.t('自定义');
 }
 
 /**
@@ -866,15 +866,15 @@ export function chartCardMaxHeight(winVp: number): number {
 /** 沉浸光感材质档位 → 可读文案，用于诊断行。 */
 export function materialLevelLabel(level: number): string {
   if (level === 0) {
-    return '高（EXQUISITE）';
+    return L10n.t('高（EXQUISITE）');
   }
   if (level === 1) {
-    return '中（GENTLE）';
+    return L10n.t('中（GENTLE）');
   }
   if (level === 2) {
-    return '低（SMOOTH）';
+    return L10n.t('低（SMOOTH）');
   }
-  return '未知';
+  return L10n.t('未知');
 }
 
 /**
@@ -892,18 +892,18 @@ export enum ReaderThemeMode {
 
 export function themeModeLabel(mode: number): string {
   if (mode === ReaderThemeMode.Light) {
-    return '浅色';
+    return L10n.t('浅色');
   }
   if (mode === ReaderThemeMode.Dark) {
-    return '深色';
+    return L10n.t('深色');
   }
   if (mode === ReaderThemeMode.Sepia) {
-    return '羊皮纸';
+    return L10n.t('羊皮纸');
   }
   if (mode === ReaderThemeMode.Green) {
-    return '护眼绿';
+    return L10n.t('护眼绿');
   }
-  return '跟随系统';
+  return L10n.t('跟随系统');
 }
 
 /**
@@ -988,7 +988,7 @@ export class HwFont {
 
   static label(key: string): string {
     if (key.length === 0) {
-      return '默认';
+      return L10n.t('默认');
     }
     return key;
   }
@@ -1069,33 +1069,33 @@ export class HwFont {
    */
   static weightName(mode: number): string {
     if (mode <= 0) {
-      return '跟随原样式';
+      return L10n.t('跟随原样式');
     }
     if (mode <= 100) {
-      return '100 · 极细';
+      return L10n.t('100 · 极细');
     }
     if (mode <= 200) {
-      return '200 · 细';
+      return L10n.t('200 · 细');
     }
     if (mode <= 300) {
-      return '300 · 较轻';
+      return L10n.t('300 · 较轻');
     }
     if (mode <= 400) {
-      return '400 · 常规';
+      return L10n.t('400 · 常规');
     }
     if (mode <= 500) {
-      return '500 · 中等';
+      return L10n.t('500 · 中等');
     }
     if (mode <= 600) {
-      return '600 · 半粗';
+      return L10n.t('600 · 半粗');
     }
     if (mode <= 700) {
-      return '700 · 粗';
+      return L10n.t('700 · 粗');
     }
     if (mode <= 800) {
-      return '800 · 较粗';
+      return L10n.t('800 · 较粗');
     }
-    return '900 · 特粗';
+    return L10n.t('900 · 特粗');
   }
 
   /**

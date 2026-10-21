@@ -111,7 +111,7 @@ export struct ExportOptionsPanel {
     }
     const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
     if (content === null) {
-      this.notify('读取正文失败');
+      this.notify(L10n.t('读取正文失败'));
       return;
     }
     this.withBusy(() => {
@@ -132,7 +132,7 @@ export struct ExportOptionsPanel {
     }
     const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
     if (content === null) {
-      this.notify('读取正文失败');
+      this.notify(L10n.t('读取正文失败'));
       return;
     }
     this.withBusyAsync(() => ExportService.exportHtmlSmart(ctx, this.docName, content,
@@ -144,7 +144,7 @@ export struct ExportOptionsPanel {
   /** 打印：进入打印准备页（HTML 构建在页内完成，完成后调起系统打印预览）。 */
   private printDoc(): void {
     if (this.stack === null) {
-      this.notify('当前环境不支持打印');
+      this.notify(L10n.t('当前环境不支持打印'));
       return;
     }
     const ctx = this.ctx();
@@ -153,7 +153,7 @@ export struct ExportOptionsPanel {
     }
     const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
     if (content === null) {
-      this.notify('读取正文失败');
+      this.notify(L10n.t('读取正文失败'));
       return;
     }
     try {
@@ -162,7 +162,7 @@ export struct ExportOptionsPanel {
         param: { docName: this.docName, content: content, htmlPath: '' } as PrintRoute
       }, AppearanceFx.navAnimated());
     } catch (err) {
-      this.notify('无法打开打印');
+      this.notify(L10n.t('无法打开打印'));
     }
   }
 
@@ -174,21 +174,21 @@ export struct ExportOptionsPanel {
     }
     const content: string | null = ExportService.readContent(ctx, this.docName, this.builtin);
     if (content === null) {
-      this.notify('读取正文失败');
+      this.notify(L10n.t('读取正文失败'));
       return;
     }
     this.withBusy(() => {
       try {
         const text: string = MdToPlain.convert(content);
         if (text.length === 0) {
-          this.notify('正文为空');
+          this.notify(L10n.t('正文为空'));
           return;
         }
         ExportService.saveText(ctx, this.docName + '.txt', text, (m: string) => {
           this.notify(m);
         });
       } catch (err) {
-        this.notify('转换纯文本失败');
+        this.notify(L10n.t('转换纯文本失败'));
       }
     });
   }
@@ -205,7 +205,7 @@ export struct ExportOptionsPanel {
           DocStore.init(ctx);
           const meta = DocStore.find(ctx, this.docName);
           if (meta === undefined) {
-            this.notify('找不到文档');
+            this.notify(L10n.t('找不到文档'));
             return;
           }
           const path: string = DocStore.docAbsolutePath(ctx, meta);
@@ -216,7 +216,7 @@ export struct ExportOptionsPanel {
           // 内置文档：读取正文后写缓存再分享
           const content: string | null = ExportService.readContent(ctx, this.docName, true);
           if (content === null) {
-            this.notify('读取正文失败');
+            this.notify(L10n.t('读取正文失败'));
             return;
           }
           const encoder: util.TextEncoder = new util.TextEncoder();
@@ -228,7 +228,7 @@ export struct ExportOptionsPanel {
           });
         }
       } catch (err) {
-        this.notify('分享失败');
+        this.notify(L10n.t('分享失败'));
       }
     });
   }
@@ -286,19 +286,19 @@ export struct ExportOptionsPanel {
         .backgroundColor(this.palette.surface)
         .margin({ bottom: HwSpace.xs })
 
-        this.exportRow('导出 HTML', '自包含网页，浏览器直接打开', () => {
+        this.exportRow(L10n.t('导出 HTML'), L10n.t('自包含网页，浏览器直接打开'), () => {
           this.askExportHtml();
         })
-        this.exportRow('打印', '调起系统打印，图表自动渲染', () => {
+        this.exportRow(L10n.t('打印'), L10n.t('调起系统打印，图表自动渲染'), () => {
           this.printDoc();
         })
-        this.exportRow('导出 MD', 'Markdown 原文', () => {
+        this.exportRow(L10n.t('导出 MD'), L10n.t('Markdown 原文'), () => {
           this.doExportMd();
         })
-        this.exportRow('导出 TXT', '自动转成纯文本，任何应用都能打开', () => {
+        this.exportRow(L10n.t('导出 TXT'), L10n.t('自动转成纯文本，任何应用都能打开'), () => {
           this.doExportTxt();
         })
-        this.exportRow('分享', '以文本方式分享给其他应用', () => {
+        this.exportRow(L10n.t('分享'), L10n.t('以文本方式分享给其他应用'), () => {
           this.doShare();
         })
       }
