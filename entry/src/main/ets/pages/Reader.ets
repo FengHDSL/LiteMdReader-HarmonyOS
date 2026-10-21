@@ -425,6 +425,12 @@ export struct Reader {
   /** 抽屉公式图就绪信号（递增 → 批注卡片 key 重算 → 线性化文字换成图） */
   @State drawerFormulaTick: number = 0;
   /**
+   * 批注抽屉的**内容版本号**：每次批注落库都 +1，并进卡片 ForEach 的 key。
+   * key 里只有 ann.id 的话，"改了正文 / 换了颜色"不会让卡片重建 —— 用户看到的
+   * 就是"改完不刷新，收起侧边栏再打开才变"；列表重排时还会让新批注顶掉第一张卡。
+   */
+  @State notesRev: number = 0;
+  /**
    * 半模态显隐开关。**与 activeSheet 分离**是关键：关闭时只翻此开关，
    * activeSheet 留到 onDismiss 再清——否则 dismiss 动画期间 builder 渲染成空，
    * 用户看到一块白色空面板卡在屏幕上（真机踩过）。
@@ -2620,6 +2626,7 @@ export struct Reader {
   private commitAnnotations(list: MdAnnotation[]): void {
     this.annotations = list;
     this.renderEpoch++;
+    this.notesRev++;
     // 抽屉的公式图任务随批注增删重收（新增公式学习卡 / 公式批注 → 新任务入池）
     this.rebuildDrawerFormulaTasks();
     const ctx = this.ctx();
@@ -8321,7 +8328,7 @@ export struct Reader {
                 })
                 // **删除 / 筛选淡出**（配 animateTo 的数组变更，其余卡片滑动补位）
                 .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(240, Curve.FastOutSlowIn)))
-              }, (ann: MdAnnotation) => 'ann_' + ann.id + '_t' + this.drawerFormulaTick)
+              }, (ann: MdAnnotation) => 'ann_' + ann.id + '_t' + this.drawerFormulaTick + '_r' + this.notesRev)
 
               Text(L10n.t('脚注'))
                 .fontSize(HwType.label)
@@ -9752,7 +9759,13 @@ export struct Reader {
               }
               .width('100%')
               .alignItems(VerticalAlign.Center)
-              Text(this.tapAnn() !== null ? (this.tapAnn() as MdAnnotation).text : '')
+              // **浮条里显示批注内容**（用户要求）：note 有内容就显示 note，
+              // 只有纯荧光笔 / 波浪线这种没写正文的才退回显示选区原文。
+              // 原来这里恒取 ann.text，点批注弹出来的永远是"被标的那句话"。
+              Text(this.tapAnn() !== null ? this.stripNoteMeta(this.inlineClean(
+                (this.tapAnn() as MdAnnotation).note.length > 0
+                  ? (this.tapAnn() as MdAnnotation).note
+                  : (this.tapAnn() as MdAnnotation).text)) : '')
                 .fontSize(HwType.label + 1)
                 .fontColor(this.palette().textPrimary)
                 .maxLines(5)

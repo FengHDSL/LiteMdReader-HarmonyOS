@@ -239,6 +239,34 @@ export struct NotePanel {
       m = re.exec(this.initDraft);
     }
     this.draft = this.initDraft.replace(re, '').trim();
+    // **关联文档也剥出文本框，显示成框外的独立按钮行**（用户要求）：
+    // 正文里存的是 `[名称](doc://名称)`，编辑时如果不在这里拆出来，
+    // 文本框里就会出现一行裸标记 —— 看起来像"关联文档被改成文本显示了"。
+    const dre: RegExp = /\n?\[([^\]]*)\]\(doc:\/\/([^)]+)\)/g;
+    const restored: DocMeta[] = [];
+    let dm: RegExpExecArray | null = dre.exec(this.draft);
+    while (dm !== null) {
+      const fname: string = dm[2];
+      let meta: DocMeta | null = null;
+      for (let k = 0; k < this.docCandidates.length; k++) {
+        if (this.docCandidates[k].fileName === fname || this.docCandidates[k].name === fname) {
+          meta = this.docCandidates[k];
+          break;
+        }
+      }
+      if (meta === null) {
+        // 候选还没加载（或文档已被移除）：先按名字占位，图标行照常显示、照常可移除
+        const ghost: DocMeta = {
+          name: dm[1].length > 0 ? dm[1] : fname, fileName: fname, builtin: false,
+          size: 0, mtime: 0, charCount: 0, wordCount: 0
+        };
+        meta = ghost;
+      }
+      restored.push(meta);
+      dm = dre.exec(this.draft);
+    }
+    this.draft = this.draft.replace(dre, '').trim();
+    this.linkedDocs = restored;
     this.style = this.initStyle;
     // 编辑已有批注 → 用原色；新建 → 默认黄（宿主给 initColor）
     this.pickColor = this.initColor;
