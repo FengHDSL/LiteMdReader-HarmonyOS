@@ -2179,11 +2179,10 @@ export struct AiChat {
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
             .width('100%')
-          // **换成沉浸光感组件**（用户要求）：与全应用按钮同一套材质/降级表现
+          // **换成沉浸光感组件**（用户要求）：与全应用按钮同一套材质/降级表现。
+          // 不再强制 accent 色调（用户反馈艳蓝）→ 中性玻璃芯片
           ImmersiveChip({
             palette: this.palette(),
-            chipTint: this.palette().accent,
-            chipActive: true,
             chipLabel: L10n.t('去配置'),
             chipOnTap: () => {
               this.openSettings();
@@ -2895,7 +2894,9 @@ export struct AiChat {
               cardPadding: HwSpace.sm,
               cardMaterialShadow: false,
               cardOutline: true,
-              cardBackground: this.palette().accentSoft,
+              // **选中才染 accentSoft**（用户反馈艳蓝）：未选中回归中性 quoteBg 玻璃
+              cardBackground: this.currentModel() === m
+                ? this.palette().accentSoft : this.palette().quoteBg,
               cardClickable: true,
               cardOnTap: () => {
                 this.cfg.currentModel = m;
@@ -2959,7 +2960,9 @@ export struct AiChat {
         cardPadding: HwSpace.sm,
         cardMaterialShadow: false,
         cardOutline: true,
-        cardBackground: this.palette().accentSoft,
+        // **选中才染 accentSoft**（用户反馈艳蓝）：未选中回归中性 quoteBg 玻璃
+        cardBackground: this.cfg.reasoning === value
+          ? this.palette().accentSoft : this.palette().quoteBg,
         cardClickable: true,
         cardOnTap: () => {
           this.cfg.reasoning = value;
@@ -3030,7 +3033,7 @@ export struct AiChat {
           cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
           cardOutline: true,
-          cardBackground: this.palette().accentSoft,
+          cardBackground: this.palette().quoteBg,
           cardClickable: true,
           cardOnTap: () => {
             this.attachInAppDoc(meta);
