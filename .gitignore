@@ -59,3 +59,6 @@ signing/
 XJAU-README-修复版.md
 .tmp-df/
 .tmp-shots/
+
+# 本机签名配置留档（含签名材料，绝不入库）
+/build-profile.local.json5.bak
