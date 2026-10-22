@@ -75,6 +75,8 @@ export class SettingsMirror {
     // 学习卡的显示偏好：正反面互换 / 拼写记忆（复习页顶部芯片，换机后应保持一致）
     'reviewSwapMode', 'reviewTypingMode',
     // 引擎管理：被关闭的渲染引擎列表（逗号分隔 id，空串 = 全部开启）
+    // 标签顺序（拖动排序后持久化；换机恢复同一套次序）
+    'tagOrder',
     'disabledEngines',
     // 应用语言（外观设置里的选择器；languageTick 是会话内刷新计数，不进镜像）
     'appLanguage',

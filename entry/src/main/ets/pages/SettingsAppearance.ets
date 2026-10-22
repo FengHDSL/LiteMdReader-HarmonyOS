@@ -14,7 +14,6 @@
  * ⚠️ 主题色 / 灰字模式等键的取值会被 DesignTokens.paletteFor 与 ThemeStore 消费，
  * 键名不要再改（历史键保留兼容解析）。
  */
-import { ToastFx } from '../service/ToastFx';
 import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip } from '../material/ImmersiveCard';
 import { ImmersiveInput } from '../material/ImmersiveInput';
@@ -411,7 +410,7 @@ export struct SettingsAppearance {
   /** 轻提示（与设置中心同款：走系统 promptAction，不引额外依赖） */
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 1600);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
     } catch (err) {
       // 提示失败无副作用
     }

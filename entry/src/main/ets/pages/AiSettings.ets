@@ -13,7 +13,6 @@
  * 配置持久化在 filesDir/ai/config.json（AiChatStore），全量备份会带上。
  */
 
-import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NavLifecycle } from '../service/NavLifecycle';
@@ -221,7 +220,7 @@ export struct AiSettings {
 
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 2200);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 2200 });
     } catch (err) {
       // 忽略
     }

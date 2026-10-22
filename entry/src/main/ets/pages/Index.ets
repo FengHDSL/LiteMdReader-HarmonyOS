@@ -12,7 +12,6 @@
  *  - 封面程序化绘制（DocCover），文档名哈希选色
  */
 
-import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
@@ -55,6 +54,7 @@ import { WallpaperImage } from '../components/WallpaperImage';
 import { StatusBarBlur } from '../components/StatusBarBlur';
 import { DocImageHit, DocMeta, DocSearchHit, DocSearchResult, DocStore, PrintRoute, ReaderRoute, ShelfFolder } from '../service/DocStore';
 import { RecycleStore } from '../service/RecycleStore';
+import { TagStore } from '../service/TagStore';
 import { DocLint, LintIssue, LintReport } from '../service/DocLint';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { MdAnnotation } from '../markdown/MdTypes';
@@ -235,6 +235,8 @@ struct Index {
   @State themeEpoch: number = 0;
   /** 标签筛选：空 = 全部；非空 = 只显示带该标签的文档 */
   @State tagFilter: string = '';
+  /** 标签顺序版本：拖动排序后自增，驱动筛选条重排（顺序存在 service/TagStore） */
+  @State tagOrderRev: number = 0;
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页所有文字都从这里取 */
@@ -1959,41 +1961,87 @@ struct Index {
     return raw !== undefined && raw.indexOf(this.tagFilter) >= 0;
   }
 
-  /** 标签筛选条：全部 + 各标签（横向滚动，参考阅读页标签页设计） */
+  /** 标签按用户拖动排定的次序（TagStore 里存顺序，新标签接在后面） */
+  private orderedTags(): string[] {
+    return TagStore.ordered(this.allTags());
+  }
+
+  /** 拖动排序落库 + 触发筛选条重排 */
+  private dropTag(from: number, to: number): void {
+    const list: string[] = this.orderedTags();
+    if (from === to || from < 0 || from >= list.length) {
+      return;
+    }
+    TagStore.move(list, from, to);
+    this.getUIContext().animateTo(AppearanceFx.anim(220, Curve.FastOutSlowIn), () => {
+      this.tagOrderRev++;
+    });
+  }
+
+  /** 拖动中跟着手指走的那颗标签（List 的 itemDrag 预览） */
+  @Builder
+  dragTagChip(tag: string) {
+    ImmersiveChip({
+      palette: this.palette(),
+      chipLabel: '#' + tag,
+      chipActive: true
+    })
+  }
+
+  /** 标签筛选条：全部 + 各标签（横向滚动；**长按可拖动排序**，用户要求） */
   @Builder
   tagBar() {
-    Scroll() {
-      Row({ space: HwSpace.xs }) {
-        ImmersiveChip({
-          palette: this.palette(),
-          chipLabel: L10n.t('全部'),
-          chipActive: this.tagFilter.length === 0,
-          chipOnTap: () => {
-            this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
-              this.tagFilter = '';
-              this.refreshShelfItems();
-            });
+    Row() {
+      ImmersiveChip({
+        palette: this.palette(),
+        chipLabel: L10n.t('全部'),
+        chipActive: this.tagFilter.length === 0,
+        chipOnTap: () => {
+          this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+            this.tagFilter = '';
+            this.refreshShelfItems();
+          });
+        }
+      })
+      .margin({ right: HwSpace.xs })
+
+      // 「全部」固定在左边不参与排序（它是筛选保留项，不是真标签）
+      List({ space: HwSpace.xs }) {
+        ForEach(this.orderedTags(), (tag: string) => {
+          ListItem() {
+            ImmersiveChip({
+              palette: this.palette(),
+              chipLabel: '#' + tag,
+              chipActive: this.tagFilter === tag,
+              chipOnTap: () => {
+                this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+                  this.tagFilter = this.tagFilter === tag ? '' : tag;
+                  this.refreshShelfItems();
+                });
+              }
+            })
           }
-        })
-        ForEach(this.allTags(), (tag: string) => {
-          ImmersiveChip({
-            palette: this.palette(),
-            chipLabel: '#' + tag,
-            chipActive: this.tagFilter === tag,
-            chipOnTap: () => {
-              this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
-                this.tagFilter = this.tagFilter === tag ? '' : tag;
-                this.refreshShelfItems();
-              });
-            }
-          })
-        }, (tag: string) => tag)
+        }, (tag: string) => tag + '_' + this.tagOrderRev)
       }
-      .padding({ left: HwSpace.lg, right: HwSpace.lg })
+      .listDirection(Axis.Horizontal)
+      .scrollBar(BarState.Off)
+      .layoutWeight(1)
+      .height(38)
+      // **长按拖动排序**：List 自带的 itemDrag 就是长按触发，比自己算偏移可靠
+      .onItemDragStart((event: ItemDragInfo, itemIndex: number) => {
+        const tags: string[] = this.orderedTags();
+        const tag: string = itemIndex >= 0 && itemIndex < tags.length ? tags[itemIndex] : '';
+        return this.dragTagChip(tag);
+      })
+      .onItemDrop((event: ItemDragInfo, itemIndex: number, insertIndex: number, isSuccess: boolean) => {
+        if (isSuccess) {
+          this.dropTag(itemIndex, insertIndex);
+        }
+      })
     }
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
     .width('100%')
+    .padding({ left: HwSpace.lg, right: HwSpace.lg })
+    .alignItems(VerticalAlign.Center)
     // 随分页切换渐入渐出（与页名同一节奏）
     .transition(TransitionEffect.OPACITY.animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
   }
@@ -2203,7 +2251,7 @@ struct Index {
 
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 1800);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
     } catch (err) {
       // 提示失败不影响主流程
     }
@@ -2287,7 +2335,8 @@ struct Index {
   private openEditorNew(): void {
     this.shelfVisible = false;
     // **当前标签页下新建 → 记下标签**，Editor 创建成功后自动打上（用户要求）
-    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter);
+    // 「全部」筛选（空串）不记标签：否则会在"全部"下新建时也硬塞一个空标签
+    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter.length > 0 ? this.tagFilter : '');
     // 新建后回到书架：让新封面带动画进场（见 refresh 里的 animateNextRefresh）
     this.animateNextRefresh = true;
     this.pushPage('pages/Editor');
@@ -6767,6 +6816,8 @@ struct Index {
     }
     this.shelfVisible = false;
     this.animateNextRefresh = true;
+    // 模板新建同样要继承当前标签（「全部」下不继承）
+    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter.length > 0 ? this.tagFilter : '');
     // **不再提前落盘**（用户反馈：选「直接离开 / 不保存」却多出一篇文档）：
     // 模板正文经路由传给编辑器，保存时才真正创建 —— 不保存 = 什么都不留。
     const route: ReaderRoute = { seed: body };
@@ -7006,6 +7057,10 @@ struct Index {
         const meta: DocMeta | null = DocStore.importFromUri(c, uris[k]);
         if (meta !== null) {
           ok++;
+          // **当前标签页下拖入导入 → 自动打上该标签**（「全部」下不打）
+          if (this.tagFilter.length > 0) {
+            DocStore.setTags(c, meta.name, [this.tagFilter]);
+          }
           if (first === null) {
             first = meta;
           }

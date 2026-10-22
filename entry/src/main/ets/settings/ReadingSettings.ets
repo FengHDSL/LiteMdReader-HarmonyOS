@@ -13,7 +13,6 @@
  * 面板在哪个页面打开都一样，因为主窗口句柄由 AppWindow 持有。
  */
 
-import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
@@ -343,7 +342,7 @@ export struct ReadingSettingsPanel {
 
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 1500);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1500 });
     } catch (err) {
       // 提示失败不影响主流程
     }

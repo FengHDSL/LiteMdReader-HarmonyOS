@@ -17,7 +17,6 @@
  * 会话历史持久化在 filesDir/ai/sessions/（AiChatStore）。
  */
 
-import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { inputMethod } from '@kit.IMEKit';
@@ -604,7 +603,7 @@ export struct AiChat {
 
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 2000);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 2000 });
     } catch (err) {
       // 忽略
     }

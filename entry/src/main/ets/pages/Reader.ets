@@ -12,10 +12,8 @@
  * 保证抽屉的玻璃质感和卡片完全同源。
  */
 
-import { ToastFx } from '../service/ToastFx';
 import { TagStyle } from '../service/TagStyle';
 import { common } from '@kit.AbilityKit';
-import { LengthMetrics } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
@@ -57,6 +55,7 @@ import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
+import { TagStore } from '../service/TagStore';
 import { RecycleStore } from '../service/RecycleStore';
 import { applySystemBarTheme, applyAppColorMode, setKeepScreenOn, setWindowBrightnessLevel,
   syncSystemDarkFromContext, markThemeApplied, themeChangedSince,
@@ -3885,7 +3884,7 @@ export struct Reader {
 
   private toast(message: string): void {
     try {
-      ToastFx.show(this.getUIContext(), message, 1800);
+      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
     } catch (err) {
       // 提示失败不影响主流程
     }
@@ -4962,12 +4961,55 @@ export struct Reader {
   }
 
   /** **标签配色**（用户要求：信息卡里的标签要带颜色）：按序号循环，深浅模式各自配一组可读色 */
-  private tagColor(i: number): string {
+  /**
+   * 标签配色：**按标签名的稳定哈希取色**（拖动排序后颜色不能跟着位置乱跳，
+   * 否则同一个标签换个位置就换了颜色，看着像换了个标签）。
+   */
+  private tagColor(name: string): string {
     const dark: boolean = this.isDark();
     const colors: string[] = dark
       ? ['#FF7ED957', '#FF6FB7FF', '#FFFFD54F', '#FFFF8A80', '#FFC8A2FF', '#FF6FE3C4']
       : ['#FF1B7A3D', '#FF1565C0', '#FF9A6B00', '#FFB3261E', '#FF6B3FA0', '#FF00796B'];
-    return colors[i % colors.length];
+    let h: number = 0;
+    for (let k = 0; k < name.length; k++) {
+      h = (h * 31 + name.charCodeAt(k)) % 100003;
+    }
+    return colors[h % colors.length];
+  }
+
+  /** 本文档的标签按用户的全局顺序排（TagStore） */
+  private orderedDocTags(): string[] {
+    return TagStore.ordered(this.docTags);
+  }
+
+  /** 拖动排序：既写回本文档，也更新全局标签顺序 */
+  private dropDocTag(from: number, to: number): void {
+    const list: string[] = this.orderedDocTags();
+    if (from === to || from < 0 || from >= list.length) {
+      return;
+    }
+    const next: string[] = TagStore.move(list, from, to);
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+      this.docTags = next;
+    });
+    const c = this.ctx();
+    if (c !== null) {
+      DocStore.setTags(c, this.docName, next);
+    }
+  }
+
+  /** 拖动中的标签芯片（List itemDrag 预览） */
+  @Builder
+  dragTagPill(tag: string) {
+    Text('#' + tag)
+      .fontFamily(HwFont.resolve(this.uiFontKey))
+      .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+      .fontColor(this.tagColor(tag))
+      .maxLines(1)
+      .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
+      .borderRadius(HwRadius.pill)
+      .backgroundColor(withAlpha(this.tagColor(tag), this.isDark() ? '24' : '1A'))
+      .border({ width: 1, color: withAlpha(this.tagColor(tag), '40') })
   }
 
   /** 打开标签编辑面板并读入当前文档标签 */
@@ -4991,6 +5033,12 @@ export struct Reader {
   private addTag(): void {
     const v: string = this.tagDraft.trim();
     if (v.length === 0) {
+      return;
+    }
+    // **「全部」是书架筛选条的保留项**（用户要求）：真拿它当标签会与筛选语义打架
+    if (v === '全部' || v === L10n.t('全部')) {
+      this.tagDraft = '';
+      this.toast(L10n.t('「全部」是筛选保留词，请换一个标签名'));
       return;
     }
     for (let k = 0; k < this.docTags.length; k++) {
@@ -5629,44 +5677,57 @@ export struct Reader {
       .width('100%')
 
       if (this.docTags.length > 0) {
-        // **标签之间留间隙**（用户要求：不要贴在一起）——Flex 的 space 同时管行内与换行后的行距
-        Flex({
-          wrap: FlexWrap.Wrap,
-          space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
-        }) {
-          ForEach(this.docTags, (tag: string, ti: number) => {
-            Row({ space: 8 }) {
-              Text('#' + tag)
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                // **按序号取色**（用户要求：标签带颜色）
-                .fontColor(this.tagColor(ti))
-                // **长标签单行省略 + 宽度封顶**（同上：胶囊必须包住内容）
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .constraintSize({ maxWidth: '86%' })
-                .layoutWeight(1)
-              Text('×')
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
-                .fontColor(this.palette().textTertiary)
-                .onClick(() => {
-                  this.removeTag(tag);
-                })
+        // **长按拖动排序**（用户要求）：List 自带的 itemDrag 就是长按触发；
+        // 横向 List 单行滚动，标签再多也不会把面板顶高（原来 Flex 换行会撑成好几行）。
+        List({ space: 8 }) {
+          ForEach(this.orderedDocTags(), (tag: string) => {
+            ListItem() {
+              Row({ space: 8 }) {
+                Text('#' + tag)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                  // **按标签名取色**（用户要求：标签带颜色；拖动后颜色不跟着位置变）
+                  .fontColor(this.tagColor(tag))
+                  // **长标签单行省略 + 宽度封顶**（同上：胶囊必须包住内容）
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .constraintSize({ maxWidth: '86%' })
+                  .layoutWeight(1)
+                Text('×')
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
+                  .fontColor(this.palette().textTertiary)
+                  .onClick(() => {
+                    this.removeTag(tag);
+                  })
+              }
+              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
+              .borderRadius(HwRadius.pill)
+              // 淡底 + 同色描边（深浅模式都清楚）
+              .backgroundColor(withAlpha(this.tagColor(tag), this.isDark() ? '24' : '1A'))
+              .border({ width: 1, color: withAlpha(this.tagColor(tag), '40') })
+              // **出现 / 消失的过渡**（用户要求）：淡入 + 轻微放大，删除时反向收缩
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
+                .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
             }
-            .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
-            .borderRadius(HwRadius.pill)
-            // 淡底 + 同色描边（深浅模式都清楚）
-            .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
-            .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
-            // **出现 / 消失的过渡**（用户要求）：淡入 + 轻微放大，删除时反向收缩
-            .transition(TransitionEffect.OPACITY
-              .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
-              .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
           }, (tag: string) => tag)
         }
+        .listDirection(Axis.Horizontal)
+        .scrollBar(BarState.Off)
         .width('100%')
+        .height(38)
+        .onItemDragStart((event: ItemDragInfo, itemIndex: number) => {
+          const tags: string[] = this.orderedDocTags();
+          const tag: string = itemIndex >= 0 && itemIndex < tags.length ? tags[itemIndex] : '';
+          return this.dragTagPill(tag);
+        })
+        .onItemDrop((event: ItemDragInfo, itemIndex: number, insertIndex: number, isSuccess: boolean) => {
+          if (isSuccess) {
+            this.dropDocTag(itemIndex, insertIndex);
+          }
+        })
         .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
       } else {
         Text(L10n.t('还没有标签。添加后：书架顶栏可按标签筛选，学习卡左上角会显示所属标签。'))
@@ -5856,19 +5917,19 @@ export struct Reader {
           // **信息卡里的文档标签**（用户要求：显示出来并带颜色）
           if (this.docTags.length > 0) {
             Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach(this.docTags, (tag: string, ti: number) => {
+              ForEach(this.orderedDocTags(), (tag: string) => {
                 Text('#' + tag)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                  .fontColor(this.tagColor(ti))
+                  .fontColor(this.tagColor(tag))
                   // **长标签单行省略 + 宽度封顶**（用户反馈：几十字的长标签胶囊包不住内容）
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .constraintSize({ maxWidth: '100%' })
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                   .borderRadius(HwRadius.pill)
-                  .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
-                  .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
+                  .backgroundColor(withAlpha(this.tagColor(tag), this.isDark() ? '24' : '1A'))
+                  .border({ width: 1, color: withAlpha(this.tagColor(tag), '40') })
                   .margin({ right: HwSpace.xxs, bottom: HwSpace.xxs })
                   // 信息卡的标签同样淡入淡出（与标签面板同一套动效）
                   .transition(TransitionEffect.OPACITY

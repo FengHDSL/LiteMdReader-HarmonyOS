@@ -138,6 +138,8 @@ export default class EntryAbility extends UIAbility {
     PersistentStorage.persistProp('cardTint', true);
     PersistentStorage.persistProp('immersivePressGlow', true);
     PersistentStorage.persistProp('cardGlowTouch', true);
+    // 标签拖动排序后的顺序（JSON 字符串数组，见 service/TagStore.ets）
+    PersistentStorage.persistProp('tagOrder', '[]');
     PersistentStorage.persistProp('customAccentFull', false);
     PersistentStorage.persistProp('pageBgTint', true);
     // **手机端横屏开关**（外观设置里那一行，只在手机上显示）：默认关 = 锁竖屏
