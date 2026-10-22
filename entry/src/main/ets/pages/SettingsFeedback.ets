@@ -16,7 +16,7 @@ import { bundleManager, common } from '@kit.AbilityKit';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
 import { L10n } from '../service/L10n';
 import { NavLifecycle } from '../service/NavLifecycle';
-import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
+import { ImmersiveCard, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { MeoWLink } from '../service/MeoWLink';
 import { SettingsShell } from './SettingsShell';
 import {
@@ -60,6 +60,11 @@ export struct SettingsFeedback {
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 当前版本号（拼进反馈模板，作者一眼知道是哪一版） */
   @State versionName: string = '';
+  /**
+   * 当前展开说明的渠道（空串 = 全部收起）。渠道说明较长，两行会截断看不清，
+   * 点文字区展开 / 收起（一次只展开一个，避免卡片被撑得过长）。
+   */
+  @State openKey: string = '';
 
   aboutToAppear(): void {
     try {
@@ -223,56 +228,86 @@ export struct SettingsFeedback {
     this.copyText(text, L10n.t('已复制反馈模板，填完贴到下面任一渠道'));
   }
 
+  /** 展开 / 收起某个渠道的说明（带高度过渡） */
+  private toggleChannel(k: string): void {
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+      this.openKey = this.openKey === k ? '' : k;
+    });
+  }
+
   /** 一个渠道行：图标 + 名称 + 说明 + 右侧箭头 */
   @Builder
-  channelRow(icon: Resource, title: string, desc: string, tint: string, onTap: () => void) {
+  channelRow(idKey: string, logo: Resource, title: string, desc: string, tint: string, onTap: () => void) {
     Row({ space: HwSpace.sm }) {
-      // 图标底盘：淡色圆角方块（深浅两套都清楚）
-      Row() {
-        SymbolGlyph(icon)
-          .fontSize(17)
-          .fontColor([tint])
-      }
-      .width(34)
-      .height(34)
-      .justifyContent(FlexAlign.Center)
-      .borderRadius(HwRadius.inner)
-      .backgroundColor(withAlpha(tint, this.isDark() ? '26' : '16'))
+      // 品牌图标（128px 压缩图，圆角裁切后与系统图标同观感）
+      Image(logo)
+        .width(30)
+        .height(30)
+        .borderRadius(9)
+        .clip(true)
+        .objectFit(ImageFit.Cover)
+        .draggable(false)
 
-      Column({ space: 2 }) {
-        Text(title)
-          .fontFamily(HwFont.resolve(this.uiFontKey))
-          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-          .fontColor(this.palette().textPrimary)
-          .width('100%')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      // 文字区：**点这里展开 / 收起说明**（说明两行会截断，用户要求可展开看全）
+      Column({ space: 3 }) {
+        Row({ space: 4 }) {
+          Text(title)
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+            .fontColor(this.palette().textPrimary)
+            .layoutWeight(1)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+          // 展开指示：收起时朝下、展开时朝上（小图标，不抢视线）
+          if (this.openKey === idKey) {
+            SymbolGlyph($r('sys.symbol.chevron_up'))
+              .fontSize(12)
+              .fontColor([this.palette().textTertiary])
+          } else {
+            SymbolGlyph($r('sys.symbol.chevron_down'))
+              .fontSize(12)
+              .fontColor([this.palette().textTertiary])
+          }
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
         Text(desc)
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
-          .maxLines(2)
+          // 展开后不再限行；收起时两行 + 省略号
+          .maxLines(this.openKey === idKey ? 12 : 2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .lineHeight(HwFont.sx(HwType.caption * 1.5, this.uiFontScale))
+          .lineHeight(HwFont.sx(HwType.caption * 1.55, this.uiFontScale))
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
+      .onClick(() => {
+        this.toggleChannel(idKey);
+      })
 
-      // 跳转图标：与「反向链接」「标签文档」同款 arrow_up_right（主题色，一眼可点）
-      SymbolGlyph($r('sys.symbol.arrow_up_right'))
-        .fontSize(16)
-        .fontColor([this.palette().accent])
+      // 跳转：**圆形沉浸光感按钮**（材质底盘 + 主题色箭头），一眼看出是"去那边"
+      ImmersiveIconButton({
+        buttonSize: 32,
+        buttonMaterialShadow: false,
+        palette: this.palette(),
+        buttonOnTap: () => {
+          onTap();
+        }
+      }) {
+        SymbolGlyph($r('sys.symbol.arrow_up_right'))
+          .fontSize(16)
+          .fontColor([tint])
+      }
     }
     .width('100%')
-    .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
+    .padding({ left: HwSpace.sm, right: HwSpace.xs, top: 10, bottom: 10 })
     .borderRadius(HwRadius.inner)
     .border({ width: 1, color: this.palette().divider })
     .alignItems(VerticalAlign.Center)
-    .onClick(() => {
-      onTap();
-    })
   }
 
   /** 深浅判定走全仓唯一入口（isDarkTheme），别在这里另写一套口径 */
@@ -352,31 +387,31 @@ export struct SettingsFeedback {
             .fontColor(this.palette().textSecondary)
             .width('100%')
 
-          this.channelRow($r('sys.symbol.link'), L10n.t('GitHub Issues'),
+          this.channelRow('github', $r('app.media.brand_github'), L10n.t('GitHub Issues'),
             L10n.t('最正式的去处：可贴长文与代码块、能跟踪进度、也方便别人搜到同样问题'),
             C_GITHUB, () => {
               this.openUrl(GITHUB_ISSUE);
             })
 
-          this.channelRow($r('sys.symbol.bag'), L10n.t('华为应用市场'),
+          this.channelRow('store', $r('app.media.brand_appgallery'), L10n.t('华为应用市场'),
             L10n.t('应用市场搜索「澄笺」→ 进入详情页点「添加心愿」；心愿数会直接影响排期优先级'),
             C_STORE, () => {
               this.openStore();
             })
 
-          this.channelRow($r('sys.symbol.hammer_fill'), L10n.t('AppTest'),
+          this.channelRow('apptest', $r('app.media.brand_apptest'), L10n.t('AppTest'),
             L10n.t('打开 AppTest → 选择「澄笺」→ 发送反馈（内测版本的问题走这条最快）'),
             C_APPTEST, () => {
               this.copyText('澄笺', L10n.t('已复制「澄笺」，去 AppTest 里搜索它'));
             })
 
-          this.channelRow($r('sys.symbol.paperplane'), L10n.t('MeoW'),
+          this.channelRow('meow', $r('app.media.brand_meow'), L10n.t('MeoW'),
             L10n.t('打开 MeoW → 搜索「澄笺」并点进频道 → 私信按钮 → 编辑发送（作者会直接收到）'),
             C_MEOW, () => {
               this.openMeoW();
             })
 
-          this.channelRow($r('sys.symbol.envelope'), L10n.t('邮件'),
+          this.channelRow('mail', $r('app.media.brand_mail'), L10n.t('邮件'),
             FEEDBACK_MAIL + L10n.t('（附截图最方便；点这一行直接唤起邮件应用）'),
             C_MAIL, () => {
               this.mailTo();

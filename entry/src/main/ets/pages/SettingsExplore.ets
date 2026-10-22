@@ -32,12 +32,6 @@ import {
   HwFont
 } from '../theme/DesignTokens';
 
-/**
- * 澄笺在 HAP 资源站上的详情页（用户指定）= **测试版渠道**：
- * 检查更新时解析它的版本徽标（fa-code-branch 后的 vX.Y.Z），结果弹窗里「前往更新」也跳这里。
- * 正式版走应用市场（`updateManager`），不占网址。
- */
-const UPDATE_SITE: string = 'https://www.sydxky.cn/detail.php?id=956';
 
 /** 平板分栏内嵌法务文档的 Web 高度（vp）：420 在横屏下太矮，正文只剩几行 */
 const EMBEDDED_LEGAL_HEIGHT: number = 560;
@@ -337,30 +331,29 @@ export struct SettingsExplore {
    * （`updateManager.showUpdateDialog`）；测试版有更新（或两个都有）→ 去资源站。
    */
   private showCheckResult(res: UpdateCheckAllResult): void {
-    const goStore: boolean = res.store.hasUpdate && !res.beta.hasUpdate;
+    // **测试版有更新 → 不再提供资源站下载入口**（用户要求）：
+    // 弹窗只报版本，按钮只剩一个绿色的「知道了」。
+    // 只有正式版（市场）有更新时才保留「在市场更新」→ 官方更新框。
+    const storeOnly: boolean = res.hasUpdate && !res.beta.hasUpdate;
     // 按钮显式写成 promptAction.Button[]：ArkTS 对对象字面量要求能从上下文推出类型，
     // 用三元返回两个不同长度的数组字面量最容易在构建时炸
     const btns: promptAction.Button[] = [];
-    if (res.hasUpdate) {
+    if (storeOnly) {
       btns.push({
-        text: goStore ? L10n.t('在市场更新') : L10n.t('前往更新'),
+        text: L10n.t('在市场更新'),
         color: this.palette().accent
       });
     }
     btns.push({
-      text: res.hasUpdate ? L10n.t('稍后再说') : L10n.t('知道了'),
-      color: this.palette().textSecondary
+      text: storeOnly ? L10n.t('稍后再说') : L10n.t('知道了'),
+      color: '#FF2E7D32'
     });
     this.getUIContext().getPromptAction().showDialog({
       title: res.hasUpdate ? L10n.t('发现新版本') : L10n.t('检查更新'),
       message: res.lines.join('\n'),
       buttons: btns
     }).then((dr: promptAction.ShowDialogSuccessResponse) => {
-      if (!res.hasUpdate || dr.index !== 0) {
-        return;
-      }
-      if (!goStore) {
-        this.openLink(UPDATE_SITE);
+      if (!storeOnly || dr.index !== 0) {
         return;
       }
       const ctx = this.hostCtx();
