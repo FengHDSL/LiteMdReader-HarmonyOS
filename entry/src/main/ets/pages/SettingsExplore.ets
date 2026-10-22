@@ -474,7 +474,8 @@ export struct SettingsExplore {
             }) {
               SymbolGlyph($r('sys.symbol.heart_fill'))
                 .fontSize(14)
-                .fontColor(['#FFB26A00'])
+                // **粉色**（与 chip 同色）
+                .fontColor(['#FFE91E63'])
             }
           }
           .width('100%')

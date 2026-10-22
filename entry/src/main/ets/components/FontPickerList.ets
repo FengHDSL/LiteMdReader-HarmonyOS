@@ -1,3 +1,4 @@
+import { ImmersiveCard } from '../material/ImmersiveCard';
 /**
  * 澄笺 · 字体列表选择器（阅读正文与界面字体共用）
  * ==============================================
@@ -388,6 +389,14 @@ export struct FontPickerList {
   }
 
   build() {
+    // **沉浸光感**（用户要求）：列表用 ImmersiveCard 承载——
+    // 光感开时是玻璃材质、关时自动降级实色不透明；Scroll 自身底色透明让材质透出。
+    ImmersiveCard({
+      cardRadius: HwRadius.inner,
+      cardPadding: 0,
+      cardMaterialShadow: false,
+      palette: this.palette
+    }) {
     Scroll() {
       Column({ space: 2 }) {
         // ── 顶部：总数 + 刷新（重扫系统字体表并写回磁盘索引）──
@@ -472,16 +481,15 @@ export struct FontPickerList {
     .constraintSize({ maxHeight: 260 })
     .borderRadius(HwRadius.inner)
     .clip(true)
-    .backgroundColor(this.palette.surface)
-    // **光感关时包边加粗**（用户要求，与上面的字体选择按钮同款）
-    .border({
-      width: this.fxLookOn ? 1 : 1.5,
-      color: this.fxLookOn ? this.palette.surfaceBorder : this.palette.divider
-    })
+    // 透明底：材质由 ImmersiveCard 承载（光感关时卡片本身是实色）
+    .backgroundColor('#00000000')
+    // **包边恒定 1.5vp**（与字体选择按钮同款，光感开关不影响）
+    .border({ width: 1.5, color: this.palette.surfaceBorder })
     // **展开 / 收起动画**：淡入 + 竖向轻微缩放。挂在组件自己这层 Scroll 上，
     // 宿主只管用 if 控制出现与消失，阅读设置与外观设置两处共用同一份动效。
     .transition(TransitionEffect.OPACITY
       .combine(TransitionEffect.scale({ x: 0.98, y: 0.86 }))
       .animation(AppearanceFx.anim(200, Curve.FastOutSlowIn)))
+    }
   }
 }

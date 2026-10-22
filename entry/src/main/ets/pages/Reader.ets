@@ -4955,7 +4955,16 @@ export struct Reader {
     return meta.fileName.toLowerCase().endsWith('.txt') ? 'TXT' : 'MD';
   }
 
-  /** 收藏 / 取消收藏（信息卡右上角爱心）。 */    /** 打开标签编辑面板并读入当前文档标签 */
+  /** **标签配色**（用户要求：信息卡里的标签要带颜色）：按序号循环，深浅模式各自配一组可读色 */
+  private tagColor(i: number): string {
+    const dark: boolean = this.isDark();
+    const colors: string[] = dark
+      ? ['#FF7ED957', '#FF6FB7FF', '#FFFFD54F', '#FFFF8A80', '#FFC8A2FF', '#FF6FE3C4']
+      : ['#FF1B7A3D', '#FF1565C0', '#FF9A6B00', '#FFB3261E', '#FF6B3FA0', '#FF00796B'];
+    return colors[i % colors.length];
+  }
+
+  /** 打开标签编辑面板并读入当前文档标签 */
   private openTagEditor(): void {
     const c = this.ctx();
     this.docTags = [];
@@ -5604,12 +5613,13 @@ export struct Reader {
 
       if (this.docTags.length > 0) {
         Flex({ wrap: FlexWrap.Wrap }) {
-          ForEach(this.docTags, (tag: string) => {
+          ForEach(this.docTags, (tag: string, ti: number) => {
             Row({ space: 8 }) {
               Text('#' + tag)
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                .fontColor(this.palette().accent)
+                // **按序号取色**（用户要求：标签带颜色）
+                .fontColor(this.tagColor(ti))
               Text('×')
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
@@ -5621,7 +5631,9 @@ export struct Reader {
             }
             .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
             .borderRadius(HwRadius.pill)
-            .border({ width: 1, color: this.palette().divider })
+            // 淡底 + 同色描边（深浅模式都清楚）
+            .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
+            .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
           }, (tag: string) => tag)
         }
         .width('100%')
@@ -5807,6 +5819,24 @@ export struct Reader {
               })
           }
           .width('100%')
+
+          // **信息卡里的文档标签**（用户要求：显示出来并带颜色）
+          if (this.docTags.length > 0) {
+            Flex({ wrap: FlexWrap.Wrap }) {
+              ForEach(this.docTags, (tag: string, ti: number) => {
+                Text('#' + tag)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
+                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                  .fontColor(this.tagColor(ti))
+                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+                  .borderRadius(HwRadius.pill)
+                  .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
+                  .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
+                  .margin({ right: HwSpace.xxs, bottom: HwSpace.xxs })
+              }, (tag: string) => 'meta_' + tag)
+            }
+            .width('100%')
+          }
 
           // 封面缩略图（程序化书封，与书架同一套）
           Row() {

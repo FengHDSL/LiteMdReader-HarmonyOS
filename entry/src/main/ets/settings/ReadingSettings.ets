@@ -37,7 +37,7 @@ import { materialDiagnostics } from '../material/SystemMaterial';
 import { FontStore } from '../service/FontStore';
 import { FontPickerList } from '../components/FontPickerList';
 import { setKeepScreenOn, setWindowBrightnessLevel } from '../service/AppWindow';
-import { ImmersiveChip } from '../material/ImmersiveCard';
+import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { GEN_WALLPAPERS, GenWallpaperDef } from '../theme/GenWallpaper';
@@ -607,6 +607,30 @@ export struct ReadingSettingsPanel {
         // 字体：**列表选择器**（用户要求，替换原来两排横向滚动芯片）。
         // 标题行显示当前字体并用它自己渲染，点一下展开 / 收起；列表里一项一个字体。
         Column({ space: HwSpace.xs }) {
+          // **沉浸光感**（用户要求）：按钮用 ImmersiveCard 承载——
+          // 光感开时是玻璃材质、关时自动降级为实色不透明（同一组件内部判档）。
+          ImmersiveCard({
+            cardRadius: HwRadius.inner,
+            cardPadding: 0,
+            cardMaterialShadow: false,
+            palette: this.palette(),
+            cardClickable: true,
+            cardOnTap: () => {
+              if (this.fontListOpen) {
+                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                  this.fontListOpen = false;
+                });
+                return;
+              }
+              this.fontLoadingZh = true;
+              setTimeout(() => {
+                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                  this.fontLoadingZh = false;
+                  this.fontListOpen = true;
+                });
+              }, 320);
+            }
+          }) {
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('中文字体'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -632,32 +656,11 @@ export struct ReadingSettingsPanel {
             }
           }
           .width('100%')
-          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
-          .backgroundColor(this.palette().surface)
-          // **光感关时包边加粗**（用户要求）：实色卡片靠这圈边与背景区分
-          .border({
-            width: this.fxLookOn ? 1 : 1.5,
-            color: this.fxLookOn ? this.palette().surfaceBorder : this.palette().divider
-          })
-          .onClick(() => {
-            // **流光立即中断 + 提示加载 → 加载后展开**（用户要求）
-            if (this.fontListOpen) {
-              // **卡片收缩带过渡**（用户要求）
-              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                this.fontListOpen = false;
-              });
-              return;
-            }
-            this.fontLoadingZh = true;
-            setTimeout(() => {
-              // **卡片拉长带过渡**（用户要求）：高度变化走 animateTo
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.fontLoadingZh = false;
-                this.fontListOpen = true;
-              });
-            }, 320);
-          })
+          // **包边恒定 1.5vp**：光感开时压在材质上、关时压在实色上，两种状态都有清楚一圈
+          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          }
 
           if (this.fontLoadingZh) {
             Text(L10n.t('正在加载字体…'))
@@ -686,6 +689,29 @@ export struct ReadingSettingsPanel {
           }
 
           // ── 英数字体：拉丁与数字用这一款，CJK 仍走上面那款中文字体 ──
+          // **沉浸光感**（同中文按钮）：材质承载，光感关自动实色
+          ImmersiveCard({
+            cardRadius: HwRadius.inner,
+            cardPadding: 0,
+            cardMaterialShadow: false,
+            palette: this.palette(),
+            cardClickable: true,
+            cardOnTap: () => {
+              if (this.fontEnListOpen) {
+                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                  this.fontEnListOpen = false;
+                });
+                return;
+              }
+              this.fontLoadingEn = true;
+              setTimeout(() => {
+                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                  this.fontLoadingEn = false;
+                  this.fontEnListOpen = true;
+                });
+              }, 320);
+            }
+          }) {
           Row({ space: HwSpace.xs }) {
             Text(L10n.t('英数字体'))
               .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -711,29 +737,11 @@ export struct ReadingSettingsPanel {
             }
           }
           .width('100%')
-          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
+          .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
-          .backgroundColor(this.palette().surface)
-          // **光感关时包边加粗**（同上）
-          .border({
-            width: this.fxLookOn ? 1 : 1.5,
-            color: this.fxLookOn ? this.palette().surfaceBorder : this.palette().divider
-          })
-          .onClick(() => {
-            if (this.fontEnListOpen) {
-              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                this.fontEnListOpen = false;
-              });
-              return;
-            }
-            this.fontLoadingEn = true;
-            setTimeout(() => {
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.fontLoadingEn = false;
-                this.fontEnListOpen = true;
-              });
-            }, 320);
-          })
+          // **包边恒定 1.5vp**（同上）
+          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          }
 
           if (this.fontLoadingEn) {
             Text(L10n.t('正在加载字体…'))
