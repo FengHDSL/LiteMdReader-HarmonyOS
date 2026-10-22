@@ -20,6 +20,7 @@
 
 import { LengthMetrics } from '@kit.ArkUI';
 import { getImmersiveMaterial, carrierModifier, appAppearanceDark } from './SystemMaterial';
+import { opaqueTintOnSurface } from '../theme/DesignTokens';
 import { appearanceMaterialType } from './SystemMaterial';
 import { HwRadius, HwSpace, LIGHT_PALETTE, ReaderPalette, barFrostColor, withAlpha, HwFont } from '../theme/DesignTokens';
 import { AppearanceFx } from '../service/AppearanceFx';
@@ -232,10 +233,11 @@ export struct ImmersiveCard {
       return this.cardBackground.length > 0 ? withAlpha(this.cardBackground, '8C') : '#00000000';
     }
     if (this.cardBackground.length > 0) {
-      // **强制不透明**（2026-10-20）：调用方给的底色有时是半透明薄染
-      // （如批注选择胶囊的 26 透明度染色），光感关时被当卡片底色直接铺开 = 整卡"透明"。
-      // 保留色相、把 alpha 段提到 FF。
-      return withAlpha(this.cardBackground, 'FF');
+      // **染色铺在实色 surface 上**（2026-10-20 首修：半透明薄染直接铺开 = 整卡"透明"）。
+      // 2026-10-22 再修（用户反馈"艳蓝"）：不再把 alpha 提到 FF——那会把 12% 的
+      // accentSoft 薄染放大成饱和实色；改为按其自身浓度混在实色 surface 上，
+      // 光感关与开的浓度一致，且依然不透出底层。
+      return opaqueTintOnSurface(this.palette.surface, this.cardBackground);
     }
     // 云母磨砂：与顶/底栏同一套配方（barFrostColor，随「玻璃通透程度」变化），
     // 半透明能看到壁纸透出来——实色纯底会像一块灰板贴在壁纸上。

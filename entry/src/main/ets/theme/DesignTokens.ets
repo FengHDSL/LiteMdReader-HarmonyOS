@@ -389,6 +389,22 @@ function blendRgb(base: string, over: string, t: number): string {
     + toHex2(br[1] + (or[1] - br[1]) * t) + toHex2(br[2] + (or[2] - br[2]) * t);
 }
 
+/**
+ * 把半透明染色铺到实色 surface 上，输出**不透明**色。
+ *
+ * 用途：沉浸光感关闭时，ImmersiveCard 的 cardBackground（调用方给的薄染，如 12% 的
+ * accentSoft）不再直接把 alpha 提到 FF——那会把薄染放大成饱和实色（用户反馈"艳蓝"）；
+ * 改为按其自身浓度混在实色 surface 上，光感关与开的观感一致，且不透出底层。
+ */
+export function opaqueTintOnSurface(surface: string, tint: string): string {
+  const n: string = normalizeHex8(tint);
+  if (n.length === 0) {
+    return withAlpha(surface, 'FF');
+  }
+  const a: number = parseInt(n.substring(1, 3), 16) / 255;
+  return blendRgb(withAlpha(surface, 'FF'), n, a);
+}
+
 function copyPalette(p: ReaderPalette): ReaderPalette {
   const q: ReaderPalette = {
     pageTop: p.pageTop, pageBottom: p.pageBottom, glowCool: p.glowCool, glowWarm: p.glowWarm,
