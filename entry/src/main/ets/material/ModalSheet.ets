@@ -33,6 +33,7 @@
  *    这里统一抬到不透明再下发。
  */
 
+import { display } from '@kit.ArkUI';
 import { withAlpha } from '../theme/DesignTokens';
 
 /**
@@ -51,17 +52,48 @@ import { withAlpha } from '../theme/DesignTokens';
  */
 @Component
 export struct SheetKeyboardLift {
+  /** 键盘真实占位高度（px），AppWindow 的 avoidAreaChange(TYPE_KEYBOARD) 广播 */
+  @StorageProp('keyboardPx') kbPx: number = 0;
+
   @Builder
   doNothing() {
   }
 
   @BuilderParam content: () => void = this.doNothing;
 
+  /**
+   * **只在大屏横屏（居中窗口形态）垫键盘高度**（用户反馈：横屏点输入框面板不抬高）：
+   *  · 竖屏手机形态是底部面板，系统自己把面板让到输入法上方，再垫就是重复抬高
+   *    （2026-10-21 删掉那段 padding 的教训）；
+   *  · 横屏 / 平板居中窗口系统**不做**避让，必须自己垫。
+   * 判横屏用屏幕宽高比（旋转后 width > height），不依赖窗口对象。
+   */
+  private isLandscape(): boolean {
+    try {
+      const d: display.Display = display.getDefaultDisplaySync();
+      return d.width > d.height;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  private liftVp(): number {
+    if (this.kbPx <= 0) {
+      return 0;
+    }
+    if (!this.isLandscape()) {
+      return 0;
+    }
+    return this.getUIContext().px2vp(this.kbPx);
+  }
+
   build() {
     Column() {
       this.content()
     }
     .width('100%')
+    .padding({ bottom: this.liftVp() })
+    .animation({ duration: 180, curve: Curve.FastOutSlowIn })
   }
 }
 

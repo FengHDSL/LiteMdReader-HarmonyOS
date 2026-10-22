@@ -53,6 +53,7 @@ import { TableEditorDialog } from '../components/TableEditorDialog';
 import { AutoScrollTile } from '../components/AutoScrollTile';
 import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { TagStore } from '../service/TagStore';
@@ -9520,14 +9521,11 @@ export struct Reader {
       // 等于直接压在文字上。backdropBlur 只吃状态栏这一段高度 ——
       // 与书架 cellBlur / 长按面板遮罩同一档（6），不是整屏实时模糊，
       // 后者是《模糊场景性能优化》点名导致转场卡顿的写法（见 components/WallpaperImage.ets）。
-      if (!this.immersiveRead) {
-        Column()
-          .width('100%')
-          .height(this.padTop())
-          .position({ x: 0, y: 0 })
-          .backdropBlur(6)
-          .hitTestBehavior(HitTestMode.None)
-      }
+      // **状态栏模糊垫层**：与其他页面（书架 / 设置 / 复习）同一组件、同一大小
+      //（heightVp = padTop，模糊强度 6）。此前内联实现且**沉浸阅读时不渲染**，
+      // 沉浸模式下正文顶到状态栏却没模糊，与其他页面观感不一致
+      //（用户要求"一样的模糊效果、大小一样"）→ 改为恒定渲染。
+      StatusBarBlur({ heightVp: this.padTop() })
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
       //    同一时刻只有一层，杜绝「两层叠加 + 内容溢出胶囊」的错位。──
