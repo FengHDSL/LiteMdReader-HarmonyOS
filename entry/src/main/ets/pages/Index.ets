@@ -159,6 +159,12 @@ const SEARCH_IMAGE_THUMB: number = 56;
 /** 书架底栏胶囊内「新建 / 导入」按钮的直径（vp），不能超过胶囊内高（52 - 8 = 44） */
 const NEW_BTN_SIZE: number = 36;
 
+/**
+ * 书架标签筛选条的统一高度（vp）：芯片容器与横向 List 都用它，
+ * 两边都不被拉伸 —— 「全部」与后面的标签视觉等高（用户反馈高度不统一）。
+ */
+const TAG_BAR_H: number = 36;
+
 /** 长按悬浮面板：宽度与行高（vp）。样式对着系统长按菜单那张参考图。 */
 const FLOAT_MENU_W: number = 156;
 const FLOAT_MENU_ROWS: number = 38;
@@ -237,6 +243,14 @@ struct Index {
   @State tagFilter: string = '';
   /** 标签顺序版本：拖动排序后自增，驱动筛选条重排（顺序存在 service/TagStore） */
   @State tagOrderRev: number = 0;
+  /**
+   * **本次「新建」要继承的标签**（点 + 那一刻的筛选值）。
+   * 不只传 AppStorage：回到书架后会拿它给"这次新出现的文档"补标签（见 applyPendingNewTag），
+   * 这样不依赖编辑器里保存分支的细节，任何保存路径都不会丢标签。
+   */
+  private pendingNewTag: string = '';
+  /** 进编辑器前书架上已有的文档名快照（回来时据此认出这次新建的那篇） */
+  private namesBeforeEdit: string[] = [];
   /** 语言切换计数：变更时整页重建（key 拼接），文案随词典刷新 */
   @StorageProp('languageTick') languageTick: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页所有文字都从这里取 */
@@ -1761,6 +1775,8 @@ struct Index {
     // 返程转场期间**不刷新列表**：refresh 会让 Grid 重排，共享元素（封面）动画
     // 会因目标节点被替换而闪断。等转场结束（350ms + 余量）后再刷新数据。
     setTimeout(() => {
+      // 先补"这次新建文档该继承的标签"，再刷新（refresh 读的是同一份内存索引）
+      this.applyPendingNewTag();
       this.refresh();
     }, 420);
     // **外部"打开方式"导入的文档**（EntryAbility 已写入书架）：刷新后提示一次
@@ -1798,6 +1814,10 @@ struct Index {
     if (jumpNew !== undefined && jumpNew > 0) {
       // 消费即清零（下一次点击 tick 会再自增）
       AppStorage.setOrCreate('formJumpNewDoc', 0);
+      // 桌面卡片进来新建：同样继承书架当前的标签筛选（「全部」下不继承）
+      this.rememberNewTag();
+      AppStorage.setOrCreate('pendingNewDocTag', this.pendingNewTag);
+      this.animateNextRefresh = true;
       this.pushPage('pages/Editor');
     }
     // **学习卡「具体」**：进背诵页（复习）看批注详情
@@ -1992,17 +2012,23 @@ struct Index {
   @Builder
   tagBar() {
     Row() {
-      ImmersiveChip({
-        palette: this.palette(),
-        chipLabel: L10n.t('全部'),
-        chipActive: this.tagFilter.length === 0,
-        chipOnTap: () => {
-          this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
-            this.tagFilter = '';
-            this.refreshShelfItems();
-          });
-        }
-      })
+      // **「全部」与右侧每个标签同高**（用户反馈：高度不统一）：外面套一层固定高、
+      // 垂直居中的容器，List 那侧也用 alignListItem(Center) —— 两边都不被拉伸，视觉等高。
+      Row() {
+        ImmersiveChip({
+          palette: this.palette(),
+          chipLabel: L10n.t('全部'),
+          chipActive: this.tagFilter.length === 0,
+          chipOnTap: () => {
+            this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+              this.tagFilter = '';
+              this.refreshShelfItems();
+            });
+          }
+        })
+      }
+      .height(TAG_BAR_H)
+      .alignItems(VerticalAlign.Center)
       .margin({ right: HwSpace.xs })
 
       // 「全部」固定在左边不参与排序（它是筛选保留项，不是真标签）
@@ -2026,7 +2052,9 @@ struct Index {
       .listDirection(Axis.Horizontal)
       .scrollBar(BarState.Off)
       .layoutWeight(1)
-      .height(38)
+      .height(TAG_BAR_H)
+      // 交叉轴居中而不是拉伸：ListItem 默认会撑满 List 高度，芯片就被拉高了
+      .alignListItem(ListItemAlign.Center)
       // **长按拖动排序**：List 自带的 itemDrag 就是长按触发，比自己算偏移可靠
       .onItemDragStart((event: ItemDragInfo, itemIndex: number) => {
         const tags: string[] = this.orderedTags();
@@ -2336,10 +2364,53 @@ struct Index {
     this.shelfVisible = false;
     // **当前标签页下新建 → 记下标签**，Editor 创建成功后自动打上（用户要求）
     // 「全部」筛选（空串）不记标签：否则会在"全部"下新建时也硬塞一个空标签
-    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter.length > 0 ? this.tagFilter : '');
+    this.rememberNewTag();
+    AppStorage.setOrCreate('pendingNewDocTag', this.pendingNewTag);
     // 新建后回到书架：让新封面带动画进场（见 refresh 里的 animateNextRefresh）
     this.animateNextRefresh = true;
     this.pushPage('pages/Editor');
+  }
+
+  /** 记下"新建要继承的标签"与进页前的文档名快照（供回来后补标签用） */
+  private rememberNewTag(): void {
+    this.pendingNewTag = this.tagFilter.length > 0 ? this.tagFilter : '';
+    this.namesBeforeEdit = [];
+    for (let k = 0; k < this.docs.length; k++) {
+      this.namesBeforeEdit.push(this.docs[k].name);
+    }
+  }
+
+  /**
+   * **回到书架后补标签**（兜底，用户反馈"在不同标签下新建 / 导入没自动带标签"）：
+   * 进编辑器前记下了已有文档名与要继承的标签；回来后凡是「这次新出现、且身上一个标签都没有」
+   * 的文档，补上那个标签。不依赖编辑器走哪条保存分支，导入也一样生效。
+   * 标签只补一次的：应用完立刻清空 pendingNewTag。
+   */
+  private applyPendingNewTag(): void {
+    const tag: string = this.pendingNewTag;
+    const before: string[] = this.namesBeforeEdit;
+    this.pendingNewTag = '';
+    this.namesBeforeEdit = [];
+    if (tag.length === 0) {
+      return;
+    }
+    const c = this.ctx();
+    if (c === null) {
+      return;
+    }
+    const list: DocMeta[] = DocStore.list(c);
+    for (let k = 0; k < list.length; k++) {
+      const meta: DocMeta = list[k];
+      if (meta.builtin || before.indexOf(meta.name) >= 0) {
+        continue;
+      }
+      const tags: string[] | undefined = meta.tags;
+      if (tags === undefined || tags === null || tags.length === 0) {
+        DocStore.setTags(c, meta.name, [tag]);
+      }
+    }
+    // 落库后立刻同步给编辑器那条通道（避免它下次再补一遍）
+    AppStorage.setOrCreate('pendingNewDocTag', '');
   }
 
   private openSettingsPage(): void {
@@ -2385,6 +2456,9 @@ struct Index {
     if (ctx === null) {
       return;
     }
+    // **点导入那一刻的筛选值**先存下来：系统选择器是模态的，回来后 this.tagFilter
+    // 可能已被刷新流程动过；用户点的意图必须锚在这一刻。
+    const inheritTag: string = this.tagFilter;
     try {
       const docPicker = new picker.DocumentViewPicker(ctx);
       const options = new picker.DocumentSelectOptions();
@@ -2405,9 +2479,9 @@ struct Index {
           } else {
             ok++;
             lastName = meta.name;
-            // **当前标签页下导入 → 自动打上该标签**（用户要求）
-            if (this.tagFilter.length > 0) {
-              DocStore.setTags(ctx, meta.name, [this.tagFilter]);
+            // **当前标签页下导入 → 自动打上该标签**（用户要求；「全部」下不打）
+            if (inheritTag.length > 0) {
+              DocStore.setTags(ctx, meta.name, [inheritTag]);
             }
           }
         }
@@ -6817,7 +6891,8 @@ struct Index {
     this.shelfVisible = false;
     this.animateNextRefresh = true;
     // 模板新建同样要继承当前标签（「全部」下不继承）
-    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter.length > 0 ? this.tagFilter : '');
+    this.rememberNewTag();
+    AppStorage.setOrCreate('pendingNewDocTag', this.pendingNewTag);
     // **不再提前落盘**（用户反馈：选「直接离开 / 不保存」却多出一篇文档）：
     // 模板正文经路由传给编辑器，保存时才真正创建 —— 不保存 = 什么都不留。
     const route: ReaderRoute = { seed: body };
@@ -8574,6 +8649,11 @@ struct Index {
           AppStorage.setOrCreate('readerExitToTasks', false);
         }
         setTimeout(() => {
+          // **编辑页回来：先给"这次新建的文档"补上要继承的标签，再刷新书架**
+          //（新建 / 导入自动带标签不依赖编辑器内部保存分支，见 applyPendingNewTag）
+          if (name === 'pages/Editor') {
+            this.applyPendingNewTag();
+          }
           this.refresh();
           if (backTasks) {
             this.runTaskBoard();
