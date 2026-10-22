@@ -42,6 +42,8 @@ export struct FontPickerList {
   @Prop palette: ReaderPalette = LIGHT_PALETTE;
   /** 当前选中的字体族（空串 = 默认） */
   @Prop chosen: string = '';
+  /** 沉浸光感总开关：关闭时列表要加一圈实色包边（用户要求） */
+  @Prop fxLookOn: boolean = false;
   /** 是否列「默认」这一项（阅读正文与界面字体都要，卡片等窄面板可以省） */
   @Prop showDefault: boolean = true;
   /** 导入的字体是否允许长按删除（外观页不给删，避免在两个地方做同一件危险操作） */
@@ -471,7 +473,11 @@ export struct FontPickerList {
     .borderRadius(HwRadius.inner)
     .clip(true)
     .backgroundColor(this.palette.surface)
-    .border({ width: 1, color: this.palette.surfaceBorder })
+    // **光感关时包边加粗**（用户要求，与上面的字体选择按钮同款）
+    .border({
+      width: this.fxLookOn ? 1 : 1.5,
+      color: this.fxLookOn ? this.palette.surfaceBorder : this.palette.divider
+    })
     // **展开 / 收起动画**：淡入 + 竖向轻微缩放。挂在组件自己这层 Scroll 上，
     // 宿主只管用 if 控制出现与消失，阅读设置与外观设置两处共用同一份动效。
     .transition(TransitionEffect.OPACITY

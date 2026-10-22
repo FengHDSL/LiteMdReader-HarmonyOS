@@ -335,16 +335,14 @@ export struct GenWallpaper {
             .width('50%')
             .aspectRatio(1)
             .borderRadius('50%')
-            .radialGradient({
-              center: ['50%', '50%'],
-              radius: 62,
-              colors: [['#B4' + this.def().glowB.substring(1), 0.0],
-                ['#4D' + this.def().glowB.substring(1), 0.55],
-                ['#00000000', 1.0]]
-            })
-            .opacity((this.darkMode ? 0.14 : 0.26) + this.glowPulseB * 0.32)
-            .scale({ x: 0.88 + this.glowPulseB * 0.24, y: 0.88 + this.glowPulseB * 0.24 })
-            .blur(62)
+            // **实色圆**（用户要求：删掉灰色光晕，圆和圆心同色）：
+            // 原来是「中心亮 → 55% 半透明 → 边缘透明」的径向渐变再加 blur，
+            // 观感是一团灰雾；现在直接用圆心那个色做实心圆，呼吸与公转才看得出来。
+            .backgroundColor('#B4' + this.def().glowB.substring(1))
+            // 亮度呼吸：基础 + 峰值
+            .opacity((this.darkMode ? 0.16 : 0.30) + this.glowPulseB * 0.34)
+            // 尺寸呼吸：0.82 ↔ 1.18（幅度 0.36，实色圆上更明显）
+            .scale({ x: 0.82 + this.glowPulseB * 0.36, y: 0.82 + this.glowPulseB * 0.36 })
             // 同上：光斑 50% 宽 → 中心在 (x+25%, y+25%)；取 (58%, 58%) 让中心落在 (83%, 83%)，
             // 公转半径约 47% 屏宽 → 同样只在角落区域活动，反向公转。
             .position({ x: '58%', y: '58%' })

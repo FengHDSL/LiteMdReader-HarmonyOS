@@ -643,13 +643,19 @@ export struct ReadingSettingsPanel {
           .onClick(() => {
             // **流光立即中断 + 提示加载 → 加载后展开**（用户要求）
             if (this.fontListOpen) {
-              this.fontListOpen = false;
+              // **卡片收缩带过渡**（用户要求）
+              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                this.fontListOpen = false;
+              });
               return;
             }
             this.fontLoadingZh = true;
             setTimeout(() => {
-              this.fontLoadingZh = false;
-              this.fontListOpen = true;
+              // **卡片拉长带过渡**（用户要求）：高度变化走 animateTo
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.fontLoadingZh = false;
+                this.fontListOpen = true;
+              });
             }, 320);
           })
 
@@ -666,6 +672,7 @@ export struct ReadingSettingsPanel {
           if (this.fontListOpen) {
             FontPickerList({
               palette: this.palette(),
+              fxLookOn: this.fxLookOn,
               chosen: this.fontKey,
               rev: this.fontListRev,
               onPick: (k: string) => {
@@ -714,13 +721,17 @@ export struct ReadingSettingsPanel {
           })
           .onClick(() => {
             if (this.fontEnListOpen) {
-              this.fontEnListOpen = false;
+              this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+                this.fontEnListOpen = false;
+              });
               return;
             }
             this.fontLoadingEn = true;
             setTimeout(() => {
-              this.fontLoadingEn = false;
-              this.fontEnListOpen = true;
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.fontLoadingEn = false;
+                this.fontEnListOpen = true;
+              });
             }, 320);
           })
 
@@ -737,6 +748,7 @@ export struct ReadingSettingsPanel {
           if (this.fontEnListOpen) {
             FontPickerList({
               palette: this.palette(),
+              fxLookOn: this.fxLookOn,
               chosen: this.fontEnKey,
               rev: this.fontListRev,
               onPick: (k: string) => {

@@ -130,6 +130,8 @@ export struct SettingsAppearance {
   @StorageLink('shelfResumeBanner') @Watch('onAppearanceChanged') resumeBanner: boolean = true;
   /** 沉浸光感总开关（2026-10-20 新增，**默认关**）：关 → 所有卡片纯色不透明 */
   @StorageLink('immersiveLook') @Watch('onAppearanceChanged') immersiveLook: boolean = false;
+  /** 字号 / 字重滑条宽度（量出来把响应区收在圆点附近，防误触） */
+  @State apSliderW: number = 0;
   /** 光感档位：'default' 完整材质 / 'eco' 节能（磨砂降级），仅总开关打开时可选 */
   @StorageLink('immersiveGrade') immersiveGrade: string = 'default';
   /**
@@ -596,6 +598,29 @@ export struct SettingsAppearance {
     this.broadcastAppearance();
   }
 
+  /** 滑条圆点响应区（只有点中圆点才能拖，用户要求） */
+  private apThumbRegion(value: number, min: number, max: number): Rectangle {
+    const w: number = this.apSliderW > 0 ? this.apSliderW : 320;
+    const ratio: number = max > min ? (value - min) / (max - min) : 0.5;
+    const p: number = Math.max(0, Math.min(1, ratio));
+    const thumbX: number = p * (w - 24);
+    return { x: Math.max(0, Math.min(w - 48, thumbX - 12)), y: 0, width: 48, height: 32 };
+  }
+
+  /** BETA 小徽章（三个实验选项共用） */
+  @Builder
+  betaBadge() {
+    Text('BETA')
+      .fontFamily(HwFont.resolve(this.uiFontKey))
+      .fontSize(HwFont.sx(10, this.uiFontScale))
+      .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+      .fontColor(this.palette().accent)
+      .padding({ left: 5, right: 5, top: 1, bottom: 1 })
+      .borderRadius(5)
+      .backgroundColor(withAlpha(this.palette().accent, '26'))
+      .margin({ right: 6 })
+  }
+
   build() {
     SettingsShell({
       shellTitle: this.s('外观设置'),
@@ -857,6 +882,14 @@ export struct SettingsAppearance {
             .width('100%')
             .selectedColor(this.palette().accent)
             .blockColor(this.palette().accent)
+            // **必须点中圆点才能拖**（用户要求，防滚动误触）
+            .responseRegion(this.apThumbRegion(this.uiFontScale * 100, 85, 130))
+            .onAreaChange((oldValue: Area, newValue: Area) => {
+              const w: number = Number(newValue.width);
+              if (!isNaN(w) && w > 0) {
+                this.apSliderW = w;
+              }
+            })
             .onChange((v: number, mode: SliderChangeMode) => {
               this.uiFontScale = Math.round(v) / 100;
             })
@@ -884,6 +917,8 @@ export struct SettingsAppearance {
 
           Slider({ value: this.uiFontWeightDelta, min: 0, max: 900, step: 100, style: SliderStyle.OutSet })
             .width('100%')
+            // **必须点中圆点才能拖**（同上）
+            .responseRegion(this.apThumbRegion(this.uiFontWeightDelta, 0, 900))
             .selectedColor(this.palette().accent)
             .blockColor(this.palette().accent)
             .onChange((v: number, mode: SliderChangeMode) => {
@@ -1284,184 +1319,6 @@ export struct SettingsAppearance {
         .alignItems(HorizontalAlign.Start)
       }
 
-      // ── ④ 性能与动效（2026-10-20 新增：沉浸光感 / 过渡动画 / 页面预热，默认全关）──
-      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
-        Column({ space: HwSpace.md }) {
-          Row({ space: HwSpace.xs }) {
-            Text(this.s('性能与动效'))
-              .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
-              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-              .fontColor(this.palette().textSecondary)
-            // BETA 徽章（用户要求）
-            Text('BETA')
-              .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwFont.sx(10, this.uiFontScale))
-              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-              .fontColor(this.palette().accent)
-              .padding({ left: 6, right: 6, top: 1, bottom: 1 })
-              .borderRadius(5)
-              .backgroundColor(withAlpha(this.palette().accent, '26'))
-            Blank()
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          Text(this.s('实验性质，酌情开启'))
-            .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-            .fontColor(this.palette().textTertiary)
-            .width('100%')
-
-          // 沉浸光感：开 → 卡片/条栏挂系统材质；关 → 一律纯色不透明
-          Row() {
-            Column({ space: 2 }) {
-              Text(this.s('沉浸光感'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
-                .fontColor(this.palette().textPrimary)
-              Text(this.s('关闭后所有卡片为纯色不透明；开启会掉帧、发热'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                .fontColor(this.palette().textTertiary)
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-            // isOn 绑**草稿**：拨动只改视觉，确认后才写真实开关（见 lookDraft 注释）
-            Toggle({ type: ToggleType.Switch, isOn: this.lookDraft })
-              .onChange((isOn: boolean) => {
-                this.lookDraft = isOn;
-                if (!isOn) {
-                  // 关闭不需要确认：立即生效，档位行同步收起（高度走过渡）
-                  this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
-                    this.immersiveLook = false;
-                  });
-                  return;
-                }
-                // **开启：先弹窗，点「依然开启」才真正切换**（用户要求）
-                this.getUIContext().showAlertDialog({
-                  title: this.s('开启沉浸光感？'),
-                  message: this.s('开启后会导致应用帧率下降，设备发热，请酌情考虑开启！'),
-                  primaryButton: {
-                    value: this.s('取消'),
-                    action: () => {
-                      // 只把草稿拨回：真实开关从未动过 → 档位行不会先冒出来再收回去
-                      this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
-                        this.lookDraft = false;
-                      });
-                    }
-                  },
-                  secondaryButton: {
-                    value: this.s('依然开启'),
-                    action: () => {
-                      // 此刻才落真实值：档位行随 animateTo 展开
-                      this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
-                        this.immersiveLook = true;
-                      });
-                    }
-                  }
-                });
-              })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          // 光感档位（只在开启后出现）：默认 = 完整玻璃材质；节能 = 磨砂降级、明显省电
-          if (this.immersiveLook) {
-            Column({ space: HwSpace.md }) {
-              Row() {
-                Text(this.s('光感强度'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                .fontColor(this.palette().textPrimary)
-                .layoutWeight(1)
-            }
-            .width('100%')
-            .alignItems(VerticalAlign.Center)
-
-              Flex({ wrap: FlexWrap.Wrap }) {
-                ForEach(GRADE_MODES, (item: NamedColor) => {
-                  Row() {
-                    ImmersiveChip({
-                      palette: this.palette(),
-                      chipLabel: this.s(item.name),
-                      chipActive: this.immersiveGrade === item.value,
-                      chipOnTap: () => {
-                        this.immersiveGrade = item.value;
-                        this.toast(item.value === 'eco'
-                          ? this.s('已切到节能：不挂系统材质，更省电')
-                          : this.s('已切到默认：完整沉浸光感'));
-                      }
-                    })
-                  }
-                  .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
-                }, (item: NamedColor) => 'grade_' + item.value)
-              }
-              .width('100%')
-
-              Text(this.s('节能档走磨砂、几乎不耗 GPU；默认档是完整玻璃光感（耗电、可能掉帧）'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                .fontColor(this.palette().textTertiary)
-                .width('100%')
-            }
-            .width('100%')
-            .alignItems(HorizontalAlign.Start)
-            // 出现/收起：淡入淡出（高度变化由外层 animateTo 插值）
-            .transition(AppearanceFx.fx(
-              TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))))
-          }
-
-          // 过渡动画：关 → 所有 animateTo / transition / 页面转场瞬时完成（硬切）
-          Row() {
-            Column({ space: 2 }) {
-              Text(this.s('过渡动画'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
-                .fontColor(this.palette().textPrimary)
-              Text(this.s('只停用页面切换动画：进出直接显示/消失；打开文档的展开动画与其它动效保留'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                .fontColor(this.palette().textTertiary)
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-            Toggle({ type: ToggleType.Switch, isOn: this.motionFx })
-              .onChange((isOn: boolean) => {
-                this.motionFx = isOn;
-                this.toast(isOn ? this.s('已开启页面切换动画') : this.s('已关闭页面切换动画（其它动效保留）'));
-              })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-
-          // 页面组件预热（beta）：打开页面即后台预加载组件，进程退出或超时自动释放
-          Row() {
-            Column({ space: 2 }) {
-              Text(this.s('页面组件预热（Beta）'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
-                .fontColor(this.palette().textPrimary)
-              Text(this.s('提前把页面与组件加载进内存（不含文档内容），退出应用或超时后自动清除'))
-                .fontFamily(HwFont.resolve(this.uiFontKey))
-                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                .fontColor(this.palette().textTertiary)
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start)
-            Toggle({ type: ToggleType.Switch, isOn: this.preloadPages })
-              .onChange((isOn: boolean) => {
-                this.preloadPages = isOn;
-                this.toast(isOn ? this.s('已开启页面预热（Beta）') : this.s('已关闭页面预热'));
-              })
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Center)
-        }
-        .width('100%')
-        .alignItems(HorizontalAlign.Start)
-      }
-
       // ── ⑤ 卡片与流光 ──
       // 「沉浸光感」开关按需求**取消**：材质强制开启（EntryAbility 每次启动置回 true），
       // 「材质类型 / 等级 / 玻璃通透程度 / 卡片降级样式」也一律不再暴露。
@@ -1632,6 +1489,182 @@ export struct SettingsAppearance {
       .onClick(() => {
         this.restoreDefaults();
       })
+
+      // ── ④ 性能与动效（2026-10-20 新增：沉浸光感 / 过渡动画 / 页面预热，默认全关）──
+      ImmersiveCard({ cardRadius: HwRadius.card, cardPadding: HwSpace.lg, palette: this.palette() }) {
+        Column({ space: HwSpace.md }) {
+          Row({ space: HwSpace.xs }) {
+            Text(this.s('性能与动效'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+              .fontColor(this.palette().textSecondary)
+            // BETA 徽章（用户要求）
+            Text('BETA')
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(10, this.uiFontScale))
+              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+              .fontColor(this.palette().accent)
+              .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+              .borderRadius(5)
+              .backgroundColor(withAlpha(this.palette().accent, '26'))
+            Blank()
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          Text(this.s('实验性质，酌情开启'))
+            .fontFamily(HwFont.resolve(this.uiFontKey))
+            .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+            .fontColor(this.palette().textTertiary)
+            .width('100%')
+
+          // 沉浸光感：开 → 卡片/条栏挂系统材质；关 → 一律纯色不透明
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('沉浸光感'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('关闭后所有卡片为纯色不透明；开启会掉帧、发热'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            this.betaBadge()
+            // isOn 绑**草稿**：拨动只改视觉，确认后才写真实开关（见 lookDraft 注释）
+            Toggle({ type: ToggleType.Switch, isOn: this.lookDraft })
+              .onChange((isOn: boolean) => {
+                this.lookDraft = isOn;
+                if (!isOn) {
+                  // 关闭不需要确认：立即生效，档位行同步收起（高度走过渡）
+                  this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+                    this.immersiveLook = false;
+                  });
+                  return;
+                }
+                // **开启：先弹窗，点「依然开启」才真正切换**（用户要求）
+                this.getUIContext().showAlertDialog({
+                  title: this.s('开启沉浸光感？'),
+                  message: this.s('开启后会导致应用帧率下降，设备发热，请酌情考虑开启！'),
+                  primaryButton: {
+                    value: this.s('取消'),
+                    action: () => {
+                      // 只把草稿拨回：真实开关从未动过 → 档位行不会先冒出来再收回去
+                      this.getUIContext().animateTo(AppearanceFx.anim(200, Curve.FastOutSlowIn), () => {
+                        this.lookDraft = false;
+                      });
+                    }
+                  },
+                  secondaryButton: {
+                    value: this.s('依然开启'),
+                    action: () => {
+                      // 此刻才落真实值：档位行随 animateTo 展开
+                      this.getUIContext().animateTo(AppearanceFx.anim(260, Curve.FastOutSlowIn), () => {
+                        this.immersiveLook = true;
+                      });
+                    }
+                  }
+                });
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          // 光感档位（只在开启后出现）：默认 = 完整玻璃材质；节能 = 磨砂降级、明显省电
+          if (this.immersiveLook) {
+            Column({ space: HwSpace.md }) {
+              Row() {
+                Text(this.s('光感强度'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                .fontColor(this.palette().textPrimary)
+                .layoutWeight(1)
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+
+              Flex({ wrap: FlexWrap.Wrap }) {
+                ForEach(GRADE_MODES, (item: NamedColor) => {
+                  Row() {
+                    ImmersiveChip({
+                      palette: this.palette(),
+                      chipLabel: this.s(item.name),
+                      chipActive: this.immersiveGrade === item.value,
+                      chipOnTap: () => {
+                        this.immersiveGrade = item.value;
+                        this.toast(item.value === 'eco'
+                          ? this.s('已切到节能：不挂系统材质，更省电')
+                          : this.s('已切到默认：完整沉浸光感'));
+                      }
+                    })
+                  }
+                  .margin({ right: HwSpace.xs, bottom: HwSpace.xs })
+                }, (item: NamedColor) => 'grade_' + item.value)
+              }
+              .width('100%')
+
+            }
+            .width('100%')
+            .alignItems(HorizontalAlign.Start)
+            // 出现/收起：淡入淡出（高度变化由外层 animateTo 插值）
+            .transition(AppearanceFx.fx(
+              TransitionEffect.OPACITY.animation(AppearanceFx.anim(180, Curve.FastOutSlowIn))))
+          }
+
+          // 过渡动画：关 → 所有 animateTo / transition / 页面转场瞬时完成（硬切）
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('过渡动画'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('只停用页面切换动画：进出直接显示/消失；打开文档的展开动画与其它动效保留'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            this.betaBadge()
+            Toggle({ type: ToggleType.Switch, isOn: this.motionFx })
+              .onChange((isOn: boolean) => {
+                this.motionFx = isOn;
+                this.toast(isOn ? this.s('已开启页面切换动画') : this.s('已关闭页面切换动画（其它动效保留）'));
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
+          // 页面组件预热（beta）：打开页面即后台预加载组件，进程退出或超时自动释放
+          Row() {
+            Column({ space: 2 }) {
+              Text(this.s('页面组件预热'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+                .fontColor(this.palette().textPrimary)
+              Text(this.s('提前把页面与组件加载进内存（不含文档内容），退出应用或超时后自动清除'))
+                .fontFamily(HwFont.resolve(this.uiFontKey))
+                .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+                .fontColor(this.palette().textTertiary)
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start)
+            this.betaBadge()
+            Toggle({ type: ToggleType.Switch, isOn: this.preloadPages })
+              .onChange((isOn: boolean) => {
+                this.preloadPages = isOn;
+                this.toast(isOn ? this.s('已开启页面预热') : this.s('已关闭页面预热'));
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+      }
     }
   }
 }

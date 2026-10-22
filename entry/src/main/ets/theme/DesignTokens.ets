@@ -1004,10 +1004,14 @@ export class HwFont {
     const app: string = HwFont.str('appFontFamily');
     const sync: boolean | undefined = AppStorage.get<boolean>('appFontSyncReader');
     const followUi: boolean = sync === true && app.length > 0;
-    // 跟随界面字体时，英数那一半也一起跟界面的，否则用阅读设置里那款英数字体
-    return followUi
-      ? HwFont.family(app, HwFont.str('appFontFamilyEn'))
-      : HwFont.family(readerKey, HwFont.str('readerFontFamilyEn'));
+    // **英数字体优先级**（用户要求：默认跟随中文字体，独立选择后独立调节）：
+    // ① 阅读调整里显式选的英数字体（readerFontFamilyEn）最高；
+    // ② 没选且开着「同步应用到阅读页」→ 跟随界面英数字体；
+    // ③ 都没有 → 空（英文数字就落回中文字体族）。
+    const enReader: string = HwFont.str('readerFontFamilyEn');
+    const enUi: string = followUi ? HwFont.str('appFontFamilyEn') : '';
+    const en: string = enReader.length > 0 ? enReader : enUi;
+    return HwFont.family(followUi ? app : readerKey, en);
   }
 
   /**
