@@ -5729,10 +5729,9 @@ export struct Reader {
           ForEach(this.tagDocList, (name: string) => {
             ListItem() {
               Row({ space: HwSpace.xs }) {
-                SymbolGlyph(name === this.docName ? $r('sys.symbol.doc_text')
-                  : $r('sys.symbol.doc_plaintext'))
-                  .fontSize(14)
-                  .fontColor([name === this.docName ? this.palette().accent : this.palette().textTertiary])
+                SymbolGlyph($r('sys.symbol.doc_text'))
+                  .fontSize(15)
+                  .fontColor([name === this.docName ? this.palette().accent : this.palette().textSecondary])
                 Text(name)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
@@ -5746,9 +5745,11 @@ export struct Reader {
                     .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
                     .fontColor(this.palette().accent)
                 } else {
-                  SymbolGlyph($r('sys.symbol.chevron_right'))
-                    .fontSize(14)
-                    .fontColor([this.palette().textTertiary])
+                  // **跳转图标**：用与「反向链接」同款的 arrow_up_right（用户反馈 chevron 太小看不清），
+                  // 尺寸 18 + 主题色，与左侧文档图标一起构成"打开"的明确暗示
+                  SymbolGlyph($r('sys.symbol.arrow_up_right'))
+                    .fontSize(18)
+                    .fontColor([this.palette().accent])
                 }
               }
               .width('100%')

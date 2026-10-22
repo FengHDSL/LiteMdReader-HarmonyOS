@@ -43,8 +43,15 @@ const EMBEDDED_LEGAL_HEIGHT: number = 560;
 
 /** MeoW 应用的包名（用户提供）：「MeoW订阅」优先直接拉起它 */
 const MEOW_BUNDLE: string = 'com.chuckfang.meow';
-/** MeoW 订阅页（带渠道号）：没装 MeoW 时打开这个网页 */
+/** MeoW 订阅落地页（带渠道号）：给人看的页面，没装 MeoW 时打开它 */
 const MEOW_URL: string = 'https://meow.chuckfang.com/?channelId=951fa7696734428c9ee367f5c07e4273';
+/**
+ * **MeoW 的 App Linking 深链**——落地页里「立即订阅」按钮真正指向的地址
+ * （页面脚本：`https://www.chuckfang.com/MeoW/appLinking?channelId=<id>`）。
+ * 按官方 App Linking 口径直接 openLink 它，系统会拉起 MeoW 并带上频道上下文，
+ * 比"只按包名 startAbility"更准（那样子应用拿不到要订阅哪个频道）。
+ */
+const MEOW_APPLINK: string = 'https://www.chuckfang.com/MeoW/appLinking?channelId=951fa7696734428c9ee367f5c07e4273';
 
 /** 参考项目（名称 + 地址 + 一句话说明） */
 interface CreditItem {
@@ -239,6 +246,21 @@ export struct SettingsExplore {
       this.toast(L10n.t('打不开 MeoW 订阅页'));
       return;
     }
+    // ① **官方 App Linking**：直接开落地页里「立即订阅」指向的深链，
+    //    装了 MeoW 就由系统拉起应用并带上 channelId（appLinkingOnly = 只认 App Linking，不落浏览器）
+    try {
+      ctx.openLink(MEOW_APPLINK, { appLinkingOnly: true }).catch(() => {
+        this.meoWByBundle(ctx);
+      });
+      return;
+    } catch (err) {
+      // 低版本没有 OpenLinkOptions / 调用直接抛：继续往下降级
+    }
+    this.meoWByBundle(ctx);
+  }
+
+  /** ② 没走通深链：按包名显式拉起（部分机型 / 版本对 App Linking 校验更严，这条兜住） */
+  private meoWByBundle(ctx: common.UIAbilityContext): void {
     const want: Want = { bundleName: MEOW_BUNDLE };
     try {
       ctx.startAbility(want).catch(() => {
@@ -249,7 +271,7 @@ export struct SettingsExplore {
     }
   }
 
-  /** 没装 MeoW：用系统 openLink 打开订阅页（系统会挑能处理该链接的应用 / 浏览器） */
+  /** ③ 没装 MeoW：打开给人看的订阅落地页（用户可在页面里点「立即订阅」） */
   private openMeoWLink(ctx: common.UIAbilityContext): void {
     try {
       ctx.openLink(MEOW_URL).catch(() => {
