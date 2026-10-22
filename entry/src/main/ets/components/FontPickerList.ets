@@ -13,6 +13,7 @@ import { ImmersiveCard } from '../material/ImmersiveCard';
  */
 import { L10n } from '../service/L10n';
 import { UserFont, SystemFont, FontStore } from '../service/FontStore';
+import { FontPickCache, FontPickData } from '../service/FontPickCache';
 import { AppearanceFx } from '../service/AppearanceFx';
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
@@ -38,12 +39,10 @@ const FONT_MANY: number = 40;
 const FONT_TRIM_TO: number = 30;
 
 /**
- * **列表数据缓存**（模块级，进程内）：字体列表与已注册状态不随组件销毁丢失。
- * 再次展开选择器时先用缓存立即渲染（并立刻通知宿主收起"正在加载"），
- * 再后台静默刷新——用户要求"缓存下来，不用每次打开都重新加载"。
+ * **列表数据缓存**搬到了 `service/FontPickCache`（TTL 2 分钟）：
+ * 宿主点击时先问 `FontPickCache.fresh()`——新鲜就直接展开（不弹提醒），
+ * 过期才弹「正在加载字体…」、加载完再展开。这里只负责取数据与渲染。
  */
-let cachedUserFonts: UserFont[] | null = null;
-let cachedSystemFonts: SystemFont[] | null = null;
 
 @Component
 export struct FontPickerList {
@@ -67,7 +66,7 @@ export struct FontPickerList {
   onReady: () => void = () => {
   };
   /** 宿主导入 / 删除字体后把这个值自增，列表重新取一遍（否则要等下次打开面板才更新） */
-  @Prop @Watch('reload') rev: number = 0;
+  @Prop @Watch('forceReload') rev: number = 0;
 
   /** 用户导入进沙箱的字体 */
   @State userFonts: UserFont[] = [];
@@ -87,16 +86,21 @@ export struct FontPickerList {
   aboutToAppear(): void {
     const fav: string | undefined = AppStorage.get<string>('favFonts');
     this.favRaw = fav === undefined || fav === null ? '' : fav;
-    // **缓存命中：立即出列表 + 立刻收起提示，再后台静默刷新**
-    if (cachedUserFonts !== null && cachedSystemFonts !== null) {
-      this.userFonts = cachedUserFonts.slice();
-      this.systemFonts = cachedSystemFonts.slice();
-      this.regTick++;
+    // **2 分钟内命中缓存：直接出列表 + 立刻通知宿主收起提醒**（不再重复加载）
+    const hit: FontPickData | null = FontPickCache.peek();
+    if (hit !== null) {
+      this.applyPick(hit);
       this.onReady();
-      this.reload();
       return;
     }
     this.reload();
+  }
+
+  /** 把一份数据铺到列表上（regTick 递增：预览行按新注册结果重画） */
+  private applyPick(d: FontPickData): void {
+    this.userFonts = d.user.slice();
+    this.systemFonts = d.sys.slice();
+    this.regTick++;
   }
 
   /** 收藏键列表 */
@@ -155,29 +159,38 @@ export struct FontPickerList {
 
   /** 重新取两份列表（导入 / 删除后宿主可再调一次；列表里的「刷新」按钮走 refreshFonts） */
   reload(): void {
+    const hit: FontPickData | null = FontPickCache.peek();
+    if (hit !== null) {
+      this.applyPick(hit);
+      this.onReady();
+      return;
+    }
+    let ctx: common.UIAbilityContext | undefined = undefined;
     const c = this.getUIContext().getHostContext();
     if (c !== undefined && c !== null) {
-      const ctx = c as common.UIAbilityContext;
-      FontStore.registerAll(ctx);
-      this.userFonts = FontStore.list(ctx);
-      cachedUserFonts = this.userFonts.slice();
+      ctx = c as common.UIAbilityContext;
     }
     // 列表先出（内存 / 磁盘索引命中就是当帧画完），注册放后面慢慢做：
     // 逐款 registerFont 是打开面板那一下卡顿的大头，没必要让列表等它。
-    FontStore.loadInstalled().then((list: SystemFont[]) => {
-      this.systemFonts = list;
-      cachedSystemFonts = list.slice();
+    FontPickCache.ensure(ctx).then((d: FontPickData) => {
+      this.applyPick(d);
       this.checkTooMany();
       return FontStore.registerInstalledAll();
     }).then(() => {
       // 注册完再画一遍：没注册时 fontFamily 解析不到，预览行是系统默认字
       this.regTick++;
-      // **通知宿主加载完成**（提示条收起）
+      // **通知宿主加载完成**（弹窗 / 提示收起，列表可以展开）
       this.onReady();
     }).catch(() => {
       // 取不到就只留导入的那份
       this.onReady();
     });
+  }
+
+  /** rev 变化：导入 / 删除过字体 → 缓存作废，重新取一份 */
+  forceReload(): void {
+    FontPickCache.invalidate();
+    this.reload();
   }
 
   /** 「刷新字体数据」：强制重扫系统字体表并重写磁盘索引 */
@@ -192,6 +205,8 @@ export struct FontPickerList {
       });
     }).then((n: number) => {
       this.systemFonts = FontStore.sysCache.slice();
+      // 重扫过 → 缓存作废，下次点击重新装一份（否则 2 分钟内还在用旧表）
+      FontPickCache.invalidate();
       this.regTick++;
       this.warnedMany = false;
       this.trimToMax = false;

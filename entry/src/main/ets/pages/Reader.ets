@@ -14,6 +14,7 @@
 
 import { TagStyle } from '../service/TagStyle';
 import { common } from '@kit.AbilityKit';
+import { LengthMetrics } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
@@ -5599,6 +5600,8 @@ export struct Reader {
           .placeholderColor(this.palette().textTertiary)
           .backgroundColor(this.palette().codeBlockBg)
           .borderRadius(HwRadius.pill)
+          // **包边**（用户要求）：输入框底色与面板同色系，没有这圈边就"糊"在面板里看不出是输入框
+          .border({ width: 1.5, color: this.palette().divider })
           .onChange((value: string) => {
             this.tagDraft = value;
           })
@@ -5607,6 +5610,9 @@ export struct Reader {
           })
         ImmersiveChip({
           palette: this.palette(),
+          // **绿色**（用户要求）：添加是这一屏的主操作，用绿色实心胶囊与「检查更新」同款绿
+          chipTint: '#FF2E7D32',
+          chipActive: true,
           chipLabel: L10n.t('添加'),
           chipOnTap: () => {
             this.addTag();
@@ -5616,7 +5622,11 @@ export struct Reader {
       .width('100%')
 
       if (this.docTags.length > 0) {
-        Flex({ wrap: FlexWrap.Wrap }) {
+        // **标签之间留间隙**（用户要求：不要贴在一起）——Flex 的 space 同时管行内与换行后的行距
+        Flex({
+          wrap: FlexWrap.Wrap,
+          space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
+        }) {
           ForEach(this.docTags, (tag: string, ti: number) => {
             Row({ space: 8 }) {
               Text('#' + tag)

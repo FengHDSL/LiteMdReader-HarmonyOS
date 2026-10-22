@@ -35,7 +35,9 @@ import {
 } from '../theme/DesignTokens';
 import { materialDiagnostics } from '../material/SystemMaterial';
 import { FontStore } from '../service/FontStore';
+import { FontPickCache } from '../service/FontPickCache';
 import { FontPickerList } from '../components/FontPickerList';
+import { FontLoadHint } from '../components/FontLoadHint';
 import { setKeepScreenOn, setWindowBrightnessLevel } from '../service/AppWindow';
 import { ImmersiveCard, ImmersiveChip } from '../material/ImmersiveCard';
 import { WallpaperStore } from '../service/WallpaperStore';
@@ -83,12 +85,20 @@ export struct ReadingSettingsPanel {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **沉浸光感总开关**（外观页）：关闭时字体选择按钮要加一圈实色包边（用户要求） */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
-  /** **字体加载提示**：首次展开时显示，列表 ready 后收起（用户要求：无图标、带过渡） */
-  @State fontLoadingZh: boolean = false;
-  @State fontLoadingEn: boolean = false;
-  /** **已加载过**：再次展开直接出列表，不再走提示（用户反馈"关了重开又加载一遍"） */
-  @State fontsLoadedZh: boolean = false;
-  @State fontsLoadedEn: boolean = false;
+  /**
+   * **字体加载提醒弹窗**（用户要求 2026-10-22）：点字体选择时先弹提醒、**加载完再展开**；
+   * 2 分钟内（见 FontPickCache.TTL）再点直接展开，不弹也不再加载。
+   */
+  private loadHint: CustomDialogController = new CustomDialogController({
+    builder: FontLoadHint(),
+    autoCancel: false,
+    customStyle: true,
+    alignment: DialogAlignment.Center,
+    openAnimation: { duration: 160, curve: Curve.FastOutSlowIn },
+    closeAnimation: { duration: 140, curve: Curve.FastOutSlowIn }
+  });
+  /** 弹窗当前是否真的开着（避免"没开就 close"导致控制器状态错乱） */
+  private hintOpen: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：本面板的界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
@@ -176,6 +186,80 @@ export struct ReadingSettingsPanel {
     return c as common.UIAbilityContext;
   }
 
+  /**
+   * 展开 / 收起字体选择列表（用户要求 2026-10-22）：
+   *  · 已展开 → 收起；
+   *  · 缓存新鲜（2 分钟内）→ **直接展开**，不弹提醒、不重复加载；
+   *  · 缓存过期 → **先弹提醒**（无加载图标），数据到位后再展开列表。
+   * 提醒延迟 140ms 出现：真正很快的加载（内存/磁盘索引命中）不会闪一下弹窗。
+   */
+  private toggleFontPick(isEn: boolean): void {
+    const open: boolean = isEn ? this.fontEnListOpen : this.fontListOpen;
+    if (open) {
+      this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+        if (isEn) {
+          this.fontEnListOpen = false;
+        } else {
+          this.fontListOpen = false;
+        }
+      });
+      return;
+    }
+    if (FontPickCache.fresh()) {
+      this.expandFontPick(isEn);
+      return;
+    }
+    const c = this.getUIContext().getHostContext();
+    let ctx: common.UIAbilityContext | undefined = undefined;
+    if (c !== undefined && c !== null) {
+      ctx = c as common.UIAbilityContext;
+    }
+    let finished: boolean = false;
+    const timer: number = setTimeout(() => {
+      if (!finished) {
+        this.showLoadHint();
+      }
+    }, 140);
+    FontPickCache.ensure(ctx).then(() => {
+      finished = true;
+      clearTimeout(timer);
+      this.closeLoadHint();
+      this.expandFontPick(isEn);
+    }).catch(() => {
+      finished = true;
+      clearTimeout(timer);
+      this.closeLoadHint();
+      this.expandFontPick(isEn);
+    });
+  }
+
+  /** 展开某一侧的字体列表（带高度过渡） */
+  private expandFontPick(isEn: boolean): void {
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+      if (isEn) {
+        this.fontEnListOpen = true;
+      } else {
+        this.fontListOpen = true;
+      }
+    });
+  }
+
+  private showLoadHint(): void {
+    if (this.hintOpen) {
+      return;
+    }
+    this.hintOpen = true;
+    this.loadHint.open();
+  }
+
+  private closeLoadHint(): void {
+    if (!this.hintOpen) {
+      return;
+    }
+    this.hintOpen = false;
+    this.loadHint.close();
+  }
+
   /** 导入 .ttf / .otf 字体：复制进沙箱并注册，选中的键就是 familyName。 */
   private importFont(): void {
     const c = this.getUIContext().getHostContext();
@@ -197,6 +281,7 @@ export struct ReadingSettingsPanel {
           this.toast(L10n.t('字体导入失败：仅支持 .ttf / .otf，且不超过 30MB'));
           return;
         }
+        FontPickCache.invalidate();
         this.fontListRev++;
         this.fontKey = family;
         this.toast(L10n.t('已导入并启用字体「') + family + '」');
@@ -234,6 +319,7 @@ export struct ReadingSettingsPanel {
         if (this.fontEnKey === family) {
           this.fontEnKey = '';
         }
+        FontPickCache.invalidate();
         this.fontListRev++;
         this.toast(L10n.t('已删除（正在运行的应用里可能仍可见，重启后彻底消失）'));
       } else {
@@ -619,19 +705,8 @@ export struct ReadingSettingsPanel {
             cardClickable: true,
             cardNoGlow: true,
             cardOnTap: () => {
-              if (this.fontListOpen) {
-                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                  this.fontListOpen = false;
-                });
-                return;
-              }
-              // **立即展开**（不加延迟）：延迟期间面板高度变化会让页面像"被定住"，
-              // 加载提示改为覆盖在列表上方，ready 后自动收起。
-              // **每次都提示**（用户要求）：提示由列表 onReady 收起（缓存命中时一闪即过）
-              this.fontLoadingZh = true;
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.fontListOpen = true;
-              });
+              // 缓存新鲜直接展开；否则弹提醒、加载完再展开（见 toggleFontPick）
+              this.toggleFontPick(false);
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -665,26 +740,12 @@ export struct ReadingSettingsPanel {
           .border({ width: 1.5, color: this.palette().divider })
           }
 
-          if (this.fontLoadingZh) {
-            Text(L10n.t('正在加载字体…'))
-              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-              .padding({ left: HwSpace.xs })
-              .transition(TransitionEffect.OPACITY
-                .combine(TransitionEffect.translate({ y: -4 }))
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
-          }
           if (this.fontListOpen) {
             FontPickerList({
               palette: this.palette(),
               fxLookOn: this.fxLookOn,
               chosen: this.fontKey,
               rev: this.fontListRev,
-              onReady: () => {
-                this.fontLoadingZh = false;
-                this.fontsLoadedZh = true;
-              },
               onPick: (k: string) => {
                 this.fontKey = k;
                 this.toast(L10n.t('正文字体：') + HwFont.label(k));
@@ -705,16 +766,7 @@ export struct ReadingSettingsPanel {
             cardClickable: true,
             cardNoGlow: true,
             cardOnTap: () => {
-              if (this.fontEnListOpen) {
-                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                  this.fontEnListOpen = false;
-                });
-                return;
-              }
-              this.fontLoadingEn = true;
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.fontEnListOpen = true;
-              });
+              this.toggleFontPick(true);
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -748,26 +800,12 @@ export struct ReadingSettingsPanel {
           .border({ width: 1.5, color: this.palette().divider })
           }
 
-          if (this.fontLoadingEn) {
-            Text(L10n.t('正在加载字体…'))
-              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-              .padding({ left: HwSpace.xs })
-              .transition(TransitionEffect.OPACITY
-                .combine(TransitionEffect.translate({ y: -4 }))
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
-          }
           if (this.fontEnListOpen) {
             FontPickerList({
               palette: this.palette(),
               fxLookOn: this.fxLookOn,
               chosen: this.fontEnKey,
               rev: this.fontListRev,
-              onReady: () => {
-                this.fontLoadingEn = false;
-                this.fontsLoadedEn = true;
-              },
               onPick: (k: string) => {
                 this.fontEnKey = k;
                 this.toast(L10n.t('英数字体：') + HwFont.label(k));

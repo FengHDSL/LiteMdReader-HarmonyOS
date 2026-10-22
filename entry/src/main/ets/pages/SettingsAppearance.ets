@@ -41,6 +41,8 @@ import {
   HwFont
 } from '../theme/DesignTokens';
 import { FontPickerList } from '../components/FontPickerList';
+import { FontPickCache } from '../service/FontPickCache';
+import { FontLoadHint } from '../components/FontLoadHint';
 import { FontStore } from '../service/FontStore';
 
 /**
@@ -179,14 +181,22 @@ export struct SettingsAppearance {
   @StorageLink('appFontWeightDelta') @Watch('onUiFontChanged') uiFontWeightDelta: number = 0;
   /** 界面字体列表是否展开 */
   @State uiFontListOpen: boolean = false;
-  /** 字体加载提示（与阅读调整页一致：无图标、带过渡、加载后再展开） */
-  @State uiFontLoadingZh: boolean = false;
+  /**
+   * 字体加载提醒弹窗（与阅读调整页同一套行为，用户要求 2026-10-22）：
+   * 点字体选择先弹提醒、加载完再展开；2 分钟内（FontPickCache.TTL）再点直接展开。
+   */
+  private loadHint: CustomDialogController = new CustomDialogController({
+    builder: FontLoadHint(),
+    autoCancel: false,
+    customStyle: true,
+    alignment: DialogAlignment.Center,
+    openAnimation: { duration: 160, curve: Curve.FastOutSlowIn },
+    closeAnimation: { duration: 140, curve: Curve.FastOutSlowIn }
+  });
+  /** 弹窗是否真的开着（避免没开就 close） */
+  private hintOpen: boolean = false;
   /** 沉浸光感总开关（字体列表包边/材质判定用） */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
-  /** 字体列表已加载过（再次展开不再提示加载） */
-  @State uiFontsLoadedZh: boolean = false;
-  @State uiFontsLoadedEn: boolean = false;
-  @State uiFontLoadingEn: boolean = false;
   /** 界面英数字体列表是否展开（与中文那一行各自独立收放） */
   @State uiFontEnListOpen: boolean = false;
   /** 列表重取信号（导入 / 删除字体后自增） */
@@ -404,6 +414,74 @@ export struct SettingsAppearance {
     } catch (err) {
       // 提示失败无副作用
     }
+  }
+
+  /**
+   * 展开 / 收起界面字体列表（行为与阅读调整页完全一致）：
+   *  · 已展开 → 收起；
+   *  · 缓存新鲜（2 分钟内）→ 直接展开，不弹提醒、不重复加载；
+   *  · 缓存过期 → 先弹提醒（无加载图标），数据到位后再展开。
+   */
+  private toggleFontPick(isEn: boolean): void {
+    const open: boolean = isEn ? this.uiFontEnListOpen : this.uiFontListOpen;
+    if (open) {
+      this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
+        if (isEn) {
+          this.uiFontEnListOpen = false;
+        } else {
+          this.uiFontListOpen = false;
+        }
+      });
+      return;
+    }
+    if (FontPickCache.fresh()) {
+      this.expandFontPick(isEn);
+      return;
+    }
+    const ctx: common.UIAbilityContext | null = this.hostCtx();
+    let finished: boolean = false;
+    const timer: number = setTimeout(() => {
+      if (!finished) {
+        this.showLoadHint();
+      }
+    }, 140);
+    FontPickCache.ensure(ctx === null ? undefined : ctx).then(() => {
+      finished = true;
+      clearTimeout(timer);
+      this.closeLoadHint();
+      this.expandFontPick(isEn);
+    }).catch(() => {
+      finished = true;
+      clearTimeout(timer);
+      this.closeLoadHint();
+      this.expandFontPick(isEn);
+    });
+  }
+
+  private expandFontPick(isEn: boolean): void {
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+      if (isEn) {
+        this.uiFontEnListOpen = true;
+      } else {
+        this.uiFontListOpen = true;
+      }
+    });
+  }
+
+  private showLoadHint(): void {
+    if (this.hintOpen) {
+      return;
+    }
+    this.hintOpen = true;
+    this.loadHint.open();
+  }
+
+  private closeLoadHint(): void {
+    if (!this.hintOpen) {
+      return;
+    }
+    this.hintOpen = false;
+    this.loadHint.close();
   }
 
   /** 一键恢复外观默认：主题色 / 卡片 / 灰体 / 壁纸 / 遮罩全部回到出厂值。 */
@@ -769,17 +847,7 @@ export struct SettingsAppearance {
             cardClickable: true,
             cardNoGlow: true,
             cardOnTap: () => {
-              if (this.uiFontListOpen) {
-                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                  this.uiFontListOpen = false;
-                });
-                return;
-              }
-              // **立即展开**（延迟会让面板高度反复变化、页面像被定住）
-              this.uiFontLoadingZh = true;
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.uiFontListOpen = true;
-              });
+              this.toggleFontPick(false);
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -813,27 +881,12 @@ export struct SettingsAppearance {
           .border({ width: 1.5, color: this.palette().divider })
           }
 
-          if (this.uiFontLoadingZh) {
-            Text(this.s('正在加载字体…'))
-              .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-              .padding({ left: HwSpace.xs })
-              .transition(TransitionEffect.OPACITY
-                .combine(TransitionEffect.translate({ y: -4 }))
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
-          }
           if (this.uiFontListOpen) {
             FontPickerList({
               palette: this.palette(),
               fxLookOn: this.fxLookOn,
               chosen: this.uiFontKey,
               rev: this.uiFontRev,
-              onReady: () => {
-                this.uiFontLoadingZh = false;
-                this.uiFontsLoadedZh = true;
-              },
               allowRemove: false,
               onPick: (k: string) => {
                 this.uiFontKey = k;
@@ -852,16 +905,7 @@ export struct SettingsAppearance {
             cardClickable: true,
             cardNoGlow: true,
             cardOnTap: () => {
-              if (this.uiFontEnListOpen) {
-                this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
-                  this.uiFontEnListOpen = false;
-                });
-                return;
-              }
-              this.uiFontLoadingEn = true;
-              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                this.uiFontEnListOpen = true;
-              });
+              this.toggleFontPick(true);
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -894,27 +938,12 @@ export struct SettingsAppearance {
           .border({ width: 1.5, color: this.palette().divider })
           }
 
-          if (this.uiFontLoadingEn) {
-            Text(this.s('正在加载字体…'))
-              .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-              .padding({ left: HwSpace.xs })
-              .transition(TransitionEffect.OPACITY
-                .combine(TransitionEffect.translate({ y: -4 }))
-                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
-          }
           if (this.uiFontEnListOpen) {
             FontPickerList({
               palette: this.palette(),
               fxLookOn: this.fxLookOn,
               chosen: this.uiFontEnKey,
               rev: this.uiFontRev,
-              onReady: () => {
-                this.uiFontLoadingEn = false;
-                this.uiFontsLoadedEn = true;
-              },
               allowRemove: false,
               onPick: (k: string) => {
                 this.uiFontEnKey = k;
