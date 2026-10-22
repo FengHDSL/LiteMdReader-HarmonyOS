@@ -14,6 +14,7 @@
  * ⚠️ 主题色 / 灰字模式等键的取值会被 DesignTokens.paletteFor 与 ThemeStore 消费，
  * 键名不要再改（历史键保留兼容解析）。
  */
+import { ToastFx } from '../service/ToastFx';
 import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveCard, ImmersiveCardLayer, ImmersiveChip } from '../material/ImmersiveCard';
 import { ImmersiveInput } from '../material/ImmersiveInput';
@@ -410,7 +411,7 @@ export struct SettingsAppearance {
   /** 轻提示（与设置中心同款：走系统 promptAction，不引额外依赖） */
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
+      ToastFx.show(this.getUIContext(), message, 1600);
     } catch (err) {
       // 提示失败无副作用
     }
@@ -423,6 +424,8 @@ export struct SettingsAppearance {
    *  · 缓存过期 → 先弹提醒（无加载图标），数据到位后再展开。
    */
   private toggleFontPick(isEn: boolean): void {
+    // 按下时的流光立刻熄灭（用户要求：点击后不能留着光斑）
+    this.glowTick++;
     const open: boolean = isEn ? this.uiFontEnListOpen : this.uiFontListOpen;
     if (open) {
       this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -845,7 +848,9 @@ export struct SettingsAppearance {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
-            cardNoGlow: true,
+            // **流光触感**（用户要求）：按下有光斑，点击后立刻熄灭（见 toggleFontPick 里的 glowTick++）
+            cardNoGlow: false,
+            glowClearTick: this.glowTick,
             cardOnTap: () => {
               this.toggleFontPick(false);
             }
@@ -903,7 +908,9 @@ export struct SettingsAppearance {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
-            cardNoGlow: true,
+            // **流光触感**（用户要求）：按下有光斑，点击后立刻熄灭（见 toggleFontPick 里的 glowTick++）
+            cardNoGlow: false,
+            glowClearTick: this.glowTick,
             cardOnTap: () => {
               this.toggleFontPick(true);
             }

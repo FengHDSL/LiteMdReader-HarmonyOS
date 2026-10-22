@@ -15,6 +15,7 @@
  *  3. **预览**用与阅读页同一套渲染器，所见即所得。
  */
 
+import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
@@ -982,7 +983,7 @@ export struct Editor {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
+      ToastFx.show(this.getUIContext(), message, 1800);
     } catch (err) {
       // 提示失败不影响主流程
     }

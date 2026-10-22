@@ -12,6 +12,7 @@
  *  - 封面程序化绘制（DocCover），文档名哈希选色
  */
 
+import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
@@ -2202,7 +2203,7 @@ struct Index {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
+      ToastFx.show(this.getUIContext(), message, 1800);
     } catch (err) {
       // 提示失败不影响主流程
     }

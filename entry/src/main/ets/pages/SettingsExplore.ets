@@ -1,3 +1,4 @@
+import { ToastFx } from '../service/ToastFx';
 import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 探索中心
@@ -235,7 +236,7 @@ export struct SettingsExplore {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
+      ToastFx.show(this.getUIContext(), message, 1600);
     } catch (err) {
       // 忽略
     }

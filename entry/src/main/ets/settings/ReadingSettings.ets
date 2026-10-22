@@ -13,6 +13,7 @@
  * 面板在哪个页面打开都一样，因为主窗口句柄由 AppWindow 持有。
  */
 
+import { ToastFx } from '../service/ToastFx';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { picker } from '@kit.CoreFileKit';
@@ -131,6 +132,11 @@ export struct ReadingSettingsPanel {
   @State fontEnListOpen: boolean = false;
   /** 导入 / 删除字体后自增，交给 FontPickerList 重取列表（@Watch） */
   @State fontListRev: number = 0;
+  /**
+   * 流光"立即熄灭"信号：字体选择行卡按下有光斑（用户要求流光触感），
+   * 但点完不能再留着——自增它让 ImmersiveCard 的 pressing 立刻复位（见 onGlowClearTick）。
+   */
+  @State glowTick: number = 0;
   /** 阅读背景（与外观壁纸独立）：手选图路径 / 内置款 id */
   @StorageLink('readerBgPath') readerBgPath: string = '';
   @StorageLink('readerBgId') readerBgId: string = '';
@@ -194,6 +200,8 @@ export struct ReadingSettingsPanel {
    * 提醒延迟 140ms 出现：真正很快的加载（内存/磁盘索引命中）不会闪一下弹窗。
    */
   private toggleFontPick(isEn: boolean): void {
+    // 按下时的流光立刻熄灭（用户要求：点击后不能留着光斑）
+    this.glowTick++;
     const open: boolean = isEn ? this.fontEnListOpen : this.fontListOpen;
     if (open) {
       this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -335,7 +343,7 @@ export struct ReadingSettingsPanel {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1500 });
+      ToastFx.show(this.getUIContext(), message, 1500);
     } catch (err) {
       // 提示失败不影响主流程
     }
@@ -703,7 +711,9 @@ export struct ReadingSettingsPanel {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
-            cardNoGlow: true,
+            // **流光触感**（用户要求）：按下有光斑，但点击后立刻熄灭（见 toggleFontPick 里的 glowTick++）
+            cardNoGlow: false,
+            glowClearTick: this.glowTick,
             cardOnTap: () => {
               // 缓存新鲜直接展开；否则弹提醒、加载完再展开（见 toggleFontPick）
               this.toggleFontPick(false);
@@ -764,7 +774,9 @@ export struct ReadingSettingsPanel {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
-            cardNoGlow: true,
+            // **流光触感**（用户要求）：按下有光斑，但点击后立刻熄灭（见 toggleFontPick 里的 glowTick++）
+            cardNoGlow: false,
+            glowClearTick: this.glowTick,
             cardOnTap: () => {
               this.toggleFontPick(true);
             }

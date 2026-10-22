@@ -12,6 +12,7 @@
  * 保证抽屉的玻璃质感和卡片完全同源。
  */
 
+import { ToastFx } from '../service/ToastFx';
 import { TagStyle } from '../service/TagStyle';
 import { common } from '@kit.AbilityKit';
 import { LengthMetrics } from '@kit.ArkUI';
@@ -3884,7 +3885,7 @@ export struct Reader {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
+      ToastFx.show(this.getUIContext(), message, 1800);
     } catch (err) {
       // 提示失败不影响主流程
     }
@@ -4998,7 +4999,11 @@ export struct Reader {
         return;
       }
     }
-    this.docTags = this.docTags.concat([v]);
+    // **加入 / 移除都要有过渡**（用户要求）：状态变更包 animateTo 负责布局推移，
+    // 芯片自身的 .transition 负责弹出 / 收缩（两者缺一个就会"硬切"）。
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+      this.docTags = this.docTags.concat([v]);
+    });
     this.tagDraft = '';
     const c = this.ctx();
     if (c !== null) {
@@ -5014,7 +5019,9 @@ export struct Reader {
         kept.push(this.docTags[k]);
       }
     }
-    this.docTags = kept;
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
+      this.docTags = kept;
+    });
     const c = this.ctx();
     if (c !== null) {
       DocStore.setTags(c, this.docName, this.docTags);
@@ -5653,9 +5660,14 @@ export struct Reader {
             // 淡底 + 同色描边（深浅模式都清楚）
             .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
             .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
+            // **出现 / 消失的过渡**（用户要求）：淡入 + 轻微放大，删除时反向收缩
+            .transition(TransitionEffect.OPACITY
+              .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
+              .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
           }, (tag: string) => tag)
         }
         .width('100%')
+        .transition(TransitionEffect.OPACITY.animation({ duration: 200, curve: Curve.FastOutSlowIn }))
       } else {
         Text(L10n.t('还没有标签。添加后：书架顶栏可按标签筛选，学习卡左上角会显示所属标签。'))
           .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -5663,6 +5675,8 @@ export struct Reader {
           .fontColor(this.palette().textTertiary)
           .lineHeight(HwFont.sx(HwType.caption * 1.6, this.uiFontScale))
           .width('100%')
+          // 空状态与标签列表互换也走过渡，避免"闪一下"
+          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
       }
     }
     .width('100%')
@@ -5856,6 +5870,10 @@ export struct Reader {
                   .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
                   .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
                   .margin({ right: HwSpace.xxs, bottom: HwSpace.xxs })
+                  // 信息卡的标签同样淡入淡出（与标签面板同一套动效）
+                  .transition(TransitionEffect.OPACITY
+                    .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
+                    .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
                   .onClick(() => {
                     this.openTagEditor();
                   })

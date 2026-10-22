@@ -13,6 +13,7 @@
  * 本页只保留：总览信息 + 进入四个板块的入口。
  * 搬迁期间各功能在新页与旧页都可用；旧页代码已随本轮重写移除。
  */
+import { ToastFx } from '../service/ToastFx';
 import { NavLifecycle } from '../service/NavLifecycle';
 import { ImmersiveCard, ImmersiveIconButton } from '../material/ImmersiveCard';
 import { SettingsShell } from './SettingsShell';
@@ -229,7 +230,7 @@ export struct Settings {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
+      ToastFx.show(this.getUIContext(), message, 1600);
     } catch (err) {
       // 忽略
     }

@@ -1,3 +1,4 @@
+import { ToastFx } from '../service/ToastFx';
 import { L10n } from '../service/L10n';
 import { MdParser } from './MdParser';
 /**
@@ -4001,7 +4002,7 @@ export struct MdBlockView {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1500 });
+      ToastFx.show(this.getUIContext(), message, 1500);
     } catch (err) {
       // 提示失败不影响主流程
     }

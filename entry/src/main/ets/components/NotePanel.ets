@@ -17,6 +17,7 @@
  * 外层 `material/SheetKeyboardLift` 现在只当单根容器（它以前垫的键盘高度已删，
  * 那属于重复让位，会把面板顶出屏幕）。
  */
+import { ToastFx } from '../service/ToastFx';
 import { HwFont, HwRadius, HwSpace, HwType, LIGHT_PALETTE, ReaderPalette, ANNOTATION_COLORS, AnnotationColor, annotationColor } from '../theme/DesignTokens';
 import { ImmersiveChip } from '../material/ImmersiveCard';
 import { MathFormulaText } from './MathFormulaText';
@@ -205,7 +206,7 @@ export struct NotePanel {
   }
 
   private toast(msg: string): void {
-    this.getUIContext().getPromptAction().showToast({ message: msg, duration: 1800 });
+    ToastFx.show(this.getUIContext(), msg, 1800);
   }
   /** 文档里现存的公式源码（收窄定位的基准，**不随编辑变动**，写完回才更新） */
   @State mathQuote: string = '';

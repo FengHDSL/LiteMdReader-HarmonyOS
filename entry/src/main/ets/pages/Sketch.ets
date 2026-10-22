@@ -14,6 +14,7 @@
  * 说明：Pen Kit 的 save() 只能存私有 .handwrite 格式（笔迹形状数据），
  * 「保存的图片插入文本」走的是缩略图位图导出，与手写源文件是两条通道。
  */
+import { ToastFx } from '../service/ToastFx';
 import { HandwriteComponent, HandwriteController, PenType } from '@kit.Penkit';
 import type { BusinessError } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
@@ -164,7 +165,7 @@ export struct Sketch {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1800 });
+      ToastFx.show(this.getUIContext(), message, 1800);
     } catch (err) {
       // 忽略
     }

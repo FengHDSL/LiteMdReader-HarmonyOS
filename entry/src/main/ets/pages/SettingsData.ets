@@ -1,3 +1,4 @@
+import { ToastFx } from '../service/ToastFx';
 import { L10n } from '../service/L10n';
 /**
  * 澄笺 · 设置 · 数据管理
@@ -137,7 +138,7 @@ export struct SettingsData {
 
   private toast(message: string): void {
     try {
-      this.getUIContext().getPromptAction().showToast({ message: message, duration: 1600 });
+      ToastFx.show(this.getUIContext(), message, 1600);
     } catch (err) {
       // 提示失败无副作用
     }
