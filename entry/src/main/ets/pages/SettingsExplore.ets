@@ -41,6 +41,11 @@ const UPDATE_SITE: string = 'https://www.sydxky.cn/detail.php?id=956';
 /** 平板分栏内嵌法务文档的 Web 高度（vp）：420 在横屏下太矮，正文只剩几行 */
 const EMBEDDED_LEGAL_HEIGHT: number = 560;
 
+/** MeoW 应用的包名（用户提供）：「MeoW订阅」优先直接拉起它 */
+const MEOW_BUNDLE: string = 'com.chuckfang.meow';
+/** MeoW 订阅页（带渠道号）：没装 MeoW 时打开这个网页 */
+const MEOW_URL: string = 'https://meow.chuckfang.com/?channelId=951fa7696734428c9ee367f5c07e4273';
+
 /** 参考项目（名称 + 地址 + 一句话说明） */
 interface CreditItem {
   name: string;
@@ -221,6 +226,53 @@ export struct SettingsExplore {
       });
     } catch (err) {
       this.toast(L10n.t('打不开应用市场'));
+    }
+  }
+
+  /**
+   * 「MeoW订阅」（用户要求）：优先**直接拉起 MeoW 应用**（包名 com.chuckfang.meow），
+   * 设备上没装 / 拉起失败 → 打开订阅网页；两条路都不行才提示。
+   */
+  private openMeoW(): void {
+    const ctx = this.hostCtx();
+    if (ctx === null) {
+      this.toast(L10n.t('打不开 MeoW 订阅页'));
+      return;
+    }
+    const want: Want = { bundleName: MEOW_BUNDLE };
+    try {
+      ctx.startAbility(want).catch(() => {
+        this.openMeoWLink(ctx);
+      });
+    } catch (err) {
+      this.openMeoWLink(ctx);
+    }
+  }
+
+  /** 没装 MeoW：用系统 openLink 打开订阅页（系统会挑能处理该链接的应用 / 浏览器） */
+  private openMeoWLink(ctx: common.UIAbilityContext): void {
+    try {
+      ctx.openLink(MEOW_URL).catch(() => {
+        this.openMeoWBrowser(ctx);
+      });
+    } catch (err) {
+      this.openMeoWBrowser(ctx);
+    }
+  }
+
+  /** 最后兜底：隐式 viewData 交给浏览器 */
+  private openMeoWBrowser(ctx: common.UIAbilityContext): void {
+    const want: Want = {
+      action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
+      uri: MEOW_URL
+    };
+    try {
+      ctx.startAbility(want).catch(() => {
+        this.toast(L10n.t('打不开 MeoW 订阅页'));
+      });
+    } catch (err) {
+      this.toast(L10n.t('打不开 MeoW 订阅页'));
     }
   }
 
@@ -476,6 +528,22 @@ export struct SettingsExplore {
                 .fontSize(14)
                 // **粉色**（与 chip 同色）
                 .fontColor(['#FFE91E63'])
+            }
+
+            // ── MeoW订阅（用户要求：放在「好评鼓励」右边，橙色）──
+            // 装了 MeoW 直接拉起应用（包名 com.chuckfang.meow），没装就开订阅页。
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FFF57C00',
+              chipActive: true,
+              chipLabel: L10n.t('MeoW订阅'),
+              chipOnTap: () => {
+                this.openMeoW();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.paperplane'))
+                .fontSize(13)
+                .fontColor(['#FFF57C00'])
             }
           }
           .width('100%')
