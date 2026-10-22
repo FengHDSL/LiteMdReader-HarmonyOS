@@ -19,7 +19,7 @@ import { AppModeDialog } from '../components/AppModeDialog';
 import { SettingsMirror } from '../service/SettingsMirror';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { updateManager } from '@kit.AppGalleryKit';
-import { promptAction } from '@kit.ArkUI';
+import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { AppearanceFx } from '../service/AppearanceFx';
 import {
   HwRadius,
@@ -491,7 +491,12 @@ export struct SettingsExplore {
             .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
 
-          Row({ space: HwSpace.xs }) {
+          // **换行容器**：三枚芯片带上图标后变宽，界面字号放大到 130% 时一行放不下，
+          // Flex 自动换行比 Row 硬挤更稳（不会把文案压成省略号）
+          Flex({
+            wrap: FlexWrap.Wrap,
+            space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
+          }) {
             ImmersiveChip({
               palette: this.palette(),
               chipActive: true,
@@ -499,7 +504,12 @@ export struct SettingsExplore {
               chipOnTap: () => {
                 this.openLink('https://github.com/FengHDSL/LiteMdReader-HarmonyOS');
               }
-            })
+            }) {
+              // **图标**（用户要求）：主页 = 房子
+              SymbolGlyph($r('sys.symbol.house'))
+                .fontSize(13)
+                .fontColor([this.palette().textSecondary])
+            }
             // 检查更新：拉资源站详情页解析最新版本（见 checkUpdate）。
             // 进行中芯片变成高亮态 + 文案「检查中…」，重复点击在方法内部直接忽略。
             ImmersiveChip({
@@ -510,9 +520,18 @@ export struct SettingsExplore {
               chipOnTap: () => {
                 this.checkUpdate();
               }
-            })
+            }) {
+              // **图标**（用户要求）：检查更新 = 逆时针刷新箭头（与 chip 同绿）
+              SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+                .fontSize(13)
+                .fontColor(['#FF2E7D32'])
+            }
+            // **更新日志**：靛蓝紫（#FF5E35B1）——与旁边四枚（中性 / 绿 / 粉 / 橙）都区分得开，
+            // 又比纯蓝更"史册感"，配 clock 图标表示"按时间排列的记录"（用户要求：换一个不撞色的颜色）
             ImmersiveChip({
               palette: this.palette(),
+              chipTint: '#FF5E35B1',
+              chipActive: true,
               chipLabel: L10n.t('更新日志'),
               chipOnTap: () => {
                 // **平板分栏嵌入模式**：不进新页，回设置中心右栏展示
@@ -526,7 +545,11 @@ export struct SettingsExplore {
                 }
                 this.stack.pushPath({ name: 'pages/Changelog' }, AppearanceFx.navAnimated());
               }
-            })
+            }) {
+              SymbolGlyph($r('sys.symbol.clock'))
+                .fontSize(13)
+                .fontColor(['#FF5E35B1'])
+            }
           }
           .width('100%')
 
