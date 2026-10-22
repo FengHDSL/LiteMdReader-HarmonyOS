@@ -2814,6 +2814,7 @@ export struct AiChat {
         cardRadius: HwRadius.inline,
         cardPadding: HwSpace.sm,
         cardMaterialShadow: false,
+        cardOutline: true,
         cardBackground: this.palette().quoteBg,
         cardClickable: true,
         cardOnTap: () => {
@@ -2893,6 +2894,7 @@ export struct AiChat {
               cardRadius: HwRadius.card,
               cardPadding: HwSpace.sm,
               cardMaterialShadow: false,
+              cardOutline: true,
               cardBackground: this.palette().accentSoft,
               cardClickable: true,
               cardOnTap: () => {
@@ -2956,6 +2958,7 @@ export struct AiChat {
         cardRadius: HwRadius.card,
         cardPadding: HwSpace.sm,
         cardMaterialShadow: false,
+        cardOutline: true,
         cardBackground: this.palette().accentSoft,
         cardClickable: true,
         cardOnTap: () => {
@@ -3026,6 +3029,7 @@ export struct AiChat {
           cardRadius: HwRadius.card,
           cardPadding: HwSpace.sm,
           cardMaterialShadow: false,
+          cardOutline: true,
           cardBackground: this.palette().accentSoft,
           cardClickable: true,
           cardOnTap: () => {
@@ -3374,6 +3378,7 @@ export struct AiChat {
             cardRadius: HwRadius.pill,
             cardPadding: 0,
             cardMaterialShadow: false,
+        cardOutline: true,
             cardBackground: this.palette().quoteBg,
             cardWidth: 112,
             cardClickable: true,

@@ -99,7 +99,7 @@
         ],
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:starticon_slogan",
+        "startWindowIcon": "$media:starticon_blank",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "skills": [
