@@ -33,6 +33,8 @@ export struct SettingsReading {
   @StorageLink('readerFontSize') fontSize: number = 17;
   @StorageLink('readerLineHeight') lineMul: number = 1.6;
   @StorageLink('readerParaSpace') paraSpace: number = 1;
+  /** **正文字体**（阅读调整 → 字体）：预览必须跟着它变（用户反馈预览字体不变） */
+  @StorageLink('readerFontFamily') fontKey: string = '';
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
@@ -84,15 +86,25 @@ export struct SettingsReading {
 
           Divider().strokeWidth(0.5).color(this.palette().divider)
 
+          // **中文字体**：正文同款族（正文族里英数在前，英文与数字自动用英数字体）
           Text(L10n.t('澄笺'))
+            .fontFamily(HwFont.bodyFamily(this.fontKey))
             .fontSize(this.fontSize + 3)
             .fontWeight(FontWeight.Bold)
             .fontColor(this.palette().textPrimary)
           Text(L10n.t('这是一段预览文字：调整下方的字号、行距与段距，这里会立即跟着变化 ——') +
             L10n.t('阅读时所见即所得，不用来回试。'))
+            .fontFamily(HwFont.bodyFamily(this.fontKey))
             .fontSize(this.fontSize)
             .lineHeight(this.fontSize * this.lineMul)
             .fontColor(this.palette().textSecondary)
+          // **英文与数字演示**（用户要求）：同一款英数字体，含数字 / 百分号 / 货币
+          Text('The quick brown fox jumps over 0123456789. 42% ¥1,234.56')
+            .fontFamily(HwFont.bodyFamily(this.fontKey))
+            .fontSize(this.fontSize)
+            .lineHeight(this.fontSize * this.lineMul)
+            .fontColor(this.palette().textSecondary)
+            .margin({ top: this.fontSize * 0.4 * this.paraSpace })
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)

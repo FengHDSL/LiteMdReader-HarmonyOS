@@ -323,6 +323,8 @@ export struct Reader {
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
   @StorageProp('appFontScale') uiFontScale: number = 1;
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
+  /** 亮度滑条宽度（量出来用于把响应区收在圆点附近） */
+  @State brightSliderW: number = 0;
   /** **正文字重**（阅读设置 → 字体粗细）：以 @Prop 下发给正文块组件，0 = 不覆盖 */
   @StorageProp('readerFontWeight') bodyWeightMode: number = 0;
   /** 侧边栏沉浸光感开关（关闭后目录 / 批注面板用阅读背景色） */
@@ -3785,6 +3787,15 @@ export struct Reader {
   }
 
   /** 关闭**单侧**侧边栏：宽屏收停靠列、窄屏收浮层（互不影响另一侧）。 */
+  /** 亮度滑条的圆点响应区（只认圆点附近，防误触改亮度） */
+  private brightThumbRegion(): Rectangle {
+    const w: number = this.brightSliderW > 0 ? this.brightSliderW : 300;
+    const v: number = this.brightLevel <= 0 ? 50 : Math.round(this.brightLevel * 100);
+    const p: number = Math.max(0, Math.min(1, (v - 5) / 95));
+    const thumbX: number = p * (w - 24);
+    return { x: Math.max(0, Math.min(w - 48, thumbX - 12)), y: 0, width: 48, height: 32 };
+  }
+
   private closeSide(kind: string): void {
     if (this.isWide()) {
       this.closePinned(kind);
@@ -6312,6 +6323,14 @@ export struct Reader {
           .layoutWeight(1)
           .selectedColor(this.palette().accent)
           .blockColor(this.palette().accent)
+          // **必须点中圆点才能拖**（用户要求：与阅读设置里的滑条一致，防误触）
+          .responseRegion(this.brightThumbRegion())
+          .onAreaChange((oldValue: Area, newValue: Area) => {
+            const w: number = Number(newValue.width);
+            if (!isNaN(w) && w > 0) {
+              this.brightSliderW = w;
+            }
+          })
           .onChange((v: number, mode: SliderChangeMode) => {
             const ratio: number = Math.round(v) / 100;
             this.brightLevel = ratio < 0.05 ? 0.05 : ratio;

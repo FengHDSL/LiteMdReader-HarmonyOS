@@ -464,7 +464,8 @@ export struct SettingsExplore {
           Row({ space: HwSpace.xs }) {
             ImmersiveChip({
               palette: this.palette(),
-              chipTint: '#FFB26A00',
+              // **粉色**（用户要求）
+              chipTint: '#FFE91E63',
               chipActive: true,
               chipLabel: L10n.t('好评鼓励'),
               chipOnTap: () => {

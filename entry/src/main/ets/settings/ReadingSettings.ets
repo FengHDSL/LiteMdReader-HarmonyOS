@@ -81,6 +81,11 @@ export struct ReadingSettingsPanel {
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   /** 外观刷新计数（见 SettingsMirror）：派生色改完后靠它重算 */
   @StorageProp('appearanceTick') appearanceTick: number = 0;
+  /** **沉浸光感总开关**（外观页）：关闭时字体选择按钮要加一圈实色包边（用户要求） */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /** **字体加载提示**（用户要求：点击后先提示"正在加载"，无图标，带过渡，加载后再展开） */
+  @State fontLoadingZh: boolean = false;
+  @State fontLoadingEn: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：本面板的界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
@@ -295,7 +300,9 @@ export struct ReadingSettingsPanel {
     const ratio: number = max > min ? (value - min) / (max - min) : 0.5;
     const p: number = Math.max(0, Math.min(1, ratio));
     const thumbX: number = p * (w - 24);
-    return { x: Math.max(0, Math.min(w - 56, thumbX - 16)), y: 0, width: 56, height: h };
+    // **只认圆点附近**（用户要求：必须点中圆点才能拖，避免纵向滚动时误触改值）：
+    // 收紧成 48×32 的小方框，贴着滑块本体
+    return { x: Math.max(0, Math.min(w - 48, thumbX - 12)), y: 0, width: 48, height: 32 };
   }
 
   /**
@@ -628,11 +635,34 @@ export struct ReadingSettingsPanel {
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
           .borderRadius(HwRadius.inner)
           .backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().surfaceBorder })
+          // **光感关时包边加粗**（用户要求）：实色卡片靠这圈边与背景区分
+          .border({
+            width: this.fxLookOn ? 1 : 1.5,
+            color: this.fxLookOn ? this.palette().surfaceBorder : this.palette().divider
+          })
           .onClick(() => {
-            this.fontListOpen = !this.fontListOpen;
+            // **流光立即中断 + 提示加载 → 加载后展开**（用户要求）
+            if (this.fontListOpen) {
+              this.fontListOpen = false;
+              return;
+            }
+            this.fontLoadingZh = true;
+            setTimeout(() => {
+              this.fontLoadingZh = false;
+              this.fontListOpen = true;
+            }, 320);
           })
 
+          if (this.fontLoadingZh) {
+            Text(L10n.t('正在加载字体…'))
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+              .padding({ left: HwSpace.xs })
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.translate({ y: -4 }))
+                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+          }
           if (this.fontListOpen) {
             FontPickerList({
               palette: this.palette(),
@@ -677,11 +707,33 @@ export struct ReadingSettingsPanel {
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 8, bottom: 8 })
           .borderRadius(HwRadius.inner)
           .backgroundColor(this.palette().surface)
-          .border({ width: 1, color: this.palette().surfaceBorder })
+          // **光感关时包边加粗**（同上）
+          .border({
+            width: this.fxLookOn ? 1 : 1.5,
+            color: this.fxLookOn ? this.palette().surfaceBorder : this.palette().divider
+          })
           .onClick(() => {
-            this.fontEnListOpen = !this.fontEnListOpen;
+            if (this.fontEnListOpen) {
+              this.fontEnListOpen = false;
+              return;
+            }
+            this.fontLoadingEn = true;
+            setTimeout(() => {
+              this.fontLoadingEn = false;
+              this.fontEnListOpen = true;
+            }, 320);
           })
 
+          if (this.fontLoadingEn) {
+            Text(L10n.t('正在加载字体…'))
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+              .padding({ left: HwSpace.xs })
+              .transition(TransitionEffect.OPACITY
+                .combine(TransitionEffect.translate({ y: -4 }))
+                .animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+          }
           if (this.fontEnListOpen) {
             FontPickerList({
               palette: this.palette(),
@@ -709,38 +761,7 @@ export struct ReadingSettingsPanel {
               .fontColor([this.palette().accent])
           }
 
-          // **实时预览**（用户要求）：与阅读页**同字体、同字号、同行高、同段距**，
-          // 随上面任何设置变化立即重绘（fontKey/fontEnKey/fontSize/lineMul/paraSpace
-          // 都是 @StorageLink，改值即触发本块重算）。
-          // 中文行演示中文字体；英数行演示英数字体（bodyFamily 的族列表里英数在前）。
-          Column({ space: 0 }) {
-            Text(L10n.t('实时预览'))
-              .fontFamily(HwFont.resolve(this.uiFontKey))
-              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-              .fontColor(this.palette().textTertiary)
-              .width('100%')
-            Text('春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。')
-              .fontFamily(HwFont.bodyFamily(this.fontKey))
-              .fontSize(this.fontSize)
-              .lineHeight(this.fontSize * this.lineMul)
-              .fontColor(this.palette().textPrimary)
-              .width('100%')
-              .margin({ top: 6 })
-            Text('The quick brown fox jumps over the lazy dog. 0123456789 42% ¥1,234.56')
-              .fontFamily(HwFont.bodyFamily(this.fontKey))
-              .fontSize(this.fontSize)
-              .lineHeight(this.fontSize * this.lineMul)
-              .fontColor(this.palette().textPrimary)
-              .width('100%')
-              .margin({ top: this.fontSize * 0.4 * this.paraSpace })
-          }
-          .width('100%')
-          .padding(HwSpace.sm)
-          .borderRadius(HwRadius.inner)
-          .backgroundColor(this.palette().quoteBg)
-          .border({ width: 1, color: this.palette().divider })
-
-          Text(L10n.t('预览与阅读页同字体、同字号、同行高；英文与数字自动用上面选的英数字体，字体被卸载后回退 HarmonyOS Sans'))
+          Text(L10n.t('预览行只用拉丁字母与数字画，避免缺中文字形的字体显示成方块；字体被卸载后自动回退 HarmonyOS Sans'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
@@ -815,6 +836,8 @@ export struct ReadingSettingsPanel {
           .width('100%')
           .selectedColor(this.palette().accent)
           .blockColor(this.palette().accent)
+          // **必须点中圆点才能拖**（用户要求，防纵向滚动误触）
+          .responseRegion(this.sliderThumbRegion(this.bodyWeight, 0, 900))
           .onChange((v: number, mode: SliderChangeMode) => {
             this.bodyWeight = Math.round(v);
           })

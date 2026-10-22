@@ -67,9 +67,67 @@ export struct FontPickerList {
   @State trimToMax: boolean = false;
   /** 一次面板生命周期里只提示一次"字体较多"，不反复打扰 */
   private warnedMany: boolean = false;
+  /** **收藏的字体 key**（逗号分隔，AppStorage 持久化；长按行收藏 / 取消，用户要求） */
+  @State favRaw: string = '';
 
   aboutToAppear(): void {
+    const fav: string | undefined = AppStorage.get<string>('favFonts');
+    this.favRaw = fav === undefined || fav === null ? '' : fav;
     this.reload();
+  }
+
+  /** 收藏键列表 */
+  private favKeys(): string[] {
+    if (this.favRaw.length === 0) {
+      return [];
+    }
+    const parts: string[] = this.favRaw.split(',');
+    const out: string[] = [];
+    for (let k = 0; k < parts.length; k++) {
+      if (parts[k].length > 0) {
+        out.push(parts[k]);
+      }
+    }
+    return out;
+  }
+
+  private isFav(key: string): boolean {
+    return key.length > 0 && this.favKeys().indexOf(key) >= 0;
+  }
+
+  /** 收藏 / 取消收藏（长按行触发） */
+  private toggleFav(key: string): void {
+    if (key.length === 0) {
+      return;
+    }
+    const list: string[] = this.favKeys();
+    const at: number = list.indexOf(key);
+    if (at >= 0) {
+      list.splice(at, 1);
+    } else {
+      list.push(key);
+    }
+    this.favRaw = list.join(',');
+    AppStorage.setOrCreate('favFonts', this.favRaw);
+    this.getUIContext().getPromptAction().showToast({
+      message: at >= 0 ? L10n.t('已取消收藏：') + key : L10n.t('已收藏：') + key,
+      duration: 1400
+    });
+  }
+
+  /** 收藏项的显示名（从两份列表里查；查不到就用 key 本身） */
+  private nameOfKey(key: string): string {
+    for (let k = 0; k < this.userFonts.length; k++) {
+      if (this.userFonts[k].family === key) {
+        return this.showName(key, '');
+      }
+    }
+    for (let k = 0; k < this.systemFonts.length; k++) {
+      if (this.systemFonts[k].key === key || this.systemFonts[k].family === key) {
+        return this.sysTitle(this.systemFonts[k]);
+      }
+    }
+    return key;
   }
 
   /** 重新取两份列表（导入 / 删除后宿主可再调一次；列表里的「刷新」按钮走 refreshFonts） */
@@ -153,6 +211,8 @@ export struct FontPickerList {
    * （用户要求"检测到可能会卡就弹窗提示"）。选「只列前 30 款」后仍可再展开看全部。
    */
   private checkTooMany(): void {
+    // **用户要求：删除「字体较多」弹窗，直接展示全部字体**（加载提示由宿主管）
+    return;
     const n: number = this.totalFonts();
     if (this.warnedMany || n < FONT_MANY) {
       return;
@@ -207,8 +267,14 @@ export struct FontPickerList {
   }
 
   @Builder
-  row(key: string, name: string, sub: string, removable: boolean, active: boolean) {
+  row(key: string, name: string, sub: string, removable: boolean, active: boolean, seq: number) {
     Row({ space: HwSpace.sm }) {
+      // **序号**（用户要求）：字体左边编号，便于按位查找
+      Text(String(seq))
+        .fontSize(HwType.caption)
+        .fontColor(this.palette.textTertiary)
+        .width(22)
+        .textAlign(TextAlign.End)
       Column({ space: 1 }) {
         Text(name)
           .fontSize(HwType.label + 3)
@@ -226,6 +292,12 @@ export struct FontPickerList {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
 
+      // **收藏星标**（用户要求：长按可收藏）
+      if (this.isFav(key)) {
+        SymbolGlyph($r('sys.symbol.heart_fill'))
+          .fontSize(14)
+          .fontColor(['#FFE91E63'])
+      }
       if (active) {
         SymbolGlyph($r('sys.symbol.checkmark_circle_fill'))
           .fontSize(18)
@@ -257,8 +329,30 @@ export struct FontPickerList {
     .gesture(
       LongPressGesture()
         .onAction(() => {
-          if (removable) {
-            this.onRemove(key);
+          if (key.length === 0) {
+            return;
+          }
+          if (removable && this.allowRemove) {
+            // 导入的字体：长按给「收藏 / 删除」二选一（保留原有删除能力）
+            this.getUIContext().getPromptAction().showDialog({
+              title: this.isFav(key) ? L10n.t('取消收藏') : L10n.t('收藏字体'),
+              message: name,
+              buttons: [
+                { text: this.isFav(key) ? L10n.t('取消收藏') : L10n.t('收藏'),
+                  color: '#FFE91E63' },
+                { text: L10n.t('删除字体'), color: '#FFD32F2F' }
+              ]
+            }).then((dr: promptAction.ShowDialogSuccessResponse) => {
+              if (dr.index === 0) {
+                this.toggleFav(key);
+              } else if (dr.index === 1) {
+                this.onRemove(key);
+              }
+            }).catch(() => {
+              // 手势关闭不动作
+            });
+          } else {
+            this.toggleFav(key);
           }
         })
     )
@@ -269,9 +363,9 @@ export struct FontPickerList {
    * 只有全名能定位到具体样式），标题显示「家族 · 样式」，预览行用这一款自己画。
    */
   @Builder
-  sysRow(f: SystemFont) {
+  sysRow(f: SystemFont, seq: number) {
     this.row(f.key, this.sysTitle(f), f.fullName + ' · ' + PREVIEW_LINE, false,
-      this.chosen === f.key || this.chosen === f.family)
+      this.chosen === f.key || this.chosen === f.family, seq)
   }
 
   private sysTitle(f: SystemFont): string {
@@ -316,32 +410,41 @@ export struct FontPickerList {
         .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 6, bottom: 6 })
 
         if (this.showDefault) {
-          this.row('', L10n.t('默认'), L10n.t('系统默认字形 · ') + PREVIEW_LINE, false, this.chosen === '')
+          this.row('', L10n.t('默认'), L10n.t('系统默认字形 · ') + PREVIEW_LINE, false,
+            this.chosen === '', 1)
+        }
+        // **收藏分组置顶**（用户要求：长按收藏后能快速找到）
+        if (this.favKeys().length > 0) {
+          this.groupTitle(L10n.t('收藏'))
+          ForEach(this.favKeys(), (k: string, fi: number) => {
+            this.row(k, this.nameOfKey(k), PREVIEW_LINE, false, this.chosen === k, fi + 1)
+          }, (k: string) => 'fav_' + k + '_' + this.regTick)
         }
         if (this.userFonts.length > 0) {
-          this.groupTitle(L10n.t('导入的字体（长按可删除）'))
-          ForEach(this.shownUserFonts(), (f: UserFont) => {
+          this.groupTitle(L10n.t('导入的字体（长按收藏或删除）'))
+          ForEach(this.shownUserFonts(), (f: UserFont, ui: number) => {
             this.row(f.family, this.showName(f.family, ''), PREVIEW_LINE, this.allowRemove,
-              this.chosen === f.family)
+              this.chosen === f.family, ui + 2)
           }, (f: UserFont) => f.family)
         }
         // ── 系统字体按类型分三段；**每个样式单独一行**（家族名分不出 Bold / Italic）──
         if (this.sysOfType('installed').length > 0) {
           this.groupTitle(L10n.t('系统已安装（字体管理器导入的）'))
-          ForEach(this.sysOfType('installed'), (f: SystemFont) => {
-            this.sysRow(f)
+          ForEach(this.sysOfType('installed'), (f: SystemFont, si: number) => {
+            this.sysRow(f, this.userFonts.length + si + 2)
           }, (f: SystemFont) => 'sys_' + f.key + '_' + this.regTick)
         }
         if (this.sysOfType('generic').length > 0) {
           this.groupTitle(L10n.t('系统自带字体'))
-          ForEach(this.sysOfType('generic'), (f: SystemFont) => {
-            this.sysRow(f)
+          ForEach(this.sysOfType('generic'), (f: SystemFont, si: number) => {
+            this.sysRow(f, this.userFonts.length + this.sysOfType('installed').length + si + 2)
           }, (f: SystemFont) => 'gen_' + f.key + '_' + this.regTick)
         }
         if (this.sysOfType('stylish').length > 0) {
           this.groupTitle(L10n.t('样式字体'))
-          ForEach(this.sysOfType('stylish'), (f: SystemFont) => {
-            this.sysRow(f)
+          ForEach(this.sysOfType('stylish'), (f: SystemFont, si: number) => {
+            this.sysRow(f, this.userFonts.length + this.sysOfType('installed').length
+              + this.sysOfType('generic').length + si + 2)
           }, (f: SystemFont) => 'sty_' + f.key + '_' + this.regTick)
         }
         if (this.trimToMax) {
