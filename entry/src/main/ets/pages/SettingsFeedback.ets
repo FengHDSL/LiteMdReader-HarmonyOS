@@ -60,11 +60,6 @@ export struct SettingsFeedback {
   @StorageProp('appFontWeightDelta') uiFontWeightDelta: number = 0;
   /** 当前版本号（拼进反馈模板，作者一眼知道是哪一版） */
   @State versionName: string = '';
-  /**
-   * 当前展开说明的渠道（空串 = 全部收起）。渠道说明较长，两行会截断看不清，
-   * 点文字区展开 / 收起（一次只展开一个，避免卡片被撑得过长）。
-   */
-  @State openKey: string = '';
 
   aboutToAppear(): void {
     try {
@@ -228,13 +223,6 @@ export struct SettingsFeedback {
     this.copyText(text, L10n.t('已复制反馈模板，填完贴到下面任一渠道'));
   }
 
-  /** 展开 / 收起某个渠道的说明（带高度过渡） */
-  private toggleChannel(k: string): void {
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.FastOutSlowIn }, () => {
-      this.openKey = this.openKey === k ? '' : k;
-    });
-  }
-
   /** 一个渠道行：图标 + 名称 + 说明 + 右侧箭头 */
   @Builder
   channelRow(idKey: string, logo: Resource, title: string, desc: string, tint: string, onTap: () => void) {
@@ -248,46 +236,26 @@ export struct SettingsFeedback {
         .objectFit(ImageFit.Cover)
         .draggable(false)
 
-      // 文字区：**点这里展开 / 收起说明**（说明两行会截断，用户要求可展开看全）
+      // 文字区：说明**常驻全文**（用户要求：不折叠）
       Column({ space: 3 }) {
-        Row({ space: 4 }) {
-          Text(title)
-            .fontFamily(HwFont.resolve(this.uiFontKey))
-            .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-            .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-            .fontColor(this.palette().textPrimary)
-            .layoutWeight(1)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-          // 展开指示：收起时朝下、展开时朝上（小图标，不抢视线）
-          if (this.openKey === idKey) {
-            SymbolGlyph($r('sys.symbol.chevron_up'))
-              .fontSize(12)
-              .fontColor([this.palette().textTertiary])
-          } else {
-            SymbolGlyph($r('sys.symbol.chevron_down'))
-              .fontSize(12)
-              .fontColor([this.palette().textTertiary])
-          }
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Center)
+        Text(title)
+          .fontFamily(HwFont.resolve(this.uiFontKey))
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+          .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+          .fontColor(this.palette().textPrimary)
+          .width('100%')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
 
         Text(desc)
           .fontFamily(HwFont.resolve(this.uiFontKey))
           .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
           .fontColor(this.palette().textTertiary)
           .width('100%')
-          // 展开后不再限行；收起时两行 + 省略号
-          .maxLines(this.openKey === idKey ? 12 : 2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
           .lineHeight(HwFont.sx(HwType.caption * 1.55, this.uiFontScale))
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
-      .onClick(() => {
-        this.toggleChannel(idKey);
-      })
 
       // 跳转：**圆形沉浸光感按钮**（材质底盘 + 主题色箭头），一眼看出是"去那边"
       ImmersiveIconButton({
