@@ -2082,6 +2082,10 @@ export struct Reader {
     this.docCreatedAt = times.created;
     this.docModifiedAt = times.modified;
     this.docStarred = DocStore.isStarred(ctx, name);
+    // **标签也要在打开文档时就加载**（用户反馈：重开文档标签不显示，点「添加标签」才冒出来）
+    const docMetaNow: DocMeta | undefined = DocStore.find(ctx, name);
+    const rawTags: string[] | undefined = docMetaNow === undefined ? undefined : docMetaNow.tags;
+    this.docTags = rawTags === undefined ? [] : rawTags.slice();
     // **图表 / 公式后台预渲染任务**（用户要求：打开文件即后台加载转图片并写缓存，
     // 不等滑到位置才加载；导出也直接用缓存图）。收集与排序、已关闭引擎跳过
     // 见 collectChartTasks（设置 → 引擎管理）。
@@ -5833,6 +5837,9 @@ export struct Reader {
                   .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))
                   .border({ width: 1, color: withAlpha(this.tagColor(ti), '40') })
                   .margin({ right: HwSpace.xxs, bottom: HwSpace.xxs })
+                  .onClick(() => {
+                    this.openTagEditor();
+                  })
               }, (tag: string) => 'meta_' + tag)
             }
             .width('100%')
@@ -6010,30 +6017,6 @@ export struct Reader {
             }
             .width('100%')
             .padding({ top: HwSpace.xxs })
-          }
-
-          // **文档标签**（用户要求）：信息卡里展示，样式按标签名确定性生成
-          //（同名同色、异名错开色相），深浅主题各有一套明暗值。
-          if (this.docTags.length > 0) {
-            Flex({ wrap: FlexWrap.Wrap }) {
-              ForEach(this.docTags, (tag: string) => {
-                Text('#' + tag)
-                  .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
-                  .fontColor(TagStyle.fg(tag, this.isDark()))
-                  .backgroundColor(TagStyle.bg(tag, this.isDark()))
-                  .borderRadius(HwRadius.pill)
-                  .border({ width: 1, color: TagStyle.border(tag, this.isDark()) })
-                  .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-                  .margin({ right: 6, bottom: 6 })
-                  .onClick(() => {
-                    // 点标签 → 打开标签面板（与信息卡里的入口一致）
-                    this.openTagEditor();
-                  })
-              }, (tag: string) => 'ctxTag_' + tag)
-            }
-            .width('100%')
-            .padding({ top: HwSpace.xs })
           }
 
           Text(L10n.t('右滑目录 · 左滑注释 · 底部工具条可调字号与亮度 · 长按选中可荧光笔/批注'))

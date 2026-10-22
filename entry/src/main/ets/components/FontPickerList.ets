@@ -55,6 +55,9 @@ export struct FontPickerList {
   /** 删除回调（仅导入的字体可删；宿主没接就只是不给长按动作） */
   onRemove: (family: string) => void = () => {
   };
+  /** **加载完成回调**（宿主据此收起"正在加载字体…"提示，用户要求） */
+  onReady: () => void = () => {
+  };
   /** 宿主导入 / 删除字体后把这个值自增，列表重新取一遍（否则要等下次打开面板才更新） */
   @Prop @Watch('reload') rev: number = 0;
 
@@ -150,8 +153,11 @@ export struct FontPickerList {
     }).then(() => {
       // 注册完再画一遍：没注册时 fontFamily 解析不到，预览行是系统默认字
       this.regTick++;
+      // **通知宿主加载完成**（提示条收起）
+      this.onReady();
     }).catch(() => {
       // 取不到就只留导入的那份
+      this.onReady();
     });
   }
 
@@ -483,8 +489,8 @@ export struct FontPickerList {
     .clip(true)
     // 透明底：材质由 ImmersiveCard 承载（光感关时卡片本身是实色）
     .backgroundColor('#00000000')
-    // **包边恒定 1.5vp**（与字体选择按钮同款，光感开关不影响）
-    .border({ width: 1.5, color: this.palette.surfaceBorder })
+    // **包边恒定 1.5vp**（用 divider 色：surfaceBorder 压在实色底上几乎看不见，用户反馈"像删了"）
+    .border({ width: 1.5, color: this.palette.divider })
     // **展开 / 收起动画**：淡入 + 竖向轻微缩放。挂在组件自己这层 Scroll 上，
     // 宿主只管用 if 控制出现与消失，阅读设置与外观设置两处共用同一份动效。
     .transition(TransitionEffect.OPACITY

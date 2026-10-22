@@ -183,6 +183,9 @@ export struct SettingsAppearance {
   @State uiFontLoadingZh: boolean = false;
   /** 沉浸光感总开关（字体列表包边/材质判定用） */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  /** 字体列表已加载过（再次展开不再提示加载） */
+  @State uiFontsLoadedZh: boolean = false;
+  @State uiFontsLoadedEn: boolean = false;
   @State uiFontLoadingEn: boolean = false;
   /** 界面英数字体列表是否展开（与中文那一行各自独立收放） */
   @State uiFontEnListOpen: boolean = false;
@@ -771,13 +774,13 @@ export struct SettingsAppearance {
                 });
                 return;
               }
-              this.uiFontLoadingZh = true;
-              setTimeout(() => {
-                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                  this.uiFontLoadingZh = false;
-                  this.uiFontListOpen = true;
-                });
-              }, 320);
+              // **立即展开**（延迟会让面板高度反复变化、页面像被定住）
+              if (!this.uiFontsLoadedZh) {
+                this.uiFontLoadingZh = true;
+              }
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.uiFontListOpen = true;
+              });
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -807,8 +810,8 @@ export struct SettingsAppearance {
           .width('100%')
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
-          // **包边恒定 1.5vp**（与阅读调整页同款）
-          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          // **包边恒定 1.5vp**（divider 色，实色底上可见）
+          .border({ width: 1.5, color: this.palette().divider })
           }
 
           if (this.uiFontLoadingZh) {
@@ -828,6 +831,10 @@ export struct SettingsAppearance {
               fxLookOn: this.fxLookOn,
               chosen: this.uiFontKey,
               rev: this.uiFontRev,
+              onReady: () => {
+                this.uiFontLoadingZh = false;
+                this.uiFontsLoadedZh = true;
+              },
               allowRemove: false,
               onPick: (k: string) => {
                 this.uiFontKey = k;
@@ -851,13 +858,12 @@ export struct SettingsAppearance {
                 });
                 return;
               }
-              this.uiFontLoadingEn = true;
-              setTimeout(() => {
-                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                  this.uiFontLoadingEn = false;
-                  this.uiFontEnListOpen = true;
-                });
-              }, 320);
+              if (!this.uiFontsLoadedEn) {
+                this.uiFontLoadingEn = true;
+              }
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.uiFontEnListOpen = true;
+              });
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -887,7 +893,7 @@ export struct SettingsAppearance {
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
           // **包边恒定 1.5vp**（同上）
-          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          .border({ width: 1.5, color: this.palette().divider })
           }
 
           if (this.uiFontLoadingEn) {
@@ -907,6 +913,10 @@ export struct SettingsAppearance {
               fxLookOn: this.fxLookOn,
               chosen: this.uiFontEnKey,
               rev: this.uiFontRev,
+              onReady: () => {
+                this.uiFontLoadingEn = false;
+                this.uiFontsLoadedEn = true;
+              },
               allowRemove: false,
               onPick: (k: string) => {
                 this.uiFontEnKey = k;

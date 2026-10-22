@@ -2285,6 +2285,8 @@ struct Index {
   /** 打开空白编辑器新建。 */
   private openEditorNew(): void {
     this.shelfVisible = false;
+    // **当前标签页下新建 → 记下标签**，Editor 创建成功后自动打上（用户要求）
+    AppStorage.setOrCreate('pendingNewDocTag', this.tagFilter);
     // 新建后回到书架：让新封面带动画进场（见 refresh 里的 animateNextRefresh）
     this.animateNextRefresh = true;
     this.pushPage('pages/Editor');
@@ -2353,6 +2355,10 @@ struct Index {
           } else {
             ok++;
             lastName = meta.name;
+            // **当前标签页下导入 → 自动打上该标签**（用户要求）
+            if (this.tagFilter.length > 0) {
+              DocStore.setTags(ctx, meta.name, [this.tagFilter]);
+            }
           }
         }
         this.refresh();

@@ -83,9 +83,12 @@ export struct ReadingSettingsPanel {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** **沉浸光感总开关**（外观页）：关闭时字体选择按钮要加一圈实色包边（用户要求） */
   @StorageProp('immersiveLook') fxLookOn: boolean = false;
-  /** **字体加载提示**（用户要求：点击后先提示"正在加载"，无图标，带过渡，加载后再展开） */
+  /** **字体加载提示**：首次展开时显示，列表 ready 后收起（用户要求：无图标、带过渡） */
   @State fontLoadingZh: boolean = false;
   @State fontLoadingEn: boolean = false;
+  /** **已加载过**：再次展开直接出列表，不再走提示（用户反馈"关了重开又加载一遍"） */
+  @State fontsLoadedZh: boolean = false;
+  @State fontsLoadedEn: boolean = false;
   /** **界面字体**（外观设置 → 界面字体）：本面板的界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
   /** 界面字号缩放系数 / 界面字重相对加粗量（外观设置） */
@@ -622,13 +625,14 @@ export struct ReadingSettingsPanel {
                 });
                 return;
               }
-              this.fontLoadingZh = true;
-              setTimeout(() => {
-                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                  this.fontLoadingZh = false;
-                  this.fontListOpen = true;
-                });
-              }, 320);
+              // **立即展开**（不加延迟）：延迟期间面板高度变化会让页面像"被定住"，
+              // 加载提示改为覆盖在列表上方，ready 后自动收起。
+              if (!this.fontsLoadedZh) {
+                this.fontLoadingZh = true;
+              }
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.fontListOpen = true;
+              });
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -658,8 +662,8 @@ export struct ReadingSettingsPanel {
           .width('100%')
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
-          // **包边恒定 1.5vp**：光感开时压在材质上、关时压在实色上，两种状态都有清楚一圈
-          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          // **包边恒定 1.5vp**（divider 色：实色底上也看得见）
+          .border({ width: 1.5, color: this.palette().divider })
           }
 
           if (this.fontLoadingZh) {
@@ -678,6 +682,10 @@ export struct ReadingSettingsPanel {
               fxLookOn: this.fxLookOn,
               chosen: this.fontKey,
               rev: this.fontListRev,
+              onReady: () => {
+                this.fontLoadingZh = false;
+                this.fontsLoadedZh = true;
+              },
               onPick: (k: string) => {
                 this.fontKey = k;
                 this.toast(L10n.t('正文字体：') + HwFont.label(k));
@@ -703,13 +711,12 @@ export struct ReadingSettingsPanel {
                 });
                 return;
               }
-              this.fontLoadingEn = true;
-              setTimeout(() => {
-                this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
-                  this.fontLoadingEn = false;
-                  this.fontEnListOpen = true;
-                });
-              }, 320);
+              if (!this.fontsLoadedEn) {
+                this.fontLoadingEn = true;
+              }
+              this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
+                this.fontEnListOpen = true;
+              });
             }
           }) {
           Row({ space: HwSpace.xs }) {
@@ -740,7 +747,7 @@ export struct ReadingSettingsPanel {
           .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 10, bottom: 10 })
           .borderRadius(HwRadius.inner)
           // **包边恒定 1.5vp**（同上）
-          .border({ width: 1.5, color: this.palette().surfaceBorder })
+          .border({ width: 1.5, color: this.palette().divider })
           }
 
           if (this.fontLoadingEn) {
@@ -759,6 +766,10 @@ export struct ReadingSettingsPanel {
               fxLookOn: this.fxLookOn,
               chosen: this.fontEnKey,
               rev: this.fontListRev,
+              onReady: () => {
+                this.fontLoadingEn = false;
+                this.fontsLoadedEn = true;
+              },
               onPick: (k: string) => {
                 this.fontEnKey = k;
                 this.toast(L10n.t('英数字体：') + HwFont.label(k));

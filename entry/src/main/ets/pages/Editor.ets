@@ -1619,6 +1619,12 @@ export struct Editor {
           this.toast(L10n.t('保存失败：名称非法或已存在同名文档'));
           return false;
         }
+        // **在书架某个标签下新建 → 自动打上那个标签**（用户要求）
+        const pendingTag: string = AppStorage.get<string>('pendingNewDocTag') ?? '';
+        if (pendingTag.length > 0) {
+          DocStore.setTags(ctx, meta.name, [pendingTag]);
+          AppStorage.setOrCreate('pendingNewDocTag', '');
+        }
         this.isNew = false;
         this.originalName = meta.name;
         this.docName = meta.name;
