@@ -128,6 +128,8 @@ export struct ImmersiveCard {
   @Prop cardBackground: string = '';
   /** 是否参与点击（空实现即不可点） */
   @Prop cardClickable: boolean = false;
+  /** **关闭本卡按压流光**（用户要求：字体选择这类控件不要流光触感） */
+  @Prop cardNoGlow: boolean = false;
   /** 卡片流光触感（外观设置）：开启后按压卡片才出现流光（照搬 xjau cardGlowTouch） */
   @StorageProp('cardGlowTouch') flowTouch: boolean = true;
   /** 主题色流光（外观设置）：按压光晕改用主题色；关闭为白光 */
@@ -318,7 +320,9 @@ export struct ImmersiveCard {
   pressGlowOverlay() {
     // 不再要求 cardClickable：多数卡片（设置节、信息卡）不可点，
     // 要求可点的话「卡片流光触感 / 主题色流光」调了也看不到效果。
-    if (this.flowTouch && this.pressing) {
+    // cardNoGlow：单卡显式关掉（字体选择等控件，用户要求不要流光）
+    // ⚠️ @Builder 里不能写 `return;`（只允许 UI 组件语法）→ 条件必须并进 if
+    if (!this.cardNoGlow && this.flowTouch && this.pressing) {
       Column()
         .width(150)
         .height(150)

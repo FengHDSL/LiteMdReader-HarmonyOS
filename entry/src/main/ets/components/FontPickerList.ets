@@ -37,6 +37,14 @@ const FONT_MANY: number = 40;
 /** 提示里给出的"只列前 N 款"的 N */
 const FONT_TRIM_TO: number = 30;
 
+/**
+ * **列表数据缓存**（模块级，进程内）：字体列表与已注册状态不随组件销毁丢失。
+ * 再次展开选择器时先用缓存立即渲染（并立刻通知宿主收起"正在加载"），
+ * 再后台静默刷新——用户要求"缓存下来，不用每次打开都重新加载"。
+ */
+let cachedUserFonts: UserFont[] | null = null;
+let cachedSystemFonts: SystemFont[] | null = null;
+
 @Component
 export struct FontPickerList {
   /** 调色板：**必须 @Prop**，否则换肤后不更新 */
@@ -79,6 +87,15 @@ export struct FontPickerList {
   aboutToAppear(): void {
     const fav: string | undefined = AppStorage.get<string>('favFonts');
     this.favRaw = fav === undefined || fav === null ? '' : fav;
+    // **缓存命中：立即出列表 + 立刻收起提示，再后台静默刷新**
+    if (cachedUserFonts !== null && cachedSystemFonts !== null) {
+      this.userFonts = cachedUserFonts.slice();
+      this.systemFonts = cachedSystemFonts.slice();
+      this.regTick++;
+      this.onReady();
+      this.reload();
+      return;
+    }
     this.reload();
   }
 
@@ -143,11 +160,13 @@ export struct FontPickerList {
       const ctx = c as common.UIAbilityContext;
       FontStore.registerAll(ctx);
       this.userFonts = FontStore.list(ctx);
+      cachedUserFonts = this.userFonts.slice();
     }
     // 列表先出（内存 / 磁盘索引命中就是当帧画完），注册放后面慢慢做：
     // 逐款 registerFont 是打开面板那一下卡顿的大头，没必要让列表等它。
     FontStore.loadInstalled().then((list: SystemFont[]) => {
       this.systemFonts = list;
+      cachedSystemFonts = list.slice();
       this.checkTooMany();
       return FontStore.registerInstalledAll();
     }).then(() => {

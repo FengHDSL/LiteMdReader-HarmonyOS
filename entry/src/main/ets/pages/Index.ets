@@ -8792,7 +8792,9 @@ export struct EncodingChoiceCard {
   build() {
     ImmersiveCard({
       cardRadius: HwRadius.card,
-      cardPadding: HwSpace.lg,
+      // **内边距交给里面的 Column**：包边要画在卡片外沿，若仍由 cardPadding 撑开，
+      // 边框会缩进成"内框"（用户要的是卡片包边）。故这里 0，padding 下移。
+      cardPadding: 0,
       palette: this.palette
     }) {
       Column({ space: HwSpace.xs }) {
@@ -8840,6 +8842,10 @@ export struct EncodingChoiceCard {
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
+      .padding(HwSpace.lg)
+      .borderRadius(HwRadius.card)
+      // **包边恒定 1.5vp**（divider 色：沉浸光感关闭、卡片变实色底时也看得见）
+      .border({ width: 1.5, color: this.palette.divider })
     }
   }
 }

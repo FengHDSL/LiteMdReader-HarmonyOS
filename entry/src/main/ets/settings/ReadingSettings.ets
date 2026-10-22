@@ -495,7 +495,6 @@ export struct ReadingSettingsPanel {
       .padding({ top: HwSpace.xs })
   }
 
-  @Builder
   /**
    * 主题芯片（**等宽平铺**）：5 个芯片挤在一行会超出卡片（用户反馈），
    * 改为 3 + 2 两行、每行用 layoutWeight 均分——与亮度面板同一形态。
@@ -618,6 +617,7 @@ export struct ReadingSettingsPanel {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
+            cardNoGlow: true,
             cardOnTap: () => {
               if (this.fontListOpen) {
                 this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -627,9 +627,8 @@ export struct ReadingSettingsPanel {
               }
               // **立即展开**（不加延迟）：延迟期间面板高度变化会让页面像"被定住"，
               // 加载提示改为覆盖在列表上方，ready 后自动收起。
-              if (!this.fontsLoadedZh) {
-                this.fontLoadingZh = true;
-              }
+              // **每次都提示**（用户要求）：提示由列表 onReady 收起（缓存命中时一闪即过）
+              this.fontLoadingZh = true;
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
                 this.fontListOpen = true;
               });
@@ -704,6 +703,7 @@ export struct ReadingSettingsPanel {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
+            cardNoGlow: true,
             cardOnTap: () => {
               if (this.fontEnListOpen) {
                 this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -711,9 +711,7 @@ export struct ReadingSettingsPanel {
                 });
                 return;
               }
-              if (!this.fontsLoadedEn) {
-                this.fontLoadingEn = true;
-              }
+              this.fontLoadingEn = true;
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
                 this.fontEnListOpen = true;
               });

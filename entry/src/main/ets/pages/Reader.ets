@@ -5624,6 +5624,11 @@ export struct Reader {
                 .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
                 // **按序号取色**（用户要求：标签带颜色）
                 .fontColor(this.tagColor(ti))
+                // **长标签单行省略 + 宽度封顶**（同上：胶囊必须包住内容）
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .constraintSize({ maxWidth: '86%' })
+                .layoutWeight(1)
               Text('×')
                 .fontFamily(HwFont.resolve(this.uiFontKey))
                 .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
@@ -5832,6 +5837,10 @@ export struct Reader {
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
                   .fontColor(this.tagColor(ti))
+                  // **长标签单行省略 + 宽度封顶**（用户反馈：几十字的长标签胶囊包不住内容）
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .constraintSize({ maxWidth: '100%' })
                   .padding({ left: 8, right: 8, top: 3, bottom: 3 })
                   .borderRadius(HwRadius.pill)
                   .backgroundColor(withAlpha(this.tagColor(ti), this.isDark() ? '24' : '1A'))

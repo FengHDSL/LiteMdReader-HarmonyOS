@@ -767,6 +767,7 @@ export struct SettingsAppearance {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
+            cardNoGlow: true,
             cardOnTap: () => {
               if (this.uiFontListOpen) {
                 this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -775,9 +776,7 @@ export struct SettingsAppearance {
                 return;
               }
               // **立即展开**（延迟会让面板高度反复变化、页面像被定住）
-              if (!this.uiFontsLoadedZh) {
-                this.uiFontLoadingZh = true;
-              }
+              this.uiFontLoadingZh = true;
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
                 this.uiFontListOpen = true;
               });
@@ -851,6 +850,7 @@ export struct SettingsAppearance {
             cardMaterialShadow: false,
             palette: this.palette(),
             cardClickable: true,
+            cardNoGlow: true,
             cardOnTap: () => {
               if (this.uiFontEnListOpen) {
                 this.getUIContext().animateTo({ duration: 200, curve: Curve.FastOutSlowIn }, () => {
@@ -858,9 +858,7 @@ export struct SettingsAppearance {
                 });
                 return;
               }
-              if (!this.uiFontsLoadedEn) {
-                this.uiFontLoadingEn = true;
-              }
+              this.uiFontLoadingEn = true;
               this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, () => {
                 this.uiFontEnListOpen = true;
               });
