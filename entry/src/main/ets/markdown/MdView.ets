@@ -1012,6 +1012,14 @@ export struct MdBlockView {
   @StorageProp('hlOpacity') hlOpacity: number = 1;
   /** 沉浸光感开关（已强制开启）：批注菜单那层浮窗外壳据此决定让不让出底色 */
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /**
+   * **沉浸光感总开关**（外观设置）与档位：批注选择菜单外壳的底色判定必须三者同查——
+   * 此前只查 immersiveOn 与材质是否构造成功，**光感关掉时 materialOn() 仍为 true**，
+   * 外壳底色被让成 `#00000000` + BlurStyle.NONE → 选择条整个纯透明（用户实测）。
+   * 与 ImmersiveCard / ImmersiveBar 同一口径：开关关 / 节能档 / 材质缺失都算「材质不可用」。
+   */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
   /** 波浪线粗细（thicknessScale）：系统波浪装饰线唯一开放的可调项 */
   @StorageProp('waveThickness') waveThickness: number = 1;
   /**
@@ -1103,9 +1111,10 @@ export struct MdBlockView {
   imageTapHandler: (key: string, src: string) => void = () => {
   };
 
-  /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）。批注菜单外壳用它决定让不让底色。 */
+  /** 沉浸光感是否真的会渲染（总开关 × 档位 × 材质构造成功）。批注菜单外壳用它决定让不让底色。 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   /** 图表触摸上报（抑制根级捏合改字号） */

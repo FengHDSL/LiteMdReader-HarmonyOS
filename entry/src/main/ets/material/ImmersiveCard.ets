@@ -130,6 +130,11 @@ export struct ImmersiveCard {
   @Prop cardClickable: boolean = false;
   /** **关闭本卡按压流光**（用户要求：字体选择这类控件不要流光触感） */
   @Prop cardNoGlow: boolean = false;
+  /**
+   * **外沿包边**（用户要求：助手设置的文本框 / 按钮，光感关时要能看出边界）：
+   * 传 true 且**材质不可用**时画一圈 1.5vp divider；材质可用时不画（高光边缘由材质自带）。
+   */
+  @Prop cardOutline: boolean = false;
   /** 卡片流光触感（外观设置）：开启后按压卡片才出现流光（照搬 xjau cardGlowTouch） */
   @StorageProp('cardGlowTouch') flowTouch: boolean = true;
   /** 主题色流光（外观设置）：按压光晕改用主题色；关闭为白光 */
@@ -397,6 +402,11 @@ export struct ImmersiveCard {
     .width(this.cardWidth)
     .borderRadius(this.cardRadius)
     .clip(true)
+    // **外沿包边**：只在光感关（材质不可用）时画，材质开着由材质边缘负责
+    .border({
+      width: (this.cardOutline && !this.materialOn()) ? 1.5 : 0,
+      color: this.palette.divider
+    })
     // 流光走 overlay（不占布局），见 pressGlowOverlay 注释
     .overlay(this.pressGlowOverlay, { align: Alignment.TopStart })
     // 记录卡片窗口原点的**位移增量**（照搬 xjau MaterialCard：滚动时卡片被带走，

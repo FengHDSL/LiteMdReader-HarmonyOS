@@ -44,6 +44,8 @@ export struct AiSettings {
   @StorageLink('readerThemeMode') themeMode: number = ReaderThemeMode.System;
   @StorageProp('systemDark') systemDark: boolean = false;
   @StorageProp('safeTopPx') safeTopPx: number = 0;
+  /** 沉浸光感总开关：光感关时输入框 / 按钮包装卡补包边（cardOutline，材质开着不画） */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
   @StorageProp('safeBottomPx') safeBottomPx: number = 0;
   /** **界面字体**（外观设置 → 界面字体）：本页界面文字都从这里取 */
   @StorageProp('appFontFamily') uiFontKey: string = '';
@@ -554,7 +556,8 @@ export struct AiSettings {
                 palette: this.palette(),
                 cardRadius: HwRadius.pill,
                 cardPadding: 0,
-                cardMaterialShadow: false
+                cardMaterialShadow: false,
+                cardOutline: true
               }) {
                 TextInput({ text: this.profileName, placeholder: 'API 1' })
                   .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -577,7 +580,8 @@ export struct AiSettings {
                 palette: this.palette(),
                 cardRadius: HwRadius.pill,
                 cardPadding: 0,
-                cardMaterialShadow: false
+                cardMaterialShadow: false,
+                cardOutline: true
               }) {
                 TextInput({ text: this.apiUrl,
                   placeholder: L10n.t('https://api.deepseek.com/v1 或 https://api.anthropic.com') })
@@ -600,7 +604,8 @@ export struct AiSettings {
                 palette: this.palette(),
                 cardRadius: HwRadius.pill,
                 cardPadding: 0,
-                cardMaterialShadow: false
+                cardMaterialShadow: false,
+                cardOutline: true
               }) {
                 TextInput({ text: this.apiKey, placeholder: 'sk-…' })
                   .fontFamily(HwFont.resolve(this.uiFontKey))
@@ -624,7 +629,8 @@ export struct AiSettings {
                 palette: this.palette(),
                 cardRadius: HwRadius.pill,
                 cardPadding: 0,
-                cardMaterialShadow: false
+                cardMaterialShadow: false,
+                cardOutline: true
               }) {
                 TextInput({ text: this.modelsText,
                   placeholder: 'deepseek-chat, claude-sonnet-4-5' })
@@ -654,7 +660,8 @@ export struct AiSettings {
                 palette: this.palette(),
                 cardRadius: 20,
                 cardPadding: 6,
-                cardMaterialShadow: false
+                cardMaterialShadow: false,
+                cardOutline: true
               }) {
                 TextArea({ text: this.systemPrompt,
                   placeholder: L10n.t('例：你是我的阅读助手，回答简洁准确，用中文。') })
@@ -708,7 +715,7 @@ export struct AiSettings {
           }
 
           // ── 测试连接行 ──
-          ImmersiveCard({ palette: this.palette(), cardClickable: true, cardOnTap: () => {
+          ImmersiveCard({ palette: this.palette(), cardOutline: true, cardClickable: true, cardOnTap: () => {
             this.test();
           } }) {
             Row({ space: HwSpace.sm }) {
@@ -739,6 +746,7 @@ export struct AiSettings {
               cardRadius: HwRadius.pill,
               cardPadding: 0,
               cardMaterialShadow: true,
+              cardOutline: true,
               cardClickable: true,
               cardOnTap: () => {
                 this.save();

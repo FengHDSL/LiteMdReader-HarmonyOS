@@ -53,7 +53,6 @@ import { TableEditorDialog } from '../components/TableEditorDialog';
 import { AutoScrollTile } from '../components/AutoScrollTile';
 import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
-import { StatusBarBlur } from '../components/StatusBarBlur';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { TagStore } from '../service/TagStore';
@@ -366,6 +365,9 @@ export struct Reader {
   @StorageProp('appearanceTick') appearanceTick: number = 0;
   /** 沉浸光感开关（已强制开启）：标签芯片等部件据此决定是否要让出底色 */
   @StorageProp('immersiveLightEnabled') immersiveOn: boolean = true;
+  /** 沉浸光感总开关与档位：materialOn() 必须三者同查（漏查会导致关光感后外壳纯透明） */
+  @StorageProp('immersiveLook') fxLookOn: boolean = false;
+  @StorageProp('immersiveGrade') fxGrade: string = 'default';
 
   @State blocks: MdBlock[] = [];
   @State docOutline: MdHeading[] = [];
@@ -3669,9 +3671,10 @@ export struct Reader {
     return w < 200 ? 200 : w;
   }
 
-  /** 沉浸光感是否真的会渲染（开关 × 材质构造成功）。 */
+  /** 沉浸光感是否真的会渲染（总开关 × 档位 × 材质构造成功）。 */
   private materialOn(): boolean {
-    return this.immersiveOn && getImmersiveMaterial() !== null;
+    return this.fxLookOn && this.fxGrade !== 'eco'
+      && this.immersiveOn && getImmersiveMaterial() !== null;
   }
 
   /**
@@ -9521,11 +9524,7 @@ export struct Reader {
       // 等于直接压在文字上。backdropBlur 只吃状态栏这一段高度 ——
       // 与书架 cellBlur / 长按面板遮罩同一档（6），不是整屏实时模糊，
       // 后者是《模糊场景性能优化》点名导致转场卡顿的写法（见 components/WallpaperImage.ets）。
-      // **状态栏模糊垫层**：与其他页面（书架 / 设置 / 复习）同一组件、同一大小
-      //（heightVp = padTop，模糊强度 6）。此前内联实现且**沉浸阅读时不渲染**，
-      // 沉浸模式下正文顶到状态栏却没模糊，与其他页面观感不一致
-      //（用户要求"一样的模糊效果、大小一样"）→ 改为恒定渲染。
-      StatusBarBlur({ heightVp: this.padTop() })
+      // 状态栏区域不加模糊垫层（用户要求：阅读页不要这层实时模糊，已移除）
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
       //    同一时刻只有一层，杜绝「两层叠加 + 内容溢出胶囊」的错位。──

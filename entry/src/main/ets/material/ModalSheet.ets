@@ -53,7 +53,9 @@ import { withAlpha } from '../theme/DesignTokens';
 @Component
 export struct SheetKeyboardLift {
   /** 键盘真实占位高度（px），AppWindow 的 avoidAreaChange(TYPE_KEYBOARD) 广播 */
-  @StorageProp('keyboardPx') kbPx: number = 0;
+  @StorageProp('keyboardPx') @Watch('onKbChange') kbPx: number = 0;
+  /** 实际垫起的高度（vp）：随键盘出现 / 收起用 animateTo 过渡（用户要求抬高与收起都要有动画） */
+  @State liftVp: number = 0;
 
   @Builder
   doNothing() {
@@ -77,7 +79,7 @@ export struct SheetKeyboardLift {
     }
   }
 
-  private liftVp(): number {
+  private computeLift(): number {
     if (this.kbPx <= 0) {
       return 0;
     }
@@ -87,13 +89,23 @@ export struct SheetKeyboardLift {
     return this.getUIContext().px2vp(this.kbPx);
   }
 
+  /** 键盘高度变化 → 用 animateTo 过渡垫起 / 收回（用户要求抬高与收起都有过渡动画） */
+  onKbChange(): void {
+    this.getUIContext().animateTo({ duration: 260, curve: Curve.FastOutSlowIn }, () => {
+      this.liftVp = this.computeLift();
+    });
+  }
+
+  aboutToAppear(): void {
+    this.liftVp = this.computeLift();
+  }
+
   build() {
     Column() {
       this.content()
     }
     .width('100%')
-    .padding({ bottom: this.liftVp() })
-    .animation({ duration: 180, curve: Curve.FastOutSlowIn })
+    .padding({ bottom: this.liftVp })
   }
 }
 

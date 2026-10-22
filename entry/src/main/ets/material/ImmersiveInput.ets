@@ -102,5 +102,12 @@ export struct ImmersiveInput {
     .width('100%')
     .height(38)
     .borderRadius(HwRadius.inner)
+    // **包边**（用户要求）：关闭沉浸光感（或节能档）时底色是实色 surface，
+    // 输入框会糊在卡片上看不出是输入框 → 补一圈 1.5vp divider；
+    // 材质可用时不画（边缘高光由材质自带）。
+    .border({
+      width: this.materialOn() ? 0 : 1.5,
+      color: this.palette.divider
+    })
   }
 }
