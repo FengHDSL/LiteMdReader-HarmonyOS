@@ -8387,31 +8387,47 @@ struct Index {
       // 首帧即显，约 1.2s 后淡出移除；**纯渐变底**（不画光斑圆，用户要求），
       // 铺满全屏（含状态栏 / 手势条）
       if (this.splashOn) {
-        Stack({ alignContent: Alignment.Center }) {
-          Column()
-            .width('100%')
-            .height('100%')
-            .linearGradient({
-              angle: 180,
-              colors: this.isDark()
-                ? [['#1E2230', 0.0], ['#0F1219', 1.0]]
-                : [['#E7EFE6', 0.0], ['#CFDECC', 1.0]]
-            })
+        Stack() {
+          // 中心层：渐变底 + 图标 + ChéngJiān（原样，中心靠上）
+          Stack({ alignContent: Alignment.Center }) {
+            Column()
+              .width('100%')
+              .height('100%')
+              .linearGradient({
+                angle: 180,
+                colors: this.isDark()
+                  ? [['#1E2230', 0.0], ['#0F1219', 1.0]]
+                  : [['#E7EFE6', 0.0], ['#CFDECC', 1.0]]
+              })
 
-          Column({ space: 22 }) {
-            Image($r('app.media.foreground'))
-              .width(132)
-              .height(132)
-            Text('ChéngJiān')
-              .fontSize(HwFont.sx(24, this.uiFontScale))
-              .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
-              .letterSpacing(8)
-              .margin({ left: 8 })
-              .fontColor(this.isDark() ? '#FFECF1E9' : '#FF3D4A3C')
+            Column({ space: 22 }) {
+              Image($r('app.media.foreground'))
+                .width(132)
+                .height(132)
+              Text('ChéngJiān')
+                .fontSize(HwFont.sx(24, this.uiFontScale))
+                .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+                .letterSpacing(8)
+                .margin({ left: 8 })
+                .fontColor(this.isDark() ? '#FFECF1E9' : '#FF3D4A3C')
+            }
+            .alignItems(HorizontalAlign.Center)
+            // 中心靠上：整体上移屏高的 8%
+            .translate({ y: -this.rootHeight * 0.08 })
           }
-          .alignItems(HorizontalAlign.Center)
-          // 中心靠上：整体上移屏高的 8%
-          .translate({ y: -this.rootHeight * 0.08 })
+          .width('100%')
+          .height('100%')
+
+          // **底部标语**（用户要求）：金色行楷「澄心执笔，笺上生光」。
+          // 行楷字形用预合成的透明字图（应用内没有行楷字体，不为一句标语打包字体文件）。
+          Stack({ alignContent: Alignment.Bottom }) {
+            Image($r('app.media.slogan_gold'))
+              .width('62%')
+              .margin({ bottom: Math.max(this.rootHeight * 0.055, 64) })
+              .opacity(this.isDark() ? 0.92 : 1)
+          }
+          .width('100%')
+          .height('100%')
         }
         .width('100%')
         .height('100%')
