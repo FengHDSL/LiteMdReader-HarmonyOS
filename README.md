@@ -20,7 +20,7 @@
 | 平台 | HarmonyOS（ArkTS / ArkUI，Stage 模型） |
 | 设备 | 手机 · 平板 · 2in1 |
 | 包名 | `com.litemdreader.lzb` |
-| 下载 | [华为应用市场（正式版）](https://appgallery.huawei.com/app/detail?id=com.litemdreader.lzb) · [GitHub Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases)（测试版 HAP） |
+| 下载 | [华为应用市场（正式版）](https://appgallery.huawei.com/app/detail?id=com.litemdreader.lzb) · [GitHub Releases](https://github.com/FengHDSL/LiteMdReader-HarmonyOS/releases) · [HAP资源站](https://www.sydxky.cn/detail.php?id=956)（测试版 HAP） |
 | 更新日志 | [CHANGELOG.md](CHANGELOG.md) · 应用内「探索中心 → 更新日志」 |
 | 许可证 | [GPL-3.0](LICENSE) |
 
