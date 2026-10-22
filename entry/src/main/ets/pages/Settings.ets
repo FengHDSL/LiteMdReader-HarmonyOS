@@ -21,6 +21,7 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { SettingsFeedback } from './SettingsFeedback';
 import { SettingsEngines } from './SettingsEngines';
 import { Changelog } from './Changelog';
 import { SettingsHelp } from './SettingsHelp';
@@ -409,6 +410,8 @@ export struct Settings {
         SettingsEngines({ stack: this.stack, life: this.life })
       } else if (route === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.stack, embedded: true })
+      } else if (route === 'pages/SettingsFeedback') {
+        SettingsFeedback({ stack: this.stack, embedded: true })
       } else if (route === 'pages/Changelog') {
         Changelog({ stack: this.stack, embedded: true })
       } else if (route === 'pages/SettingsHelp') {

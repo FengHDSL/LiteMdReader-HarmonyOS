@@ -408,6 +408,7 @@ export const EN_US_ENTRIES: L10nEntry[] = [
   { k: '头', v: 'Head' },
   { k: '好评鼓励', v: 'Leave a review' },
   { k: 'MeoW订阅', v: 'MeoW subscription' },
+  { k: '意见反馈', v: 'Feedback' },
   { k: '打不开 MeoW 订阅页', v: 'Cannot open the MeoW subscription page' },
   { k: '嫩绿', v: 'Tender green' },
   { k: '字体', v: 'Font' },

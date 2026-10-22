@@ -21,6 +21,7 @@ import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { updateManager } from '@kit.AppGalleryKit';
 import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { AppearanceFx } from '../service/AppearanceFx';
+import { MeoWLink } from '../service/MeoWLink';
 import {
   HwRadius,
   HwSpace,
@@ -41,17 +42,6 @@ const UPDATE_SITE: string = 'https://www.sydxky.cn/detail.php?id=956';
 /** 平板分栏内嵌法务文档的 Web 高度（vp）：420 在横屏下太矮，正文只剩几行 */
 const EMBEDDED_LEGAL_HEIGHT: number = 560;
 
-/** MeoW 应用的包名（用户提供）：「MeoW订阅」优先直接拉起它 */
-const MEOW_BUNDLE: string = 'com.chuckfang.meow';
-/** MeoW 订阅落地页（带渠道号）：给人看的页面，没装 MeoW 时打开它 */
-const MEOW_URL: string = 'https://meow.chuckfang.com/?channelId=951fa7696734428c9ee367f5c07e4273';
-/**
- * **MeoW 的 App Linking 深链**——落地页里「立即订阅」按钮真正指向的地址
- * （页面脚本：`https://www.chuckfang.com/MeoW/appLinking?channelId=<id>`）。
- * 按官方 App Linking 口径直接 openLink 它，系统会拉起 MeoW 并带上频道上下文，
- * 比"只按包名 startAbility"更准（那样子应用拿不到要订阅哪个频道）。
- */
-const MEOW_APPLINK: string = 'https://www.chuckfang.com/MeoW/appLinking?channelId=951fa7696734428c9ee367f5c07e4273';
 
 /** 参考项目（名称 + 地址 + 一句话说明） */
 interface CreditItem {
@@ -236,66 +226,28 @@ export struct SettingsExplore {
     }
   }
 
-  /**
-   * 「MeoW订阅」（用户要求）：优先**直接拉起 MeoW 应用**（包名 com.chuckfang.meow），
-   * 设备上没装 / 拉起失败 → 打开订阅网页；两条路都不行才提示。
-   */
+  /** 「MeoW订阅」：App Linking 深链 → 包名 → 落地页 → 浏览器（实现见 service/MeoWLink） */
   private openMeoW(): void {
     const ctx = this.hostCtx();
     if (ctx === null) {
       this.toast(L10n.t('打不开 MeoW 订阅页'));
       return;
     }
-    // ① **官方 App Linking**：直接开落地页里「立即订阅」指向的深链，
-    //    装了 MeoW 就由系统拉起应用并带上 channelId（appLinkingOnly = 只认 App Linking，不落浏览器）
-    try {
-      ctx.openLink(MEOW_APPLINK, { appLinkingOnly: true }).catch(() => {
-        this.meoWByBundle(ctx);
-      });
-      return;
-    } catch (err) {
-      // 低版本没有 OpenLinkOptions / 调用直接抛：继续往下降级
-    }
-    this.meoWByBundle(ctx);
-  }
-
-  /** ② 没走通深链：按包名显式拉起（部分机型 / 版本对 App Linking 校验更严，这条兜住） */
-  private meoWByBundle(ctx: common.UIAbilityContext): void {
-    const want: Want = { bundleName: MEOW_BUNDLE };
-    try {
-      ctx.startAbility(want).catch(() => {
-        this.openMeoWLink(ctx);
-      });
-    } catch (err) {
-      this.openMeoWLink(ctx);
-    }
-  }
-
-  /** ③ 没装 MeoW：打开给人看的订阅落地页（用户可在页面里点「立即订阅」） */
-  private openMeoWLink(ctx: common.UIAbilityContext): void {
-    try {
-      ctx.openLink(MEOW_URL).catch(() => {
-        this.openMeoWBrowser(ctx);
-      });
-    } catch (err) {
-      this.openMeoWBrowser(ctx);
-    }
-  }
-
-  /** 最后兜底：隐式 viewData 交给浏览器 */
-  private openMeoWBrowser(ctx: common.UIAbilityContext): void {
-    const want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: MEOW_URL
-    };
-    try {
-      ctx.startAbility(want).catch(() => {
-        this.toast(L10n.t('打不开 MeoW 订阅页'));
-      });
-    } catch (err) {
+    MeoWLink.open(ctx, () => {
       this.toast(L10n.t('打不开 MeoW 订阅页'));
+    });
+  }
+
+  /** 打开「意见反馈」页（平板分栏时回设置中心右栏展示，与其它设置板块一致） */
+  private openFeedback(): void {
+    if (this.embedded) {
+      AppStorage.setOrCreate('settingsInlineSection', 'pages/SettingsFeedback');
+      return;
     }
+    if (this.stack === null) {
+      return;
+    }
+    this.stack.pushPath({ name: 'pages/SettingsFeedback' }, AppearanceFx.navAnimated());
   }
 
   private palette(): ReaderPalette {
@@ -491,51 +443,54 @@ export struct SettingsExplore {
             .lineHeight(HwFont.sx(HwType.label * 1.7, this.uiFontScale))
             .width('100%')
 
-          // **换行容器**：三枚芯片带上图标后变宽，界面字号放大到 130% 时一行放不下，
-          // Flex 自动换行比 Row 硬挤更稳（不会把文案压成省略号）
+          // **六枚入口 = 两列网格**（用户要求：布局整齐）：chipWidth 固定 48% + Flex 换行，
+          // 每行两枚、宽度一致、文字左对齐；图标颜色一律跟随各自芯片的颜色。
           Flex({
             wrap: FlexWrap.Wrap,
             space: { main: LengthMetrics.vp(8), cross: LengthMetrics.vp(8) }
           }) {
+            // ① 项目主页 —— 跟随主题色（图标与文字同色，用户要求）
             ImmersiveChip({
               palette: this.palette(),
+              chipWidth: '48%',
+              chipLabelLeft: true,
               chipActive: true,
               chipLabel: L10n.t('项目主页'),
               chipOnTap: () => {
                 this.openLink('https://github.com/FengHDSL/LiteMdReader-HarmonyOS');
               }
             }) {
-              // **图标**（用户要求）：主页 = 房子
               SymbolGlyph($r('sys.symbol.house'))
                 .fontSize(13)
-                .fontColor([this.palette().textSecondary])
+                .fontColor([this.palette().accent])
             }
-            // 检查更新：拉资源站详情页解析最新版本（见 checkUpdate）。
-            // 进行中芯片变成高亮态 + 文案「检查中…」，重复点击在方法内部直接忽略。
+
+            // ② 检查更新 —— 绿；进行中文案变「检查中…」，重复点击在方法内部忽略
             ImmersiveChip({
               palette: this.palette(),
               chipTint: '#FF2E7D32',
+              chipWidth: '48%',
+              chipLabelLeft: true,
               chipActive: true,
               chipLabel: this.checkingUpdate ? L10n.t('检查中…') : L10n.t('检查更新'),
               chipOnTap: () => {
                 this.checkUpdate();
               }
             }) {
-              // **图标**（用户要求）：检查更新 = 逆时针刷新箭头（与 chip 同绿）
               SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
                 .fontSize(13)
                 .fontColor(['#FF2E7D32'])
             }
-            // **更新日志**：靛蓝紫（#FF5E35B1）——与旁边四枚（中性 / 绿 / 粉 / 橙）都区分得开，
-            // 又比纯蓝更"史册感"，配 clock 图标表示"按时间排列的记录"（用户要求：换一个不撞色的颜色）
+
+            // ③ 更新日志 —— 靛蓝紫（与中性 / 绿 / 粉 / 橙 / 青都不撞）
             ImmersiveChip({
               palette: this.palette(),
               chipTint: '#FF5E35B1',
+              chipWidth: '48%',
+              chipLabelLeft: true,
               chipActive: true,
               chipLabel: L10n.t('更新日志'),
               chipOnTap: () => {
-                // **平板分栏嵌入模式**：不进新页，回设置中心右栏展示
-                //（与其它设置板块一致 —— 用户要求）
                 if (this.embedded) {
                   AppStorage.setOrCreate('settingsInlineSection', 'pages/Changelog');
                   return;
@@ -550,19 +505,13 @@ export struct SettingsExplore {
                 .fontSize(13)
                 .fontColor(['#FF5E35B1'])
             }
-          }
-          .width('100%')
 
-          // ── 好评鼓励（用户要求）：单独一行，不与上面三枚芯片挤在一起 ──
-          // 点它**直达应用市场的「写评论」页**（隐式 Want）。应用内那个官方评分框
-          // （commentManager.showCommentDialog）真机实测在 DevEco 直装的包上点了不画框，
-          // 应用市场又把它限成同一用户一年内最多 3 次——所以手动入口改走市场页，
-          // 应用内评分框只留给「安装满 24 小时」那一次自动弹（静默，出现就赚到）。
-          Row({ space: HwSpace.xs }) {
+            // ④ 好评鼓励 —— 粉；直达应用市场「写评论」页
             ImmersiveChip({
               palette: this.palette(),
-              // **粉色**（用户要求）
               chipTint: '#FFE91E63',
+              chipWidth: '48%',
+              chipLabelLeft: true,
               chipActive: true,
               chipLabel: L10n.t('好评鼓励'),
               chipOnTap: () => {
@@ -570,16 +519,16 @@ export struct SettingsExplore {
               }
             }) {
               SymbolGlyph($r('sys.symbol.heart_fill'))
-                .fontSize(14)
-                // **粉色**（与 chip 同色）
+                .fontSize(13)
                 .fontColor(['#FFE91E63'])
             }
 
-            // ── MeoW订阅（用户要求：放在「好评鼓励」右边，橙色）──
-            // 装了 MeoW 直接拉起应用（包名 com.chuckfang.meow），没装就开订阅页。
+            // ⑤ MeoW订阅 —— 橙；装了 MeoW 直接拉起，没装开订阅页
             ImmersiveChip({
               palette: this.palette(),
               chipTint: '#FFF57C00',
+              chipWidth: '48%',
+              chipLabelLeft: true,
               chipActive: true,
               chipLabel: L10n.t('MeoW订阅'),
               chipOnTap: () => {
@@ -589,6 +538,23 @@ export struct SettingsExplore {
               SymbolGlyph($r('sys.symbol.paperplane'))
                 .fontSize(13)
                 .fontColor(['#FFF57C00'])
+            }
+
+            // ⑥ 意见反馈 —— 青蓝（用户要求新增）：进独立反馈页
+            ImmersiveChip({
+              palette: this.palette(),
+              chipTint: '#FF00838F',
+              chipWidth: '48%',
+              chipLabelLeft: true,
+              chipActive: true,
+              chipLabel: L10n.t('意见反馈'),
+              chipOnTap: () => {
+                this.openFeedback();
+              }
+            }) {
+              SymbolGlyph($r('sys.symbol.message'))
+                .fontSize(13)
+                .fontColor(['#FF00838F'])
             }
           }
           .width('100%')

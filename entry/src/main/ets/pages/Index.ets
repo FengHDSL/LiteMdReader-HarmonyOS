@@ -74,6 +74,7 @@ import { SettingsData } from './SettingsData';
 import { SettingsReading } from './SettingsReading';
 import { SettingsWriting } from './SettingsWriting';
 import { SettingsExplore } from './SettingsExplore';
+import { SettingsFeedback } from './SettingsFeedback';
 import { SettingsEngines } from './SettingsEngines';
 import { SettingsHelp } from './SettingsHelp';
 import { Changelog } from './Changelog';
@@ -8505,6 +8506,8 @@ struct Index {
         SettingsEngines({ stack: this.pathStack })
       } else if (name === 'pages/SettingsExplore') {
         SettingsExplore({ stack: this.pathStack })
+      } else if (name === 'pages/SettingsFeedback') {
+        SettingsFeedback({ stack: this.pathStack })
       } else if (name === 'pages/Changelog') {
         Changelog({ stack: this.pathStack })
       } else if (name === 'pages/SettingsHelp') {
