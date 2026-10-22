@@ -29,7 +29,6 @@ import {
   HwBar, HwFont, HwRadius, HwSpace, HwType, ReaderPalette, paletteFor, isDarkTheme, ReaderThemeMode
 } from '../theme/DesignTokens';
 import { ImmersiveBar, ImmersiveCard, ImmersiveChip, ImmersiveIconButton } from '../material/ImmersiveCard';
-import { StatusBarBlur } from '../components/StatusBarBlur';
 import { GenWallpaper } from '../theme/GenWallpaper';
 import { WallpaperStore } from '../service/WallpaperStore';
 import { WallpaperImage } from '../components/WallpaperImage';
@@ -1196,11 +1195,6 @@ export struct ReviewPage {
           // ⚠️ 顶栏写在 Scroll **之后**并且 zIndex(2)：写在前面会被后声明的 Scroll
           // 盖住（图层顺序 = 声明顺序），顶栏就成了"垫在内容底下"（真机反馈图层错误）。
           // 状态栏模糊层同理也必须写在 Scroll 之后、且排在顶栏前面（顶栏要压在模糊之上）。
-          // ⚠️ 必须给 zIndex(2)：这层声明在滑动内容**之前**，不给层级会被滚上来的
-          // 内容盖住（用户截图：标题压到状态栏下仍是清晰的 = 模糊层失效）。
-          // zIndex 与顶栏同级、声明在顶栏之前 → 顶栏画在模糊之上，内容画在模糊之下。
-          StatusBarBlur({ heightVp: this.safeTopVp() })
-            .zIndex(2)
           Row() {
             ImmersiveBar({
               palette: this.palette(),
@@ -1325,7 +1319,7 @@ export struct ReviewPage {
     .width('100%')
     .height('100%')
     // **铺进状态栏**（与书架同一写法）：不展开的话内容根本不进那条带，
-    // StatusBarBlur 背后没有可糊的东西，效果看着像"没加上"（真机反馈）。
+    // 不铺进状态栏的话背后没有可糊的东西，状态栏区域的模糊会看着像"没加上"（真机反馈）。
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
@@ -2343,9 +2337,6 @@ export struct ReviewPage {
       // 退出 + 进度 + **学习卡朗读**（speaker_wave_2 图标）+ 提示（绿色沉浸光感）。
       // ⚠️ 写在内容之后 + position + zIndex(2)：与学习主页顶栏同款图层方案。
       // 状态栏模糊层同样排在它前面（顶栏要压在模糊之上）。
-      // 同上：模糊层要 zIndex(2)，否则被刷卡内容盖住（真机截图实测）
-      StatusBarBlur({ heightVp: this.safeTopVp() })
-        .zIndex(2)
       Row() {
         ImmersiveBar({
           palette: this.palette(),

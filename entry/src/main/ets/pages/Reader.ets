@@ -53,6 +53,7 @@ import { TableEditorDialog } from '../components/TableEditorDialog';
 import { AutoScrollTile } from '../components/AutoScrollTile';
 import { ReadAloudTile } from '../components/ReadAloudTile';
 import { ExportOptionsPanel } from '../components/ExportOptionsPanel';
+import { StatusBarBlur } from '../components/StatusBarBlur';
 import { ReadingSettingsPanel } from '../settings/ReadingSettings';
 import { AnnotationStore } from '../service/AnnotationStore';
 import { TagStore } from '../service/TagStore';
@@ -9524,7 +9525,8 @@ export struct Reader {
       // 等于直接压在文字上。backdropBlur 只吃状态栏这一段高度 ——
       // 与书架 cellBlur / 长按面板遮罩同一档（6），不是整屏实时模糊，
       // 后者是《模糊场景性能优化》点名导致转场卡顿的写法（见 components/WallpaperImage.ets）。
-      // 状态栏区域不加模糊垫层（用户要求：阅读页不要这层实时模糊，已移除）
+      // **状态栏模糊垫层**（其他页面同款）：高度 = padTop、强度 6，与其他页面大小一致；
+      // 沉浸阅读模式下不渲染（整层隐藏时状态栏也保持干净）。
 
       // ── 悬浮顶栏：一个胶囊，宽度插值；展开/收起内容用 if 切换，
       //    同一时刻只有一层，杜绝「两层叠加 + 内容溢出胶囊」的错位。──
