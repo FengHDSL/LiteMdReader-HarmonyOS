@@ -338,6 +338,9 @@ export struct Reader {
   @State docTags: string[] = [];
   /** 标签输入草稿 */
   @State tagDraft: string = '';
+  /** 「这个标签下有哪些文档」面板：当前标签 + 文档名列表（信息卡点标签打开） */
+  @State tagDocTag: string = '';
+  @State tagDocList: string[] = [];
   /** 面板内容强刷纪元：深浅切换时换容器 key，让 bindSheet 的面板重建 */
   @State sheetEpoch: number = 0;
   /** 沉浸布局下状态栏 / 手势条的避让高度（px），由 AppWindow 写入 */
@@ -5012,6 +5015,52 @@ export struct Reader {
       .border({ width: 1, color: withAlpha(this.tagColor(tag), '40') })
   }
 
+  /**
+   * **点信息卡里的标签 → 看这个标签下有哪些文档**（用户要求：快速查看）。
+   * 数据现算（书架索引里就是各文档的 tags），点条目在新标签打开那一篇。
+   */
+  private openTagDocs(tag: string): void {
+    const c = this.ctx();
+    const names: string[] = [];
+    if (c !== null) {
+      const list: DocMeta[] = DocStore.list(c);
+      for (let k = 0; k < list.length; k++) {
+        const t: string[] | undefined = list[k].tags;
+        if (t !== undefined && t !== null && t.indexOf(tag) >= 0) {
+          names.push(list[k].name);
+        }
+      }
+    }
+    this.tagDocTag = tag;
+    this.tagDocList = names;
+    this.sheetEpoch++;
+    // 面板已经开着时先收再开（同一帧换 builder 内容会白屏，见 closeSheetThen）
+    if (this.sheetVisible) {
+      this.closeSheetThen('tagDocs');
+      return;
+    }
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.activeSheet = 'tagDocs';
+      this.sheetVisible = true;
+    });
+  }
+
+  /** 从「标签下的文档」面板点进某一篇：收面板，在新标签打开 */
+  private openTagDoc(name: string): void {
+    if (name === this.docName) {
+      this.getUIContext().animateTo(this.animateParam(), () => {
+        this.sheetVisible = false;
+      });
+      return;
+    }
+    this.getUIContext().animateTo(this.animateParam(), () => {
+      this.sheetVisible = false;
+    });
+    setTimeout(() => {
+      this.openInTab(name, '');
+    }, 220);
+  }
+
   /** 打开标签编辑面板并读入当前文档标签 */
   private openTagEditor(): void {
     const c = this.ctx();
@@ -5112,6 +5161,9 @@ export struct Reader {
     if (this.activeSheet === 'tags') {
       return '文档标签';
     }
+    if (this.activeSheet === 'tagDocs') {
+      return '#' + this.tagDocTag;
+    }
     if (this.activeSheet === 'tabMenu') {
       return this.tabMenuFor;
     }
@@ -5143,6 +5195,9 @@ export struct Reader {
     }
     if (this.activeSheet === 'bright') {
       return '只调低本应用窗口的亮度，离开阅读页自动交还系统';
+    }
+    if (this.activeSheet === 'tagDocs') {
+      return this.tagDocList.length + ' 篇文档带这个标签，点一条在新标签打开';
     }
     if (this.activeSheet === 'tabMenu') {
       return '标签操作';
@@ -5178,6 +5233,8 @@ export struct Reader {
       this.noteSheet()
     } else if (this.activeSheet === 'tags') {
       this.tagsSheet()
+    } else if (this.activeSheet === 'tagDocs') {
+      this.tagDocsSheet()
     } else if (this.activeSheet === 'tabMenu') {
       this.tabMenuSheet()
     } else if (this.activeSheet === 'bright') {
@@ -5642,6 +5699,82 @@ export struct Reader {
     this.toast('编码已切换：' + this.encodingLabel(value));
   }
 
+  /** 某个标签下的文档列表（信息卡点标签打开）：点一条在新标签打开 */
+  @Builder
+  tagDocsSheet() {
+    Column({ space: HwSpace.sm }) {
+      Text('#' + this.tagDocTag)
+        .fontFamily(HwFont.resolve(this.uiFontKey))
+        .fontSize(HwFont.sx(HwType.label + 1, this.uiFontScale))
+        .fontWeight(HwFont.bump(FontWeight.Medium, this.uiFontWeightDelta))
+        .fontColor(this.tagColor(this.tagDocTag))
+        .width('100%')
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.MARQUEE })
+
+      if (this.tagDocList.length === 0) {
+        Text(L10n.t('这个标签下还没有文档。'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
+          .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+      } else {
+        Text(this.tagDocList.length + L10n.t(' 篇文档'))
+          .fontFamily(HwFont.resolve(this.uiFontKey))
+          .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+          .fontColor(this.palette().textTertiary)
+          .width('100%')
+
+        List({ space: HwSpace.xs }) {
+          ForEach(this.tagDocList, (name: string) => {
+            ListItem() {
+              Row({ space: HwSpace.xs }) {
+                SymbolGlyph(name === this.docName ? $r('sys.symbol.doc_text')
+                  : $r('sys.symbol.doc_plaintext'))
+                  .fontSize(14)
+                  .fontColor([name === this.docName ? this.palette().accent : this.palette().textTertiary])
+                Text(name)
+                  .fontFamily(HwFont.resolve(this.uiFontKey))
+                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
+                  .fontColor(name === this.docName ? this.palette().accent : this.palette().textPrimary)
+                  .layoutWeight(1)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                if (name === this.docName) {
+                  Text(L10n.t('当前'))
+                    .fontFamily(HwFont.resolve(this.uiFontKey))
+                    .fontSize(HwFont.sx(HwType.caption - 1, this.uiFontScale))
+                    .fontColor(this.palette().accent)
+                } else {
+                  SymbolGlyph($r('sys.symbol.chevron_right'))
+                    .fontSize(14)
+                    .fontColor([this.palette().textTertiary])
+                }
+              }
+              .width('100%')
+              .height(44)
+              .padding({ left: HwSpace.md, right: HwSpace.md })
+              .borderRadius(HwRadius.inner)
+              .backgroundColor(this.palette().quoteBg)
+              .alignItems(VerticalAlign.Center)
+              .onClick(() => {
+                this.openTagDoc(name);
+              })
+            }
+          }, (name: string) => 'tagdoc_' + name)
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 320 })
+        .scrollBar(BarState.Off)
+        .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.FastOutSlowIn }))
+      }
+    }
+    .width('100%')
+    .padding(HwSpace.lg)
+    .alignItems(HorizontalAlign.Start)
+    .id('shTagDocs_' + this.sheetEpoch)
+  }
+
   /** 标签编辑面板：输入添加 + 芯片移除，改动即时落盘 */
   @Builder
   tagsSheet() {
@@ -5677,47 +5810,55 @@ export struct Reader {
       .width('100%')
 
       if (this.docTags.length > 0) {
-        // **长按拖动排序**（用户要求）：List 自带的 itemDrag 就是长按触发；
-        // 横向 List 单行滚动，标签再多也不会把面板顶高（原来 Flex 换行会撑成好几行）。
-        List({ space: 8 }) {
+        // **列表形式**（用户要求：一行一个标签）+ **独立删除按钮**（红色图标，右对齐）+ 长文本自动滚动。
+        // 仍然支持长按拖动排序（List 自带 itemDrag 就是长按触发，竖向列表同样可用）。
+        List({ space: HwSpace.xs }) {
           ForEach(this.orderedDocTags(), (tag: string) => {
             ListItem() {
-              Row({ space: 8 }) {
+              Row({ space: HwSpace.sm }) {
                 Text('#' + tag)
                   .fontFamily(HwFont.resolve(this.uiFontKey))
                   .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                  // **按标签名取色**（用户要求：标签带颜色；拖动后颜色不跟着位置变）
+                  // **按标签名取色**：拖动排序后颜色不跟着位置变
                   .fontColor(this.tagColor(tag))
-                  // **长标签单行省略 + 宽度封顶**（同上：胶囊必须包住内容）
+                  // **太长就自动滚动显示**（用户要求）：marquee 只在文字超出可用宽度时滚，
+                  // 短标签静止不动；layoutWeight(1) 给出边界，删除按钮才永远贴右。
                   .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  .constraintSize({ maxWidth: '86%' })
+                  .textOverflow({ overflow: TextOverflow.MARQUEE })
                   .layoutWeight(1)
-                Text('×')
-                  .fontFamily(HwFont.resolve(this.uiFontKey))
-                  .fontSize(HwFont.sx(HwType.label, this.uiFontScale))
-                  .fontWeight(HwFont.bump(FontWeight.Bold, this.uiFontWeightDelta))
-                  .fontColor(this.palette().textTertiary)
-                  .onClick(() => {
-                    this.removeTag(tag);
-                  })
+
+                // 删除：独立圆形按钮 + 红色垃圾桶图标（用户要求）
+                Row() {
+                  SymbolGlyph($r('sys.symbol.trash'))
+                    .fontSize(15)
+                    .fontColor(['#FFD93B3B'])
+                }
+                .width(30)
+                .height(30)
+                .justifyContent(FlexAlign.Center)
+                .borderRadius(HwRadius.pill)
+                .backgroundColor(withAlpha('#FFD93B3B', this.isDark() ? '26' : '16'))
+                .border({ width: 1, color: withAlpha('#FFD93B3B', '40') })
+                .onClick(() => {
+                  this.removeTag(tag);
+                })
               }
-              .padding({ left: HwSpace.sm, right: HwSpace.sm, top: 5, bottom: 5 })
-              .borderRadius(HwRadius.pill)
-              // 淡底 + 同色描边（深浅模式都清楚）
-              .backgroundColor(withAlpha(this.tagColor(tag), this.isDark() ? '24' : '1A'))
-              .border({ width: 1, color: withAlpha(this.tagColor(tag), '40') })
-              // **出现 / 消失的过渡**（用户要求）：淡入 + 轻微放大，删除时反向收缩
+              .width('100%')
+              .height(44)
+              .padding({ left: HwSpace.md, right: HwSpace.xs })
+              .borderRadius(HwRadius.inner)
+              .backgroundColor(this.palette().quoteBg)
+              .alignItems(VerticalAlign.Center)
+              // **出现 / 消失的过渡**：淡入 + 轻微放大，删除时反向收缩
               .transition(TransitionEffect.OPACITY
-                .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
+                .combine(TransitionEffect.scale({ x: 0.94, y: 0.94 }))
                 .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
             }
           }, (tag: string) => tag)
         }
-        .listDirection(Axis.Horizontal)
-        .scrollBar(BarState.Off)
         .width('100%')
-        .height(38)
+        .constraintSize({ maxHeight: 300 })
+        .scrollBar(BarState.Off)
         .onItemDragStart((event: ItemDragInfo, itemIndex: number) => {
           const tags: string[] = this.orderedDocTags();
           const tag: string = itemIndex >= 0 && itemIndex < tags.length ? tags[itemIndex] : '';
@@ -5935,8 +6076,9 @@ export struct Reader {
                   .transition(TransitionEffect.OPACITY
                     .combine(TransitionEffect.scale({ x: 0.86, y: 0.86 }))
                     .animation({ duration: 200, curve: Curve.FastOutSlowIn }))
+                  // **点标签 = 看这个标签下有哪些文档**（用户要求），要改标签走 ◇ 那颗按钮
                   .onClick(() => {
-                    this.openTagEditor();
+                    this.openTagDocs(tag);
                   })
               }, (tag: string) => 'meta_' + tag)
             }
