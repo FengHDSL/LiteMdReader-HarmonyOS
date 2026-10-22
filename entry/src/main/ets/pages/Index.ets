@@ -2059,9 +2059,21 @@ struct Index {
       this.totalWords = words;
       this.totalChars = chars;
       this.userDocCount = userCount;
-      this.resumeName = best !== null ? best.name : '';
-      this.resumeRatio = best !== null ? best.progressRatio : 0;
-      this.resumeLastOpen = best !== null ? best.lastOpen : 0;
+      // **卡片出现 / 消失带过渡**（用户要求）：包 animateTo，高度变化推动下方内容滑动
+      const newName: string = best !== null ? best.name : '';
+      const newRatio: number = best !== null ? best.progressRatio : 0;
+      const newOpen: number = best !== null ? best.lastOpen : 0;
+      if (newName !== this.resumeName) {
+        this.getUIContext().animateTo(AppearanceFx.anim(240, Curve.FastOutSlowIn), () => {
+          this.resumeName = newName;
+          this.resumeRatio = newRatio;
+          this.resumeLastOpen = newOpen;
+        });
+      } else {
+        this.resumeName = newName;
+        this.resumeRatio = newRatio;
+        this.resumeLastOpen = newOpen;
+      }
       // 阅读统计卡数据（1.1.0 从写作日志页搬来）随书架一起刷新
       this.loadReadingStats();
     } catch (err) {
@@ -4641,6 +4653,9 @@ struct Index {
     // 两个横幅都关掉时这里是空 Column，GridItem 的壳与首屏留白照旧在流里。
     Column({ space: HwSpace.sm }) {
     if (this.resumeName.length > 0 && this.showResumeBanner) {
+      // **出现 / 消失过渡**（用户要求）：淡入 + 自上而下落 10vp；消失反向。
+      // ⚠️ 自定义组件上不能直接挂 transition，外套一层 Column 承载。
+      Column() {
       ImmersiveCard({
         cardRadius: HwRadius.card,
         cardPadding: HwSpace.md,
@@ -4691,6 +4706,11 @@ struct Index {
         .width('100%')
         .alignItems(VerticalAlign.Center)
       }
+      }
+      .width('100%')
+      .transition(TransitionEffect.OPACITY
+        .combine(TransitionEffect.translate({ y: -10 }))
+        .animation({ duration: 240, curve: Curve.FastOutSlowIn }))
     }
     }
     .width('100%')

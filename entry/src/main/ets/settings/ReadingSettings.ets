@@ -709,7 +709,38 @@ export struct ReadingSettingsPanel {
               .fontColor([this.palette().accent])
           }
 
-          Text(L10n.t('预览行只用拉丁字母与数字画，避免缺中文字形的字体显示成方块；字体被卸载后自动回退 HarmonyOS Sans'))
+          // **实时预览**（用户要求）：与阅读页**同字体、同字号、同行高、同段距**，
+          // 随上面任何设置变化立即重绘（fontKey/fontEnKey/fontSize/lineMul/paraSpace
+          // 都是 @StorageLink，改值即触发本块重算）。
+          // 中文行演示中文字体；英数行演示英数字体（bodyFamily 的族列表里英数在前）。
+          Column({ space: 0 }) {
+            Text(L10n.t('实时预览'))
+              .fontFamily(HwFont.resolve(this.uiFontKey))
+              .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
+              .fontColor(this.palette().textTertiary)
+              .width('100%')
+            Text('春眠不觉晓，处处闻啼鸟。夜来风雨声，花落知多少。')
+              .fontFamily(HwFont.bodyFamily(this.fontKey))
+              .fontSize(this.fontSize)
+              .lineHeight(this.fontSize * this.lineMul)
+              .fontColor(this.palette().textPrimary)
+              .width('100%')
+              .margin({ top: 6 })
+            Text('The quick brown fox jumps over the lazy dog. 0123456789 42% ¥1,234.56')
+              .fontFamily(HwFont.bodyFamily(this.fontKey))
+              .fontSize(this.fontSize)
+              .lineHeight(this.fontSize * this.lineMul)
+              .fontColor(this.palette().textPrimary)
+              .width('100%')
+              .margin({ top: this.fontSize * 0.4 * this.paraSpace })
+          }
+          .width('100%')
+          .padding(HwSpace.sm)
+          .borderRadius(HwRadius.inner)
+          .backgroundColor(this.palette().quoteBg)
+          .border({ width: 1, color: this.palette().divider })
+
+          Text(L10n.t('预览与阅读页同字体、同字号、同行高；英文与数字自动用上面选的英数字体，字体被卸载后回退 HarmonyOS Sans'))
             .fontFamily(HwFont.resolve(this.uiFontKey))
             .fontSize(HwFont.sx(HwType.caption, this.uiFontScale))
             .fontColor(this.palette().textTertiary)
